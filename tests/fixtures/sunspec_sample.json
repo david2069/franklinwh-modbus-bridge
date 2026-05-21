@@ -1,0 +1,56 @@
+{
+  "ip": "192.168.1.100",
+  "port": 502,
+  "unit": 2,
+  "base_address": 40000,
+  "models": {
+    "1": {
+      "id": 1,
+      "instance": 0,
+      "name": "common",
+      "points": [
+        {"name": "Mn", "value": "FranklinWH", "type": "string"},
+        {"name": "Md", "value": "aGate-2", "type": "string"},
+        {"name": "Vr", "value": "1.5.2", "type": "string"},
+        {"name": "SN", "value": "FWH00012345", "type": "string"}
+      ]
+    },
+    "101": {
+      "id": 101,
+      "instance": 0,
+      "name": "inverter",
+      "points": [
+        {"name": "A", "value": 12.5, "type": "float", "unit": "A", "address": 40069, "writable": false},
+        {"name": "AphA", "value": 12.5, "type": "float", "unit": "A", "address": 40070, "writable": false},
+        {"name": "PPVphAB", "value": 242.1, "type": "float", "unit": "V", "address": 40076, "writable": false},
+        {"name": "W", "value": 3025, "type": "int16", "unit": "W", "address": 40083, "writable": false},
+        {"name": "Hz", "value": 60.01, "type": "float", "unit": "Hz", "address": 40085, "writable": false},
+        {"name": "WH", "value": 15234500, "type": "uint32", "unit": "Wh", "address": 40093, "writable": false},
+        {"name": "St", "value": 4, "type": "enum16", "unit": null, "address": 40107, "writable": false}
+      ]
+    },
+    "124": {
+      "id": 124,
+      "instance": 0,
+      "name": "storage",
+      "points": [
+        {"name": "WChaMax", "value": 5000, "type": "uint16", "unit": "W", "address": 40149, "writable": true},
+        {"name": "WChaGra", "value": 100, "type": "uint16", "unit": "%", "address": 40151, "writable": true},
+        {"name": "StorCtl_Mod", "value": 0, "type": "enum16", "unit": null, "address": 40155, "writable": true},
+        {"name": "ChaState", "value": 85, "type": "uint16", "unit": "%", "address": 40160, "writable": false}
+      ]
+    },
+    "64113": {
+      "id": 64113,
+      "instance": 0,
+      "name": "FranklinWH Extension",
+      "points": [
+        {"name": "PVTotal", "value": 3200, "type": "uint16", "unit": "W", "address": 15502, "writable": false},
+        {"name": "HomeLoad", "value": 1800, "type": "uint16", "unit": "W", "address": 15506, "writable": false},
+        {"name": "OngridMode", "value": 2, "type": "uint16", "unit": null, "address": 15507, "writable": true},
+        {"name": "SelfReserve", "value": 20, "type": "uint16", "unit": "%", "address": 15508, "writable": true},
+        {"name": "TOUReserve", "value": 30, "type": "uint16", "unit": "%", "address": 15509, "writable": true}
+      ]
+    }
+  }
+}
