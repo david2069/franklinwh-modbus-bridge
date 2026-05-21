@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "franklinwh-modbus-bridge"
+version = "0.1.0"
+description = "FranklinWH aGate Modbus TCP bridge — polls SunSpec data and publishes HA entities via MQTT Discovery"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "David Hona", email = "david2069@users.noreply.github.com"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "franklinwh-modbus>=0.9.0",
+    "aiosqlite>=0.20",
+    "aiomqtt>=2.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-json-logger>=2.0",
+    "typer>=0.12",
+    "httpx>=0.27",
+    "websockets>=12.0",
+    "aiofiles>=24.1",
+]
+keywords = ["franklinwh", "modbus", "mqtt", "home-assistant", "sunspec", "energy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+    "Topic :: System :: Hardware",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.14",
+    "respx>=0.21",
+    "ruff>=0.5",
+    "coverage>=7.5",
+]
+
+[project.scripts]
+bridge = "franklinwh_bridge.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/david2069/franklinwh-modbus-bridge"
+"Bug Tracker" = "https://github.com/david2069/franklinwh-modbus-bridge/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+franklinwh_bridge = ["web/**/*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "hardware: requires a real aGate (deselect with -m 'not hardware')",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]

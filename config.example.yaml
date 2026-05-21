@@ -1,0 +1,29 @@
+# franklinwh-modbus-bridge configuration
+# Copy to config.yaml and adjust for your environment.
+# Environment variables and HA options.json take precedence.
+
+gateway:
+  host: "192.168.1.100"
+  port: 502
+  unit_id: 1
+  poll_interval: 30    # seconds
+
+mqtt:
+  host: "localhost"
+  port: 1883
+  # username: ""
+  # password: ""
+  # tls: false
+
+admin:
+  port: 8099
+  # username: ""
+  # password: ""
+
+logging:
+  level: "INFO"
+
+backup:
+  enabled: true
+  interval_hours: 6
+  retention_days: 7
