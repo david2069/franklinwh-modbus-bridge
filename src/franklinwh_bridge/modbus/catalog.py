@@ -40,7 +40,12 @@ def _hash_catalog(device_info: dict) -> str:
 
 
 def parse_device_info(device_info: dict) -> list[dict]:
-    """Parse the reader's JSON output into a flat list of model+point records."""
+    """Parse the reader's JSON output into a flat list of model+point records.
+
+    Accepts both the bridge's simplified format (``writable`` bool) and the
+    reader tool's full format (``access`` string, ``label``, ``scale_factor``,
+    ``symbols``, etc.).
+    """
     records: list[dict] = []
     models = device_info.get("models", {})
 
@@ -49,14 +54,27 @@ def parse_device_info(device_info: dict) -> list[dict]:
         model_label = model_data.get("name", f"model_{model_id}")
 
         for point in model_data.get("points", []):
+            access = point.get("access")
+            if access is None:
+                access = "RW" if point.get("writable") else "R"
+
+            symbols = point.get("symbols")
+            symbols_json = json.dumps(symbols) if symbols else None
+
             records.append({
                 "model_id": model_id,
                 "model_label": model_label,
                 "point_name": point.get("name", ""),
                 "type": point.get("type"),
-                "unit": point.get("unit"),
+                "unit": point.get("unit") or point.get("units"),
                 "address": point.get("address"),
-                "writable": bool(point.get("writable", False)),
+                "writable": "W" in (access or ""),
+                "label": point.get("label"),
+                "description": point.get("desc"),
+                "scale_factor": point.get("scale_factor"),
+                "symbols_json": symbols_json,
+                "access": access,
+                "size": point.get("size"),
             })
 
     return records
@@ -91,8 +109,9 @@ async def capture_catalog(
         model_db_id = model_ids_seen[mid]
         await db.execute(
             "INSERT INTO device_points "
-            "(model_db_id, point_name, type, unit, addr, writable) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(model_db_id, point_name, type, unit, addr, writable, "
+            " label, description, scale_factor, symbols_json, access, size) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 model_db_id,
                 rec["point_name"],
@@ -100,6 +119,12 @@ async def capture_catalog(
                 rec["unit"],
                 rec["address"],
                 int(rec["writable"]),
+                rec.get("label"),
+                rec.get("description"),
+                rec.get("scale_factor"),
+                rec.get("symbols_json"),
+                rec.get("access", "R"),
+                rec.get("size"),
             ),
         )
 
@@ -123,7 +148,10 @@ async def capture_catalog(
 async def load_catalog(db: aiosqlite.Connection, gateway_id: str) -> list[dict]:
     """Load the current catalog from the DB as a list of point records."""
     query = """
-        SELECT dm.model_id, dm.label, dp.point_name, dp.type, dp.unit, dp.addr, dp.writable
+        SELECT dm.model_id, dm.label,
+               dp.point_name, dp.type, dp.unit, dp.addr, dp.writable,
+               dp.label, dp.description, dp.scale_factor,
+               dp.symbols_json, dp.access, dp.size
         FROM device_points dp
         JOIN device_models dm ON dp.model_db_id = dm.id
         WHERE dm.gateway_id = ?
@@ -132,6 +160,9 @@ async def load_catalog(db: aiosqlite.Connection, gateway_id: str) -> list[dict]:
     rows: list[dict] = []
     async with db.execute(query, (gateway_id,)) as cursor:
         async for row in cursor:
+            symbols = None
+            if row[10]:
+                symbols = json.loads(row[10])
             rows.append({
                 "model_id": row[0],
                 "model_label": row[1],
@@ -140,6 +171,12 @@ async def load_catalog(db: aiosqlite.Connection, gateway_id: str) -> list[dict]:
                 "unit": row[4],
                 "address": row[5],
                 "writable": bool(row[6]),
+                "label": row[7],
+                "description": row[8],
+                "scale_factor": row[9],
+                "symbols": symbols,
+                "access": row[11],
+                "size": row[12],
             })
     return rows
 
@@ -166,7 +203,10 @@ def _point_key(rec: dict) -> str:
 
 
 def _point_signature(rec: dict) -> str:
-    return f"{rec['type']}|{rec['unit']}|{rec['address']}|{rec['writable']}"
+    return (
+        f"{rec['type']}|{rec['unit']}|{rec['address']}|{rec['writable']}"
+        f"|{rec.get('access', '')}|{rec.get('scale_factor', '')}"
+    )
 
 
 def _compute_diff(old: list[dict], new: list[dict]) -> CatalogDiff:

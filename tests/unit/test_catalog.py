@@ -42,27 +42,33 @@ def test_parse_device_info(device_info):
     names = {r["point_name"] for r in records}
     assert "Mn" in names
     assert "W" in names
-    assert "PVTotal" in names
-    assert "ChaState" in names
+    assert "SoC" in names
+    assert "DCW" in names
 
     writable = [r for r in records if r["writable"]]
     assert len(writable) > 0
     writable_names = {r["point_name"] for r in writable}
-    assert "OngridMode" in writable_names
-    assert "WChaMax" in writable_names
+    assert "WSetEna" in writable_names
+    assert "AlarmReset" in writable_names
 
 
 def test_parse_extracts_model_ids(device_info):
     records = parse_device_info(device_info)
     model_ids = {r["model_id"] for r in records}
-    assert model_ids == {1, 101, 124, 64113}
+    assert model_ids == {
+        1, 502, 701, 702, 703, 704, 705, 706, 707, 708,
+        709, 710, 711, 712, 713, 714, 715,
+    }
 
 
 async def test_capture_and_load(device_info, db):
     catalog_hash, diff = await capture_catalog(device_info, db, "gw1")
     assert len(catalog_hash) == 16
 
-    assert diff.added_models == [1, 101, 124, 64113]
+    assert diff.added_models == sorted([
+        1, 502, 701, 702, 703, 704, 705, 706, 707, 708,
+        709, 710, 711, 712, 713, 714, 715,
+    ])
     assert diff.removed_models == []
     assert len(diff.added_points) > 0
 
@@ -70,7 +76,7 @@ async def test_capture_and_load(device_info, db):
     assert len(loaded) == len(parse_device_info(device_info))
 
     names = {r["point_name"] for r in loaded}
-    assert "PVTotal" in names
+    assert "SoC" in names
     assert "W" in names
 
 
@@ -102,21 +108,25 @@ async def test_diff_detects_removed_model(device_info, db):
     await capture_catalog(device_info, db, "gw1")
 
     modified = json.loads(json.dumps(device_info))
-    del modified["models"]["64113"]
+    del modified["models"]["715"]
 
     _, diff = await capture_catalog(modified, db, "gw1")
-    assert 64113 in diff.removed_models
-    assert any("64113." in p for p in diff.removed_points)
+    assert 715 in diff.removed_models
+    assert any("715." in p for p in diff.removed_points)
 
 
 async def test_diff_detects_changed_point(device_info, db):
     await capture_catalog(device_info, db, "gw1")
 
     modified = json.loads(json.dumps(device_info))
-    modified["models"]["124"]["points"][0]["writable"] = False
+    # Find PFWInjEna and flip its access from RW to R
+    for pt in modified["models"]["704"]["points"]:
+        if pt["name"] == "PFWInjEna":
+            pt["access"] = "R"
+            break
 
     _, diff = await capture_catalog(modified, db, "gw1")
-    assert "124.WChaMax" in diff.changed_points
+    assert "704.PFWInjEna" in diff.changed_points
 
 
 def test_compute_diff_empty():

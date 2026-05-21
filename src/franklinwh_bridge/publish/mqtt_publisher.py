@@ -1,4 +1,8 @@
-"""Queue-based MQTT publisher with HA Discovery and availability."""
+"""Queue-based MQTT publisher with HA Discovery and availability.
+
+Uses the EntityDef registry (entities.py) for curated HA entity definitions
+with per-entity state topics, matching the HA integrator's topic layout.
+"""
 
 from __future__ import annotations
 
@@ -6,25 +10,17 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 import aiomqtt
 
 from franklinwh_bridge.modbus.sample import Sample
+from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES, EntityDef
 
 logger = logging.getLogger(__name__)
 
-DISCOVERY_PREFIX = "homeassistant"
 TOPIC_PREFIX = "franklinwh"
-
-HA_COMPONENT_MAP = {
-    "W": ("sensor", "power", "W"),
-    "Wh": ("sensor", "energy", "Wh"),
-    "V": ("sensor", "voltage", "V"),
-    "A": ("sensor", "current", "A"),
-    "Hz": ("sensor", "frequency", "Hz"),
-    "%": ("sensor", "battery", "%"),
-}
 
 
 @dataclass
@@ -45,77 +41,78 @@ class MqttState:
 
 
 @dataclass
-class EntityMapping:
-    point_name: str
-    ha_component: str
-    device_class: str | None
-    unit: str | None
-    unique_id: str
-    name: str
+class DeviceInfo:
+    serial: str
+    manufacturer: str = "FranklinWH Technologies Co., Ltd"
+    model: str = "aGate"
+    firmware: str = ""
+    name: str = ""
 
+    @property
+    def short_id(self) -> str:
+        return self.serial[-8:] if len(self.serial) >= 8 else self.serial
 
-def build_entity_mappings(
-    catalog: list[dict], gateway_id: str
-) -> list[EntityMapping]:
-    """Build HA entity mappings from the SunSpec catalog."""
-    mappings: list[EntityMapping] = []
-    for rec in catalog:
-        point_name = rec["point_name"]
-        unit = rec.get("unit")
-        ha_component = "sensor"
-        device_class = None
-
-        if unit and unit in HA_COMPONENT_MAP:
-            ha_component, device_class, _ = HA_COMPONENT_MAP[unit]
-
-        unique_id = f"franklinwh_{gateway_id}_{point_name}".lower()
-        display_name = point_name.replace("_", " ").title()
-
-        mappings.append(EntityMapping(
-            point_name=point_name,
-            ha_component=ha_component,
-            device_class=device_class,
-            unit=unit,
-            unique_id=unique_id,
-            name=f"FranklinWH {display_name}",
-        ))
-
-    return mappings
+    def ha_device_block(self, app_version: str = "") -> dict:
+        name = self.name or f"FranklinWH {self.short_id}"
+        sw = self.firmware
+        if app_version:
+            sw = f"{self.firmware} (bridge: v{app_version})" if sw else f"bridge: v{app_version}"
+        block: dict = {
+            "identifiers": [f"franklinwh_{self.serial}"],
+            "name": name,
+            "model": self.model,
+            "manufacturer": self.manufacturer,
+        }
+        if self.serial:
+            block["serial_number"] = self.serial
+        if sw:
+            block["sw_version"] = sw
+        return block
 
 
 def build_discovery_payload(
-    mapping: EntityMapping, gateway_id: str
+    entity: EntityDef,
+    device_info: DeviceInfo,
+    app_version: str = "",
 ) -> dict:
     """Build an HA MQTT Discovery config payload for a single entity."""
-    state_topic = f"{TOPIC_PREFIX}/{gateway_id}/state"
-    avail_topic = f"{TOPIC_PREFIX}/{gateway_id}/availability"
+    short_id = device_info.short_id
+    avail_topic = f"{TOPIC_PREFIX}/{short_id}/availability"
 
     payload: dict = {
-        "name": mapping.name,
-        "unique_id": mapping.unique_id,
-        "state_topic": state_topic,
-        "value_template": f"{{{{ value_json.{mapping.point_name} }}}}",
+        "unique_id": entity.unique_id(short_id),
+        "name": entity.name,
+        "state_topic": entity.state_topic(short_id),
         "availability_topic": avail_topic,
-        "device": {
-            "identifiers": [f"franklinwh_{gateway_id}"],
-            "name": f"FranklinWH {gateway_id}",
-            "manufacturer": "FranklinWH",
-            "model": "aGate",
-        },
+        "device": device_info.ha_device_block(app_version),
     }
 
-    if mapping.device_class:
-        payload["device_class"] = mapping.device_class
-    if mapping.unit:
-        payload["unit_of_measurement"] = mapping.unit
-    if mapping.device_class:
-        payload["state_class"] = "measurement"
+    if entity.unit:
+        payload["unit_of_measurement"] = entity.unit
+    if entity.device_class:
+        payload["device_class"] = entity.device_class
+    if entity.state_class:
+        payload["state_class"] = entity.state_class
+    if entity.icon:
+        payload["icon"] = entity.icon
+    if entity.entity_category:
+        payload["entity_category"] = entity.entity_category
+
+    cmd_topic = entity.command_topic(short_id)
+    if cmd_topic:
+        payload["command_topic"] = cmd_topic
+
+    if entity.ha_type == "select" and entity.options:
+        payload["options"] = entity.options
+    if entity.ha_type == "number":
+        if entity.min_val is not None:
+            payload["min"] = entity.min_val
+        if entity.max_val is not None:
+            payload["max"] = entity.max_val
+        if entity.step is not None:
+            payload["step"] = entity.step
 
     return payload
-
-
-def build_discovery_topic(mapping: EntityMapping) -> str:
-    return f"{DISCOVERY_PREFIX}/{mapping.ha_component}/{mapping.unique_id}/config"
 
 
 class MqttPublisher:
@@ -128,53 +125,87 @@ class MqttPublisher:
         username: str | None = None,
         password: str | None = None,
         gateway_id: str = "default",
+        client_id: str = "franklinwh_bridge",
+        qos: int = 0,
+        topic_prefix: str = "franklinwh",
+        discovery_prefix: str = "homeassistant",
     ) -> None:
         self._host = host
         self._port = port
         self._username = username
         self._password = password
         self._gateway_id = gateway_id
+        self._client_id = client_id
+        self._default_qos = qos
+        self._topic_prefix = topic_prefix
+        self._discovery_prefix = discovery_prefix
         self._queue: asyncio.Queue[MqttMessage] = asyncio.Queue(maxsize=1000)
         self._state = MqttState()
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
-        self._entity_mappings: list[EntityMapping] = []
+        self._device_info: DeviceInfo | None = None
+        self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
 
     @property
     def state(self) -> MqttState:
         return self._state
 
     @property
-    def entity_mappings(self) -> list[EntityMapping]:
-        return self._entity_mappings
+    def entities(self) -> list[EntityDef]:
+        return self._entities
 
-    def set_entity_mappings(self, mappings: list[EntityMapping]) -> None:
-        self._entity_mappings = mappings
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        return self._device_info
+
+    def set_device_info(self, info: DeviceInfo) -> None:
+        self._device_info = info
         self._state.discovery_published = False
 
     async def _publish_discovery(self, client: aiomqtt.Client) -> None:
-        """Publish HA Discovery config for all mapped entities."""
-        for mapping in self._entity_mappings:
-            topic = build_discovery_topic(mapping)
-            payload = build_discovery_payload(mapping, self._gateway_id)
+        """Publish HA Discovery config for all registered entities."""
+        if not self._device_info:
+            return
+
+        from franklinwh_bridge import __version__
+
+        short_id = self._device_info.short_id
+        for entity in self._entities:
+            topic = entity.discovery_topic(short_id)
+            payload = build_discovery_payload(
+                entity, self._device_info, app_version=__version__
+            )
             await client.publish(topic, json.dumps(payload), retain=True)
 
-        logger.info("Published HA Discovery for %d entities", len(self._entity_mappings))
+        logger.info("Published HA Discovery for %d entities", len(self._entities))
         self._state.discovery_published = True
 
     async def _publish_availability(self, client: aiomqtt.Client, online: bool) -> None:
-        topic = f"{TOPIC_PREFIX}/{self._gateway_id}/availability"
+        if not self._device_info:
+            return
+        topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/availability"
         await client.publish(topic, "online" if online else "offline", retain=True)
 
     async def queue_sample(self, sample: Sample) -> None:
-        """Queue a sample for MQTT publishing."""
-        topic = f"{TOPIC_PREFIX}/{self._gateway_id}/state"
-        payload = json.dumps(sample.points, default=str)
-        msg = MqttMessage(topic=topic, payload=payload, retain=True)
-        try:
-            self._queue.put_nowait(msg)
-        except asyncio.QueueFull:
-            logger.warning("MQTT queue full, dropping message")
+        """Queue per-entity state messages from a poller sample."""
+        if not self._device_info:
+            return
+
+        short_id = self._device_info.short_id
+        for entity in self._entities:
+            if not entity.stat_key:
+                continue
+            value = sample.points.get(entity.stat_key)
+            if value is None:
+                continue
+
+            topic = entity.state_topic(short_id)
+            msg = MqttMessage(topic=topic, payload=entity.format_value(value), retain=True)
+            try:
+                self._queue.put_nowait(msg)
+            except asyncio.QueueFull:
+                logger.warning("MQTT queue full, dropping message for %s", entity.slug)
+                break
 
     def _backoff_delay(self, attempt: int) -> float:
         return min(5.0 * (2 ** attempt), 60.0)
@@ -188,6 +219,7 @@ class MqttPublisher:
                     port=self._port,
                     username=self._username,
                     password=self._password,
+                    identifier=self._client_id,
                 ) as client:
                     self._state.connected = True
                     self._state.last_error = None
@@ -195,7 +227,7 @@ class MqttPublisher:
                     logger.info("MQTT connected to %s:%d", self._host, self._port)
 
                     await self._publish_availability(client, online=True)
-                    if self._entity_mappings and not self._state.discovery_published:
+                    if self._device_info and not self._state.discovery_published:
                         await self._publish_discovery(client)
 
                     while not self._stop_event.is_set():
@@ -207,7 +239,7 @@ class MqttPublisher:
                                 msg.topic, msg.payload, retain=msg.retain, qos=msg.qos
                             )
                             self._state.messages_sent += 1
-                            self._state.last_publish_ts = __import__("time").time()
+                            self._state.last_publish_ts = time.time()
                         except TimeoutError:
                             continue
 
@@ -242,3 +274,68 @@ class MqttPublisher:
                 await self._task
         self._state.connected = False
         logger.info("MQTT publisher stopped")
+
+    @classmethod
+    def from_db_config(cls, config: dict, gateway_id: str = "default") -> MqttPublisher:
+        return cls(
+            host=config.get("host", "localhost"),
+            port=config.get("port", 1883),
+            username=config.get("username"),
+            password=config.get("password"),
+            gateway_id=gateway_id,
+            client_id=config.get("client_id", "franklinwh_bridge"),
+            qos=config.get("qos", 0),
+            topic_prefix=config.get("topic_prefix", "franklinwh"),
+            discovery_prefix=config.get("discovery_prefix", "homeassistant"),
+        )
+
+    async def reconfigure(self, config: dict) -> None:
+        """Apply new config by restarting the connection loop."""
+        was_running = self._task and not self._task.done()
+        if was_running:
+            await self.stop()
+
+        self._host = config.get("host", self._host)
+        self._port = config.get("port", self._port)
+        self._username = config.get("username", self._username)
+        self._password = config.get("password", self._password)
+        self._client_id = config.get("client_id", self._client_id)
+        self._default_qos = config.get("qos", self._default_qos)
+        self._topic_prefix = config.get("topic_prefix", self._topic_prefix)
+        self._discovery_prefix = config.get("discovery_prefix", self._discovery_prefix)
+        self._state.discovery_published = False
+
+        if was_running:
+            await self.start()
+
+    def request_discovery_republish(self) -> None:
+        """Flag discovery for re-publish on the next connection cycle."""
+        self._state.discovery_published = False
+
+    async def unpublish_discovery(self) -> int:
+        """Send empty retained payloads to all discovery topics (tombstones)."""
+        if not self._device_info:
+            return 0
+
+        short_id = self._device_info.short_id
+        count = 0
+        try:
+            async with aiomqtt.Client(
+                hostname=self._host,
+                port=self._port,
+                username=self._username,
+                password=self._password,
+            ) as client:
+                for entity in self._entities:
+                    topic = entity.discovery_topic(short_id)
+                    await client.publish(topic, b"", retain=True)
+                    count += 1
+                avail_topic = f"{self._topic_prefix}/{short_id}/availability"
+                await client.publish(avail_topic, b"", retain=True)
+        except Exception as exc:
+            logger.error("Failed to unpublish discovery: %s", exc)
+            raise
+
+        logger.info("Unpublished %d discovery topics", count)
+        self._state.discovery_published = False
+        return count

@@ -12,9 +12,11 @@ from franklinwh_bridge import __version__
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
+from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.modbus.sample import SampleBus
-from franklinwh_bridge.store.db import init_db, log_startup_event
+from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
+from franklinwh_bridge.store.db import get_mqtt_config, init_db, log_startup_event
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +83,25 @@ async def lifespan(app: FastAPI):
     app.state.gateway_id = gateway_id
     app.state.log_buffer = log_buffer
 
+    mqtt_config = await get_mqtt_config(db)
+    mqtt_publisher = MqttPublisher.from_db_config(mqtt_config, gateway_id=gateway_id)
+    app.state.mqtt_publisher = mqtt_publisher
+
+    if mqtt_config.get("enabled", True):
+        await mqtt_publisher.start()
+
     register_component("poller", lambda: {"status": "not_started"})
-    register_component("mqtt", lambda: {"status": "not_configured"})
+    register_component("mqtt", lambda: {
+        "connected": mqtt_publisher.state.connected,
+        "messages_sent": mqtt_publisher.state.messages_sent,
+        "discovery_published": mqtt_publisher.state.discovery_published,
+    })
 
     logger.info("Bridge started (env=%s, v%s)", config.environment, __version__)
 
     yield
 
+    await mqtt_publisher.stop()
     await db.close()
     logger.info("Bridge shutdown complete")
 
@@ -100,3 +114,4 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(admin_router)
+app.include_router(mqtt_router)

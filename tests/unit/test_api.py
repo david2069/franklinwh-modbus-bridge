@@ -92,9 +92,12 @@ async def test_models_after_capture(client):
     resp = await client.get("/api/models")
     assert resp.status_code == 200
     models = resp.json()["models"]
-    assert len(models) == 4
+    assert len(models) == 17
     model_ids = {m["model_id"] for m in models}
-    assert model_ids == {1, 101, 124, 64113}
+    assert model_ids == {
+        1, 502, 701, 702, 703, 704, 705, 706, 707, 708,
+        709, 710, 711, 712, 713, 714, 715,
+    }
 
 
 async def test_points_empty(client):

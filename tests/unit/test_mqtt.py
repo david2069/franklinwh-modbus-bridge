@@ -1,119 +1,234 @@
-"""Tests for MQTT publisher — entity mapping, discovery payloads, and queue."""
+"""Tests for MQTT publisher — EntityDef registry, discovery payloads, and queue."""
 
-import json
+import asyncio
 
 import pytest
 
 from franklinwh_bridge.modbus.sample import Sample
+from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES, get_entity_by_slug
 from franklinwh_bridge.publish.mqtt_publisher import (
-    EntityMapping,
+    DeviceInfo,
     MqttPublisher,
     build_discovery_payload,
-    build_discovery_topic,
-    build_entity_mappings,
 )
 
 
 @pytest.fixture
-def sample_catalog():
-    return [
-        {"point_name": "soc", "type": "uint16", "unit": "%", "model_id": 124},
-        {"point_name": "power", "type": "int16", "unit": "W", "model_id": 124},
-        {"point_name": "grid_voltage", "type": "float", "unit": "V", "model_id": 101},
-        {"point_name": "mode", "type": "enum16", "unit": None, "model_id": 64113},
-        {"point_name": "energy_total", "type": "uint32", "unit": "Wh", "model_id": 101},
-    ]
-
-
-def test_build_entity_mappings(sample_catalog):
-    mappings = build_entity_mappings(sample_catalog, "gw1")
-    assert len(mappings) == 5
-
-    soc = next(m for m in mappings if m.point_name == "soc")
-    assert soc.ha_component == "sensor"
-    assert soc.device_class == "battery"
-    assert soc.unit == "%"
-    assert soc.unique_id == "franklinwh_gw1_soc"
-
-    power = next(m for m in mappings if m.point_name == "power")
-    assert power.device_class == "power"
-
-    mode = next(m for m in mappings if m.point_name == "mode")
-    assert mode.ha_component == "sensor"
-    assert mode.device_class is None
-
-
-def test_build_discovery_payload():
-    mapping = EntityMapping(
-        point_name="soc",
-        ha_component="sensor",
-        device_class="battery",
-        unit="%",
-        unique_id="franklinwh_gw1_soc",
-        name="FranklinWH Soc",
+def device_info():
+    return DeviceInfo(
+        serial="10060006A02F00000001",
+        model="aGate X",
+        firmware="V10R01B04D00",
+        name="FHP",
     )
-    payload = build_discovery_payload(mapping, "gw1")
 
-    assert payload["name"] == "FranklinWH Soc"
-    assert payload["unique_id"] == "franklinwh_gw1_soc"
-    assert payload["state_topic"] == "franklinwh/gw1/state"
-    assert payload["availability_topic"] == "franklinwh/gw1/availability"
+
+# --- Entity registry ---
+
+def test_entity_registry_not_empty():
+    assert len(BRIDGE_ENTITIES) > 20
+
+
+def test_entity_slugs_unique():
+    slugs = [e.slug for e in BRIDGE_ENTITIES]
+    assert len(slugs) == len(set(slugs))
+
+
+def test_core_entities_present():
+    slugs = {e.slug for e in BRIDGE_ENTITIES}
+    assert "battery_soc" in slugs
+    assert "battery_power_kw" in slugs
+    assert "grid_power_kw" in slugs
+    assert "grid_frequency_hz" in slugs
+    assert "solar_power_kw" in slugs
+    assert "home_load_kw" in slugs
+    assert "operating_mode" in slugs
+    assert "operating_mode_sensor" in slugs
+
+
+def test_get_entity_by_slug():
+    ent = get_entity_by_slug("battery_soc")
+    assert ent is not None
+    assert ent.ha_type == "sensor"
+    assert ent.device_class == "battery"
+    assert ent.unit == "%"
+    assert get_entity_by_slug("nonexistent") is None
+
+
+def test_format_value_scaling():
+    ent = get_entity_by_slug("battery_power_kw")
+    assert ent.format_value(1500) == "1.500"
+    assert ent.format_value(-1200) == "-1.200"
+    assert ent.format_value(0) == "0.000"
+    assert ent.format_value(509) == "0.509"
+
+    soc = get_entity_by_slug("battery_soc")
+    assert soc.format_value(85) == "85"
+
+    state = get_entity_by_slug("battery_state")
+    assert state.format_value("Charging") == "Charging"
+
+
+def test_entity_topic_methods():
+    ent = get_entity_by_slug("battery_soc")
+    assert ent.state_topic("00000001") == "franklinwh/00000001/battery/battery_soc"
+    assert ent.discovery_topic("00000001") == (
+        "homeassistant/sensor/franklinwh_00000001_battery_soc/config"
+    )
+    assert ent.unique_id("00000001") == "franklinwh_00000001_battery_soc"
+    assert ent.command_topic("00000001") is None
+
+
+def test_control_entity_has_command_topic():
+    ent = get_entity_by_slug("operating_mode")
+    assert ent is not None
+    assert ent.is_control is True
+    assert ent.ha_type == "select"
+    assert ent.command_topic("00000001") == (
+        "franklinwh/00000001/control/operating_mode/set"
+    )
+    assert len(ent.options) > 0
+
+
+def test_number_entity_has_limits():
+    ent = get_entity_by_slug("self_reserve_pct")
+    assert ent is not None
+    assert ent.ha_type == "number"
+    assert ent.min_val == 0
+    assert ent.max_val == 100
+    assert ent.step == 1
+
+
+# --- Discovery payloads ---
+
+def test_build_discovery_payload_sensor(device_info):
+    ent = get_entity_by_slug("battery_soc")
+    payload = build_discovery_payload(ent, device_info)
+
+    assert payload["name"] == "State of Charge"
+    assert payload["unique_id"] == "franklinwh_00000001_battery_soc"
+    assert payload["state_topic"] == "franklinwh/00000001/battery/battery_soc"
+    assert payload["availability_topic"] == "franklinwh/00000001/availability"
     assert payload["device_class"] == "battery"
     assert payload["unit_of_measurement"] == "%"
     assert payload["state_class"] == "measurement"
-    assert "value_json.soc" in payload["value_template"]
-    assert payload["device"]["manufacturer"] == "FranklinWH"
-    assert payload["device"]["model"] == "aGate"
+    assert payload["icon"] == "mdi:battery"
+
+    device = payload["device"]
+    assert device["manufacturer"] == "FranklinWH Technologies Co., Ltd"
+    assert device["model"] == "aGate X"
+    assert device["serial_number"] == "10060006A02F00000001"
+    assert "franklinwh_10060006A02F00000001" in device["identifiers"]
 
 
-def test_build_discovery_payload_no_device_class():
-    mapping = EntityMapping(
-        point_name="mode",
-        ha_component="sensor",
-        device_class=None,
-        unit=None,
-        unique_id="franklinwh_gw1_mode",
-        name="FranklinWH Mode",
-    )
-    payload = build_discovery_payload(mapping, "gw1")
+def test_build_discovery_payload_kw_sensor(device_info):
+    ent = get_entity_by_slug("battery_power_kw")
+    payload = build_discovery_payload(ent, device_info)
+    assert payload["unit_of_measurement"] == "kW"
+    assert payload["device_class"] == "power"
+
+
+def test_build_discovery_payload_no_device_class(device_info):
+    ent = get_entity_by_slug("battery_state")
+    payload = build_discovery_payload(ent, device_info)
     assert "device_class" not in payload
     assert "unit_of_measurement" not in payload
     assert "state_class" not in payload
 
 
-def test_build_discovery_topic():
-    mapping = EntityMapping(
-        point_name="soc",
-        ha_component="sensor",
-        device_class="battery",
-        unit="%",
-        unique_id="franklinwh_gw1_soc",
-        name="FranklinWH Soc",
-    )
-    topic = build_discovery_topic(mapping)
-    assert topic == "homeassistant/sensor/franklinwh_gw1_soc/config"
+def test_build_discovery_payload_select(device_info):
+    ent = get_entity_by_slug("operating_mode")
+    payload = build_discovery_payload(ent, device_info)
+    assert payload["command_topic"] == "franklinwh/00000001/control/operating_mode/set"
+    assert "options" in payload
+    assert isinstance(payload["options"], list)
 
 
-async def test_queue_sample():
+def test_build_discovery_payload_number(device_info):
+    ent = get_entity_by_slug("self_reserve_pct")
+    payload = build_discovery_payload(ent, device_info)
+    assert payload["min"] == 0
+    assert payload["max"] == 100
+    assert payload["step"] == 1
+    assert payload["command_topic"] == "franklinwh/00000001/control/self_reserve_pct/set"
+
+
+# --- Device info ---
+
+def test_device_info_short_id(device_info):
+    assert device_info.short_id == "00000001"
+
+
+def test_device_info_ha_block(device_info):
+    block = device_info.ha_device_block(app_version="0.1.0")
+    assert block["name"] == "FHP"
+    assert "V10R01B04D00" in block["sw_version"]
+    assert "0.1.0" in block["sw_version"]
+
+
+# --- Queue and publish ---
+
+async def test_queue_sample_per_entity():
     publisher = MqttPublisher(gateway_id="gw1")
-    sample = Sample.now("gw1", {"soc": 85, "power": -1200})
+    publisher.set_device_info(DeviceInfo(serial="10060006A02F00000001"))
+
+    sample = Sample.now("gw1", {"soc": 85, "battery_power_w": -1200, "voltage_v": 243.4})
     await publisher.queue_sample(sample)
-    assert publisher._queue.qsize() == 1
-    msg = publisher._queue.get_nowait()
-    assert msg.topic == "franklinwh/gw1/state"
-    payload = json.loads(msg.payload)
-    assert payload["soc"] == 85
-    assert msg.retain is True
+
+    queued = []
+    while not publisher._queue.empty():
+        queued.append(publisher._queue.get_nowait())
+
+    topics = {m.topic for m in queued}
+    assert "franklinwh/00000001/battery/battery_soc" in topics
+    assert "franklinwh/00000001/battery/battery_power_kw" in topics
+    assert "franklinwh/00000001/status/grid_voltage_v" in topics
+
+    soc_msg = next(m for m in queued if "battery_soc" in m.topic)
+    assert soc_msg.payload == "85"
+    assert soc_msg.retain is True
+
+    power_msg = next(m for m in queued if "battery_power_kw" in m.topic)
+    assert power_msg.payload == "-1.200"
+
+
+async def test_queue_skips_missing_keys():
+    publisher = MqttPublisher(gateway_id="gw1")
+    publisher.set_device_info(DeviceInfo(serial="10060006A02F00000001"))
+
+    sample = Sample.now("gw1", {"soc": 85})
+    await publisher.queue_sample(sample)
+
+    queued = []
+    while not publisher._queue.empty():
+        queued.append(publisher._queue.get_nowait())
+
+    topics = {m.topic for m in queued}
+    assert "franklinwh/00000001/battery/battery_soc" in topics
+    assert "franklinwh/00000001/battery/battery_power_kw" not in topics
+
+
+async def test_queue_requires_device_info():
+    publisher = MqttPublisher(gateway_id="gw1")
+    sample = Sample.now("gw1", {"soc": 85})
+    await publisher.queue_sample(sample)
+    assert publisher._queue.qsize() == 0
 
 
 async def test_queue_full_drops():
     publisher = MqttPublisher(gateway_id="gw1")
-    publisher._queue = __import__("asyncio").Queue(maxsize=2)
-    await publisher.queue_sample(Sample.now("gw1", {"a": 1}))
-    await publisher.queue_sample(Sample.now("gw1", {"a": 2}))
-    await publisher.queue_sample(Sample.now("gw1", {"a": 3}))
-    assert publisher._queue.qsize() == 2
+    publisher.set_device_info(DeviceInfo(serial="10060006A02F00000001"))
+    publisher._queue = asyncio.Queue(maxsize=1)
 
+    sample = Sample.now("gw1", {
+        "soc": 85, "battery_power_w": 100, "voltage_v": 240,
+        "frequency_hz": 50, "current_a": 3.6,
+    })
+    await publisher.queue_sample(sample)
+    assert publisher._queue.qsize() == 1
+
+
+# --- State and config ---
 
 def test_mqtt_state_defaults():
     publisher = MqttPublisher()
@@ -122,15 +237,12 @@ def test_mqtt_state_defaults():
     assert publisher.state.discovery_published is False
 
 
-def test_set_entity_mappings():
+def test_set_device_info_resets_discovery():
     publisher = MqttPublisher()
     publisher._state.discovery_published = True
-    mappings = [
-        EntityMapping("soc", "sensor", "battery", "%", "uid1", "SOC"),
-    ]
-    publisher.set_entity_mappings(mappings)
-    assert len(publisher.entity_mappings) == 1
+    publisher.set_device_info(DeviceInfo(serial="ABC123"))
     assert publisher.state.discovery_published is False
+    assert publisher.device_info.serial == "ABC123"
 
 
 def test_backoff_delay():

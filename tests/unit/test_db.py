@@ -4,6 +4,7 @@ import pytest
 
 from franklinwh_bridge.store.db import (
     CURRENT_SCHEMA_VERSION,
+    get_mqtt_config,
     get_schema_version,
     init_db,
     log_startup_event,
@@ -95,3 +96,18 @@ async def test_app_config_crud(db):
     async with db.execute("SELECT value FROM app_config WHERE key = ?", ("theme",)) as cursor:
         row = await cursor.fetchone()
     assert row[0] == "light"
+
+
+async def test_mqtt_config_seeded_by_migration(db):
+    config = await get_mqtt_config(db)
+    assert config["host"] == "localhost"
+    assert config["port"] == 1883
+    assert config["enabled"] is True
+    assert config["client_id"] == "franklinwh_bridge"
+    assert config["topic_prefix"] == "franklinwh"
+    assert config["discovery_prefix"] == "homeassistant"
+
+
+async def test_schema_version_is_3(db):
+    version = await get_schema_version(db)
+    assert version == 3

@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 3
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -95,6 +95,23 @@ MIGRATIONS: dict[int, str] = {
         detail TEXT
     );
     """,
+    2: """
+    ALTER TABLE device_points ADD COLUMN label TEXT;
+    ALTER TABLE device_points ADD COLUMN description TEXT;
+    ALTER TABLE device_points ADD COLUMN scale_factor TEXT;
+    ALTER TABLE device_points ADD COLUMN symbols_json TEXT;
+    ALTER TABLE device_points ADD COLUMN access TEXT NOT NULL DEFAULT 'R';
+    ALTER TABLE device_points ADD COLUMN size INTEGER;
+    """,
+    3: """
+    ALTER TABLE mqtt_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE mqtt_config ADD COLUMN client_id TEXT NOT NULL DEFAULT 'franklinwh_bridge';
+    ALTER TABLE mqtt_config ADD COLUMN qos INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE mqtt_config ADD COLUMN retain_discovery INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE mqtt_config ADD COLUMN topic_prefix TEXT NOT NULL DEFAULT 'franklinwh';
+    ALTER TABLE mqtt_config ADD COLUMN discovery_prefix TEXT NOT NULL DEFAULT 'homeassistant';
+    INSERT OR IGNORE INTO mqtt_config (id) VALUES (1);
+    """,
 }
 
 
@@ -147,3 +164,66 @@ async def log_startup_event(db: aiosqlite.Connection, event: str, detail: str | 
         (time.time(), event, detail),
     )
     await db.commit()
+
+
+MQTT_CONFIG_COLUMNS = (
+    "host", "port", "username", "password", "tls_mode",
+    "enabled", "client_id", "qos", "retain_discovery",
+    "topic_prefix", "discovery_prefix",
+)
+
+MQTT_CONFIG_DEFAULTS = {
+    "host": "localhost",
+    "port": 1883,
+    "username": None,
+    "password": None,
+    "tls_mode": "off",
+    "enabled": True,
+    "client_id": "franklinwh_bridge",
+    "qos": 0,
+    "retain_discovery": True,
+    "topic_prefix": "franklinwh",
+    "discovery_prefix": "homeassistant",
+}
+
+
+async def get_mqtt_config(db: aiosqlite.Connection) -> dict:
+    """Read the singleton MQTT config row, returning defaults if absent."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute("SELECT * FROM mqtt_config WHERE id = 1") as cursor:
+            row = await cursor.fetchone()
+    finally:
+        db.row_factory = None
+
+    if row is None:
+        return dict(MQTT_CONFIG_DEFAULTS)
+
+    result = {}
+    for col in MQTT_CONFIG_COLUMNS:
+        val = row[col]
+        if col in ("enabled", "retain_discovery"):
+            val = bool(val)
+        result[col] = val
+    return result
+
+
+async def set_mqtt_config(db: aiosqlite.Connection, updates: dict) -> dict:
+    """Update MQTT config fields. Returns the full config after update."""
+    allowed = set(MQTT_CONFIG_COLUMNS)
+    filtered = {k: v for k, v in updates.items() if k in allowed}
+    if not filtered:
+        return await get_mqtt_config(db)
+
+    for col in ("enabled", "retain_discovery"):
+        if col in filtered:
+            filtered[col] = int(bool(filtered[col]))
+
+    set_clause = ", ".join(f"{k} = ?" for k in filtered)
+    values = list(filtered.values())
+    await db.execute(
+        f"UPDATE mqtt_config SET {set_clause} WHERE id = 1",  # noqa: S608
+        values,
+    )
+    await db.commit()
+    return await get_mqtt_config(db)
