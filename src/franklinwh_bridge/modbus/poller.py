@@ -86,7 +86,11 @@ class ModbusPoller:
             try:
                 result = await asyncio.to_thread(method)
                 if isinstance(result, dict):
-                    points.update(result)
+                    for k, v in result.items():
+                        if isinstance(v, dict):
+                            points.update(v)
+                        else:
+                            points[k] = v
             except Exception as exc:
                 logger.warning("Read %s failed: %s", method_name, exc)
                 quality = "stale"

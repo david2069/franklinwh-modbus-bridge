@@ -323,7 +323,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         name="Home Load",
         ha_type="sensor",
         state_group="power",
-        stat_key="home_load_w",
+        stat_key="home_load_ext",
         unit="kW",
         device_class="power",
         state_class="measurement",
@@ -336,7 +336,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         name="PV Total Power",
         ha_type="sensor",
         state_group="solar",
-        stat_key="pv_total_w",
+        stat_key="pv_total",
         unit="kW",
         device_class="power",
         state_class="measurement",
@@ -427,33 +427,6 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         step=1,
     ),
 
-    # === CAPACITY RATINGS (from read_nameplate / M702) ===
-    EntityDef(
-        slug="capacity_max_charge_kw",
-        name="Max Charge Power",
-        ha_type="sensor",
-        state_group="capacity",
-        stat_key="max_charge_w",
-        unit="kW",
-        device_class="power",
-        icon="mdi:arrow-down-bold",
-        entity_category="diagnostic",
-        value_scale=0.001,
-        value_precision=3,
-    ),
-    EntityDef(
-        slug="capacity_max_discharge_kw",
-        name="Max Discharge Power",
-        ha_type="sensor",
-        state_group="capacity",
-        stat_key="max_discharge_w",
-        unit="kW",
-        device_class="power",
-        icon="mdi:arrow-up-bold",
-        entity_category="diagnostic",
-        value_scale=0.001,
-        value_precision=3,
-    ),
 ]
 
 
