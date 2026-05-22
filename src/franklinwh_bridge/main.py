@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import logging
 from contextlib import asynccontextmanager
@@ -14,8 +15,9 @@ from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.config.manager import AppConfig
+from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import SampleBus
-from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
+from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
 from franklinwh_bridge.store.db import get_mqtt_config, init_db, log_startup_event
 
 logger = logging.getLogger(__name__)
@@ -84,13 +86,70 @@ async def lifespan(app: FastAPI):
     app.state.log_buffer = log_buffer
 
     mqtt_config = await get_mqtt_config(db)
+    env_mqtt = config.settings.mqtt
+    if env_mqtt.host != "localhost":
+        mqtt_config["host"] = env_mqtt.host
+    if env_mqtt.port != 1883:
+        mqtt_config["port"] = env_mqtt.port
+    if env_mqtt.username:
+        mqtt_config["username"] = env_mqtt.username
+    if env_mqtt.password:
+        mqtt_config["password"] = env_mqtt.password
+
     mqtt_publisher = MqttPublisher.from_db_config(mqtt_config, gateway_id=gateway_id)
     app.state.mqtt_publisher = mqtt_publisher
 
     if mqtt_config.get("enabled", True):
         await mqtt_publisher.start()
 
-    register_component("poller", lambda: {"status": "not_started"})
+    # Create controller and poller
+    poller: ModbusPoller | None = None
+    try:
+        from franklinwh_modbus import FranklinWHController
+
+        gw = config.settings.gateway
+        controller = FranklinWHController(
+            ip_address=gw.host, port=gw.port, unit_id=gw.unit_id
+        )
+
+        poller = ModbusPoller(
+            controller=controller,
+            sample_bus=sample_bus,
+            gateway_id=gateway_id,
+            poll_interval=gw.poll_interval,
+        )
+        app.state.poller = poller
+
+        sample_bus.subscribe(mqtt_publisher.queue_sample)
+
+        async def _init_poller() -> None:
+            connected = await asyncio.to_thread(controller.connect)
+            if connected:
+                nameplate = await asyncio.to_thread(controller.read_nameplate)
+                if nameplate.get("serial"):
+                    info = DeviceInfo(
+                        serial=nameplate["serial"],
+                        manufacturer=nameplate.get("manufacturer", ""),
+                        model=nameplate.get("model", ""),
+                        firmware=nameplate.get("version", ""),
+                    )
+                    mqtt_publisher.set_device_info(info)
+                    logger.info("Device: %s (serial=%s)", info.model, info.serial)
+                await asyncio.to_thread(controller.disconnect)
+
+            await poller.start()
+
+        asyncio.create_task(_init_poller())
+
+    except Exception as exc:
+        logger.warning("Poller init failed (no hardware?): %s", exc)
+
+    register_component("poller", lambda: {
+        "status": "running" if poller and poller.state.connected else "disconnected",
+        "polls_total": poller.state.polls_total if poller else 0,
+        "last_poll_ts": poller.state.last_poll_ts if poller else None,
+        "last_error": poller.state.last_error if poller else None,
+    } if poller else {"status": "not_configured"})
     register_component("mqtt", lambda: {
         "connected": mqtt_publisher.state.connected,
         "messages_sent": mqtt_publisher.state.messages_sent,
@@ -101,6 +160,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if poller:
+        await poller.stop()
     await mqtt_publisher.stop()
     await db.close()
     logger.info("Bridge shutdown complete")

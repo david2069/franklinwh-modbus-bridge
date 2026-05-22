@@ -1,0 +1,63 @@
+services:
+  app:
+    build: .
+    container_name: fwhbridge-app
+    restart: unless-stopped
+    ports:
+      - "8100:8099"
+    volumes:
+      - app-data:/data
+      - /etc/localtime:/etc/localtime:ro
+      # Dev: mount src for hot-reload (comment out for production)
+      - ./src:/app/src
+      # Dev: uncomment to live-mount the adjacent franklinwh-modbus library
+      # - ../../../modbus/src/franklinwh_modbus:/usr/local/lib/python3.12/site-packages/franklinwh_modbus
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - APP_ENV=${APP_ENV:-docker}
+      - DATA_DIR=/data
+      # ── MQTT broker ───────────────────────────────────────────
+      - MQTT_HOST=${MQTT_HOST:-mosquitto}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      # ── Modbus gateway ────────────────────────────────────────
+      - MODBUS_HOST=${MODBUS_HOST:-192.168.1.100}
+      - MODBUS_PORT=${MODBUS_PORT:-502}
+      - MODBUS_UNIT_ID=${MODBUS_UNIT_ID:-1}
+      # ── Logging ───────────────────────────────────────────────
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - fwh-bridge
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: fwhbridge-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1886:1883"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - fwh-bridge
+
+volumes:
+  app-data:
+  mosquitto-data:
+  mosquitto-log:
+
+networks:
+  fwh-bridge:
+    driver: bridge
