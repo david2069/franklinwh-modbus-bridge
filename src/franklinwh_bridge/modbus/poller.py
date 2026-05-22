@@ -95,10 +95,51 @@ class ModbusPoller:
                 logger.warning("Read %s failed: %s", method_name, exc)
                 quality = "stale"
 
+        try:
+            extra = await asyncio.to_thread(self._read_extra_points)
+            points.update(extra)
+        except Exception as exc:
+            logger.warning("Extra point reads failed: %s", exc)
+
         if not points:
             quality = "error"
 
         return Sample.now(self._gateway_id, points, quality)
+
+    def _read_extra_points(self) -> dict[str, Any]:
+        """Read points not covered by the standard controller methods."""
+        points: dict[str, Any] = {}
+
+        # M714 DC energy counters (battery lifetime charge/discharge)
+        m714 = self._controller.get_model(714)
+        if m714:
+            m714.read()
+            inj = getattr(m714, "DCWhInj", None)
+            if inj and inj.value is not None:
+                points["dc_energy_discharged_wh"] = int(inj.value)
+            absorb = getattr(m714, "DCWhAbs", None)
+            if absorb and absorb.value is not None:
+                points["dc_energy_charged_wh"] = int(absorb.value)
+
+        # PVOutputWh at extension register 15510 (32-bit unsigned)
+        EXT_PV_OUTPUT_WH = getattr(self._controller, "EXT_BASE", 15500) + 10
+        try:
+            from pymodbus.client import ModbusTcpClient
+            client = ModbusTcpClient(
+                self._controller.ip_address, port=self._controller.port
+            )
+            client.connect()
+            result = client.read_holding_registers(
+                EXT_PV_OUTPUT_WH, count=2, device_id=self._controller.unit_id
+            )
+            if not result.isError():
+                val = (result.registers[0] << 16) | result.registers[1]
+                points["pv_energy_total_wh"] = val
+            client.close()
+        except Exception as exc:
+            logger.debug("PVOutputWh read failed: %s", exc)
+
+        return points
 
     def _backoff_delay(self) -> float:
         return min(5.0 * (2 ** self._state.consecutive_errors), 300.0)
