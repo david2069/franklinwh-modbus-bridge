@@ -87,10 +87,8 @@ async def lifespan(app: FastAPI):
 
     mqtt_config = await get_mqtt_config(db)
     env_mqtt = config.settings.mqtt
-    if env_mqtt.host != "localhost":
-        mqtt_config["host"] = env_mqtt.host
-    if env_mqtt.port != 1883:
-        mqtt_config["port"] = env_mqtt.port
+    mqtt_config["host"] = env_mqtt.host
+    mqtt_config["port"] = env_mqtt.port
     if env_mqtt.username:
         mqtt_config["username"] = env_mqtt.username
     if env_mqtt.password:

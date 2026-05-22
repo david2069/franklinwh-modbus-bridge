@@ -241,7 +241,11 @@ class MqttPublisher:
                             self._state.messages_sent += 1
                             self._state.last_publish_ts = time.time()
                         except TimeoutError:
-                            continue
+                            pass
+
+                        if self._device_info and not self._state.discovery_published:
+                            await self._publish_discovery(client)
+                            await self._publish_availability(client, online=True)
 
             except aiomqtt.MqttError as exc:
                 self._state.connected = False

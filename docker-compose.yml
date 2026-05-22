@@ -53,10 +53,26 @@ services:
     networks:
       - fwh-bridge
 
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: fwhbridge-homeassistant
+    restart: unless-stopped
+    ports:
+      - "18125:8123"
+    volumes:
+      - ha-data:/config
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - fwh-bridge
+
 volumes:
   app-data:
   mosquitto-data:
   mosquitto-log:
+  ha-data:
 
 networks:
   fwh-bridge:
