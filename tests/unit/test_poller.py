@@ -13,6 +13,8 @@ from franklinwh_bridge.modbus.sample import SampleBus
 def mock_controller():
     ctrl = MagicMock()
     ctrl.ip_address = "192.168.1.100"
+    ctrl.port = 502
+    ctrl.unit_id = 1
     ctrl.connect.return_value = True
     ctrl.disconnect.return_value = None
     ctrl.read_battery_status.return_value = {"soc": 85, "power": -1200}
@@ -22,6 +24,7 @@ def mock_controller():
     ctrl.read_control_status.return_value = {"mode": "self_consumption"}
     ctrl.read_native_mode.return_value = {"native_mode": 2}
     ctrl.read_alarms.return_value = {"active_alarms": []}
+    ctrl.get_model.return_value = None
     return ctrl
 
 
