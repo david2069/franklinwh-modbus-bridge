@@ -117,6 +117,23 @@ class ModbusPoller:
         """Read points not covered by the standard controller methods."""
         points: dict[str, Any] = {}
 
+        # M702 nameplate ratings (max charge/discharge rates)
+        m702 = self._controller.get_model(702)
+        if m702:
+            try:
+                m702.read()
+                sf = getattr(m702, "W_SF", None)
+                sf_val = sf.value if sf and sf.value is not None else 0
+                for attr, key in [
+                    ("WChaRteMaxRtg", "max_charge_rate_w"),
+                    ("WDisChaRteMaxRtg", "max_discharge_rate_w"),
+                ]:
+                    pt = getattr(m702, attr, None)
+                    if pt and pt.value is not None:
+                        points[key] = int(pt.value * (10 ** sf_val))
+            except Exception as exc:
+                logger.debug("M702 rating read failed: %s", exc)
+
         # M714 DC energy counters (battery lifetime charge/discharge)
         m714 = self._controller.get_model(714)
         if m714:

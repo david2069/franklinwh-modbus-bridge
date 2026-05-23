@@ -151,6 +151,32 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         value_scale=0.001,
         value_precision=3,
     ),
+    EntityDef(
+        slug="max_charge_rate_kw",
+        name="Max Charge Rate",
+        ha_type="sensor",
+        state_group="capacity",
+        stat_key="max_charge_rate_w",
+        unit="kW",
+        device_class="power",
+        icon="mdi:battery-arrow-up",
+        entity_category="diagnostic",
+        value_scale=0.001,
+        value_precision=1,
+    ),
+    EntityDef(
+        slug="max_discharge_rate_kw",
+        name="Max Discharge Rate",
+        ha_type="sensor",
+        state_group="capacity",
+        stat_key="max_discharge_rate_w",
+        unit="kW",
+        device_class="power",
+        icon="mdi:battery-arrow-down",
+        entity_category="diagnostic",
+        value_scale=0.001,
+        value_precision=1,
+    ),
 
     # === GRID / AC (from read_grid_status) ===
     EntityDef(

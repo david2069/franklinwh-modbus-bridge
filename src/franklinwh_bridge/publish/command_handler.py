@@ -221,28 +221,19 @@ class CommandHandler:
     async def _handle_reserve(self, reserve_type: str, pct: int) -> None:
         pct = max(0, min(pct, 100))
         if reserve_type == "self":
-            reg = getattr(self._controller, "EXT_SELF_RESERVE", 15508)
+            success, msg = await asyncio.to_thread(
+                self._controller.set_self_consumption_reserve, pct
+            )
         else:
-            reg = getattr(self._controller, "EXT_TOU_RESERVE", 15509)
+            success, msg = await asyncio.to_thread(
+                self._controller.set_tou_reserve, pct
+            )
 
-        try:
-            from pymodbus.client import ModbusTcpClient
-            client = ModbusTcpClient(
-                self._controller.ip_address, port=self._controller.port
-            )
-            client.connect()
-            result = client.write_register(
-                reg, pct, device_id=self._controller.unit_id
-            )
-            client.close()
-            if result.isError():
-                self._state.last_result = f"Reserve write failed: {result}"
-            else:
-                self._state.last_result = f"{reserve_type} reserve set to {pct}%"
-                logger.info("%s reserve set to %d%%", reserve_type, pct)
-        except Exception as exc:
-            self._state.last_result = f"Reserve write error: {exc}"
-            logger.error("Reserve write failed: %s", exc)
+        self._state.last_result = msg
+        if success:
+            logger.info("%s reserve set to %d%%", reserve_type, pct)
+        else:
+            logger.error("Reserve write failed: %s", msg)
 
         await self._log_event(
             "reserve_change",
