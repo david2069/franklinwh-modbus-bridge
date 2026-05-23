@@ -17,7 +17,7 @@ class GatewaySettings(BaseSettings):
     host: str = "192.168.1.100"
     port: int = 502
     unit_id: int = 1
-    poll_interval: int = 30
+    poll_interval: int = 10
 
 
 class MqttSettings(BaseSettings):

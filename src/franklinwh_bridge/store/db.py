@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -112,6 +112,29 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE mqtt_config ADD COLUMN discovery_prefix TEXT NOT NULL DEFAULT 'homeassistant';
     INSERT OR IGNORE INTO mqtt_config (id) VALUES (1);
     """,
+    4: """
+    CREATE TABLE IF NOT EXISTS control_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts REAL NOT NULL,
+        event TEXT NOT NULL,
+        action TEXT,
+        power_w INTEGER,
+        detail TEXT,
+        hw_state_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_control_log_ts ON control_log(ts);
+
+    CREATE TABLE IF NOT EXISTS control_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        active INTEGER NOT NULL DEFAULT 0,
+        action TEXT NOT NULL DEFAULT '',
+        power_w INTEGER NOT NULL DEFAULT 0,
+        started_at REAL NOT NULL DEFAULT 0,
+        watchdog_s INTEGER NOT NULL DEFAULT 3600,
+        updated_at REAL NOT NULL DEFAULT 0
+    );
+    INSERT OR IGNORE INTO control_state (id) VALUES (1);
+    """,
 }
 
 
@@ -164,6 +187,59 @@ async def log_startup_event(db: aiosqlite.Connection, event: str, detail: str | 
         (time.time(), event, detail),
     )
     await db.commit()
+
+
+async def log_control_event(
+    db: aiosqlite.Connection,
+    event: str,
+    action: str = "",
+    power_w: int = 0,
+    detail: str = "",
+    hw_state: dict | None = None,
+) -> None:
+    import json
+    hw_json = json.dumps(hw_state) if hw_state else None
+    await db.execute(
+        "INSERT INTO control_log (ts, event, action, power_w, detail, hw_state_json) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (time.time(), event, action, power_w, detail, hw_json),
+    )
+    await db.commit()
+
+
+async def save_control_state(
+    db: aiosqlite.Connection,
+    active: bool,
+    action: str = "",
+    power_w: int = 0,
+    started_at: float = 0,
+    watchdog_s: int = 3600,
+) -> None:
+    await db.execute(
+        "UPDATE control_state SET active=?, action=?, power_w=?, "
+        "started_at=?, watchdog_s=?, updated_at=? WHERE id=1",
+        (int(active), action, power_w, started_at, watchdog_s, time.time()),
+    )
+    await db.commit()
+
+
+async def load_control_state(db: aiosqlite.Connection) -> dict:
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute("SELECT * FROM control_state WHERE id=1") as cur:
+            row = await cur.fetchone()
+    finally:
+        db.row_factory = None
+    if row is None:
+        return {"active": False, "action": "", "power_w": 0, "started_at": 0, "watchdog_s": 3600}
+    return {
+        "active": bool(row["active"]),
+        "action": row["action"],
+        "power_w": row["power_w"],
+        "started_at": row["started_at"],
+        "watchdog_s": row["watchdog_s"],
+        "updated_at": row["updated_at"],
+    }
 
 
 MQTT_CONFIG_COLUMNS = (

@@ -61,7 +61,14 @@ class ModbusPoller:
             result = await asyncio.to_thread(self._controller.connect)
             self._state.connected = bool(result)
             if self._state.connected:
-                logger.info("Connected to aGate at %s", self._controller.ip_address)
+                if self._state.consecutive_errors > 0:
+                    logger.warning(
+                        "Reconnected to aGate at %s after %d errors",
+                        self._controller.ip_address,
+                        self._state.consecutive_errors,
+                    )
+                else:
+                    logger.info("Connected to aGate at %s", self._controller.ip_address)
             return self._state.connected
         except Exception as exc:
             self._state.connected = False
@@ -142,7 +149,7 @@ class ModbusPoller:
         return points
 
     def _backoff_delay(self) -> float:
-        return min(5.0 * (2 ** self._state.consecutive_errors), 300.0)
+        return min(5.0 * (2 ** self._state.consecutive_errors), 60.0)
 
     async def _run_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -162,6 +169,8 @@ class ModbusPoller:
                     self._state.consecutive_errors += 1
                     self._state.errors_total += 1
                     self._state.last_error = "All reads failed"
+                    if self._state.connected:
+                        logger.warning("Modbus connection lost — all reads failed")
                     self._state.connected = False
                 else:
                     self._state.consecutive_errors = 0
@@ -173,6 +182,8 @@ class ModbusPoller:
                 self._state.consecutive_errors += 1
                 self._state.errors_total += 1
                 self._state.last_error = str(exc)
+                if self._state.connected:
+                    logger.warning("Modbus connection lost: %s", exc)
                 self._state.connected = False
                 logger.error("Poll failed: %s", exc)
 

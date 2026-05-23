@@ -4,6 +4,10 @@ Handles command topics for battery control (charge/discharge/idle) and
 operating mode changes. Includes a software watchdog that auto-releases
 battery commands after a timeout (hardware WSetRvrtTms is cosmetic on
 FranklinWH).
+
+All control actions are logged to the control_log table with hardware state
+snapshots. Active command state is persisted to control_state so it survives
+restarts.
 """
 
 from __future__ import annotations
@@ -11,8 +15,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Coroutine
+
+import aiosqlite
+
+from franklinwh_bridge.store.db import log_control_event, save_control_state
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +28,8 @@ DEFAULT_WATCHDOG_S = 3600
 MAX_POWER_W = 5000
 
 OPERATING_MODES = {
-    "Emergency Backup": 0,
-    "Time of Use": 1,
+    "Emergency Backup": 1,
+    "Time of Use": 3,
     "Self-Consumption": 2,
 }
 
@@ -42,9 +50,11 @@ class CommandHandler:
     def __init__(
         self,
         controller: Any,
+        db: aiosqlite.Connection,
         on_state_changed: Callable[[], Coroutine] | None = None,
     ) -> None:
         self._controller = controller
+        self._db = db
         self._on_state_changed = on_state_changed
         self._state = CommandState()
         self._watchdog_task: asyncio.Task | None = None
@@ -56,10 +66,48 @@ class CommandHandler:
 
     @property
     def virtual_points(self) -> dict[str, Any]:
+        now = time.time()
+        elapsed = int(now - self._state.started_at) if self._state.active else 0
+        remain = max(0, self._state.watchdog_s - elapsed) if self._state.active else 0
         return {
             "battery_command_state": self._state.action if self._state.active else "Not Active",
             "battery_command_power_w": self._command_power_w,
+            "sw_watchdog_remain_s": remain,
+            "command_elapsed_s": elapsed,
+            "last_command_result": self._state.last_result or "None",
         }
+
+    async def _read_hw_state(self) -> dict | None:
+        try:
+            return await asyncio.to_thread(self._controller.read_control_status)
+        except Exception as exc:
+            logger.debug("Could not read hw state for audit: %s", exc)
+            return None
+
+    async def _persist_state(self) -> None:
+        try:
+            await save_control_state(
+                self._db,
+                active=self._state.active,
+                action=self._state.action,
+                power_w=self._state.power_w,
+                started_at=self._state.started_at,
+                watchdog_s=self._state.watchdog_s,
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist control state: %s", exc)
+
+    async def _log_event(
+        self, event: str, action: str = "", power_w: int = 0, detail: str = "",
+    ) -> None:
+        hw_state = await self._read_hw_state()
+        try:
+            await log_control_event(
+                self._db, event=event, action=action, power_w=power_w,
+                detail=detail, hw_state=hw_state,
+            )
+        except Exception as exc:
+            logger.warning("Failed to write control log: %s", exc)
 
     async def handle_command(self, slug: str, payload: str) -> None:
         payload = payload.strip()
@@ -89,16 +137,16 @@ class CommandHandler:
 
         action = action.strip()
 
-        if action in ("Not Active", "Idle"):
-            await self._release_command()
+        if action in ("Not Active", "Stop", "Release"):
+            await self._release_command(reason=action)
             return
 
-        power = self._command_power_w or MAX_POWER_W
-
-        if action == "Charge":
-            watts = power
+        if action == "Idle":
+            watts = 0
+        elif action == "Charge":
+            watts = self._command_power_w or MAX_POWER_W
         elif action == "Discharge":
-            watts = -power
+            watts = -(self._command_power_w or MAX_POWER_W)
         else:
             logger.warning("Unknown battery command: %s", action)
             return
@@ -115,13 +163,21 @@ class CommandHandler:
         self._state.last_result = msg
 
         self._start_watchdog()
+        await self._persist_state()
+        await self._log_event(
+            "command_sent", action=action, power_w=abs(watts), detail=msg,
+        )
 
         if self._on_state_changed:
             await self._on_state_changed()
 
         logger.info("Battery command: %s %dW — %s", action, abs(watts), msg)
 
-    async def _release_command(self) -> None:
+    async def _release_command(self, reason: str = "release") -> None:
+        was_active = self._state.active
+        prev_action = self._state.action
+        prev_power = self._state.power_w
+
         self._cancel_watchdog()
         success = await asyncio.to_thread(self._controller.reset_control_state)
 
@@ -130,10 +186,18 @@ class CommandHandler:
         self._state.power_w = 0
         self._state.last_result = "Released" if success else "Release failed"
 
+        await self._persist_state()
+        await self._log_event(
+            "command_released",
+            action=prev_action,
+            power_w=prev_power,
+            detail=f"reason={reason}, was_active={was_active}, result={self._state.last_result}",
+        )
+
         if self._on_state_changed:
             await self._on_state_changed()
 
-        logger.info("Battery command released: %s", self._state.last_result)
+        logger.info("Battery command released: %s (reason=%s)", self._state.last_result, reason)
 
     async def _handle_operating_mode(self, mode_name: str) -> None:
         mode_val = OPERATING_MODES.get(mode_name)
@@ -142,26 +206,17 @@ class CommandHandler:
             logger.warning("Unknown operating mode: %s", mode_name)
             return
 
-        EXT_ONGRID_MODE = getattr(self._controller, "EXT_ONGRID_MODE", 15507)
-        try:
-            from pymodbus.client import ModbusTcpClient
-            client = ModbusTcpClient(
-                self._controller.ip_address, port=self._controller.port
-            )
-            client.connect()
-            result = client.write_register(
-                EXT_ONGRID_MODE, mode_val, device_id=self._controller.unit_id
-            )
-            client.close()
-            if result.isError():
-                self._state.last_result = f"Mode write failed: {result}"
-                logger.error("Mode write failed: %s", result)
-            else:
-                self._state.last_result = f"Mode set to {mode_name}"
-                logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
-        except Exception as exc:
-            self._state.last_result = f"Mode write error: {exc}"
-            logger.error("Operating mode write failed: %s", exc)
+        success, msg = await asyncio.to_thread(
+            self._controller.set_native_mode, mode_val
+        )
+        self._state.last_result = msg
+        await self._log_event(
+            "mode_change", action=mode_name, detail=msg,
+        )
+        if success:
+            logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
+        else:
+            logger.error("Operating mode failed: %s", msg)
 
     async def _handle_reserve(self, reserve_type: str, pct: int) -> None:
         pct = max(0, min(pct, 100))
@@ -189,6 +244,13 @@ class CommandHandler:
             self._state.last_result = f"Reserve write error: {exc}"
             logger.error("Reserve write failed: %s", exc)
 
+        await self._log_event(
+            "reserve_change",
+            action=f"{reserve_type}_reserve",
+            power_w=pct,
+            detail=self._state.last_result,
+        )
+
     def _start_watchdog(self) -> None:
         self._cancel_watchdog()
         self._watchdog_task = asyncio.create_task(self._watchdog_loop())
@@ -205,11 +267,18 @@ class CommandHandler:
                 "Watchdog expired after %ds — releasing battery command",
                 self._state.watchdog_s,
             )
-            await self._release_command()
+            await self._release_command(reason="watchdog_expired")
         except asyncio.CancelledError:
             pass
 
     async def stop(self) -> None:
+        """Graceful shutdown: release active commands and log the event."""
         self._cancel_watchdog()
         if self._state.active:
-            await self._release_command()
+            logger.info(
+                "Shutdown: releasing active command %s %dW",
+                self._state.action, self._state.power_w,
+            )
+            await self._release_command(reason="shutdown")
+        else:
+            await self._log_event("shutdown", detail="no active command")

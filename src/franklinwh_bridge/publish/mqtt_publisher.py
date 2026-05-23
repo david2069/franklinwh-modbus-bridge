@@ -216,6 +216,25 @@ class MqttPublisher:
                 logger.warning("MQTT queue full, dropping message for %s", entity.slug)
                 break
 
+    async def publish_command_state(self) -> None:
+        """Immediately publish command handler virtual points (no poll wait)."""
+        if not self._device_info or not self._command_handler:
+            return
+        points = self._command_handler.virtual_points
+        short_id = self._device_info.short_id
+        for entity in self._entities:
+            if not entity.stat_key:
+                continue
+            value = points.get(entity.stat_key)
+            if value is None:
+                continue
+            topic = entity.state_topic(short_id)
+            msg = MqttMessage(topic=topic, payload=entity.format_value(value), retain=True)
+            try:
+                self._queue.put_nowait(msg)
+            except asyncio.QueueFull:
+                break
+
     def _backoff_delay(self, attempt: int) -> float:
         return min(5.0 * (2 ** attempt), 60.0)
 

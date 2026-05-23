@@ -115,7 +115,7 @@ async def test_poller_backoff_grows():
     poller._state.consecutive_errors = 3
     assert poller._backoff_delay() == 40.0
     poller._state.consecutive_errors = 10
-    assert poller._backoff_delay() == 300.0
+    assert poller._backoff_delay() == 60.0
 
 
 async def test_poller_start_stop(poller):

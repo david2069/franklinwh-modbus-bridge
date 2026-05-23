@@ -19,7 +19,9 @@ from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
-from franklinwh_bridge.store.db import get_mqtt_config, init_db, log_startup_event
+from franklinwh_bridge.store.db import (
+    get_mqtt_config, init_db, load_control_state, log_control_event, log_startup_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,7 @@ async def lifespan(app: FastAPI):
     # Create controller and poller
     poller: ModbusPoller | None = None
     command_handler: CommandHandler | None = None
+    controller = None
     try:
         from franklinwh_modbus import FranklinWHController
 
@@ -120,7 +123,10 @@ async def lifespan(app: FastAPI):
         )
         app.state.poller = poller
 
-        command_handler = CommandHandler(controller)
+        command_handler = CommandHandler(
+            controller, db,
+            on_state_changed=mqtt_publisher.publish_command_state,
+        )
         mqtt_publisher.set_command_handler(command_handler)
         app.state.command_handler = command_handler
 
@@ -139,6 +145,46 @@ async def lifespan(app: FastAPI):
                     )
                     mqtt_publisher.set_device_info(info)
                     logger.info("Device: %s (serial=%s)", info.model, info.serial)
+
+                # Log hardware control state at startup
+                try:
+                    hw_state = await asyncio.to_thread(controller.read_control_status)
+                    await log_control_event(
+                        db, event="startup_hw_snapshot",
+                        detail=f"wset_ena={hw_state.get('wset_enabled')}, "
+                               f"wset_pct={hw_state.get('wset_pct')}, "
+                               f"mode={hw_state.get('loc_rem_ctl_name')}",
+                        hw_state=hw_state,
+                    )
+                    logger.info(
+                        "Startup HW state: WSetEna=%s, WSetPct=%s, LocRemCtl=%s",
+                        hw_state.get("wset_enabled"),
+                        hw_state.get("wset_pct"),
+                        hw_state.get("loc_rem_ctl_name"),
+                    )
+                except Exception as exc:
+                    logger.warning("Could not read startup hw state: %s", exc)
+
+                # Check if we had an active command before last shutdown
+                prev_state = await load_control_state(db)
+                if prev_state.get("active"):
+                    logger.warning(
+                        "Previous session had active command: %s %dW (started %.0fs ago). "
+                        "Releasing now for safety.",
+                        prev_state["action"], prev_state["power_w"],
+                        time.time() - prev_state["started_at"],
+                    )
+                    try:
+                        await asyncio.to_thread(controller.reset_control_state)
+                        await log_control_event(
+                            db, event="startup_release",
+                            action=prev_state["action"],
+                            power_w=prev_state["power_w"],
+                            detail="Released stale command from previous session",
+                        )
+                    except Exception as exc:
+                        logger.error("Failed to release stale command: %s", exc)
+
                 await asyncio.to_thread(controller.disconnect)
 
             await poller.start()
@@ -164,11 +210,37 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    logger.info("Bridge shutting down — releasing control and logging state")
+
+    # 1. Stop command handler first (releases active battery commands)
     if command_handler:
         await command_handler.stop()
+
+    # 2. Take final hw state snapshot before disconnecting
+    if controller:
+        try:
+            hw_state = await asyncio.to_thread(controller.read_control_status)
+            await log_control_event(
+                db, event="shutdown_hw_snapshot",
+                detail=f"wset_ena={hw_state.get('wset_enabled')}, "
+                       f"wset_pct={hw_state.get('wset_pct')}",
+                hw_state=hw_state,
+            )
+            logger.info(
+                "Shutdown HW state: WSetEna=%s, WSetPct=%s",
+                hw_state.get("wset_enabled"), hw_state.get("wset_pct"),
+            )
+        except Exception as exc:
+            logger.warning("Could not read shutdown hw state: %s", exc)
+
+    # 3. Stop poller (graceful Modbus disconnect)
     if poller:
         await poller.stop()
+
+    # 4. Stop MQTT
     await mqtt_publisher.stop()
+
+    await log_startup_event(db, "shutdown", f"v{__version__}")
     await db.close()
     logger.info("Bridge shutdown complete")
 

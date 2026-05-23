@@ -3,6 +3,7 @@ services:
     build: .
     container_name: fwhbridge-app
     restart: unless-stopped
+    stop_grace_period: 15s
     ports:
       - "8100:8099"
     volumes:
@@ -15,9 +16,14 @@ services:
     env_file:
       - path: .env
         required: false
+    command: >-
+      uvicorn franklinwh_bridge.main:app
+      --host 0.0.0.0 --port 8099 --workers 1
+      --reload --reload-dir /app/src
     environment:
       - APP_ENV=${APP_ENV:-docker}
       - DATA_DIR=/data
+      - PYTHONPATH=/app/src
       # ── MQTT broker ───────────────────────────────────────────
       - MQTT_HOST=${MQTT_HOST:-mosquitto}
       - MQTT_PORT=${MQTT_PORT:-1883}

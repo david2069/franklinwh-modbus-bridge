@@ -108,6 +108,6 @@ async def test_mqtt_config_seeded_by_migration(db):
     assert config["discovery_prefix"] == "homeassistant"
 
 
-async def test_schema_version_is_3(db):
+async def test_schema_version_is_4(db):
     version = await get_schema_version(db)
-    assert version == 3
+    assert version == 4
