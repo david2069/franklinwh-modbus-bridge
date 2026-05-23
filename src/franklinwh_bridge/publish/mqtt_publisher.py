@@ -256,14 +256,23 @@ class MqttPublisher:
                         await self._publish_discovery(client)
 
                     listener_task = None
-                    if self._device_info and self._command_handler:
-                        cmd_topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/control/+/set"
-                        await client.subscribe(cmd_topic)
-                        listener_task = asyncio.create_task(self._subscribe_listener(client))
-                        logger.info("Subscribed to command topics: %s", cmd_topic)
+                    subscribed_commands = False
 
                     try:
                         while not self._stop_event.is_set():
+                            if (
+                                not subscribed_commands
+                                and self._device_info
+                                and self._command_handler
+                            ):
+                                cmd_topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/control/+/set"
+                                await client.subscribe(cmd_topic)
+                                listener_task = asyncio.create_task(
+                                    self._subscribe_listener(client)
+                                )
+                                subscribed_commands = True
+                                logger.info("Subscribed to command topics: %s", cmd_topic)
+
                             try:
                                 msg = await asyncio.wait_for(
                                     self._queue.get(), timeout=1.0
