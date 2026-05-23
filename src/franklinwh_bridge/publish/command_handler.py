@@ -57,7 +57,7 @@ class CommandHandler:
     @property
     def virtual_points(self) -> dict[str, Any]:
         return {
-            "battery_command_state": self._state.action or "Idle",
+            "battery_command_state": self._state.action if self._state.active else "Not Active",
             "battery_command_power_w": self._command_power_w,
         }
 
@@ -89,7 +89,7 @@ class CommandHandler:
 
         action = action.strip()
 
-        if action == "Idle":
+        if action in ("Not Active", "Idle"):
             await self._release_command()
             return
 

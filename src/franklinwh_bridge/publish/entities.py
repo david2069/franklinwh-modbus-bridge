@@ -516,7 +516,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="battery_command_state",
         icon="mdi:battery-sync",
         is_control=True,
-        options=["Idle", "Charge", "Discharge"],
+        options=["Not Active", "Charge", "Discharge"],
     ),
     EntityDef(
         slug="battery_command_power",
