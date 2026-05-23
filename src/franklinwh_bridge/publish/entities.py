@@ -478,7 +478,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="mode_name",
         icon="mdi:cog",
         is_control=True,
-        options=["Backup", "Self-Consumption", "TOU"],
+        options=["Emergency Backup", "Self-Consumption", "Time of Use"],
     ),
     EntityDef(
         slug="self_reserve_pct",
@@ -505,6 +505,32 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=0,
         max_val=100,
         step=1,
+    ),
+
+    # === BATTERY COMMAND CONTROLS ===
+    EntityDef(
+        slug="battery_command",
+        name="Battery Command",
+        ha_type="select",
+        state_group="control",
+        stat_key="battery_command_state",
+        icon="mdi:battery-sync",
+        is_control=True,
+        options=["Idle", "Charge", "Discharge"],
+    ),
+    EntityDef(
+        slug="battery_command_power",
+        name="Command Power",
+        ha_type="number",
+        state_group="control",
+        stat_key="battery_command_power_w",
+        unit="W",
+        device_class="power",
+        icon="mdi:flash",
+        is_control=True,
+        min_val=0,
+        max_val=5000,
+        step=100,
     ),
 
 ]

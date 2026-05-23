@@ -17,6 +17,7 @@ from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import SampleBus
+from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
 from franklinwh_bridge.store.db import get_mqtt_config, init_db, log_startup_event
 
@@ -102,6 +103,7 @@ async def lifespan(app: FastAPI):
 
     # Create controller and poller
     poller: ModbusPoller | None = None
+    command_handler: CommandHandler | None = None
     try:
         from franklinwh_modbus import FranklinWHController
 
@@ -117,6 +119,10 @@ async def lifespan(app: FastAPI):
             poll_interval=gw.poll_interval,
         )
         app.state.poller = poller
+
+        command_handler = CommandHandler(controller)
+        mqtt_publisher.set_command_handler(command_handler)
+        app.state.command_handler = command_handler
 
         sample_bus.subscribe(mqtt_publisher.queue_sample)
 
@@ -158,6 +164,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if command_handler:
+        await command_handler.stop()
     if poller:
         await poller.stop()
     await mqtt_publisher.stop()

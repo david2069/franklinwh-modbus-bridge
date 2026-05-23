@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import aiomqtt
 
 from franklinwh_bridge.modbus.sample import Sample
+from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES, EntityDef
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ class MqttPublisher:
         self._stop_event = asyncio.Event()
         self._device_info: DeviceInfo | None = None
         self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
+        self._command_handler: CommandHandler | None = None
 
     @property
     def state(self) -> MqttState:
@@ -161,6 +163,9 @@ class MqttPublisher:
     def set_device_info(self, info: DeviceInfo) -> None:
         self._device_info = info
         self._state.discovery_published = False
+
+    def set_command_handler(self, handler: CommandHandler) -> None:
+        self._command_handler = handler
 
     async def _publish_discovery(self, client: aiomqtt.Client) -> None:
         """Publish HA Discovery config for all registered entities."""
@@ -191,11 +196,15 @@ class MqttPublisher:
         if not self._device_info:
             return
 
+        points = dict(sample.points)
+        if self._command_handler:
+            points.update(self._command_handler.virtual_points)
+
         short_id = self._device_info.short_id
         for entity in self._entities:
             if not entity.stat_key:
                 continue
-            value = sample.points.get(entity.stat_key)
+            value = points.get(entity.stat_key)
             if value is None:
                 continue
 
@@ -209,6 +218,22 @@ class MqttPublisher:
 
     def _backoff_delay(self, attempt: int) -> float:
         return min(5.0 * (2 ** attempt), 60.0)
+
+    async def _handle_mqtt_message(self, message: aiomqtt.Message) -> None:
+        """Dispatch an incoming MQTT command message."""
+        if not self._command_handler:
+            return
+        topic_str = str(message.topic)
+        parts = topic_str.split("/")
+        if len(parts) >= 5 and parts[2] == "control" and parts[-1] == "set":
+            slug = parts[3]
+            payload = message.payload.decode() if isinstance(message.payload, bytes) else str(message.payload)
+            await self._command_handler.handle_command(slug, payload)
+
+    async def _subscribe_listener(self, client: aiomqtt.Client) -> None:
+        """Background task: listen for incoming command messages."""
+        async for message in client.messages:
+            await self._handle_mqtt_message(message)
 
     async def _run_loop(self) -> None:
         attempt = 0
@@ -230,22 +255,35 @@ class MqttPublisher:
                     if self._device_info and not self._state.discovery_published:
                         await self._publish_discovery(client)
 
-                    while not self._stop_event.is_set():
-                        try:
-                            msg = await asyncio.wait_for(
-                                self._queue.get(), timeout=1.0
-                            )
-                            await client.publish(
-                                msg.topic, msg.payload, retain=msg.retain, qos=msg.qos
-                            )
-                            self._state.messages_sent += 1
-                            self._state.last_publish_ts = time.time()
-                        except TimeoutError:
-                            pass
+                    listener_task = None
+                    if self._device_info and self._command_handler:
+                        cmd_topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/control/+/set"
+                        await client.subscribe(cmd_topic)
+                        listener_task = asyncio.create_task(self._subscribe_listener(client))
+                        logger.info("Subscribed to command topics: %s", cmd_topic)
 
-                        if self._device_info and not self._state.discovery_published:
-                            await self._publish_discovery(client)
-                            await self._publish_availability(client, online=True)
+                    try:
+                        while not self._stop_event.is_set():
+                            try:
+                                msg = await asyncio.wait_for(
+                                    self._queue.get(), timeout=1.0
+                                )
+                                await client.publish(
+                                    msg.topic, msg.payload, retain=msg.retain, qos=msg.qos
+                                )
+                                self._state.messages_sent += 1
+                                self._state.last_publish_ts = time.time()
+                            except TimeoutError:
+                                pass
+
+                            if self._device_info and not self._state.discovery_published:
+                                await self._publish_discovery(client)
+                                await self._publish_availability(client, online=True)
+                    finally:
+                        if listener_task:
+                            listener_task.cancel()
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await listener_task
 
             except aiomqtt.MqttError as exc:
                 self._state.connected = False
