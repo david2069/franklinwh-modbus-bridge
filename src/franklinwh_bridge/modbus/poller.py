@@ -13,14 +13,19 @@ from franklinwh_bridge.modbus.sample import Sample, SampleBus
 
 logger = logging.getLogger(__name__)
 
+# Read every poll cycle (10s default) — live telemetry
 POLL_METHODS = [
     "read_battery_status",
     "read_grid_status",
     "read_solar_status",
-    "read_nameplate",
     "read_control_status",
     "read_native_mode",
     "read_alarms",
+]
+
+# Read once at startup — static device info and ratings
+STARTUP_METHODS = [
+    "read_nameplate",
 ]
 
 
@@ -51,6 +56,7 @@ class ModbusPoller:
         self._state = PollerState()
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
+        self._startup_points: dict[str, Any] = {}
 
     @property
     def state(self) -> PollerState:
@@ -81,10 +87,55 @@ class ModbusPoller:
             await asyncio.to_thread(self._controller.disconnect)
         self._state.connected = False
 
+    async def _read_startup_points(self) -> None:
+        """Read static data once after connect — nameplate and M702 ratings."""
+        points: dict[str, Any] = {}
+
+        for method_name in STARTUP_METHODS:
+            method = getattr(self._controller, method_name, None)
+            if method is None:
+                continue
+            try:
+                result = await asyncio.to_thread(method)
+                if isinstance(result, dict):
+                    for k, v in result.items():
+                        if isinstance(v, dict):
+                            points.update(v)
+                        else:
+                            points[k] = v
+            except Exception as exc:
+                logger.warning("Startup read %s failed: %s", method_name, exc)
+
+        # M702 nameplate ratings (max charge/discharge rates) — static
+        m702 = self._controller.get_model(702)
+        if m702:
+            try:
+                m702.read()
+                sf = getattr(m702, "W_SF", None)
+                sf_val = sf.value if sf and sf.value is not None else 0
+                for attr, key in [
+                    ("WChaRteMaxRtg", "max_charge_rate_w"),
+                    ("WDisChaRteMaxRtg", "max_discharge_rate_w"),
+                ]:
+                    pt = getattr(m702, attr, None)
+                    if pt and pt.value is not None:
+                        points[key] = int(pt.value * (10 ** sf_val))
+            except Exception as exc:
+                logger.debug("M702 rating read failed: %s", exc)
+
+        self._startup_points = points
+        logger.info(
+            "Startup reads complete: %d points (M1 nameplate, M702 ratings)",
+            len(points),
+        )
+
     async def _poll_once(self) -> Sample:
         """Run all read methods and merge into a single Sample."""
         points: dict[str, Any] = {}
         quality = "ok"
+
+        # Include cached startup points (nameplate, ratings)
+        points.update(self._startup_points)
 
         for method_name in POLL_METHODS:
             method = getattr(self._controller, method_name, None)
@@ -116,23 +167,6 @@ class ModbusPoller:
     def _read_extra_points(self) -> dict[str, Any]:
         """Read points not covered by the standard controller methods."""
         points: dict[str, Any] = {}
-
-        # M702 nameplate ratings (max charge/discharge rates)
-        m702 = self._controller.get_model(702)
-        if m702:
-            try:
-                m702.read()
-                sf = getattr(m702, "W_SF", None)
-                sf_val = sf.value if sf and sf.value is not None else 0
-                for attr, key in [
-                    ("WChaRteMaxRtg", "max_charge_rate_w"),
-                    ("WDisChaRteMaxRtg", "max_discharge_rate_w"),
-                ]:
-                    pt = getattr(m702, attr, None)
-                    if pt and pt.value is not None:
-                        points[key] = int(pt.value * (10 ** sf_val))
-            except Exception as exc:
-                logger.debug("M702 rating read failed: %s", exc)
 
         # M714 DC energy counters (battery lifetime charge/discharge)
         m714 = self._controller.get_model(714)
@@ -177,6 +211,10 @@ class ModbusPoller:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
                 continue
 
+            # Read static points after each (re)connect
+            if not self._startup_points:
+                await self._read_startup_points()
+
             try:
                 sample = await self._poll_once()
                 self._state.last_poll_ts = time.time()
@@ -189,6 +227,7 @@ class ModbusPoller:
                     if self._state.connected:
                         logger.warning("Modbus connection lost — all reads failed")
                     self._state.connected = False
+                    self._startup_points = {}  # Re-read on reconnect
                 else:
                     self._state.consecutive_errors = 0
                     self._state.last_error = None
@@ -202,6 +241,7 @@ class ModbusPoller:
                 if self._state.connected:
                     logger.warning("Modbus connection lost: %s", exc)
                 self._state.connected = False
+                self._startup_points = {}  # Re-read on reconnect
                 logger.error("Poll failed: %s", exc)
 
             with contextlib.suppress(TimeoutError):
@@ -229,6 +269,8 @@ class ModbusPoller:
         """Single poll for CLI 'bridge run --once'."""
         if not self._state.connected:
             await self._connect()
+        if not self._startup_points:
+            await self._read_startup_points()
         sample = await self._poll_once()
         self._state.last_poll_ts = time.time()
         self._state.polls_total += 1
