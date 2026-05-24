@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FranklinWH Modbus Bridge</title>
+  <base href="{{ base_path }}/">
+  <link rel="stylesheet" href="static/css/design-system.css">
+
+  <!-- Tailwind 3.4.1 — local, no CDN -->
+  <script src="static/js/tailwind-3.4.1.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: 'var(--primary-color)', dark: 'var(--primary-dark)', light: 'var(--primary-light)' },
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Chart.js — local -->
+  <script src="static/js/chartjs-4.4.7.umd.min.js"></script>
+
+  <!-- App JS — must load before Alpine -->
+  <script src="static/js/app.js"></script>
+  <script src="static/js/dashboard_tab.js"></script>
+  <script src="static/js/controls_tab.js"></script>
+  <script src="static/js/explorer_tab.js"></script>
+  <script src="static/js/settings_tab.js"></script>
+
+  <!-- Alpine.js — local -->
+  <script defer src="static/js/alpinejs-3.14.1.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+  <div class="flex h-screen overflow-hidden" x-data>
+
+    <!-- ── Sidebar ──────────────────────────────────────── -->
+    {% include "partials/sidebar.html" %}
+
+    <!-- ── Main Area ────────────────────────────────────── -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- ── Topbar ───────────────────────────────────── -->
+      {% include "partials/topbar.html" %}
+
+      <!-- ── Content ──────────────────────────────────── -->
+      <main class="flex-1 overflow-y-auto p-4 lg:p-6">
+
+        <!-- Dashboard Tab -->
+        <div x-show="$store.app.activeTab === 'dashboard'" x-cloak>
+          {% include "tabs/dashboard.html" %}
+        </div>
+
+        <!-- Controls Tab -->
+        <div x-show="$store.app.activeTab === 'controls'" x-cloak>
+          {% include "tabs/controls.html" %}
+        </div>
+
+        <!-- Explorer Tab -->
+        <div x-show="$store.app.activeTab === 'explorer'" x-cloak>
+          {% include "tabs/explorer.html" %}
+        </div>
+
+        <!-- Settings Tab -->
+        <div x-show="$store.app.activeTab === 'settings'" x-cloak>
+          {% include "tabs/settings.html" %}
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-container">
+    <template x-for="toast in $store.app.toasts" :key="toast.id">
+      <div class="toast-item" :class="toast.level" x-text="toast.message"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 translate-x-4"
+           x-transition:enter-end="opacity-100 translate-x-0"
+           x-transition:leave="transition ease-in duration-150"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0">
+      </div>
+    </template>
+  </div>
+
+</body>
+</html>

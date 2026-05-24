@@ -1,0 +1,42 @@
+<!-- ── Topbar ─────────────────────────────────────────── -->
+<header class="flex items-center justify-between gap-4 px-4 lg:px-6 py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
+
+  <!-- Left: Page title -->
+  <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider"
+      x-text="$store.app.activeTab === 'dashboard' ? 'Dashboard' :
+              $store.app.activeTab === 'controls' ? 'Battery Controls' :
+              $store.app.activeTab === 'explorer' ? 'SunSpec Explorer' :
+              'Settings & Logs'">
+  </h1>
+
+  <!-- Right: Status indicators -->
+  <div class="flex items-center gap-4">
+
+    <!-- Connection status -->
+    <div class="flex items-center gap-2">
+      <div class="w-2 h-2 rounded-full"
+           :class="$store.app.connected ? 'bg-emerald-400' : 'bg-red-400'"></div>
+      <span class="text-xs font-medium"
+            :class="$store.app.connected ? 'text-emerald-400' : 'text-red-400'"
+            x-text="$store.app.connected ? 'Connected' : 'Disconnected'"></span>
+    </div>
+
+    <!-- Quality badge -->
+    <div class="chip"
+         :class="$store.app.quality === 'ok' ? 'ok' : ($store.app.quality === 'stale' ? 'warn' : 'error')"
+         x-show="$store.app.quality"
+         x-text="$store.app.quality"></div>
+
+    <!-- Last poll -->
+    <span class="text-xs text-slate-500" x-text="fmt.ago($store.app.lastPollTs)"></span>
+
+    <!-- Refresh button -->
+    <button @click="$store.app.refresh()" class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200" title="Refresh now">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      </svg>
+    </button>
+  </div>
+
+</header>

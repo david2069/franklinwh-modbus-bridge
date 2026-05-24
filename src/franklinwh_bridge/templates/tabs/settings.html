@@ -1,0 +1,119 @@
+<!-- ── Settings & Logs Tab ──────────────────────────────── -->
+<div x-data="settingsTab()">
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+    <!-- MQTT Status -->
+    <div class="card">
+      <div class="card-label mb-3">MQTT Status</div>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Connection</span>
+          <span class="font-medium" :class="mqtt.connected ? 'text-emerald-400' : 'text-red-400'"
+                x-text="mqtt.connected ? 'Connected' : 'Disconnected'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Messages Sent</span>
+          <span class="font-mono" x-text="mqtt.messages_sent ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Discovery Published</span>
+          <span class="font-medium" :class="mqtt.discovery_published ? 'text-emerald-400' : 'text-slate-500'"
+                x-text="mqtt.discovery_published ? 'Yes' : 'No'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Entity Count</span>
+          <span class="font-mono" x-text="mqtt.entity_count ?? '--'"></span>
+        </div>
+      </div>
+
+      <!-- MQTT Actions -->
+      <div class="flex gap-2 mt-4">
+        <button @click="republishDiscovery()" class="btn btn-sm btn-primary">
+          Republish Discovery
+        </button>
+        <button @click="unpublishDiscovery()" class="btn btn-sm btn-secondary">
+          Unpublish
+        </button>
+      </div>
+    </div>
+
+    <!-- Poller Status -->
+    <div class="card">
+      <div class="card-label mb-3">Poller Status</div>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Status</span>
+          <span class="font-medium" :class="poller.status === 'running' ? 'text-emerald-400' : 'text-amber-400'"
+                x-text="poller.status || '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Polls Total</span>
+          <span class="font-mono" x-text="poller.polls_total ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Last Poll</span>
+          <span class="font-mono text-xs" x-text="poller.last_poll_ts ? fmt.ago(poller.last_poll_ts) : 'never'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Last Error</span>
+          <span class="font-mono text-xs text-red-400" x-text="poller.last_error || 'None'"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entity List -->
+  <div class="card mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <div class="card-label !mb-0">Entities (<span x-text="entities.length"></span>)</div>
+      <input type="text" x-model="entityFilter" placeholder="Filter entities..."
+             class="form-control w-48 !py-1 !text-xs">
+    </div>
+
+    <div class="max-h-[400px] overflow-y-auto">
+      <table class="data-table">
+        <thead class="sticky top-0 bg-slate-800">
+          <tr>
+            <th>Slug</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="e in filteredEntities" :key="e.slug">
+            <tr>
+              <td class="font-mono text-xs text-slate-400" x-text="e.slug"></td>
+              <td class="text-xs" x-text="e.name"></td>
+              <td><span class="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400" x-text="e.ha_type"></span></td>
+              <td class="font-mono text-xs text-cyan-300" x-text="getEntityValue(e.slug)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Log Viewer -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-3">
+      <div class="card-label !mb-0">Logs</div>
+      <button @click="loadLogs()" class="btn btn-sm btn-secondary">Refresh</button>
+    </div>
+
+    <div class="bg-slate-900/80 rounded border border-white/5 p-3 max-h-[400px] overflow-y-auto font-mono text-xs space-y-0.5"
+         x-ref="logContainer">
+      <template x-for="(log, i) in logs" :key="i">
+        <div class="flex gap-2 py-0.5 border-b border-white/[0.03]"
+             :class="log.level === 'ERROR' ? 'text-red-400' : (log.level === 'WARNING' ? 'text-amber-400' : 'text-slate-400')">
+          <span class="text-slate-600 flex-shrink-0" x-text="new Date(log.ts * 1000).toLocaleTimeString()"></span>
+          <span class="flex-shrink-0 w-12 font-semibold" x-text="log.level"></span>
+          <span class="truncate" x-text="log.message"></span>
+        </div>
+      </template>
+      <div x-show="logs.length === 0" class="text-slate-600 py-4 text-center">No log entries</div>
+    </div>
+  </div>
+
+</div>

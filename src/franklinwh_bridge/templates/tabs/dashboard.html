@@ -1,0 +1,121 @@
+<!-- ── Dashboard Tab ─────────────────────────────────────── -->
+<div x-data="dashboardTab()">
+
+  <!-- Power Flow Cards -->
+  <div class="metrics-grid mb-6">
+
+    <!-- Battery Power -->
+    <div class="card">
+      <div class="card-label">Battery Power</div>
+      <div class="card-value" :style="'color:' + powerColour($store.app.batteryPowerW, 'battery')">
+        <span x-text="fmt.kw($store.app.batteryPowerW)"></span>
+        <span class="unit">kW</span>
+      </div>
+      <div class="card-sub" x-text="$store.app.batteryPowerW > 0 ? 'Charging' : ($store.app.batteryPowerW < 0 ? 'Discharging' : 'Idle')"></div>
+    </div>
+
+    <!-- Grid Power -->
+    <div class="card">
+      <div class="card-label">Grid Power</div>
+      <div class="card-value" :style="'color:' + powerColour($store.app.gridPowerW, 'grid')">
+        <span x-text="fmt.kw($store.app.gridPowerW)"></span>
+        <span class="unit">kW</span>
+      </div>
+      <div class="card-sub" x-text="$store.app.gridPowerW > 0 ? 'Importing' : ($store.app.gridPowerW < 0 ? 'Exporting' : 'Neutral')"></div>
+    </div>
+
+    <!-- Solar Power -->
+    <div class="card">
+      <div class="card-label">Solar Power</div>
+      <div class="card-value" :style="'color:' + powerColour($store.app.solarPowerW, 'solar')">
+        <span x-text="fmt.kw($store.app.solarPowerW)"></span>
+        <span class="unit">kW</span>
+      </div>
+      <div class="card-sub">Generating</div>
+    </div>
+
+    <!-- Home Load -->
+    <div class="card">
+      <div class="card-label">Home Load</div>
+      <div class="card-value">
+        <span x-text="fmt.kw($store.app.homePowerW)"></span>
+        <span class="unit">kW</span>
+      </div>
+      <div class="card-sub">Consuming</div>
+    </div>
+
+  </div>
+
+  <!-- SOC + Status Row -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+    <!-- SOC Gauge -->
+    <div class="card flex items-center gap-6">
+      <div class="soc-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
+          <circle class="soc-ring-fill" cx="50" cy="50" r="40"
+                  :stroke="socColour($store.app.batterySoc)"
+                  :stroke-dashoffset="socRingOffset($store.app.batterySoc)"/>
+        </svg>
+        <div class="soc-ring-text">
+          <span x-text="fmt.soc($store.app.batterySoc)"></span>
+          <span class="text-[10px] text-slate-500 font-medium">%</span>
+        </div>
+      </div>
+      <div>
+        <div class="text-sm font-semibold text-slate-300 mb-1">Battery SOC</div>
+        <div class="text-xs text-slate-500">
+          Available: <span x-text="$store.app.points.available_capacity_kwh != null ? ($store.app.points.available_capacity_kwh).toFixed(1) + ' kWh' : '--'"></span>
+        </div>
+        <div class="text-xs text-slate-500">
+          Total: <span x-text="$store.app.points.total_capacity_kwh != null ? ($store.app.points.total_capacity_kwh).toFixed(1) + ' kWh' : '--'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Cards -->
+    <div class="card col-span-1 lg:col-span-2">
+      <div class="card-label mb-3">System Status</div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div>
+          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Battery State</div>
+          <div class="text-sm font-medium" x-text="$store.app.points.battery_state_name || '--'"></div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Inverter State</div>
+          <div class="text-sm font-medium" x-text="$store.app.points.inverter_state_name || '--'"></div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Grid</div>
+          <div class="text-sm font-medium"
+               :class="$store.app.points.grid_connected ? 'text-emerald-400' : 'text-red-400'"
+               x-text="$store.app.points.grid_connected ? 'Connected' : 'Disconnected'"></div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Control Mode</div>
+          <div class="text-sm font-medium" x-text="$store.app.points.loc_rem_ctl_name || '--'"></div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">WSet Enabled</div>
+          <div class="text-sm font-medium"
+               :class="$store.app.points.wset_enabled ? 'text-emerald-400' : 'text-slate-500'"
+               x-text="$store.app.points.wset_enabled ? 'Yes' : 'No'"></div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Operating Mode</div>
+          <div class="text-sm font-medium" x-text="$store.app.points.operating_mode_name || '--'"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Power Chart -->
+  <div class="card">
+    <div class="card-label mb-3">Power History (Last 30 min)</div>
+    <div class="relative" style="height: 280px;">
+      <canvas x-ref="powerChart"></canvas>
+    </div>
+  </div>
+
+</div>

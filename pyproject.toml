@@ -25,6 +25,7 @@ dependencies = [
     "httpx>=0.27",
     "websockets>=12.0",
     "aiofiles>=24.1",
+    "jinja2>=3.1",
 ]
 keywords = ["franklinwh", "modbus", "mqtt", "home-assistant", "sunspec", "energy"]
 classifiers = [
@@ -58,7 +59,7 @@ Homepage = "https://github.com/david2069/franklinwh-modbus-bridge"
 where = ["src"]
 
 [tool.setuptools.package-data]
-franklinwh_bridge = ["web/**/*"]
+franklinwh_bridge = ["static/**/*", "templates/**/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

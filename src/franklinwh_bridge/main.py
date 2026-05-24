@@ -6,21 +6,28 @@ import asyncio
 import collections
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from franklinwh_bridge import __version__
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
+from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
 from franklinwh_bridge.store.db import (
-    get_mqtt_config, init_db, load_control_state, log_control_event, log_startup_event,
+    get_mqtt_config,
+    init_db,
+    load_control_state,
+    log_control_event,
+    log_startup_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,12 +43,14 @@ class LogBufferHandler(logging.Handler):
         self._buffer = buffer
 
     def emit(self, record: logging.LogRecord) -> None:
-        self._buffer.append({
-            "ts": record.created,
-            "level": record.levelname,
-            "name": record.name,
-            "message": self.format(record),
-        })
+        self._buffer.append(
+            {
+                "ts": record.created,
+                "level": record.levelname,
+                "name": record.name,
+                "message": self.format(record),
+            }
+        )
 
 
 @asynccontextmanager
@@ -111,9 +120,7 @@ async def lifespan(app: FastAPI):
         from franklinwh_modbus import FranklinWHController
 
         gw = config.settings.gateway
-        controller = FranklinWHController(
-            ip_address=gw.host, port=gw.port, unit_id=gw.unit_id
-        )
+        controller = FranklinWHController(ip_address=gw.host, port=gw.port, unit_id=gw.unit_id)
 
         poller = ModbusPoller(
             controller=controller,
@@ -124,7 +131,8 @@ async def lifespan(app: FastAPI):
         app.state.poller = poller
 
         command_handler = CommandHandler(
-            controller, db,
+            controller,
+            db,
             on_state_changed=mqtt_publisher.publish_command_state,
         )
         mqtt_publisher.set_command_handler(command_handler)
@@ -150,10 +158,11 @@ async def lifespan(app: FastAPI):
                 try:
                     hw_state = await asyncio.to_thread(controller.read_control_status)
                     await log_control_event(
-                        db, event="startup_hw_snapshot",
+                        db,
+                        event="startup_hw_snapshot",
                         detail=f"wset_ena={hw_state.get('wset_enabled')}, "
-                               f"wset_pct={hw_state.get('wset_pct')}, "
-                               f"mode={hw_state.get('loc_rem_ctl_name')}",
+                        f"wset_pct={hw_state.get('wset_pct')}, "
+                        f"mode={hw_state.get('loc_rem_ctl_name')}",
                         hw_state=hw_state,
                     )
                     logger.info(
@@ -171,13 +180,15 @@ async def lifespan(app: FastAPI):
                     logger.warning(
                         "Previous session had active command: %s %dW (started %.0fs ago). "
                         "Releasing now for safety.",
-                        prev_state["action"], prev_state["power_w"],
+                        prev_state["action"],
+                        prev_state["power_w"],
                         time.time() - prev_state["started_at"],
                     )
                     try:
                         await asyncio.to_thread(controller.reset_control_state)
                         await log_control_event(
-                            db, event="startup_release",
+                            db,
+                            event="startup_release",
                             action=prev_state["action"],
                             power_w=prev_state["power_w"],
                             detail="Released stale command from previous session",
@@ -194,17 +205,27 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Poller init failed (no hardware?): %s", exc)
 
-    register_component("poller", lambda: {
-        "status": "running" if poller and poller.state.connected else "disconnected",
-        "polls_total": poller.state.polls_total if poller else 0,
-        "last_poll_ts": poller.state.last_poll_ts if poller else None,
-        "last_error": poller.state.last_error if poller else None,
-    } if poller else {"status": "not_configured"})
-    register_component("mqtt", lambda: {
-        "connected": mqtt_publisher.state.connected,
-        "messages_sent": mqtt_publisher.state.messages_sent,
-        "discovery_published": mqtt_publisher.state.discovery_published,
-    })
+    register_component(
+        "poller",
+        lambda: (
+            {
+                "status": "running" if poller and poller.state.connected else "disconnected",
+                "polls_total": poller.state.polls_total if poller else 0,
+                "last_poll_ts": poller.state.last_poll_ts if poller else None,
+                "last_error": poller.state.last_error if poller else None,
+            }
+            if poller
+            else {"status": "not_configured"}
+        ),
+    )
+    register_component(
+        "mqtt",
+        lambda: {
+            "connected": mqtt_publisher.state.connected,
+            "messages_sent": mqtt_publisher.state.messages_sent,
+            "discovery_published": mqtt_publisher.state.discovery_published,
+        },
+    )
 
     logger.info("Bridge started (env=%s, v%s)", config.environment, __version__)
 
@@ -221,14 +242,16 @@ async def lifespan(app: FastAPI):
         try:
             hw_state = await asyncio.to_thread(controller.read_control_status)
             await log_control_event(
-                db, event="shutdown_hw_snapshot",
+                db,
+                event="shutdown_hw_snapshot",
                 detail=f"wset_ena={hw_state.get('wset_enabled')}, "
-                       f"wset_pct={hw_state.get('wset_pct')}",
+                f"wset_pct={hw_state.get('wset_pct')}",
                 hw_state=hw_state,
             )
             logger.info(
                 "Shutdown HW state: WSetEna=%s, WSetPct=%s",
-                hw_state.get("wset_enabled"), hw_state.get("wset_pct"),
+                hw_state.get("wset_enabled"),
+                hw_state.get("wset_pct"),
             )
         except Exception as exc:
             logger.warning("Could not read shutdown hw state: %s", exc)
@@ -251,6 +274,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Mount static files
+_static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# API routers (before UI catch-all)
 app.include_router(health_router)
 app.include_router(admin_router)
 app.include_router(mqtt_router)
+
+# UI router (serves GET / and POST /api/command)
+app.include_router(ui_router)

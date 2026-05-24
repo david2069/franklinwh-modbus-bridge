@@ -5,7 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+from franklinwh_bridge import __version__
 
 router = APIRouter(tags=["health"])
 
@@ -19,12 +21,22 @@ def register_component(name: str, state_fn) -> None:
 
 
 @router.get("/api/health")
-async def health():
-    return {"status": "ok", "uptime_s": round(time.time() - _start_time, 1)}
+async def health(request: Request):
+    config = getattr(request.app.state, "config", None)
+    env = config.environment if config else "unknown"
+    return {
+        "status": "ok",
+        "version": __version__,
+        "environment": env,
+        "uptime_s": round(time.time() - _start_time, 1),
+    }
 
 
 @router.get("/api/status")
-async def status():
+async def status(request: Request):
+    config = getattr(request.app.state, "config", None)
+    env = config.environment if config else "unknown"
+
     states = {}
     for name, state_fn in _components.items():
         try:
@@ -37,6 +49,8 @@ async def status():
 
     return {
         "status": "ok",
+        "version": __version__,
+        "environment": env,
         "uptime_s": round(time.time() - _start_time, 1),
         "components": states,
     }

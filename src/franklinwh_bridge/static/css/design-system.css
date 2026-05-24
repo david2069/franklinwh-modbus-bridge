@@ -1,0 +1,302 @@
+/* ============================================================
+   FranklinWH Modbus Bridge — Design System
+   Dark-first, glassmorphism, CSS custom properties
+   Matches FHAI visual language
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Tokens ─────────────────────────────────────────────── */
+:root {
+  /* Status Colours */
+  --live:         #06b6d4; /* cyan-500 */
+  --ok:           #10b981; /* emerald-500 */
+  --warn:         #f59e0b; /* amber-500 */
+  --danger:       #ef4444; /* red-500 */
+  --solar:        #f59e0b; /* amber-500 */
+  --grid-import:  #ef4444; /* red-500 */
+  --grid-export:  #10b981; /* emerald-500 */
+
+  --glass-blur:   blur(12px);
+
+  /* Layout */
+  --sidebar-w:    240px;
+  --topbar-h:     52px;
+  --radius-sm:    4px;
+  --radius-md:    8px;
+  --radius-lg:    12px;
+
+  /* Animation */
+  --ease-out:     cubic-bezier(.4, 0, .2, 1);
+  --dur-fast:     150ms;
+  --dur-base:     250ms;
+  --dur-slow:     400ms;
+}
+
+/* ── Accent ────────────────────────────────────────────── */
+:root {
+  --accent:       #06b6d4; /* cyan-500 — energy/modbus theme */
+  --accent-glow:  rgba(6, 182, 212, 0.15);
+  --border-accent:rgba(6, 182, 212, 0.3);
+
+  /* Tailwind config needs these */
+  --primary-color: #06b6d4;
+  --primary-dark:  #0891b2;
+  --primary-light: #22d3ee;
+}
+
+/* ── Theme (dark only) ─────────────────────────────────── */
+:root {
+  --bg:           #0f172a; /* slate-900 */
+  --surface-0:    #1e293b; /* slate-800 */
+  --surface-1:    #334155; /* slate-700 */
+  --surface-2:    #475569; /* slate-600 */
+  --border:       rgba(255, 255, 255, 0.08);
+  --glass-bg:     rgba(30, 41, 59, 0.85);
+
+  --text-primary:   #f8fafc; /* slate-50 */
+  --text-secondary: #cbd5e1; /* slate-300 */
+  --text-muted:     #64748b; /* slate-500 */
+  --text-faint:     #94a3b8; /* slate-400 */
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Alpine cloak */
+[x-cloak] { display: none !important; }
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface-0); }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── Cards ──────────────────────────────────────────────── */
+.card {
+  background: var(--surface-0);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 2px 8px rgba(0,0,0,0.35);
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.card:hover {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 4px 16px rgba(0,0,0,0.4);
+}
+.card-label {
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.card-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.card-value .unit {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+.card-sub {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ── Metrics Grid ───────────────────────────────────────── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ── Status Chip ────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: .7rem;
+  font-weight: 600;
+}
+.chip.ok      { background: hsla(160,84%,39%,.15); color: var(--ok); }
+.chip.error   { background: hsla(343,88%,60%,.15); color: var(--danger); }
+.chip.warn    { background: hsla(43,96%,56%,.15);  color: var(--warn); }
+.chip.muted   { background: var(--surface-2);      color: var(--text-muted); }
+
+/* ── Nav Items ──────────────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: .85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover { background: var(--surface-1); color: var(--text-primary); }
+
+/* ── Tables ─────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+}
+.data-table tbody tr:hover td { background: var(--surface-1); }
+
+/* ── Form elements ──────────────────────────────────────── */
+.form-control {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: .875rem;
+  padding: 8px 12px;
+  outline: none;
+  width: 100%;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.form-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.form-control option { background: var(--surface-1); }
+
+/* ── Buttons ────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--dur-fast);
+  white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { filter: brightness(1.15); box-shadow: 0 4px 16px var(--accent-glow); }
+.btn-secondary { background: var(--surface-1); color: var(--text-primary); border-color: var(--border); }
+.btn-secondary:hover { border-color: var(--border-accent); background: var(--surface-2); }
+.btn-sm { padding: 5px 12px; font-size: .78rem; }
+
+/* ── SOC Ring ───────────────────────────────────────────── */
+.soc-ring {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+}
+.soc-ring svg { transform: rotate(-90deg); width: 100px; height: 100px; }
+.soc-ring-track { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+.soc-ring-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 251.3;  /* 2*pi*40 */
+  transition: stroke-dashoffset var(--dur-slow) var(--ease-out), stroke var(--dur-base);
+}
+.soc-ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── Toasts ────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast-item {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+  font-size: .85rem;
+  max-width: 360px;
+}
+.toast-item.error { border-left-color: var(--danger); }
+.toast-item.warn { border-left-color: var(--warn); }
+
+/* ── Loading Spinner ────────────────────────────────────── */
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Colour helpers ─────────────────────────────────────── */
+.c-ok      { color: var(--ok); }
+.c-warn    { color: var(--warn); }
+.c-danger  { color: var(--danger); }
+.c-accent  { color: var(--accent); }
+.c-muted   { color: var(--text-muted); }
+.c-solar   { color: var(--solar); }
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+}

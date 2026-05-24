@@ -1,0 +1,79 @@
+<!-- ── SunSpec Explorer Tab ──────────────────────────────── -->
+<div x-data="explorerTab()">
+
+  <!-- Search/Filter -->
+  <div class="mb-4">
+    <input type="text" x-model="filter" placeholder="Filter models and points..."
+           class="form-control max-w-md"
+           @input.debounce.200ms="applyFilter()">
+  </div>
+
+  <!-- Loading state -->
+  <div x-show="loading" class="flex items-center gap-3 py-8 justify-center">
+    <div class="loading-spinner"></div>
+    <span class="text-sm text-slate-500">Loading SunSpec catalog...</span>
+  </div>
+
+  <!-- Model Tree -->
+  <div x-show="!loading" class="space-y-2">
+    <template x-for="model in filteredModels" :key="model.model_id">
+      <div class="card !p-0 overflow-hidden">
+
+        <!-- Model Header (click to expand) -->
+        <button @click="toggleModel(model.model_id)"
+                class="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/30 transition text-left">
+          <svg class="w-4 h-4 text-slate-500 transition-transform duration-200"
+               :class="expanded[model.model_id] ? 'rotate-90' : ''"
+               fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+          <span class="text-sm font-bold text-cyan-400" x-text="'M' + model.model_id"></span>
+          <span class="text-sm text-slate-300" x-text="model.label"></span>
+          <span class="ml-auto text-xs text-slate-600" x-text="model.points.length + ' points'"></span>
+        </button>
+
+        <!-- Points Table (expanded) -->
+        <div x-show="expanded[model.model_id]" x-collapse>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Point</th>
+                <th>Value</th>
+                <th>Type</th>
+                <th>Unit</th>
+                <th>Address</th>
+                <th>R/W</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="pt in model.points" :key="pt.name">
+                <tr x-show="matchesFilter(model, pt)">
+                  <td class="font-mono text-xs text-slate-300" x-text="pt.name"></td>
+                  <td class="font-mono text-xs font-semibold"
+                      :class="getPointValue(pt.name) != null ? 'text-cyan-300' : 'text-slate-600'"
+                      x-text="getPointValue(pt.name) ?? '--'"></td>
+                  <td class="text-xs text-slate-500" x-text="pt.type"></td>
+                  <td class="text-xs text-slate-500" x-text="pt.unit || '--'"></td>
+                  <td class="text-xs text-slate-600 font-mono" x-text="pt.address || '--'"></td>
+                  <td>
+                    <span class="text-xs px-1.5 py-0.5 rounded"
+                          :class="pt.writable ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-500'"
+                          x-text="pt.writable ? 'RW' : 'RO'"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </template>
+
+    <!-- Empty state -->
+    <div x-show="filteredModels.length === 0 && !loading" class="text-center py-12 text-slate-500">
+      <p class="text-lg mb-2">No models found</p>
+      <p class="text-sm" x-text="filter ? 'Try adjusting your filter' : 'No SunSpec catalog captured yet'"></p>
+    </div>
+  </div>
+
+</div>

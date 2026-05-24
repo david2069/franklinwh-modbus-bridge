@@ -1,0 +1,144 @@
+<!-- ── Controls Tab ─────────────────────────────────────── -->
+<div x-data="controlsTab()">
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- Left: Command Controls -->
+    <div class="space-y-4">
+
+      <!-- Battery Command -->
+      <div class="card">
+        <div class="card-label mb-3">Battery Command</div>
+        <select x-model="command" @change="sendCommand('battery_command', command)"
+                class="form-control">
+          <option value="Not Active">Not Active</option>
+          <option value="Charge">Charge</option>
+          <option value="Discharge">Discharge</option>
+          <option value="Idle">Idle</option>
+          <option value="Stop">Stop</option>
+          <option value="Release">Release</option>
+        </select>
+      </div>
+
+      <!-- Command Power (W) -->
+      <div class="card">
+        <div class="card-label mb-3">Command Power (W)</div>
+        <div class="flex items-center gap-3">
+          <input type="range" min="0" max="5000" step="100" x-model="powerW"
+                 class="flex-1 accent-cyan-500 h-2 rounded-lg cursor-pointer"
+                 @change="sendCommand('battery_command_power', powerW)">
+          <input type="number" x-model="powerW" min="0" max="5000" step="100"
+                 class="form-control w-24 text-center"
+                 @change="sendCommand('battery_command_power', powerW)">
+          <span class="text-xs text-slate-500">W</span>
+        </div>
+      </div>
+
+      <!-- Command Power (%) -->
+      <div class="card">
+        <div class="card-label mb-3">Command Power (%)</div>
+        <div class="flex items-center gap-3">
+          <input type="range" min="0" max="100" step="5" x-model="powerPct"
+                 class="flex-1 accent-cyan-500 h-2 rounded-lg cursor-pointer"
+                 @change="sendCommand('battery_command_power_pct', powerPct)">
+          <input type="number" x-model="powerPct" min="0" max="100" step="5"
+                 class="form-control w-20 text-center"
+                 @change="sendCommand('battery_command_power_pct', powerPct)">
+          <span class="text-xs text-slate-500">%</span>
+        </div>
+      </div>
+
+      <!-- Command Duration -->
+      <div class="card">
+        <div class="card-label mb-3">Command Duration</div>
+        <div class="flex items-center gap-3">
+          <input type="range" min="60" max="7200" step="60" x-model="duration"
+                 class="flex-1 accent-cyan-500 h-2 rounded-lg cursor-pointer"
+                 @change="sendCommand('battery_command_duration', duration)">
+          <input type="number" x-model="duration" min="60" max="7200" step="60"
+                 class="form-control w-24 text-center"
+                 @change="sendCommand('battery_command_duration', duration)">
+          <span class="text-xs text-slate-500">sec</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-2" x-text="Math.floor(duration / 60) + ' min ' + (duration % 60) + 's'"></div>
+      </div>
+
+    </div>
+
+    <!-- Right: Mode + Status -->
+    <div class="space-y-4">
+
+      <!-- Operating Mode -->
+      <div class="card">
+        <div class="card-label mb-3">Operating Mode</div>
+        <select x-model="operatingMode" @change="sendCommand('operating_mode', operatingMode)"
+                class="form-control">
+          <option value="">-- Select --</option>
+          <option value="Emergency Backup">Emergency Backup</option>
+          <option value="Self-Consumption">Self-Consumption</option>
+          <option value="Time of Use">Time of Use</option>
+        </select>
+      </div>
+
+      <!-- Reserve SOC -->
+      <div class="card">
+        <div class="card-label mb-3">Self-Consumption Reserve %</div>
+        <div class="flex items-center gap-3">
+          <input type="range" min="0" max="100" step="5" x-model="selfReserve"
+                 class="flex-1 accent-emerald-500 h-2 rounded-lg cursor-pointer"
+                 @change="sendCommand('self_reserve_pct', selfReserve)">
+          <input type="number" x-model="selfReserve" min="0" max="100" step="5"
+                 class="form-control w-20 text-center"
+                 @change="sendCommand('self_reserve_pct', selfReserve)">
+          <span class="text-xs text-slate-500">%</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label mb-3">TOU Reserve %</div>
+        <div class="flex items-center gap-3">
+          <input type="range" min="0" max="100" step="5" x-model="touReserve"
+                 class="flex-1 accent-emerald-500 h-2 rounded-lg cursor-pointer"
+                 @change="sendCommand('tou_reserve_pct', touReserve)">
+          <input type="number" x-model="touReserve" min="0" max="100" step="5"
+                 class="form-control w-20 text-center"
+                 @change="sendCommand('tou_reserve_pct', touReserve)">
+          <span class="text-xs text-slate-500">%</span>
+        </div>
+      </div>
+
+      <!-- Active Command Status -->
+      <div class="card">
+        <div class="card-label mb-3">Active Command Status</div>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500">State</span>
+            <span class="font-medium" x-text="$store.app.points.battery_command_state || 'Not Active'"
+                  :class="$store.app.points.battery_command_state && $store.app.points.battery_command_state !== 'Not Active' ? 'text-cyan-400' : 'text-slate-400'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Power</span>
+            <span class="font-medium" x-text="($store.app.points.battery_command_power_w || 0) + ' W'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Watchdog Remaining</span>
+            <span class="font-medium" x-text="($store.app.points.sw_watchdog_remain_s || 0) + 's'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Elapsed</span>
+            <span class="font-medium" x-text="($store.app.points.command_elapsed_s || 0) + 's'"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Last Command Result -->
+      <div class="card">
+        <div class="card-label mb-2">Last Command Result</div>
+        <div class="text-sm font-mono p-2 rounded bg-slate-900/50 border border-white/5 min-h-[40px]"
+             :class="lastResult.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'"
+             x-text="lastResult || 'None'"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
