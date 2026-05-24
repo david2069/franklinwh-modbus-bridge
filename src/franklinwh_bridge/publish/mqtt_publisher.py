@@ -103,6 +103,9 @@ def build_discovery_payload(
     if cmd_topic:
         payload["command_topic"] = cmd_topic
 
+    if entity.ha_type == "binary_sensor":
+        payload["payload_on"] = "1"
+        payload["payload_off"] = "0"
     if entity.ha_type == "select" and entity.options:
         payload["options"] = entity.options
     if entity.ha_type == "number":

@@ -472,8 +472,8 @@ BRIDGE_ENTITIES: list[EntityDef] = [
     ),
     EntityDef(
         slug="wset_enabled",
-        name="Remote Power Control",
-        ha_type="sensor",
+        name="WSet Enabled",
+        ha_type="binary_sensor",
         state_group="status",
         stat_key="wset_enabled",
         icon="mdi:toggle-switch",
