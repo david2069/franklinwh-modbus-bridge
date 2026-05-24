@@ -59,6 +59,8 @@ class CommandHandler:
         self._state = CommandState()
         self._watchdog_task: asyncio.Task | None = None
         self._command_power_w: int = 0
+        self._command_power_pct: int = 0
+        self._command_duration_s: int = DEFAULT_WATCHDOG_S
 
     @property
     def state(self) -> CommandState:
@@ -72,6 +74,8 @@ class CommandHandler:
         return {
             "battery_command_state": self._state.action if self._state.active else "Not Active",
             "battery_command_power_w": self._command_power_w,
+            "battery_command_power_pct": self._command_power_pct,
+            "battery_command_duration_s": self._command_duration_s,
             "sw_watchdog_remain_s": remain,
             "command_elapsed_s": elapsed,
             "last_command_result": self._state.last_result or "None",
@@ -118,8 +122,23 @@ class CommandHandler:
                 await self._handle_battery_command(payload)
             elif slug == "battery_command_power":
                 self._command_power_w = max(0, min(int(float(payload)), MAX_POWER_W))
+                self._command_power_pct = 0  # watts takes precedence, clear pct
+                if self._on_state_changed:
+                    await self._on_state_changed()
                 if self._state.active:
                     await self._handle_battery_command(self._state.action)
+            elif slug == "battery_command_power_pct":
+                self._command_power_pct = max(0, min(int(float(payload)), 100))
+                self._command_power_w = 0  # pct takes precedence, clear watts
+                if self._on_state_changed:
+                    await self._on_state_changed()
+                if self._state.active:
+                    await self._handle_battery_command(self._state.action)
+            elif slug == "battery_command_duration":
+                self._command_duration_s = max(60, min(int(float(payload)), 7200))
+                self._state.watchdog_s = self._command_duration_s
+                if self._on_state_changed:
+                    await self._on_state_changed()
             elif slug == "operating_mode":
                 await self._handle_operating_mode(payload)
             elif slug == "self_reserve_pct":
@@ -143,14 +162,19 @@ class CommandHandler:
 
         if action == "Idle":
             watts = 0
-        elif action == "Charge":
-            watts = self._command_power_w or MAX_POWER_W
-        elif action == "Discharge":
-            watts = -(self._command_power_w or MAX_POWER_W)
+        elif action in ("Charge", "Discharge"):
+            if self._command_power_pct > 0:
+                # Percentage mode: convert to watts using max rate
+                watts = int(MAX_POWER_W * self._command_power_pct / 100)
+            else:
+                watts = self._command_power_w or MAX_POWER_W
+            if action == "Discharge":
+                watts = -watts
         else:
             logger.warning("Unknown battery command: %s", action)
             return
 
+        self._state.watchdog_s = self._command_duration_s
         cmd = BatteryCommand(power_watts=watts)
         success, msg = await asyncio.to_thread(
             self._controller.send_command, cmd, duration_s=self._state.watchdog_s

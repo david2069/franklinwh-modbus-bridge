@@ -631,6 +631,33 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         max_val=5000,
         step=100,
     ),
+    EntityDef(
+        slug="battery_command_power_pct",
+        name="Command Power %",
+        ha_type="number",
+        state_group="control",
+        stat_key="battery_command_power_pct",
+        unit="%",
+        icon="mdi:percent-circle",
+        is_control=True,
+        min_val=0,
+        max_val=100,
+        step=5,
+    ),
+    EntityDef(
+        slug="battery_command_duration",
+        name="Command Duration",
+        ha_type="number",
+        state_group="control",
+        stat_key="battery_command_duration_s",
+        unit="s",
+        device_class="duration",
+        icon="mdi:timer-outline",
+        is_control=True,
+        min_val=60,
+        max_val=7200,
+        step=60,
+    ),
 
 ]
 
