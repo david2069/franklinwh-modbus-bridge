@@ -206,34 +206,54 @@ class CommandHandler:
             logger.warning("Unknown operating mode: %s", mode_name)
             return
 
-        success, msg = await asyncio.to_thread(
-            self._controller.set_native_mode, mode_val
-        )
-        self._state.last_result = msg
-        await self._log_event(
-            "mode_change", action=mode_name, detail=msg,
-        )
-        if success:
-            logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
+        method = getattr(self._controller, "set_native_mode", None)
+        if method is None:
+            self._state.last_result = (
+                "Mode control not available (library does not support "
+                "set_native_mode — upgrade franklinwh-modbus)"
+            )
+            logger.warning("%s", self._state.last_result)
         else:
-            logger.error("Operating mode failed: %s", msg)
+            try:
+                success, msg = await asyncio.to_thread(method, mode_val)
+                self._state.last_result = msg
+                if success:
+                    logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
+                else:
+                    logger.error("Operating mode failed: %s", msg)
+            except Exception as exc:
+                self._state.last_result = f"Mode change error: {exc}"
+                logger.error("Operating mode failed: %s", exc)
+
+        await self._log_event(
+            "mode_change", action=mode_name, detail=self._state.last_result,
+        )
 
     async def _handle_reserve(self, reserve_type: str, pct: int) -> None:
         pct = max(0, min(pct, 100))
-        if reserve_type == "self":
-            success, msg = await asyncio.to_thread(
-                self._controller.set_self_consumption_reserve, pct
-            )
-        else:
-            success, msg = await asyncio.to_thread(
-                self._controller.set_tou_reserve, pct
-            )
 
-        self._state.last_result = msg
-        if success:
-            logger.info("%s reserve set to %d%%", reserve_type, pct)
+        if reserve_type == "self":
+            method = getattr(self._controller, "set_self_consumption_reserve", None)
         else:
-            logger.error("Reserve write failed: %s", msg)
+            method = getattr(self._controller, "set_tou_reserve", None)
+
+        if method is None:
+            self._state.last_result = (
+                f"Reserve control not available (library does not support "
+                f"set_{reserve_type}_reserve — upgrade franklinwh-modbus)"
+            )
+            logger.warning("%s", self._state.last_result)
+        else:
+            try:
+                success, msg = await asyncio.to_thread(method, pct)
+                self._state.last_result = msg
+                if success:
+                    logger.info("%s reserve set to %d%%", reserve_type, pct)
+                else:
+                    logger.error("Reserve write failed: %s", msg)
+            except Exception as exc:
+                self._state.last_result = f"Reserve write error: {exc}"
+                logger.error("Reserve write failed: %s", exc)
 
         await self._log_event(
             "reserve_change",
