@@ -36,7 +36,9 @@ function socColour(soc) {
 
 function powerColour(watts, type) {
   if (watts == null) return 'var(--text-muted)';
-  if (type === 'battery') return watts > 0 ? 'var(--ok)' : watts < 0 ? 'var(--warn)' : 'var(--text-muted)';
+  // Battery: positive = discharging (amber/warn), negative = charging (green/ok)
+  if (type === 'battery') return watts > 0 ? 'var(--warn)' : watts < 0 ? 'var(--ok)' : 'var(--text-muted)';
+  // Grid: positive = importing (red/danger), negative = exporting (green/ok)
   if (type === 'grid') return watts > 0 ? 'var(--danger)' : watts < 0 ? 'var(--ok)' : 'var(--text-muted)';
   if (type === 'solar') return watts > 0 ? 'var(--solar)' : 'var(--text-muted)';
   return 'var(--text-primary)';
@@ -125,11 +127,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Convenience getters for templates
+    // Keys must match what GET /api/points actually returns
     get batteryPowerW() { return this.points.battery_power_w ?? null; },
     get gridPowerW() { return this.points.grid_power_w ?? null; },
-    get solarPowerW() { return this.points.solar_power_w ?? null; },
-    get homePowerW() { return this.points.home_load_w ?? null; },
-    get batterySoc() { return this.points.battery_soc ?? null; },
+    get solarPowerW() { return this.points.total_solar ?? null; },
+    get homePowerW() { return this.points.home_load_ext ?? null; },
+    get batterySoc() { return this.points.soc ?? null; },
   });
 
 });

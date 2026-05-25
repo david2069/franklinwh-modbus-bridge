@@ -1,0 +1,10 @@
+[
+  {
+    "step": "Step 1",
+    "writes": {
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "note": "Enable VPP control"
+  }
+]

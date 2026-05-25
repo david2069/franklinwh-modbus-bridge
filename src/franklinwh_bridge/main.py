@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,8 +19,9 @@ from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
+from franklinwh_bridge.modbus.catalog import capture_catalog, extract_catalog_from_controller
 from franklinwh_bridge.modbus.poller import ModbusPoller
-from franklinwh_bridge.modbus.sample import SampleBus
+from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
 from franklinwh_bridge.store.db import (
@@ -28,6 +30,11 @@ from franklinwh_bridge.store.db import (
     load_control_state,
     log_control_event,
     log_startup_event,
+)
+from franklinwh_bridge.store.metrics import (
+    get_retention_days,
+    purge_old,
+    record_sample,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,6 +123,7 @@ async def lifespan(app: FastAPI):
     poller: ModbusPoller | None = None
     command_handler: CommandHandler | None = None
     controller = None
+    purge_task: asyncio.Task | None = None
     try:
         from franklinwh_modbus import FranklinWHController
 
@@ -129,6 +137,7 @@ async def lifespan(app: FastAPI):
             poll_interval=gw.poll_interval,
         )
         app.state.poller = poller
+        app.state.controller = controller
 
         command_handler = CommandHandler(
             controller,
@@ -139,6 +148,29 @@ async def lifespan(app: FastAPI):
         app.state.command_handler = command_handler
 
         sample_bus.subscribe(mqtt_publisher.queue_sample)
+
+        # Metrics recorder — writes power readings to the metrics table every sample
+        async def _record_metrics(sample: Sample) -> None:
+            try:
+                await record_sample(db, sample.points)
+            except Exception as exc:
+                logger.debug("Metrics record failed: %s", exc)
+
+        sample_bus.subscribe(_record_metrics)
+
+        # Periodic purge of old metrics (runs on startup then every hour)
+        async def _metrics_purge_loop() -> None:
+            while True:
+                try:
+                    retention = await get_retention_days(db)
+                    deleted = await purge_old(db, retention)
+                    if deleted:
+                        logger.info("Metrics purge: removed %d old rows", deleted)
+                except Exception as exc:
+                    logger.warning("Metrics purge failed: %s", exc)
+                await asyncio.sleep(3600)
+
+        purge_task = asyncio.create_task(_metrics_purge_loop())
 
         async def _init_poller() -> None:
             connected = await asyncio.to_thread(controller.connect)
@@ -195,6 +227,35 @@ async def lifespan(app: FastAPI):
                         )
                     except Exception as exc:
                         logger.error("Failed to release stale command: %s", exc)
+
+                # Capture SunSpec catalog from model definitions (no extra I/O)
+                try:
+                    device_info = await asyncio.to_thread(
+                        extract_catalog_from_controller, controller
+                    )
+                    cat_hash, cat_diff = await capture_catalog(
+                        device_info, db, gateway_id
+                    )
+                    logger.info(
+                        "SunSpec catalog captured: %d models (hash=%s)",
+                        len(device_info.get("models", {})),
+                        cat_hash,
+                    )
+                except Exception as exc:
+                    logger.warning("Catalog capture failed: %s", exc)
+
+                # Wire reader_fn for POST /api/models/refresh
+                async def _reader_fn():
+                    """Re-extract catalog from controller's in-memory model defs."""
+                    try:
+                        info = await asyncio.to_thread(
+                            extract_catalog_from_controller, controller
+                        )
+                        return info, None
+                    except Exception as exc:
+                        return None, str(exc)
+
+                app.state.reader_fn = _reader_fn
 
                 await asyncio.to_thread(controller.disconnect)
 
@@ -256,11 +317,17 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Could not read shutdown hw state: %s", exc)
 
-    # 3. Stop poller (graceful Modbus disconnect)
+    # 3. Cancel metrics purge task
+    if purge_task and not purge_task.done():
+        purge_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await purge_task
+
+    # 4. Stop poller (graceful Modbus disconnect)
     if poller:
         await poller.stop()
 
-    # 4. Stop MQTT
+    # 5. Stop MQTT
     await mqtt_publisher.stop()
 
     await log_startup_event(db, "shutdown", f"v{__version__}")

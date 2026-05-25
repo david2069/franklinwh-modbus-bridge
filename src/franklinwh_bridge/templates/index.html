@@ -30,7 +30,10 @@
   <script src="static/js/dashboard_tab.js"></script>
   <script src="static/js/controls_tab.js"></script>
   <script src="static/js/explorer_tab.js"></script>
+  <script src="static/js/logs_tab.js"></script>
   <script src="static/js/settings_tab.js"></script>
+  <script src="static/js/sequencer_panel.js"></script>
+  <script src="static/js/sequencer_tab.js"></script>
 
   <!-- Alpine.js — local -->
   <script defer src="static/js/alpinejs-3.14.1.min.js"></script>
@@ -51,19 +54,24 @@
       <!-- ── Content ──────────────────────────────────── -->
       <main class="flex-1 overflow-y-auto p-4 lg:p-6">
 
-        <!-- Dashboard Tab -->
+        <!-- Dashboard Tab (includes Command Console) -->
         <div x-show="$store.app.activeTab === 'dashboard'" x-cloak>
           {% include "tabs/dashboard.html" %}
-        </div>
-
-        <!-- Controls Tab -->
-        <div x-show="$store.app.activeTab === 'controls'" x-cloak>
-          {% include "tabs/controls.html" %}
         </div>
 
         <!-- Explorer Tab -->
         <div x-show="$store.app.activeTab === 'explorer'" x-cloak>
           {% include "tabs/explorer.html" %}
+        </div>
+
+        <!-- Logs Tab -->
+        <div x-show="$store.app.activeTab === 'logs'" x-cloak>
+          {% include "tabs/logs.html" %}
+        </div>
+
+        <!-- Sequencer Tab -->
+        <div x-show="$store.app.activeTab === 'sequencer'" x-cloak>
+          {% include "tabs/sequencer.html" %}
         </div>
 
         <!-- Settings Tab -->

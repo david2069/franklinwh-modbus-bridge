@@ -1,7 +1,7 @@
-<!-- ── Settings & Logs Tab ──────────────────────────────── -->
+<!-- ── Settings Tab ─────────────────────────────────────── -->
 <div x-data="settingsTab()">
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
     <!-- MQTT Status -->
     <div class="card">
@@ -61,10 +61,27 @@
         </div>
       </div>
     </div>
+
+    <!-- Metrics Retention -->
+    <div class="card">
+      <div class="card-label mb-3">Metrics Storage</div>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-500">Retention (days)</span>
+          <div class="flex items-center gap-2">
+            <input type="number" x-model.number="metricsRetention" min="1" max="365" step="1"
+                   class="form-control !py-1 !text-xs w-20 text-center">
+            <button @click="saveMetricsRetention()"
+                    class="btn btn-sm btn-primary">Save</button>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-600">Power readings stored every 10s. Auto-purged hourly.</p>
+      </div>
+    </div>
   </div>
 
   <!-- Entity List -->
-  <div class="card mb-6">
+  <div class="card">
     <div class="flex items-center justify-between mb-3">
       <div class="card-label !mb-0">Entities (<span x-text="entities.length"></span>)</div>
       <input type="text" x-model="entityFilter" placeholder="Filter entities..."
@@ -92,27 +109,6 @@
           </template>
         </tbody>
       </table>
-    </div>
-  </div>
-
-  <!-- Log Viewer -->
-  <div class="card">
-    <div class="flex items-center justify-between mb-3">
-      <div class="card-label !mb-0">Logs</div>
-      <button @click="loadLogs()" class="btn btn-sm btn-secondary">Refresh</button>
-    </div>
-
-    <div class="bg-slate-900/80 rounded border border-white/5 p-3 max-h-[400px] overflow-y-auto font-mono text-xs space-y-0.5"
-         x-ref="logContainer">
-      <template x-for="(log, i) in logs" :key="i">
-        <div class="flex gap-2 py-0.5 border-b border-white/[0.03]"
-             :class="log.level === 'ERROR' ? 'text-red-400' : (log.level === 'WARNING' ? 'text-amber-400' : 'text-slate-400')">
-          <span class="text-slate-600 flex-shrink-0" x-text="new Date(log.ts * 1000).toLocaleTimeString()"></span>
-          <span class="flex-shrink-0 w-12 font-semibold" x-text="log.level"></span>
-          <span class="truncate" x-text="log.message"></span>
-        </div>
-      </template>
-      <div x-show="logs.length === 0" class="text-slate-600 py-4 text-center">No log entries</div>
     </div>
   </div>
 

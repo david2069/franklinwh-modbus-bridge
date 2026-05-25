@@ -1,0 +1,42 @@
+[
+  {
+    "step": "Phase 0: Pre-flight telemetry snapshot",
+    "reads": [
+      "704.WMaxLimPctEna",
+      "704.WMaxLimPct",
+      "704.WMaxLimPctRvrt",
+      "704.WMaxLimPctRvrtTms"
+    ],
+    "note": "Capture baseline export limit parameters before updating"
+  },
+  {
+    "step": "Phase 1-3: Configure temporary curtailment limits",
+    "writes": {
+      "704.WMaxLimPct": 50,
+      "704.WMaxLimPctRvrt": 100,
+      "704.WMaxLimPctRvrtTms": 3600,
+      "704.WMaxLimPctEnaRvrt": 1
+    },
+    "verify": true,
+    "sleep_ms": 200,
+    "note": "Set maximum export power limit to 50% with 1-hour reversion to 100%"
+  },
+  {
+    "step": "Phase 4: Enable export limit control",
+    "writes": {
+      "704.WMaxLimPctEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Write the master enable flag last to activate the curtailment limit"
+  },
+  {
+    "step": "Phase 5: Verification readback",
+    "reads": [
+      "704.WMaxLimPctEna",
+      "704.WMaxLimPct",
+      "704.WMaxLimPctRvrtRem"
+    ],
+    "note": "Verify active curtailment state and fetch remaining reversion time"
+  }
+]

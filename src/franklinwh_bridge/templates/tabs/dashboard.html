@@ -1,120 +1,504 @@
-<!-- ── Dashboard Tab ─────────────────────────────────────── -->
+<!-- ── Dashboard Tab — TUI-style layout ─────────────────── -->
 <div x-data="dashboardTab()">
 
-  <!-- Power Flow Cards -->
-  <div class="metrics-grid mb-6">
-
-    <!-- Battery Power -->
-    <div class="card">
-      <div class="card-label">Battery Power</div>
-      <div class="card-value" :style="'color:' + powerColour($store.app.batteryPowerW, 'battery')">
-        <span x-text="fmt.kw($store.app.batteryPowerW)"></span>
-        <span class="unit">kW</span>
+  <!-- Device Info Bar -->
+  <div class="card !p-3 mb-4">
+    <div class="flex items-center gap-6 flex-wrap text-xs">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">Model</span>
+        <span class="font-semibold text-slate-200" x-text="$store.app.points.model || '--'"></span>
       </div>
-      <div class="card-sub" x-text="$store.app.batteryPowerW > 0 ? 'Charging' : ($store.app.batteryPowerW < 0 ? 'Discharging' : 'Idle')"></div>
-    </div>
-
-    <!-- Grid Power -->
-    <div class="card">
-      <div class="card-label">Grid Power</div>
-      <div class="card-value" :style="'color:' + powerColour($store.app.gridPowerW, 'grid')">
-        <span x-text="fmt.kw($store.app.gridPowerW)"></span>
-        <span class="unit">kW</span>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">Serial</span>
+        <span class="font-mono text-slate-300" x-text="$store.app.points.serial || '--'"></span>
       </div>
-      <div class="card-sub" x-text="$store.app.gridPowerW > 0 ? 'Importing' : ($store.app.gridPowerW < 0 ? 'Exporting' : 'Neutral')"></div>
-    </div>
-
-    <!-- Solar Power -->
-    <div class="card">
-      <div class="card-label">Solar Power</div>
-      <div class="card-value" :style="'color:' + powerColour($store.app.solarPowerW, 'solar')">
-        <span x-text="fmt.kw($store.app.solarPowerW)"></span>
-        <span class="unit">kW</span>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">IP</span>
+        <span class="font-mono text-slate-300" x-text="deviceIp"></span>
       </div>
-      <div class="card-sub">Generating</div>
-    </div>
-
-    <!-- Home Load -->
-    <div class="card">
-      <div class="card-label">Home Load</div>
-      <div class="card-value">
-        <span x-text="fmt.kw($store.app.homePowerW)"></span>
-        <span class="unit">kW</span>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">Unit</span>
+        <span class="font-mono text-slate-300" x-text="deviceUnit"></span>
       </div>
-      <div class="card-sub">Consuming</div>
-    </div>
-
-  </div>
-
-  <!-- SOC + Status Row -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-
-    <!-- SOC Gauge -->
-    <div class="card flex items-center gap-6">
-      <div class="soc-ring">
-        <svg viewBox="0 0 100 100">
-          <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
-          <circle class="soc-ring-fill" cx="50" cy="50" r="40"
-                  :stroke="socColour($store.app.batterySoc)"
-                  :stroke-dashoffset="socRingOffset($store.app.batterySoc)"/>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">FW</span>
+        <span class="font-mono text-slate-400" x-text="$store.app.points.version || '--'"></span>
+      </div>
+      <div class="flex items-center gap-2 ml-auto">
+        <span class="text-slate-500">Grid</span>
+        <span class="chip text-[10px]"
+              :class="$store.app.points.grid_mode === 'Grid Forming' ? 'warn' : 'ok'"
+              x-text="$store.app.points.grid_mode || '--'"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500">Inverter</span>
+        <span class="chip text-[10px]"
+              :class="$store.app.points.inverter_state === 'Running' ? 'ok' :
+                      $store.app.points.inverter_state === 'Fault' ? 'error' : 'warn'"
+              x-text="$store.app.points.inverter_state || '--'"></span>
+      </div>
+      <button @click="showDiagnostics = true"
+              class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+              title="Diagnostics">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
         </svg>
-        <div class="soc-ring-text">
-          <span x-text="fmt.soc($store.app.batterySoc)"></span>
-          <span class="text-[10px] text-slate-500 font-medium">%</span>
-        </div>
-      </div>
-      <div>
-        <div class="text-sm font-semibold text-slate-300 mb-1">Battery SOC</div>
-        <div class="text-xs text-slate-500">
-          Available: <span x-text="$store.app.points.available_capacity_kwh != null ? ($store.app.points.available_capacity_kwh).toFixed(1) + ' kWh' : '--'"></span>
-        </div>
-        <div class="text-xs text-slate-500">
-          Total: <span x-text="$store.app.points.total_capacity_kwh != null ? ($store.app.points.total_capacity_kwh).toFixed(1) + ' kWh' : '--'"></span>
-        </div>
-      </div>
+      </button>
     </div>
+  </div>
 
-    <!-- Status Cards -->
-    <div class="card col-span-1 lg:col-span-2">
-      <div class="card-label mb-3">System Status</div>
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div>
-          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Battery State</div>
-          <div class="text-sm font-medium" x-text="$store.app.points.battery_state_name || '--'"></div>
-        </div>
-        <div>
-          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Inverter State</div>
-          <div class="text-sm font-medium" x-text="$store.app.points.inverter_state_name || '--'"></div>
-        </div>
-        <div>
-          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Grid</div>
-          <div class="text-sm font-medium"
-               :class="$store.app.points.grid_connected ? 'text-emerald-400' : 'text-red-400'"
-               x-text="$store.app.points.grid_connected ? 'Connected' : 'Disconnected'"></div>
-        </div>
-        <div>
-          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Control Mode</div>
-          <div class="text-sm font-medium" x-text="$store.app.points.loc_rem_ctl_name || '--'"></div>
-        </div>
-        <div>
-          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">WSet Enabled</div>
-          <div class="text-sm font-medium"
-               :class="$store.app.points.wset_enabled ? 'text-emerald-400' : 'text-slate-500'"
-               x-text="$store.app.points.wset_enabled ? 'Yes' : 'No'"></div>
-        </div>
-        <div>
-          <div class="text-[10px] uppercase text-slate-500 font-semibold mb-1">Operating Mode</div>
-          <div class="text-sm font-medium" x-text="$store.app.points.operating_mode_name || '--'"></div>
-        </div>
+  <!-- Diagnostics Modal -->
+  <div x-show="showDiagnostics" x-cloak
+       class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+       @keydown.escape.window="showDiagnostics = false">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showDiagnostics = false"></div>
+    <div class="relative bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.08]">
+        <h3 class="text-sm font-semibold text-slate-200">Diagnostics</h3>
+        <button @click="showDiagnostics = false" class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="overflow-y-auto max-h-[60vh] p-5 space-y-3 text-sm">
+        <template x-for="item in diagnosticItems" :key="item.label">
+          <div class="flex items-center justify-between py-1.5 border-b border-white/[0.04]">
+            <div class="flex items-center gap-2.5">
+              <span class="text-slate-500" x-text="item.icon"></span>
+              <span class="text-slate-400" x-text="item.label"></span>
+            </div>
+            <span class="font-mono text-sm text-slate-200" x-text="item.value"></span>
+          </div>
+        </template>
       </div>
     </div>
   </div>
 
-  <!-- Power Chart -->
-  <div class="card">
-    <div class="card-label mb-3">Power History (Last 30 min)</div>
-    <div class="relative" style="height: 280px;">
-      <canvas x-ref="powerChart"></canvas>
+  <!-- Two-column TUI layout -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+    <!-- ══ LEFT COLUMN ═══════════════════════════════════ -->
+
+    <!-- Power Flow Summary -->
+    <div class="card">
+      <div class="card-label mb-3">Power Flow Summary</div>
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-slate-400 w-20">Solar</span>
+          <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.solarPowerW, 'solar')"
+                x-text="fmt.w($store.app.solarPowerW) + 'W'"></span>
+          <span class="text-xs text-slate-500 w-28 text-right"
+                x-text="$store.app.solarPowerW > 0 ? 'Generating' : 'Idle'"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-slate-400 w-20">Home</span>
+          <span class="text-sm font-bold font-mono"
+                x-text="fmt.w($store.app.homePowerW) + 'W'"></span>
+          <span class="text-xs text-slate-500 w-28 text-right">Consuming</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-slate-400 w-20">Battery</span>
+          <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.batteryPowerW, 'battery')"
+                x-text="fmt.w($store.app.batteryPowerW) + 'W'"></span>
+          <span class="text-xs w-28 text-right"
+                :class="$store.app.batteryPowerW > 0 ? 'text-amber-400' : ($store.app.batteryPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
+                x-text="$store.app.batteryPowerW > 0 ? 'Discharging' : ($store.app.batteryPowerW < 0 ? 'Charging' : 'Idle')"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-slate-400 w-20">Grid</span>
+          <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.gridPowerW, 'grid')"
+                x-text="fmt.w($store.app.gridPowerW) + 'W'"></span>
+          <span class="text-xs w-28 text-right"
+                :class="$store.app.gridPowerW > 0 ? 'text-red-400' : ($store.app.gridPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
+                x-text="$store.app.gridPowerW > 0 ? 'Importing' : ($store.app.gridPowerW < 0 ? 'Exporting' : 'Neutral')"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AC Power -->
+    <div class="card">
+      <div class="card-label mb-3">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Voltage</span>
+          <span class="font-mono" x-text="($store.app.points.voltage_v ?? '--') + ' V'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Current</span>
+          <span class="font-mono" x-text="($store.app.points.current_a ?? '--') + ' A'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Frequency</span>
+          <span class="font-mono" x-text="($store.app.points.frequency_hz ?? '--') + ' Hz'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Power Factor</span>
+          <span class="font-mono" x-text="$store.app.points.power_factor ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Apparent</span>
+          <span class="font-mono" x-text="($store.app.points.grid_va ?? '--') + ' VA'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Reactive</span>
+          <span class="font-mono" x-text="($store.app.points.grid_var ?? '--') + ' VAR'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Battery State of Charge -->
+    <div class="card">
+      <div class="card-label mb-3">Battery State of Charge</div>
+      <div class="flex items-center gap-5">
+        <div class="soc-ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
+            <circle class="soc-ring-fill" cx="50" cy="50" r="40"
+                    :stroke="socColour($store.app.batterySoc)"
+                    :stroke-dashoffset="socRingOffset($store.app.batterySoc)"/>
+          </svg>
+          <div class="soc-ring-text">
+            <span x-text="fmt.soc($store.app.batterySoc)"></span>
+            <span class="text-[10px] text-slate-500 font-medium">%</span>
+          </div>
+        </div>
+        <div class="flex-1 text-sm space-y-1">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Reserve</span>
+            <span class="font-mono" x-text="($store.app.points.self_reserve_pct ?? '--') + '%'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">SoH</span>
+            <span class="font-mono" x-text="($store.app.points.soh ?? '--') + '%'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Mode</span>
+            <span class="font-medium" x-text="$store.app.points.mode_name || '--'"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Solar AC Inputs -->
+    <div class="card">
+      <div class="card-label mb-3">Solar AC Inputs</div>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between font-semibold">
+          <span class="text-slate-400">Total Solar</span>
+          <span class="font-mono" :style="'color:' + powerColour($store.app.points.total_solar, 'solar')"
+                x-text="fmt.w($store.app.points.total_solar) + 'W'"></span>
+        </div>
+        <div class="flex justify-between pl-4">
+          <span class="text-slate-500">Proximal</span>
+          <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_proximal) + 'W'"></span>
+        </div>
+        <div class="flex justify-between pl-4">
+          <span class="text-slate-500">Remote 1 (APbox)</span>
+          <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_remote1) + 'W'"></span>
+        </div>
+        <div class="flex justify-between pl-4">
+          <span class="text-slate-500">Remote 2</span>
+          <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_remote2) + 'W'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- DC Power (Battery) -->
+    <div class="card">
+      <div class="card-label mb-3">DC Power (Battery)</div>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Power</span>
+          <span class="font-mono font-semibold" x-text="fmt.w($store.app.points.battery_dc_power_w) + ' W'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">SoC</span>
+          <span class="font-mono" x-text="($store.app.points.soc ?? '--') + ' %'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Current</span>
+          <span class="font-mono" x-text="($store.app.points.battery_current_a ?? '--') + ' A'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">SoH</span>
+          <span class="font-mono" x-text="($store.app.points.soh ?? '--') + ' %'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Ambient</span>
+          <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' C'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Cabinet</span>
+          <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' C'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Available</span>
+          <span class="font-mono" x-text="($store.app.points.wh_available != null ? ($store.app.points.wh_available / 1000).toFixed(1) : '--') + ' kWh'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Rated</span>
+          <span class="font-mono" x-text="($store.app.points.wh_rating != null ? ($store.app.points.wh_rating / 1000).toFixed(1) : '--') + ' kWh'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lifetime Energy -->
+    <div class="card">
+      <div class="card-label mb-3">Lifetime Energy</div>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-amber-400">Solar PV Total</span>
+          <span class="font-mono font-semibold" x-text="($store.app.points.pv_energy_total_wh != null ? ($store.app.points.pv_energy_total_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-emerald-400">Discharged</span>
+          <span class="font-mono" x-text="($store.app.points.dc_energy_discharged_wh != null ? ($store.app.points.dc_energy_discharged_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-cyan-400">Charged</span>
+          <span class="font-mono" x-text="($store.app.points.dc_energy_charged_wh != null ? ($store.app.points.dc_energy_charged_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-emerald-400">Grid Export</span>
+          <span class="font-mono" x-text="($store.app.points.grid_export_wh != null ? ($store.app.points.grid_export_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-red-400">Grid Import</span>
+          <span class="font-mono" x-text="($store.app.points.grid_import_wh != null ? ($store.app.points.grid_import_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Battery Control -->
+    <div class="card" x-data="controlsTab()">
+      <div class="card-label mb-3">Battery Control</div>
+
+      <!-- Battery Command -->
+      <div class="mb-3">
+        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Command</label>
+        <select x-model="command" @change="sendCommand('battery_command', command)"
+                class="form-control !py-1.5 !text-sm">
+          <option value="Not Active">Not Active</option>
+          <option value="Charge">Charge</option>
+          <option value="Discharge">Discharge</option>
+          <option value="Idle">Idle</option>
+          <option value="Stop">Stop</option>
+          <option value="Release">Release</option>
+        </select>
+      </div>
+
+      <!-- Power + Duration -->
+      <div class="grid grid-cols-3 gap-3 mb-3">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Power (W)</label>
+          <div class="flex items-center gap-1">
+            <input type="range" min="0" max="5000" step="100" x-model="powerW"
+                   class="flex-1 accent-cyan-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('battery_command_power', powerW)">
+            <input type="number" x-model="powerW" min="0" max="5000" step="100"
+                   class="form-control !py-1 !text-xs w-16 text-center"
+                   @change="sendCommand('battery_command_power', powerW)">
+          </div>
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Power (%)</label>
+          <div class="flex items-center gap-1">
+            <input type="range" min="0" max="100" step="5" x-model="powerPct"
+                   class="flex-1 accent-cyan-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('battery_command_power_pct', powerPct)">
+            <input type="number" x-model="powerPct" min="0" max="100" step="5"
+                   class="form-control !py-1 !text-xs w-14 text-center"
+                   @change="sendCommand('battery_command_power_pct', powerPct)">
+          </div>
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Duration</label>
+          <div class="flex items-center gap-1">
+            <input type="range" min="60" max="7200" step="60" x-model="duration"
+                   class="flex-1 accent-cyan-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('battery_command_duration', duration)">
+            <input type="number" x-model="duration" min="60" max="7200" step="60"
+                   class="form-control !py-1 !text-xs w-16 text-center"
+                   @change="sendCommand('battery_command_duration', duration)">
+          </div>
+          <div class="text-[10px] text-slate-600 mt-0.5" x-text="Math.floor(duration / 60) + 'm ' + (duration % 60) + 's'"></div>
+        </div>
+      </div>
+
+      <!-- Active status + last result -->
+      <div class="border-t border-white/[0.06] pt-2 mt-1">
+        <div class="flex items-center justify-between text-xs mb-1">
+          <span class="text-slate-500">Active:</span>
+          <span class="font-medium"
+                :class="$store.app.points.battery_command_state && $store.app.points.battery_command_state !== 'Not Active' ? 'text-cyan-400' : 'text-slate-500'"
+                x-text="($store.app.points.battery_command_state || 'Not Active') + ($store.app.points.battery_command_power_w ? ' ' + $store.app.points.battery_command_power_w + 'W' : '')"></span>
+          <span class="text-slate-600" x-text="$store.app.points.sw_watchdog_remain_s ? $store.app.points.sw_watchdog_remain_s + 's left' : ''"></span>
+        </div>
+        <div class="text-xs font-mono px-2 py-1 rounded bg-slate-900/50 border border-white/5"
+             :class="lastResult.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'"
+             x-text="lastResult || 'No commands yet'"></div>
+      </div>
+    </div>
+
+    <!-- Operating Mode & Reserve -->
+    <div class="card" x-data="controlsTab()">
+      <div class="card-label mb-3">Operating Mode & Reserve</div>
+
+      <!-- Operating Mode -->
+      <div class="mb-3">
+        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Operating Mode</label>
+        <select x-model="operatingMode" @change="sendCommand('operating_mode', operatingMode)"
+                class="form-control !py-1.5 !text-sm">
+          <option value="">-- Current --</option>
+          <option value="Emergency Backup">Emergency Backup</option>
+          <option value="Self-Consumption">Self-Consumption</option>
+          <option value="Time of Use">Time of Use</option>
+        </select>
+      </div>
+
+      <div class="text-xs text-slate-400 mb-3 flex items-center gap-2">
+        <span class="text-slate-500">Current:</span>
+        <span class="font-medium" x-text="$store.app.points.mode_name || '--'"></span>
+      </div>
+
+      <!-- Reserve SOC -->
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Self Reserve %</label>
+          <div class="flex items-center gap-1">
+            <input type="range" min="0" max="100" step="5" x-model="selfReserve"
+                   class="flex-1 accent-emerald-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('self_reserve_pct', selfReserve)">
+            <input type="number" x-model="selfReserve" min="0" max="100" step="5"
+                   class="form-control !py-1 !text-xs w-14 text-center"
+                   @change="sendCommand('self_reserve_pct', selfReserve)">
+          </div>
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">TOU Reserve %</label>
+          <div class="flex items-center gap-1">
+            <input type="range" min="0" max="100" step="5" x-model="touReserve"
+                   class="flex-1 accent-emerald-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('tou_reserve_pct', touReserve)">
+            <input type="number" x-model="touReserve" min="0" max="100" step="5"
+                   class="form-control !py-1 !text-xs w-14 text-center"
+                   @change="sendCommand('tou_reserve_pct', touReserve)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Max ratings info -->
+      <div class="border-t border-white/[0.06] pt-2 mt-1 grid grid-cols-2 gap-2 text-xs">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Max Charge</span>
+          <span class="font-mono text-slate-400" x-text="($store.app.points.max_charge_rate_w ?? '--') + 'W'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Max Discharge</span>
+          <span class="font-mono text-slate-400" x-text="($store.app.points.max_discharge_rate_w ?? '--') + 'W'"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Tabbed bottom section: Power History | Modbus Sequencer -->
+  <div class="card" x-data="{ bottomTab: 'chart' }">
+    <!-- Tab bar -->
+    <div class="flex items-center gap-1 mb-3 border-b border-white/[0.06] -mx-4 px-4 pb-2">
+      <button @click="bottomTab = 'chart'"
+              class="px-3 py-1.5 text-xs font-medium rounded-t transition"
+              :class="bottomTab === 'chart' ? 'bg-cyan-500/15 text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-500 hover:text-slate-300'">
+        Power History
+      </button>
+      <button @click="bottomTab = 'sequencer'"
+              class="px-3 py-1.5 text-xs font-medium rounded-t transition"
+              :class="bottomTab === 'sequencer' ? 'bg-amber-500/15 text-amber-400 border-b-2 border-amber-400' : 'text-slate-500 hover:text-slate-300'">
+        Modbus Sequencer
+      </button>
+    </div>
+
+    <!-- Power History tab -->
+    <div x-show="bottomTab === 'chart'">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label !mb-0">Power History</div>
+        <div class="flex items-center gap-2">
+          <template x-for="r in chartRanges" :key="r.value">
+            <button @click="setChartRange(r.value)"
+                    class="px-2 py-0.5 text-[10px] font-medium rounded transition"
+                    :class="chartRange === r.value ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'"
+                    x-text="r.label"></button>
+          </template>
+        </div>
+      </div>
+      <div class="relative" style="height: 280px;">
+        <canvas x-ref="powerChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Modbus Sequencer tab -->
+    <div x-show="bottomTab === 'sequencer'" x-data="sequencerPanel()">
+      <div class="grid grid-cols-2 gap-4" style="min-height: 320px;">
+        <!-- Left: CLI Input -->
+        <div class="flex flex-col">
+          <label class="card-label !mb-2">Sequence Command</label>
+          <textarea x-model="seqInput" rows="3" placeholder='{"704.WSetEna": 1, "704.WSetPct": 30}'
+                    class="form-control !text-xs font-mono flex-shrink-0 mb-2"></textarea>
+          <div class="flex items-center gap-2 mb-3">
+            <button @click="executeInline()" :disabled="seqRunning"
+                    class="btn btn-sm btn-primary">
+              <span x-show="!seqRunning">Execute</span>
+              <span x-show="seqRunning" class="flex items-center gap-1.5">
+                <span class="loading-spinner !w-3 !h-3"></span> Running...
+              </span>
+            </button>
+            <label class="flex items-center gap-1.5 text-[10px] text-slate-500">
+              <input type="checkbox" x-model="dryRun" class="rounded border-slate-600 bg-slate-700 w-3 h-3">
+              Dry Run
+            </label>
+          </div>
+
+          <!-- Example sequence -->
+          <div class="flex-1 overflow-y-auto">
+            <div class="text-[10px] uppercase text-slate-600 font-semibold mb-1">Example Sequence</div>
+            <pre class="text-[10px] font-mono text-slate-500 bg-slate-900/50 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap">[
+  {"step": "Enable Control",
+   "writes": {"704.WSetEna": 1}, "verify": true},
+  {"step": "Set Charge Power",
+   "writes": {"704.WSetPct": 30},
+   "verify": true, "sleep_ms": 500},
+  {"step": "Release",
+   "writes": {"704.WSetEna": 0, "704.WSetPct": 0},
+   "verify": true}
+]</pre>
+          </div>
+        </div>
+
+        <!-- Right: Terminal Output -->
+        <div class="flex flex-col">
+          <label class="card-label !mb-2">Output</label>
+          <div class="flex-1 bg-slate-950 rounded border border-white/[0.06] overflow-y-auto p-3 font-mono text-[11px] leading-relaxed"
+               x-ref="seqTerminal">
+            <template x-for="(line, i) in seqOutput" :key="i">
+              <div :class="line.startsWith('ERROR') || line.startsWith('FAIL') ? 'text-red-400' :
+                           line.startsWith('OK') || line.startsWith('PASS') || line.startsWith('SUCCESS') ? 'text-emerald-400' :
+                           line.startsWith('STEP') || line.startsWith('>>>') ? 'text-cyan-400' :
+                           line.startsWith('DRY') ? 'text-amber-400' : 'text-slate-400'"
+                   x-text="line"></div>
+            </template>
+            <div x-show="seqOutput.length === 0" class="text-slate-600 italic">
+              Enter a JSON sequence and click Execute...
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

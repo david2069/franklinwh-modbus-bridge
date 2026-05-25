@@ -1,0 +1,28 @@
+[
+  {
+    "step": "Enable Remote Control",
+    "writes": { "704.WSetEna": 1 },
+    "verify": true,
+    "note": "Must enable master switch first"
+  },
+  {
+    "step": "Set Charge Power",
+    "writes": { "704.WSetPct": 30 },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "30% charge (~1.5kW on aGate X)"
+  },
+  {
+    "step": "Wait for 10 seconds",
+    "sleep_ms": 10000,
+    "note": "Maintain charge for short duration"
+  },
+  {
+    "step": "Stop and Release",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true
+  }
+]

@@ -1,62 +1,147 @@
 /**
- * Dashboard Tab — power flow cards, SOC gauge, real-time chart
+ * Dashboard Tab — power flow cards, SOC gauge, real-time + historic chart
  */
 function dashboardTab() {
   return {
     chart: null,
-    history: { labels: [], battery: [], grid: [], solar: [], home: [] },
-    maxPoints: 180, // 30 min at 10s intervals
+    deviceIp: '--',
+    deviceUnit: '--',
+    showDiagnostics: false,
 
-    init() {
-      this._createChart();
+    // Chart range selector
+    chartRange: '30m',
+    chartRanges: [
+      { value: '30m', label: '30m' },
+      { value: '1h',  label: '1h' },
+      { value: '6h',  label: '6h' },
+      { value: '24h', label: '24h' },
+      { value: '7d',  label: '7d' },
+      { value: '30d', label: '30d' },
+    ],
+
+    // Live in-memory buffer for real-time (last 30m)
+    liveHistory: { labels: [], battery: [], grid: [], solar: [], home: [] },
+    maxLivePoints: 180,
+
+    async init() {
+      await this._loadGateway();
+      // Defer chart creation to next tick so canvas is sized by the layout
+      this.$nextTick(() => {
+        this._createChart();
+        this._loadMetrics();
+      });
       this._startPolling();
+    },
+
+    async _loadGateway() {
+      const data = await fetchJSON('api/gateway');
+      if (data && !data.error) {
+        this.deviceIp = data.host || '--';
+        this.deviceUnit = data.unit_id ?? '--';
+      }
+    },
+
+    async setChartRange(range) {
+      this.chartRange = range;
+      await this._loadMetrics();
+    },
+
+    async _loadMetrics() {
+      const data = await fetchJSON('api/metrics?range=' + this.chartRange);
+      if (data && !data.error && data.points && data.points.length > 0) {
+        const labels = data.points.map(p => {
+          const d = new Date(p.ts * 1000);
+          return this.chartRange === '30m' || this.chartRange === '1h'
+            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : this.chartRange === '6h' || this.chartRange === '24h'
+              ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+                d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        });
+
+        this._updateChartData(
+          labels,
+          data.points.map(p => p.battery_w),
+          data.points.map(p => p.grid_w),
+          data.points.map(p => p.solar_w),
+          data.points.map(p => p.home_w),
+        );
+      } else if (this.chartRange === '30m') {
+        // Fallback to live buffer if no stored metrics yet
+        this._updateChartData(
+          this.liveHistory.labels,
+          this.liveHistory.battery,
+          this.liveHistory.grid,
+          this.liveHistory.solar,
+          this.liveHistory.home,
+        );
+      }
+    },
+
+    _updateChartData(labels, battery, grid, solar, home) {
+      if (!this.chart) return;
+      this.chart.data.labels = labels;
+      this.chart.data.datasets[0].data = battery;
+      this.chart.data.datasets[1].data = grid;
+      this.chart.data.datasets[2].data = solar;
+      this.chart.data.datasets[3].data = home;
+
+      // Scale Y-axis to max charge/discharge rating
+      const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
+      this.chart.options.scales.y.suggestedMin = -maxRating;
+      this.chart.options.scales.y.suggestedMax = maxRating;
+
+      this.chart.resize();
+      this.chart.update();
     },
 
     _createChart() {
       const ctx = this.$refs.powerChart;
       if (!ctx) return;
 
+      const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
+
       this.chart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: this.history.labels,
+          labels: [],
           datasets: [
             {
               label: 'Battery',
-              data: this.history.battery,
+              data: [],
               borderColor: '#06b6d4',
               backgroundColor: 'rgba(6, 182, 212, 0.1)',
-              borderWidth: 2,
+              borderWidth: 1.5,
               tension: 0.3,
               pointRadius: 0,
               fill: true,
             },
             {
               label: 'Grid',
-              data: this.history.grid,
+              data: [],
               borderColor: '#ef4444',
               backgroundColor: 'rgba(239, 68, 68, 0.05)',
-              borderWidth: 2,
+              borderWidth: 1.5,
               tension: 0.3,
               pointRadius: 0,
               fill: false,
             },
             {
               label: 'Solar',
-              data: this.history.solar,
+              data: [],
               borderColor: '#f59e0b',
               backgroundColor: 'rgba(245, 158, 11, 0.1)',
-              borderWidth: 2,
+              borderWidth: 1.5,
               tension: 0.3,
               pointRadius: 0,
               fill: true,
             },
             {
               label: 'Home',
-              data: this.history.home,
+              data: [],
               borderColor: '#8b5cf6',
               backgroundColor: 'rgba(139, 92, 246, 0.05)',
-              borderWidth: 2,
+              borderWidth: 1.5,
               tension: 0.3,
               pointRadius: 0,
               fill: false,
@@ -89,6 +174,8 @@ function dashboardTab() {
               grid: { color: 'rgba(255,255,255,0.04)' },
             },
             y: {
+              suggestedMin: -maxRating,
+              suggestedMax: maxRating,
               ticks: {
                 color: '#64748b',
                 font: { size: 10 },
@@ -102,13 +189,14 @@ function dashboardTab() {
     },
 
     _startPolling() {
-      // Record a data point every refresh cycle
       this._recordPoint();
-      window.addEventListener('tab:changed', () => {});
-
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'dashboard') {
           this._recordPoint();
+          // Refresh metrics from DB every 30s for stored ranges
+          if (this.chartRange !== '30m') {
+            this._loadMetrics();
+          }
         }
       }, 10000);
     },
@@ -118,24 +206,57 @@ function dashboardTab() {
       const now = new Date();
       const label = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      this.history.labels.push(label);
-      this.history.battery.push(pts.battery_power_w ?? null);
-      this.history.grid.push(pts.grid_power_w ?? null);
-      this.history.solar.push(pts.solar_power_w ?? null);
-      this.history.home.push(pts.home_load_w ?? null);
+      this.liveHistory.labels.push(label);
+      this.liveHistory.battery.push(pts.battery_power_w ?? null);
+      this.liveHistory.grid.push(pts.grid_power_w ?? null);
+      this.liveHistory.solar.push(pts.total_solar ?? null);
+      this.liveHistory.home.push(pts.home_load_ext ?? null);
 
-      // Trim to maxPoints
-      if (this.history.labels.length > this.maxPoints) {
-        this.history.labels.shift();
-        this.history.battery.shift();
-        this.history.grid.shift();
-        this.history.solar.shift();
-        this.history.home.shift();
+      if (this.liveHistory.labels.length > this.maxLivePoints) {
+        this.liveHistory.labels.shift();
+        this.liveHistory.battery.shift();
+        this.liveHistory.grid.shift();
+        this.liveHistory.solar.shift();
+        this.liveHistory.home.shift();
       }
 
-      if (this.chart) {
-        this.chart.update('none'); // 'none' = no animation for real-time
+      // Only update chart from live data when showing 30m range
+      if (this.chartRange === '30m') {
+        this._updateChartData(
+          this.liveHistory.labels,
+          this.liveHistory.battery,
+          this.liveHistory.grid,
+          this.liveHistory.solar,
+          this.liveHistory.home,
+        );
       }
+    },
+
+    // Diagnostics computed property
+    get diagnosticItems() {
+      const pts = Alpine.store('app').points;
+      const fmt_val = (v, unit) => v != null ? v + ' ' + unit : '--';
+      return [
+        { icon: '🌡', label: 'Ambient Temperature', value: fmt_val(pts.ambient_temp_c, '°C') },
+        { icon: '🌡', label: 'Cabinet Temperature', value: fmt_val(pts.cabinet_temp_c, '°C') },
+        { icon: '⏱', label: 'Command Elapsed Time', value: fmt_val(pts.command_elapsed_s, 's') },
+        { icon: '📡', label: 'Control Mode', value: pts.loc_rem_ctl_name || '--' },
+        { icon: '🔌', label: 'Grid Connection', value: pts.connection_state || '--' },
+        { icon: '⏪', label: 'HW Revert Remaining', value: fmt_val(pts.wset_revert_remain_s, 's') },
+        { icon: '⏰', label: 'HW Revert Timer', value: fmt_val(pts.wset_revert_time_s, 's') },
+        { icon: '⚡', label: 'Inverter State', value: pts.inverter_state || '--' },
+        { icon: '📋', label: 'Last Command Result', value: pts.last_command_result || '--' },
+        { icon: '🔋', label: 'Max Charge Rate', value: pts.max_charge_rate_w != null ? (pts.max_charge_rate_w / 1000).toFixed(2) + ' kW' : '--' },
+        { icon: '🔋', label: 'Max Discharge Rate', value: pts.max_discharge_rate_w != null ? (pts.max_discharge_rate_w / 1000).toFixed(2) + ' kW' : '--' },
+        { icon: '⚙️', label: 'Operating Mode', value: pts.mode_name || '--' },
+        { icon: '🎯', label: 'Power Setpoint', value: pts.wset_watts != null ? (pts.wset_watts / 1000).toFixed(2) + ' kW' : '--' },
+        { icon: '📊', label: 'Power Setpoint %', value: pts.wset_pct != null ? pts.wset_pct + '%' : '--' },
+        { icon: '🔘', label: 'Remote Power Control', value: pts.wset_enabled ?? '--' },
+        { icon: '⚠️', label: 'SW Watchdog Remaining', value: fmt_val(pts.sw_watchdog_remain_s, 's') },
+        { icon: '🔋', label: 'Total Capacity', value: pts.wh_rating != null ? (pts.wh_rating / 1000).toFixed(3) + ' kWh' : '--' },
+        { icon: '⚪', label: 'WSet Enabled', value: pts.wset_enabled === 2 || pts.wset_enabled === true ? 'On' : 'Off' },
+        { icon: '⚙️', label: 'WSet Mode', value: pts.wset_mode ?? '--' },
+      ];
     },
   };
 }

@@ -6,7 +6,15 @@ import pytest
 
 from franklinwh_bridge.modbus.sample import Sample
 from franklinwh_bridge.store.db import init_db
-from franklinwh_bridge.store.metrics import SQLiteMetrics
+from franklinwh_bridge.store.metrics import (
+    DEFAULT_RETENTION_DAYS,
+    SQLiteMetrics,
+    get_retention_days,
+    purge_old,
+    query_metrics,
+    record_sample,
+    set_retention_days,
+)
 
 
 @pytest.fixture
@@ -96,3 +104,105 @@ async def test_prune_respects_ttl(metrics):
     )
     pruned = await metrics.prune(ttl_days=14)
     assert pruned == 0
+
+
+# ---------------------------------------------------------------------------
+# Dashboard metrics (v5 table) tests
+# ---------------------------------------------------------------------------
+
+
+async def test_record_sample_writes_row(db):
+    points = {
+        "battery_power_w": 700,
+        "grid_power_w": 1,
+        "total_solar": 0,
+        "home_load_ext": 678,
+        "soc": 30,
+    }
+    await record_sample(db, points)
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 1
+
+
+async def test_record_sample_skips_empty(db):
+    await record_sample(db, {"some_other_point": 42})
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 0
+
+
+async def test_query_metrics_raw(db):
+    now = time.time()
+    for i in range(5):
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (now - 60 + i * 10, 100 + i, 200 + i, 300 + i, 400 + i, 50 + i),
+        )
+    await db.commit()
+
+    rows = await query_metrics(db, range_seconds=1800)
+    assert len(rows) == 5
+    assert rows[0]["battery_w"] == 100
+    assert rows[-1]["soc"] == 54
+
+
+async def test_query_metrics_downsampled(db):
+    now = time.time()
+    # Insert 1000 points spanning 8 hours
+    for i in range(1000):
+        ts = now - 8 * 3600 + i * 28.8  # ~28.8s apart
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, float(i), 0, 0, 0, 50),
+        )
+    await db.commit()
+
+    rows = await query_metrics(db, range_seconds=8 * 3600)
+    # Should be downsampled to <= 360 buckets
+    assert len(rows) <= 360
+    assert len(rows) > 0
+    # Each row should have the expected keys
+    assert "ts" in rows[0]
+    assert "battery_w" in rows[0]
+
+
+async def test_purge_old_removes_expired(db):
+    now = time.time()
+    old_ts = now - 31 * 86400  # 31 days ago
+    recent_ts = now - 1 * 86400  # 1 day ago
+    await db.execute(
+        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (old_ts, 100, 200, 300, 400, 50),
+    )
+    await db.execute(
+        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (recent_ts, 100, 200, 300, 400, 50),
+    )
+    await db.commit()
+
+    deleted = await purge_old(db, retention_days=30)
+    assert deleted == 1
+
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 1
+
+
+async def test_retention_days_default(db):
+    days = await get_retention_days(db)
+    assert days == DEFAULT_RETENTION_DAYS
+
+
+async def test_retention_days_set_and_get(db):
+    await set_retention_days(db, 7)
+    days = await get_retention_days(db)
+    assert days == 7
+
+    await set_retention_days(db, 90)
+    days = await get_retention_days(db)
+    assert days == 90

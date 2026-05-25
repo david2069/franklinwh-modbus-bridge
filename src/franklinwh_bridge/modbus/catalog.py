@@ -7,10 +7,145 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import aiosqlite
 
 logger = logging.getLogger(__name__)
+
+
+def extract_catalog_from_controller(controller: Any) -> dict:
+    """Extract SunSpec model catalog from a connected controller.
+
+    Walks the pysunspec2 model objects in ``controller.models`` and builds a
+    ``device_info`` dict identical to the format produced by the reader tool.
+    Only reads in-memory model definitions — no Modbus register I/O.
+    """
+    device_info: dict[str, Any] = {"models": {}}
+
+    for model_id, model_val in controller.models.items():
+        if not isinstance(model_id, int):
+            continue
+
+        # Handle list-wrapped models (pysunspec2 can return [model] or model)
+        model_obj = model_val[0] if isinstance(model_val, list) and model_val else model_val
+        if model_obj is None:
+            continue
+
+        # Model name/label from gdef (group definition) or model_type
+        model_name = f"Model {model_id}"
+        gdef = getattr(model_obj, "gdef", None)
+        if gdef:
+            model_name = (
+                gdef.get("label") or gdef.get("name") or model_name
+            )
+        elif hasattr(model_obj, "model_type"):
+            mt = model_obj.model_type
+            if hasattr(mt, "label"):
+                model_name = mt.label or model_name
+
+        # Model base address for computing absolute point addresses
+        # pysunspec2 uses `model_addr` for the Modbus register base
+        model_addr = getattr(model_obj, "model_addr", None)
+        if model_addr is None:
+            model_addr = getattr(model_obj, "addr", None)
+        if model_addr is None:
+            model_addr = getattr(model_obj, "offset", None)
+
+        # Extract points
+        points: list[dict[str, Any]] = []
+        point_names = getattr(model_obj, "points", None)
+        if point_names:
+            for pt_name in point_names:
+                pt = getattr(model_obj, pt_name, None)
+                if pt is None:
+                    continue
+
+                point_info: dict[str, Any] = {"name": pt_name}
+
+                # Point definition metadata
+                pdef = getattr(pt, "pdef", None)
+                if pdef is None:
+                    pdef = getattr(pt, "point_type", None)
+
+                if pdef:
+                    _pdef = pdef  # bind for lambda closure
+
+                    _get = (
+                        _pdef.get
+                        if isinstance(_pdef, dict)
+                        else lambda k, d=None, _p=_pdef: getattr(_p, k, d)
+                    )
+
+                    for key in ("type", "label", "desc", "access"):
+                        v = _get(key, None)
+                        if v is not None:
+                            point_info[key] = str(v) if key == "type" else v
+
+                    # Units — pysunspec2 uses 'units', fixture uses 'units'
+                    units = _get("units", None)
+                    if units:
+                        point_info["units"] = units
+
+                    # Scale factor reference
+                    sf = _get("sf", None)
+                    if sf:
+                        point_info["scale_factor"] = sf
+
+                    # Register size
+                    size = _get("size", None)
+                    if size:
+                        point_info["size"] = size
+
+                    # Compute absolute address from model base + point offset
+                    # pysunspec2 stores offset on the point object, not in pdef
+                    pt_offset = getattr(pt, "offset", None)
+                    if pt_offset is None:
+                        pt_offset = _get("offset", None)
+                    if pt_offset is not None and model_addr is not None:
+                        point_info["address"] = model_addr + pt_offset
+                    elif hasattr(pt, "addr") and pt.addr is not None:
+                        point_info["address"] = pt.addr
+
+                    # Symbols (enum/bitmap values)
+                    symbols_raw = _get("symbols", None)
+                    if symbols_raw:
+                        sym_dict: dict[str, str] = {}
+                        try:
+                            if isinstance(symbols_raw, (list, tuple)):
+                                for sym in symbols_raw:
+                                    if isinstance(sym, dict):
+                                        sym_dict[str(sym["value"])] = (
+                                            sym.get("label") or sym.get("name", "")
+                                        )
+                                    elif hasattr(sym, "value"):
+                                        sym_dict[str(sym.value)] = (
+                                            getattr(sym, "label", None)
+                                            or getattr(sym, "name", "")
+                                        )
+                            elif isinstance(symbols_raw, dict):
+                                sym_dict = {
+                                    str(k): str(v) for k, v in symbols_raw.items()
+                                }
+                        except (TypeError, KeyError, AttributeError):
+                            pass
+                        if sym_dict:
+                            point_info["symbols"] = sym_dict
+
+                points.append(point_info)
+
+        device_info["models"][str(model_id)] = {
+            "id": model_id,
+            "name": model_name,
+            "points": points,
+        }
+
+    logger.info(
+        "Extracted catalog from controller: %d models, %d total points",
+        len(device_info["models"]),
+        sum(len(m["points"]) for m in device_info["models"].values()),
+    )
+    return device_info
 
 
 @dataclass

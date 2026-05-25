@@ -1,0 +1,55 @@
+[
+  {
+    "step": "Phase 0: Pre-flight telemetry snapshot",
+    "reads": [
+      "704.WSetEna",
+      "704.WSetMod",
+      "704.WSet"
+    ],
+    "note": "Establish baseline active power states"
+  },
+  {
+    "step": "Safety Flow: Initialize standby",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetPct": 0,
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Safely initialize remote control mode at 0W idle"
+  },
+  {
+    "step": "Configure and dispatch 1000W discharge",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSet": 1000,
+      "704.WSetRvrt": 0,
+      "704.WSetRvrtTms": 1800,
+      "704.WSetEnaRvrt": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Dispatch active discharge at 1000W (positive) with a 30-minute reversion"
+  },
+  {
+    "step": "Verify active dispatch",
+    "reads": [
+      "704.WSetEna",
+      "704.WSet",
+      "704.WSetRvrtRem",
+      "714.DCW"
+    ],
+    "note": "Verify dispatch setpoints and live battery power flow"
+  },
+  {
+    "step": "Safety Flow: Stop and release",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Explicitly release remote control and hand back to native battery auto-modes"
+  }
+]

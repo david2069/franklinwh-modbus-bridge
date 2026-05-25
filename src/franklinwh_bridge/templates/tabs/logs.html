@@ -1,0 +1,114 @@
+<!-- ── Logs Tab — filterable log viewer with pagination ── -->
+<div x-data="logsTab()">
+
+  <!-- Level summary cards -->
+  <div class="grid grid-cols-5 gap-3 mb-4">
+    <template x-for="lvl in levels" :key="lvl.name">
+      <button @click="toggleLevelFilter(lvl.name)"
+              class="card !p-3 text-center transition hover:opacity-80"
+              :class="levelFilter === lvl.name ? 'ring-1 ring-current' : ''">
+        <div class="text-[10px] uppercase font-semibold tracking-wider mb-1"
+             :class="lvl.color" x-text="lvl.name"></div>
+        <div class="text-xl font-bold font-mono" :class="lvl.color"
+             x-text="summary[lvl.name] ?? 0"></div>
+      </button>
+    </template>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="card !p-3 mb-4">
+    <div class="flex items-center gap-3 flex-wrap">
+      <!-- Search -->
+      <div class="flex-1 min-w-[200px]">
+        <input type="text" x-model="searchQuery" placeholder="Search messages..."
+               class="form-control !py-1.5 !text-xs" @input.debounce.300ms="loadLogs()">
+      </div>
+      <!-- Level filter -->
+      <select x-model="levelFilter" @change="loadLogs()" class="form-control !py-1.5 !text-xs w-28">
+        <option value="">All Levels</option>
+        <option value="DEBUG">DEBUG</option>
+        <option value="INFO">INFO</option>
+        <option value="WARNING">WARNING</option>
+        <option value="ERROR">ERROR</option>
+        <option value="CRITICAL">CRITICAL</option>
+      </select>
+      <!-- Source filter -->
+      <input type="text" x-model="sourceFilter" placeholder="Source filter..."
+             class="form-control !py-1.5 !text-xs w-40" @input.debounce.300ms="loadLogs()">
+      <!-- Auto-refresh toggle -->
+      <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none">
+        <input type="checkbox" x-model="autoRefresh" class="accent-cyan-500"
+               @change="autoRefresh ? startAutoRefresh() : stopAutoRefresh()">
+        Auto
+      </label>
+      <!-- Refresh -->
+      <button @click="loadLogs()" class="px-3 py-1.5 text-xs font-medium rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition">
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex items-center gap-3 py-8 justify-center">
+    <div class="loading-spinner"></div>
+    <span class="text-sm text-slate-500">Loading logs...</span>
+  </div>
+
+  <!-- Log table -->
+  <div x-show="!loading" class="card !p-0 overflow-hidden">
+    <div class="overflow-auto" style="max-height: calc(100vh - 360px);">
+      <table class="w-full text-xs">
+        <thead class="sticky top-0 bg-slate-800 z-10">
+          <tr class="border-b border-white/[0.08]">
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold w-32">TIME</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold w-20">LEVEL</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold w-40">SOURCE</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold">MESSAGE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(entry, idx) in paginatedLogs" :key="idx">
+            <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
+              <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap"
+                  x-text="formatTs(entry.ts)"></td>
+              <td class="px-3 py-1.5">
+                <span class="chip text-[10px]"
+                      :class="levelChipClass(entry.level)"
+                      x-text="entry.level"></span>
+              </td>
+              <td class="px-3 py-1.5 font-mono text-slate-500 truncate max-w-[200px]"
+                  x-text="entry.name || ''"></td>
+              <td class="px-3 py-1.5 font-mono text-slate-300"
+                  :class="entry.level === 'ERROR' || entry.level === 'CRITICAL' ? 'text-red-400' :
+                          entry.level === 'WARNING' ? 'text-amber-400' : ''"
+                  x-text="entry.message"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex items-center justify-between px-4 py-2 border-t border-white/[0.08] bg-slate-800/50">
+      <span class="text-xs text-slate-500" x-text="filteredLogs.length + ' entries'"></span>
+      <div class="flex items-center gap-2">
+        <button @click="prevPage()" :disabled="page === 0"
+                class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-30 transition">
+          Prev
+        </button>
+        <span class="text-xs text-slate-500" x-text="(page + 1) + ' / ' + totalPages"></span>
+        <button @click="nextPage()" :disabled="page >= totalPages - 1"
+                class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-30 transition">
+          Next
+        </button>
+        <select x-model.number="pageSize" @change="page = 0" class="form-control !py-1 !text-[10px] w-16">
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+</div>

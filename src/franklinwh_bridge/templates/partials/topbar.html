@@ -4,9 +4,10 @@
   <!-- Left: Page title -->
   <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider"
       x-text="$store.app.activeTab === 'dashboard' ? 'Dashboard' :
-              $store.app.activeTab === 'controls' ? 'Battery Controls' :
               $store.app.activeTab === 'explorer' ? 'SunSpec Explorer' :
-              'Settings & Logs'">
+              $store.app.activeTab === 'logs' ? 'Logs' :
+              $store.app.activeTab === 'sequencer' ? 'Sequencer' :
+              'Settings'">
   </h1>
 
   <!-- Right: Status indicators -->
