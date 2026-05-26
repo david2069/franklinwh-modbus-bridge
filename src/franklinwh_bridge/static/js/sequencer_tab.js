@@ -19,8 +19,54 @@ function sequencerTab() {
     validationError: null,
     showSyntaxRef: false,
 
+    // Resizable panel dimensions
+    listWidth: 220,
+    outputFlex: 300,
+    resizing: null,  // 'list' | 'output' | null
+    _startX: 0,
+    _startY: 0,
+    _startVal: 0,
+
     async init() {
       await this.loadSequences();
+
+      // Bind global mouse events for resize
+      this._onMouseMove = (e) => this._handleResize(e);
+      this._onMouseUp = () => this._stopResize();
+      document.addEventListener('mousemove', this._onMouseMove);
+      document.addEventListener('mouseup', this._onMouseUp);
+    },
+
+    destroy() {
+      document.removeEventListener('mousemove', this._onMouseMove);
+      document.removeEventListener('mouseup', this._onMouseUp);
+    },
+
+    startResize(which, e) {
+      this.resizing = which;
+      this._startX = e.clientX;
+      this._startY = e.clientY;
+      this._startVal = which === 'list' ? this.listWidth : this.outputFlex;
+      document.body.style.cursor = which === 'list' ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+    },
+
+    _handleResize(e) {
+      if (!this.resizing) return;
+      if (this.resizing === 'list') {
+        const dx = e.clientX - this._startX;
+        this.listWidth = Math.max(140, Math.min(500, this._startVal + dx));
+      } else if (this.resizing === 'output') {
+        const dy = this._startY - e.clientY;  // drag up = bigger output
+        this.outputFlex = Math.max(80, Math.min(700, this._startVal + dy));
+      }
+    },
+
+    _stopResize() {
+      if (!this.resizing) return;
+      this.resizing = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     },
 
     async loadSequences() {

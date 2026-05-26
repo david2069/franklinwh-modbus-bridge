@@ -8,6 +8,9 @@ function dashboardTab() {
     deviceUnit: '--',
     showDiagnostics: false,
 
+    // Bottom section tab (chart vs sequencer)
+    bottomTab: 'chart',
+
     // Chart range selector
     chartRange: '30m',
     chartRanges: [
@@ -46,18 +49,32 @@ function dashboardTab() {
       await this._loadMetrics();
     },
 
+    _formatChartLabel(ts) {
+      const d = new Date(ts * 1000);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const range = this.chartRange;
+
+      if (range === '30m' || range === '1h') {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      if (range === '6h' || range === '24h') {
+        // Show date prefix if data spans midnight
+        if (!sameDay) {
+          return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
+                 d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      // 7d / 30d — always show date + time
+      return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
+             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    },
+
     async _loadMetrics() {
       const data = await fetchJSON('api/metrics?range=' + this.chartRange);
       if (data && !data.error && data.points && data.points.length > 0) {
-        const labels = data.points.map(p => {
-          const d = new Date(p.ts * 1000);
-          return this.chartRange === '30m' || this.chartRange === '1h'
-            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-            : this.chartRange === '6h' || this.chartRange === '24h'
-              ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-                d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        });
+        const labels = data.points.map(p => this._formatChartLabel(p.ts));
 
         this._updateChartData(
           labels,
@@ -230,6 +247,47 @@ function dashboardTab() {
           this.liveHistory.home,
         );
       }
+    },
+
+    // Export chart data to CSV or JSON
+    exportChartData(format) {
+      if (!this.chart || !this.chart.data.labels.length) {
+        Alpine.store('app').toast('No chart data to export', 'error');
+        return;
+      }
+      const labels = this.chart.data.labels;
+      const ds = this.chart.data.datasets;
+      let content, filename, mime;
+
+      if (format === 'csv') {
+        const header = 'Time,Battery (W),Grid (W),Solar (W),Home (W)';
+        const rows = labels.map((l, i) =>
+          `${l},${ds[0].data[i] ?? ''},${ds[1].data[i] ?? ''},${ds[2].data[i] ?? ''},${ds[3].data[i] ?? ''}`
+        );
+        content = header + '\n' + rows.join('\n');
+        filename = `power_history_${this.chartRange}.csv`;
+        mime = 'text/csv';
+      } else {
+        const data = labels.map((l, i) => ({
+          time: l,
+          battery_w: ds[0].data[i],
+          grid_w: ds[1].data[i],
+          solar_w: ds[2].data[i],
+          home_w: ds[3].data[i],
+        }));
+        content = JSON.stringify({ range: this.chartRange, points: data }, null, 2);
+        filename = `power_history_${this.chartRange}.json`;
+        mime = 'application/json';
+      }
+
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      Alpine.store('app').toast(`Exported ${labels.length} points as ${format.toUpperCase()}`, 'info');
     },
 
     // Diagnostics computed property

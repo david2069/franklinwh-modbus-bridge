@@ -410,7 +410,7 @@
   </div>
 
   <!-- Tabbed bottom section: Power History | Modbus Sequencer -->
-  <div class="card" x-data="{ bottomTab: 'chart' }">
+  <div class="card">
     <!-- Tab bar -->
     <div class="flex items-center gap-1 mb-3 border-b border-white/[0.06] -mx-4 px-4 pb-2">
       <button @click="bottomTab = 'chart'"
@@ -436,6 +436,23 @@
                     :class="chartRange === r.value ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'"
                     x-text="r.label"></button>
           </template>
+          <div class="w-px h-4 bg-white/[0.08] mx-1"></div>
+          <button @click="exportChartData('csv')"
+                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition"
+                  title="Export CSV">
+            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            CSV
+          </button>
+          <button @click="exportChartData('json')"
+                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition"
+                  title="Export JSON">
+            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            JSON
+          </button>
         </div>
       </div>
       <div class="relative" style="height: 280px;">

@@ -75,10 +75,51 @@ body {
 [x-cloak] { display: none !important; }
 
 /* ── Scrollbar ──────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--surface-0); }
-::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 3px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--surface-0); border-radius: 5px; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 5px; min-height: 40px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+/* Firefox */
+* { scrollbar-width: auto; scrollbar-color: var(--surface-2) var(--surface-0); }
+
+/* ── Resize divider ────────────────────────────────────── */
+.resize-handle {
+  flex-shrink: 0;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-fast);
+}
+.resize-handle:hover, .resize-handle.active {
+  background: var(--accent-glow);
+}
+.resize-handle-v {
+  cursor: row-resize;
+}
+.resize-handle-dots {
+  width: 4px;
+  height: 20px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--surface-2) 0px,
+    var(--surface-2) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+  border-radius: 2px;
+}
+.resize-handle-v .resize-handle-dots {
+  width: 20px;
+  height: 4px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--surface-2) 0px,
+    var(--surface-2) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+}
 
 /* ── Cards ──────────────────────────────────────────────── */
 .card {

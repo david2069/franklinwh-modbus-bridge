@@ -1,14 +1,28 @@
 <!-- ── Topbar ─────────────────────────────────────────── -->
 <header class="flex items-center justify-between gap-4 px-4 lg:px-6 py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
 
-  <!-- Left: Page title -->
-  <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider"
-      x-text="$store.app.activeTab === 'dashboard' ? 'Dashboard' :
-              $store.app.activeTab === 'explorer' ? 'SunSpec Explorer' :
-              $store.app.activeTab === 'logs' ? 'Logs' :
-              $store.app.activeTab === 'sequencer' ? 'Sequencer' :
-              'Settings'">
-  </h1>
+  <!-- Left: Sidebar toggle + Page title -->
+  <div class="flex items-center gap-3">
+    <!-- Sidebar collapse/expand toggle (always visible) -->
+    <button @click="$store.app.sidebarCollapsed = !$store.app.sidebarCollapsed"
+            class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+            :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+      <svg class="w-4 h-4 transition-transform duration-300"
+           :class="$store.app.sidebarCollapsed && 'rotate-180'"
+           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <polyline points="11 17 6 12 11 7"/>
+        <polyline points="18 17 13 12 18 7"/>
+      </svg>
+    </button>
+
+    <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider"
+        x-text="$store.app.activeTab === 'dashboard' ? 'Dashboard' :
+                $store.app.activeTab === 'explorer' ? 'SunSpec Explorer' :
+                $store.app.activeTab === 'logs' ? 'Logs' :
+                $store.app.activeTab === 'sequencer' ? 'Sequencer' :
+                'Settings'">
+    </h1>
+  </div>
 
   <!-- Right: Status indicators -->
   <div class="flex items-center gap-4">
