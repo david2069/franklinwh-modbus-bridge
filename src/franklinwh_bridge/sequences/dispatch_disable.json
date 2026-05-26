@@ -1,0 +1,25 @@
+[
+  {
+    "step": "Phase 0: Pre-flight telemetry snapshot",
+    "reads": [
+      "704.WSetEna"
+    ]
+  },
+  {
+    "step": "Safety Flow: Stop and release remote active power dispatch",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Turn off remote dispatch and return control to the gateway auto-modes"
+  },
+  {
+    "step": "Phase 5: Verification readback",
+    "reads": [
+      "704.WSetEna"
+    ],
+    "note": "Verify active remote control is disabled"
+  }
+]

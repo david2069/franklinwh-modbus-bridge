@@ -1,0 +1,17 @@
+[
+  {
+    "step": "Scenario: Night Discharge Intent",
+    "reads": ["701.W", "714.DCW", "713.SoC"],
+    "note": "Verify if aGate is importing while we want discharge (Conflict 160/161)"
+  },
+  {
+    "step": "Scenario: Solar Charging Intent",
+    "reads": ["502.OutWh", "714.DCW"],
+    "note": "Verify if excess solar is correctly charging battery (Natural 151)"
+  },
+  {
+    "step": "Scenario: Load Serving Discharge",
+    "reads": ["701.W", "714.DCW"],
+    "note": "Verify battery is covering home load (Natural 152)"
+  }
+]

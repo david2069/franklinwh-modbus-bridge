@@ -1,0 +1,24 @@
+[
+  {
+    "step": "Probe: Native Mode Change (Extension 15507)",
+    "writes": { "15507": 3 },
+    "verify": true,
+    "verify_timeout_ms": 2000,
+    "note": "Attempts to switch native aGate to TOU mode. If read-back returns old value, SPAN Modbus is LOCKED."
+  },
+  {
+    "step": "Probe: Reserve Adjustment (Extension 15508)",
+    "writes": { "15508": 25 },
+    "verify": true,
+    "note": "Attempts to set Self-Consumption reserve to 25%."
+  },
+  {
+    "step": "Read Energy Context",
+    "reads": [
+      "15506",
+      "15510",
+      "701.W"
+    ],
+    "note": "Captures Home Load, PV Total, and Grid Power for context."
+  }
+]

@@ -1,0 +1,53 @@
+[
+  {
+    "step": "1. Configure initial reversion limit",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetPct": 10,
+      "704.WSetRvrt": 0,
+      "704.WSetRvrtTms": 60,
+      "704.WSetEnaRvrt": 1,
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 1000,
+    "note": "Set 60s reversion"
+  },
+  {
+    "step": "2. Poll remaining time",
+    "reads": [
+      "704.WSetRvrtRem"
+    ],
+    "sleep_ms": 10000,
+    "note": "Sleep 10 seconds to let the timer count down"
+  },
+  {
+    "step": "3. Read remaining countdown",
+    "reads": [
+      "704.WSetRvrtRem"
+    ]
+  },
+  {
+    "step": "4. Refresh reversion timer",
+    "writes": {
+      "704.WSetRvrtTms": 120
+    },
+    "verify": true,
+    "sleep_ms": 1000,
+    "note": "Write a new 120s timeout while active"
+  },
+  {
+    "step": "5. Verify remaining time has refreshed",
+    "reads": [
+      "704.WSetRvrtRem"
+    ]
+  },
+  {
+    "step": "6. Clean Release",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true
+  }
+]

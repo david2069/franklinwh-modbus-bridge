@@ -249,7 +249,8 @@ class MqttPublisher:
         parts = topic_str.split("/")
         if len(parts) >= 5 and parts[2] == "control" and parts[-1] == "set":
             slug = parts[3]
-            payload = message.payload.decode() if isinstance(message.payload, bytes) else str(message.payload)
+            raw = message.payload
+            payload = raw.decode() if isinstance(raw, bytes) else str(raw)
             await self._command_handler.handle_command(slug, payload)
 
     async def _subscribe_listener(self, client: aiomqtt.Client) -> None:
@@ -287,7 +288,8 @@ class MqttPublisher:
                                 and self._device_info
                                 and self._command_handler
                             ):
-                                cmd_topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/control/+/set"
+                                sid = self._device_info.short_id
+                                cmd_topic = f"{TOPIC_PREFIX}/{sid}/control/+/set"
                                 await client.subscribe(cmd_topic)
                                 listener_task = asyncio.create_task(
                                     self._subscribe_listener(client)

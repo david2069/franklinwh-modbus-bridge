@@ -1,0 +1,39 @@
+[
+  {
+    "step": "Phase 2.1: SoC Safety Validation",
+    "writes": { "704.WSetPct": 100 },
+    "verify": true,
+    "note": "Verify that WSetPct accepts 100% (Safety Margin Test)"
+  },
+  {
+    "step": "Phase 2.2: SC Mode Transition",
+    "writes": { "15507": 2 },
+    "verify": true,
+    "note": "Transition hardware to native Self-Consumption mode"
+  },
+  {
+    "step": "Phase 2.2: Reserve Enforcement Test",
+    "writes": { "15508": 20 },
+    "verify": true,
+    "note": "Set Self-Consumption reserve to 20%"
+  },
+  {
+    "step": "Phase 3: Intent Context Check",
+    "reads": [
+      "15506",
+      "15507",
+      "714.DCW",
+      "701.W"
+    ],
+    "note": "Capture Solar/Load/Grid context to verify intent-based detection"
+  },
+  {
+    "step": "Release VPP Mode",
+    "writes": {
+      "704.WSetPct": 0,
+      "704.WSetEna": 0
+    },
+    "verify": true,
+    "note": "Restore native control"
+  }
+]

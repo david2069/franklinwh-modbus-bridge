@@ -1,0 +1,30 @@
+[
+  {
+    "step": "Initiate Discharge",
+    "writes": {
+      "704.WSetEna": 1,
+      "704.WSetPct": -50
+    },
+    "verify": true,
+    "note": "50% discharge (~2.5kW)"
+  },
+  {
+    "step": "Wait for SoC Threshold",
+    "wait_for": {
+      "point": "713.SoC",
+      "operator": "<=",
+      "value": 45,
+      "timeout_ms": 120000,
+      "poll_ms": 2000
+    },
+    "note": "Stop automatically when battery hits 45%"
+  },
+  {
+    "step": "Safety Stop",
+    "writes": {
+      "704.WSetPct": 0,
+      "704.WSetEna": 0
+    },
+    "verify": true
+  }
+]

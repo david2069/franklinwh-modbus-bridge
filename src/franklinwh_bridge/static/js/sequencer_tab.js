@@ -17,6 +17,7 @@ function sequencerTab() {
     renameMode: false,
     renameName: '',
     validationError: null,
+    showSyntaxRef: false,
 
     async init() {
       await this.loadSequences();
@@ -41,6 +42,7 @@ function sequencerTab() {
       const data = await fetchJSON('api/sequences/' + name);
       if (data && data.raw) {
         this.editor = data.raw;
+        this.validateJson();
       }
     },
 
@@ -61,6 +63,23 @@ function sequencerTab() {
       } catch (e) {
         this.validationError = e.message;
         return false;
+      }
+    },
+
+    get stepSummary() {
+      try {
+        const parsed = JSON.parse(this.editor);
+        if (!Array.isArray(parsed)) return '';
+        const writes = parsed.reduce((n, s) => n + (s.writes ? Object.keys(s.writes).length : 0), 0);
+        const reads = parsed.reduce((n, s) => n + (Array.isArray(s.reads) ? s.reads.length : 0), 0);
+        const waits = parsed.filter(s => s.wait_for || s.sleep_ms).length;
+        const parts = [];
+        if (writes) parts.push(writes + ' write' + (writes > 1 ? 's' : ''));
+        if (reads) parts.push(reads + ' read' + (reads > 1 ? 's' : ''));
+        if (waits) parts.push(waits + ' wait' + (waits > 1 ? 's' : ''));
+        return parts.length ? parts.join(', ') : '';
+      } catch {
+        return '';
       }
     },
 
@@ -181,6 +200,12 @@ function sequencerTab() {
       } else {
         this.output = ['ERROR: ' + (data?.error || 'Unknown error')];
       }
+
+      // Scroll terminal to bottom
+      this.$nextTick(() => {
+        const el = this.$refs.seqTabTerminal;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
     },
 
     get parsedStepCount() {

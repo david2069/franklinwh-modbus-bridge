@@ -1,0 +1,54 @@
+[
+  {
+    "step": "Phase 0: Pre-flight telemetry snapshot",
+    "reads": [
+      "704.WSetEna",
+      "704.WSetMod",
+      "704.WSet"
+    ],
+    "note": "Capture baseline states before beginning emergency backup hold"
+  },
+  {
+    "step": "Safety Flow: Initialize standby",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetPct": 0,
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Safely initialize remote control mode at 0W idle"
+  },
+  {
+    "step": "Configure 24-hour backup hold",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSet": 0,
+      "704.WSetRvrt": 0,
+      "704.WSetRvrtTms": 86400,
+      "704.WSetEnaRvrt": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Dispatch active dispatch at exactly 0W (idle hold) with a 24-hour reversion for backup reservation"
+  },
+  {
+    "step": "Verify active emergency hold",
+    "reads": [
+      "704.WSetEna",
+      "704.WSet",
+      "704.WSetRvrtRem"
+    ],
+    "note": "Confirm emergency hold (0W remote dispatch) is active"
+  },
+  {
+    "step": "Safety Flow: Stop and release",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Explicitly release remote control and return to normal gateway auto-modes"
+  }
+]

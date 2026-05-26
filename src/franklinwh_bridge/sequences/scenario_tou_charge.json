@@ -1,0 +1,55 @@
+[
+  {
+    "step": "Phase 0: Pre-flight telemetry snapshot",
+    "reads": [
+      "704.WSetEna",
+      "704.WSetMod",
+      "704.WSet"
+    ],
+    "note": "Capture baseline states before beginning TOU charging step"
+  },
+  {
+    "step": "Safety Flow: Initialize standby",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetPct": 0,
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Safely initialize remote control mode at 0W idle"
+  },
+  {
+    "step": "Configure off-peak grid charging",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSet": -3000,
+      "704.WSetRvrt": 0,
+      "704.WSetRvrtTms": 21600,
+      "704.WSetEnaRvrt": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Dispatch active charge at 3000W (negative: -3000) with a 6-hour reversion for off-peak hours"
+  },
+  {
+    "step": "Verify active charging",
+    "reads": [
+      "704.WSetEna",
+      "704.WSet",
+      "704.WSetRvrtRem",
+      "714.DCW"
+    ],
+    "note": "Confirm grid charging dispatch is active"
+  },
+  {
+    "step": "Safety Flow: Stop and release",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Explicitly release remote control and return to normal gateway auto-modes"
+  }
+]

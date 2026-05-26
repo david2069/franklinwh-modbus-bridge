@@ -73,6 +73,9 @@ document.addEventListener('alpine:init', () => {
     // Tab state
     activeTab: 'dashboard',
 
+    // Sidebar state
+    sidebarCollapsed: false,
+
     // Connection state
     connected: false,
     lastPollTs: null,

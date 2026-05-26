@@ -10,14 +10,19 @@ function sequencerPanel() {
 
     async executeInline() {
       if (this.seqRunning) return;
-      const input = this.seqInput.trim();
+
+      // Read from x-model binding; fallback to DOM textarea ref
+      let input = (this.seqInput || '').trim();
+      if (!input && this.$refs.seqTextarea) {
+        input = this.$refs.seqTextarea.value.trim();
+      }
       if (!input) {
         this.seqOutput = ['ERROR: No sequence input provided'];
         return;
       }
 
       this.seqRunning = true;
-      this.seqOutput = ['>>> Executing sequence...'];
+      this.seqOutput = ['>>> Executing' + (this.dryRun ? ' (DRY RUN)' : '') + '...'];
 
       const data = await fetchJSON('api/sequence/execute', {
         method: 'POST',

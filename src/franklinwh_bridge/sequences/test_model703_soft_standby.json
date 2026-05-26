@@ -1,0 +1,44 @@
+[
+  {
+    "step": "1. Capture connection status before test",
+    "reads": [
+      "703.ES",
+      "701.ConnSt",
+      "701.W"
+    ]
+  },
+  {
+    "step": "2. Command soft disconnect (Permit Enter Service = 0)",
+    "writes": {
+      "703.ES": 0
+    },
+    "verify": true,
+    "sleep_ms": 2000,
+    "note": "Disable entrance service. The battery should soft-disconnect from the AC grid."
+  },
+  {
+    "step": "3. Read connection state",
+    "reads": [
+      "703.ES",
+      "701.ConnSt",
+      "701.W"
+    ],
+    "note": "Verify if 701.ConnSt changes or AC power drops to 0W"
+  },
+  {
+    "step": "4. Command soft reconnect (Permit Enter Service = 1)",
+    "writes": {
+      "703.ES": 1
+    },
+    "verify": true,
+    "sleep_ms": 2000,
+    "note": "Permit entrance service to restore connection."
+  },
+  {
+    "step": "5. Verify reconnection",
+    "reads": [
+      "703.ES",
+      "701.ConnSt"
+    ]
+  }
+]

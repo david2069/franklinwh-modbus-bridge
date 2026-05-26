@@ -1,0 +1,41 @@
+[
+  {
+    "step": "1. Initialize Remote Control (Standby)",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetPct": 0,
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 1000,
+    "note": "Establish active VPP control at 0W"
+  },
+  {
+    "step": "2. Direct Write (Change setpoint without disabling)",
+    "writes": {
+      "704.WSetPct": 10
+    },
+    "verify": true,
+    "sleep_ms": 1000,
+    "note": "Write 10% discharge directly to see if the hardware accepts it without toggling WSetEna"
+  },
+  {
+    "step": "3. Direct Write (Change setpoint back)",
+    "writes": {
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "sleep_ms": 1000,
+    "note": "Verify direct write back to 0% standby"
+  },
+  {
+    "step": "4. Clean Release",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Graceful release"
+  }
+]

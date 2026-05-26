@@ -1,0 +1,24 @@
+[
+  {
+    "step": "Phase 0: Pre-flight telemetry snapshot",
+    "reads": [
+      "704.WMaxLimPctEna"
+    ]
+  },
+  {
+    "step": "Phase 4: Disable export limit control",
+    "writes": {
+      "704.WMaxLimPctEna": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Turn off export limiting and hand back control to the gateway auto-modes"
+  },
+  {
+    "step": "Phase 5: Verification readback",
+    "reads": [
+      "704.WMaxLimPctEna"
+    ],
+    "note": "Verify active export limit is disabled"
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "step": "Enable VPP Mode (Pulse)",
+    "writes": {
+      "704.WSetEna": 1,
+      "704.WSetPct": 5
+    },
+    "verify": true,
+    "verify_timeout_ms": 5000,
+    "note": "Low power 5% pulse for connectivity check"
+  },
+  {
+    "step": "Hold for 5 seconds",
+    "sleep_ms": 5000,
+    "note": "Stay in VPP mode briefly"
+  },
+  {
+    "step": "Cleanup & Stop",
+    "writes": {
+      "704.WSetEna": 0,
+      "704.WSetPct": 0
+    },
+    "verify": true,
+    "note": "Restore native control immediately"
+  }
+]

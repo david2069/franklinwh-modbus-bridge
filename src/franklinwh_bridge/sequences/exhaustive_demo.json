@@ -1,0 +1,47 @@
+[
+  {
+    "name": "Exhaustive Options Demo",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetEna": 1
+    },
+    "reads": [
+      "701.W",
+      "714.DCW",
+      "713.SoC"
+    ],
+    "verify": true,
+    "verify_timeout_ms": 5000,
+    "abort_on_failure": true,
+    "sleep_ms": 200,
+    "note": "Initial setup with all logging enabled"
+  },
+  {
+    "step": "Power Step",
+    "writes": { "704.WSetPct": 20 },
+    "post_sleep_ms": 1000,
+    "note": "post_sleep_ms is an alias for sleep_ms"
+  },
+  {
+    "step": "Poll for state change",
+    "wait_for": {
+      "point": "704.WSetEna",
+      "operator": "==",
+      "value": 1,
+      "timeout_ms": 5000,
+      "poll_ms": 500
+    }
+  },
+  {
+    "step": "Final Read & Log",
+    "reads": [
+      "704.WSetPct",
+      "701.W", "714.DCW", "713.SoC"
+
+    ],
+    "note": "Final telemetry snapshot"
+  },
+  { "name": "release VPP mode",
+    "writes": { "704.WSetPct": 0, "704.WSetEna": 0 }
+  }
+]

@@ -1,0 +1,24 @@
+[
+  {
+    "step": "Phase 0: Pre-flight PF state check",
+    "reads": [
+      "704.PFWAbsEna"
+    ]
+  },
+  {
+    "step": "Phase 4: Enable PF control for grid absorption",
+    "writes": {
+      "704.PFWAbsEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Enable power factor control for absorption/import"
+  },
+  {
+    "step": "Phase 5: Verification readback",
+    "reads": [
+      "704.PFWAbsEna"
+    ],
+    "note": "Verify import Power Factor control is active"
+  }
+]

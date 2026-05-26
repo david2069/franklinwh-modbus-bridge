@@ -42,7 +42,9 @@ class TestBatteryStatus:
 
     def test_battery_state_valid(self, controller):
         status = controller.read_battery_status()
-        assert status["battery_state"] in ("Charging", "Discharging", "Idle")
+        # Library may return title-case or uppercase enum descriptions
+        state = status["battery_state"].upper()
+        assert state in ("CHARGING", "DISCHARGING", "IDLE")
 
 
 class TestGridStatus:

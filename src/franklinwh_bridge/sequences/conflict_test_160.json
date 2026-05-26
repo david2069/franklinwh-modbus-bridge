@@ -1,0 +1,20 @@
+[
+  {
+    "step": "Scenario: Forced Night Charge (Conflict Test)",
+    "writes": {
+      "704.WSetEna": 1,
+      "704.WSetPct": 30
+    },
+    "reads": ["701.W", "714.DCW"],
+    "note": "Verify that charging from grid at night (Conflict 160) is properly flagged by CLI conflict detection."
+  },
+  {
+    "step": "Release VPP Mode",
+    "writes": {
+      "704.WSetPct": 0,
+      "704.WSetEna": 0
+    },
+    "verify": true,
+    "note": "Restore native control"
+  }
+]

@@ -206,12 +206,22 @@ def _get_sequences_dir() -> Path:
     """Resolve the sequences directory, preferring the data dir for persistence."""
     from franklinwh_bridge.config.environment import get_data_dir
 
+    bundled_dir = Path(__file__).resolve().parent.parent / "sequences"
     data_dir = get_data_dir()
     seq_dir = data_dir / "sequences"
-    if seq_dir.is_dir() or data_dir.is_dir():
+
+    if data_dir.is_dir():
+        # Use data dir for persistence; seed with bundled examples
+        seq_dir.mkdir(parents=True, exist_ok=True)
+        if bundled_dir.is_dir():
+            for src in bundled_dir.glob("*.json"):
+                dst = seq_dir / src.name
+                if not dst.exists():
+                    dst.write_text(src.read_text())
         return seq_dir
-    # Fallback: package-bundled sequences
-    return Path(__file__).resolve().parent.parent / "sequences"
+
+    # Fallback: package-bundled sequences (dev mode)
+    return bundled_dir
 
 
 SEQUENCES_DIR = _get_sequences_dir()

@@ -1,0 +1,24 @@
+[
+  {
+    "step": "Phase 0: Pre-flight PF state check",
+    "reads": [
+      "704.PFWInjEna"
+    ]
+  },
+  {
+    "step": "Phase 4: Enable PF control for export injection",
+    "writes": {
+      "704.PFWInjEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Enable power factor control for injection/export"
+  },
+  {
+    "step": "Phase 5: Verification readback",
+    "reads": [
+      "704.PFWInjEna"
+    ],
+    "note": "Verify export Power Factor control is active"
+  }
+]
