@@ -28,10 +28,13 @@ function dashboardTab() {
 
     async init() {
       await this._loadGateway();
-      // Defer chart creation to next tick so canvas is sized by the layout
+      // Defer chart creation until canvas is visible and sized
+      // Use requestAnimationFrame after $nextTick to ensure layout is complete
       this.$nextTick(() => {
-        this._createChart();
-        this._loadMetrics();
+        requestAnimationFrame(() => {
+          this._createChart();
+          this._loadMetrics();
+        });
       });
       this._startPolling();
     },
@@ -103,10 +106,13 @@ function dashboardTab() {
       this.chart.data.datasets[2].data = solar;
       this.chart.data.datasets[3].data = home;
 
-      // Scale Y-axis to max charge/discharge rating
-      const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
-      this.chart.options.scales.y.suggestedMin = -maxRating;
-      this.chart.options.scales.y.suggestedMax = maxRating;
+      // Scale Y-axis to max charge/discharge rating (guard against uninitialised scales)
+      const yScale = this.chart.options?.scales?.y;
+      if (yScale) {
+        const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
+        yScale.suggestedMin = -maxRating;
+        yScale.suggestedMax = maxRating;
+      }
 
       this.chart.resize();
       this.chart.update();
@@ -115,6 +121,14 @@ function dashboardTab() {
     _createChart() {
       const ctx = this.$refs.powerChart;
       if (!ctx) return;
+
+      // Verify canvas is visible and sized (Chart.js fails on 0x0 canvas)
+      const rect = ctx.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        // Retry on next frame — canvas not laid out yet
+        requestAnimationFrame(() => this._createChart());
+        return;
+      }
 
       const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
 
