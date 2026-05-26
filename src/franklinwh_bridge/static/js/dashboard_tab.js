@@ -1,9 +1,16 @@
 /**
  * Dashboard Tab — power flow cards, SOC gauge, real-time + historic chart
+ *
+ * IMPORTANT: The Chart.js instance is stored in a closure variable (_chart),
+ * NOT as an Alpine reactive property. Alpine wraps reactive properties in
+ * deep Proxies; Chart.js has a massive internal object graph, and Alpine's
+ * proxy handler recurses infinitely through it → stack overflow.
  */
 function dashboardTab() {
+  // Chart.js instance — kept outside Alpine's reactive scope
+  let _chart = null;
+
   return {
-    chart: null,
     deviceIp: '--',
     deviceUnit: '--',
     showDiagnostics: false,
@@ -29,7 +36,6 @@ function dashboardTab() {
     async init() {
       await this._loadGateway();
       // Defer chart creation until canvas is visible and sized
-      // Use requestAnimationFrame after $nextTick to ensure layout is complete
       this.$nextTick(() => {
         requestAnimationFrame(() => {
           this._createChart();
@@ -62,7 +68,6 @@ function dashboardTab() {
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       }
       if (range === '6h' || range === '24h') {
-        // Show date prefix if data spans midnight
         if (!sameDay) {
           return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
                  d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -99,23 +104,23 @@ function dashboardTab() {
     },
 
     _updateChartData(labels, battery, grid, solar, home) {
-      if (!this.chart) return;
-      this.chart.data.labels = labels;
-      this.chart.data.datasets[0].data = battery;
-      this.chart.data.datasets[1].data = grid;
-      this.chart.data.datasets[2].data = solar;
-      this.chart.data.datasets[3].data = home;
+      if (!_chart) return;
+      _chart.data.labels = labels;
+      _chart.data.datasets[0].data = battery;
+      _chart.data.datasets[1].data = grid;
+      _chart.data.datasets[2].data = solar;
+      _chart.data.datasets[3].data = home;
 
-      // Scale Y-axis to max charge/discharge rating (guard against uninitialised scales)
-      const yScale = this.chart.options?.scales?.y;
+      // Scale Y-axis to max charge/discharge rating
+      const yScale = _chart.options?.scales?.y;
       if (yScale) {
         const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
         yScale.suggestedMin = -maxRating;
         yScale.suggestedMax = maxRating;
       }
 
-      this.chart.resize();
-      this.chart.update();
+      _chart.resize();
+      _chart.update();
     },
 
     _createChart() {
@@ -125,14 +130,19 @@ function dashboardTab() {
       // Verify canvas is visible and sized (Chart.js fails on 0x0 canvas)
       const rect = ctx.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) {
-        // Retry on next frame — canvas not laid out yet
         requestAnimationFrame(() => this._createChart());
         return;
       }
 
+      // Destroy previous instance if any (e.g. hot-reload)
+      if (_chart) {
+        _chart.destroy();
+        _chart = null;
+      }
+
       const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
 
-      this.chart = new Chart(ctx, {
+      _chart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: [],
@@ -195,7 +205,7 @@ function dashboardTab() {
               titleColor: '#f8fafc',
               bodyColor: '#cbd5e1',
               callbacks: {
-                label: (ctx) => `${ctx.dataset.label}: ${(ctx.parsed.y / 1000).toFixed(2)} kW`,
+                label: (item) => `${item.dataset.label}: ${(item.parsed.y / 1000).toFixed(2)} kW`,
               },
             },
           },
@@ -265,12 +275,12 @@ function dashboardTab() {
 
     // Export chart data to CSV or JSON
     exportChartData(format) {
-      if (!this.chart || !this.chart.data.labels.length) {
+      if (!_chart || !_chart.data.labels.length) {
         Alpine.store('app').toast('No chart data to export', 'error');
         return;
       }
-      const labels = this.chart.data.labels;
-      const ds = this.chart.data.datasets;
+      const labels = _chart.data.labels;
+      const ds = _chart.data.datasets;
       let content, filename, mime;
 
       if (format === 'csv') {
