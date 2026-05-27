@@ -3,16 +3,10 @@
 
   <!-- Left: Sidebar toggle + Page title -->
   <div class="flex items-center gap-3">
-    <!-- Sidebar collapse/expand toggle (always visible) -->
     <button @click="$store.app.sidebarCollapsed = !$store.app.sidebarCollapsed"
-            class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
-            :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
-      <svg class="w-4 h-4 transition-transform duration-300"
-           :class="$store.app.sidebarCollapsed && 'rotate-180'"
-           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <polyline points="11 17 6 12 11 7"/>
-        <polyline points="18 17 13 12 18 7"/>
-      </svg>
+            class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200 text-sm font-bold"
+            :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+            x-text="$store.app.sidebarCollapsed ? '▶' : '◀'">
     </button>
 
     <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider"
@@ -24,7 +18,29 @@
     </h1>
   </div>
 
-  <!-- Right: Status indicators -->
+  <!-- Centre: System status indicators -->
+  <div class="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider">
+    <!-- Grid -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-slate-500">Grid</span>
+      <span class="w-1.5 h-1.5 rounded-full"
+            :class="$store.app.points.connection_state === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'"></span>
+    </div>
+    <!-- Solar -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-slate-500">Solar</span>
+      <span class="w-1.5 h-1.5 rounded-full"
+            :class="($store.app.solarPowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-red-400'"></span>
+    </div>
+    <!-- Home -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-slate-500">Load</span>
+      <span class="w-1.5 h-1.5 rounded-full"
+            :class="($store.app.homePowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-slate-600'"></span>
+    </div>
+  </div>
+
+  <!-- Right: Status indicators + actions -->
   <div class="flex items-center gap-4">
 
     <!-- Connection status -->
@@ -52,39 +68,27 @@
               ? 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 hover:border-red-400'
               : 'bg-slate-700/50 text-slate-500 border border-slate-600/30 hover:bg-slate-700 hover:text-slate-400'"
             :title="$store.app.isReleaseable ? 'Active control — click to review' : 'No active control'">
-      <!-- Pulse dot when active -->
       <span x-show="$store.app.isReleaseable"
             class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M18.36 6.64A9 9 0 1 1 5.64 18.36M12 2v4m0 12v4"/>
-      </svg>
       <span>Release</span>
     </button>
 
+    <!-- Model point source toggle -->
+    <button @click="$store.app.toggleSources()"
+            class="px-2 py-1 rounded transition text-xs font-medium"
+            :class="$store.app.showSources ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'"
+            title="Toggle SunSpec model.point annotations">Src</button>
+
     <!-- Theme toggle -->
     <button @click="$store.app.toggleTheme()"
-            class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
-            :title="$store.app.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
-      <!-- Sun icon (shown in dark mode) -->
-      <svg x-show="$store.app.theme === 'dark'" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-      </svg>
-      <!-- Moon icon (shown in light mode) -->
-      <svg x-show="$store.app.theme === 'light'" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-      </svg>
+            class="px-2 py-1 rounded hover:bg-slate-700 transition text-xs text-slate-400 hover:text-slate-200 font-medium"
+            x-text="$store.app.theme === 'dark' ? 'Light' : 'Dark'">
     </button>
 
     <!-- Refresh button -->
-    <button @click="$store.app.refresh()" class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200" title="Refresh now">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-      </svg>
-    </button>
+    <button @click="$store.app.refresh()"
+            class="px-2 py-1 rounded hover:bg-slate-700 transition text-xs text-slate-400 hover:text-slate-200 font-medium"
+            title="Refresh now">↻</button>
   </div>
 
 </header>

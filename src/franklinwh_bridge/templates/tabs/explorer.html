@@ -14,13 +14,8 @@
         <span class="text-xs text-slate-500" x-show="modelCount > 0"
               x-text="modelCount + ' models, ' + pointCount + ' points'"></span>
         <button @click="resetLayout()"
-                class="p-1.5 rounded hover:bg-slate-700/50 text-slate-600 hover:text-slate-300 transition"
-                title="Reset panel sizes to defaults">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-        </button>
+                class="p-1.5 rounded hover:bg-slate-700/50 text-slate-600 hover:text-slate-300 transition text-xs font-bold"
+                title="Reset panel sizes to defaults">↻</button>
         <button @click="refreshCatalog()"
                 class="px-3 py-1.5 text-xs font-medium rounded bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition disabled:opacity-40"
                 :disabled="refreshing">
@@ -41,10 +36,7 @@
 
   <!-- Empty state -->
   <div x-show="!loading && models.length === 0" class="text-center py-16 text-slate-500">
-    <svg class="w-12 h-12 mx-auto mb-3 text-slate-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-    </svg>
+    <div class="text-4xl text-slate-700 mb-3">—</div>
     <p class="text-lg mb-2">No SunSpec catalog</p>
     <p class="text-sm mb-4">Click "Refresh Catalog" to scan the connected device</p>
     <button @click="refreshCatalog()"
@@ -54,8 +46,11 @@
     </button>
   </div>
 
-  <!-- Two-panel layout -->
-  <div x-show="!loading && models.length > 0" class="flex" style="height: calc(100vh - 200px); min-height: 300px;">
+  <!-- Outer flex-col: top panels + resize handle + extensions share total height -->
+  <div x-show="!loading && models.length > 0" class="flex flex-col" style="height: calc(100vh - 200px); min-height: 400px;">
+
+  <!-- Two-panel layout (top section — takes remaining space) -->
+  <div class="flex flex-1 min-h-0">
 
     <!-- ══ LEFT: Model Tree ═══════════════════════════════ -->
     <div class="flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden"
@@ -73,9 +68,12 @@
           <button @click="selectModel(model.model_id)"
                   class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-700/40 transition text-xs"
                   :class="selectedModelId === model.model_id ? 'bg-cyan-500/10 border-l-2 border-cyan-400' : 'border-l-2 border-transparent'">
-            <span class="font-mono font-bold text-cyan-400 w-10 flex-shrink-0"
+            <span class="font-mono font-bold w-10 flex-shrink-0"
+                  :class="modelHasValues(model) ? 'text-cyan-400' : 'text-slate-600'"
                   x-text="model.model_id"></span>
-            <span class="text-slate-300 truncate flex-1" x-text="model.label"></span>
+            <span class="truncate flex-1"
+                  :class="modelHasValues(model) ? 'text-slate-300' : 'text-slate-500'"
+                  x-text="model.label"></span>
             <span class="text-slate-600 flex-shrink-0" x-text="model.points.length"></span>
           </button>
         </template>
@@ -118,9 +116,32 @@
               <button @click="exportSunSpecJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export JSON">JSON</button>
               <button @click="exportSunSpecCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export CSV">CSV</button>
             </div>
-            <span class="text-xs text-slate-500" x-text="(selectedModel?.points?.length || 0) + ' points'"></span>
+            <span class="text-xs text-slate-500"
+                  x-text="selectedModelValueCount + '/' + (selectedModel?.points?.length || 0) + ' points'"></span>
+            <button @click="readModel()"
+                    class="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-cyan-400 transition text-xs font-bold"
+                    :disabled="readingModel"
+                    title="Read model registers from device">
+              <span x-show="!readingModel">↻</span>
+              <span x-show="readingModel" class="loading-spinner !w-3.5 !h-3.5"></span>
+            </button>
           </div>
         </div>
+      </div>
+
+      <!-- No live values notice + on-demand read button -->
+      <div x-show="selectedModel && selectedModelValueCount === 0"
+           class="mx-4 mt-2 px-3 py-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400/80 flex items-center gap-2">
+        <span class="flex-shrink-0 font-bold">!</span>
+        <span class="flex-1">Not actively polled — no live values.</span>
+        <button @click="readModel()"
+                class="px-2 py-1 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition font-medium whitespace-nowrap"
+                :disabled="readingModel">
+          <span x-show="!readingModel">⚡ Read Now</span>
+          <span x-show="readingModel" class="flex items-center gap-1">
+            <span class="loading-spinner !w-3 !h-3"></span> Reading…
+          </span>
+        </button>
       </div>
 
       <!-- Points table -->
@@ -135,6 +156,8 @@
               <th class="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider">Unit</th>
               <th class="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider">Addr</th>
               <th class="text-center px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider">Access</th>
+              <th class="text-center px-2 py-2 text-slate-500 font-semibold uppercase tracking-wider w-10"
+                  title="PICS Compliance: S=Supported T=Tested F=Failed U=Unimplemented X=N/A">PICS</th>
             </tr>
           </thead>
           <tbody>
@@ -143,9 +166,12 @@
                   :class="pt.name === 'ID' || pt.name === 'L' ? 'opacity-40' : ''">
                 <td class="px-3 py-1.5 font-mono text-slate-300" x-text="pt.name"></td>
                 <td class="px-3 py-1.5 text-slate-500 max-w-[180px] truncate" x-text="pt.label || ''"></td>
-                <td class="px-3 py-1.5 text-right font-mono font-semibold">
+                <td class="px-3 py-1.5 font-mono font-semibold max-w-[400px]"
+                    :class="(pt.type || '').startsWith('bitfield') ? 'text-left' : 'text-right'">
                   <span :class="getPointValue(pt.name) != null ? 'text-cyan-300' : 'text-slate-700'"
-                        x-text="formatPointValue(pt)"></span>
+                        x-text="formatPointValue(pt)"
+                        :title="getSymbolsTooltip(pt)"
+                        class="break-words cursor-help"></span>
                 </td>
                 <td class="px-3 py-1.5 text-slate-600 font-mono" x-text="pt.type || ''"></td>
                 <td class="px-3 py-1.5 text-slate-600" x-text="pt.unit || ''"></td>
@@ -155,30 +181,37 @@
                         :class="pt.access === 'RW' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700/50 text-slate-500'"
                         x-text="pt.access || 'R'"></span>
                 </td>
+                <td class="px-2 py-1.5 text-center">
+                  <button @click="cyclePicsStatus(pt.name)"
+                          class="w-5 h-5 rounded text-[10px] font-bold leading-none transition"
+                          :class="picsStatusClass(pt.name)"
+                          :title="picsStatusTitle(pt.name)"
+                          x-text="getPicsStatus(pt.name)">
+                  </button>
+                </td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
     </div>
-  </div>
+  </div> <!-- end top two-panel flex row -->
 
   <!-- ── Resize handle: SunSpec panels ↔ extensions ────────── -->
-  <div x-show="!loading && models.length > 0"
-       class="resize-handle resize-handle-v h-2 my-1"
+  <div class="resize-handle resize-handle-v h-2 my-1 flex-shrink-0"
        :class="resizing === 'ext' && 'active'"
        @mousedown.prevent="startResize('ext', $event)">
     <div class="resize-handle-dots"></div>
   </div>
 
   <!-- ══ Vendor Extensions Panel ════════════════════════════ -->
-  <div x-show="!loading && models.length > 0" class="card !p-3 overflow-hidden flex flex-col"
+  <div class="card !p-3 overflow-hidden flex flex-col flex-shrink-0"
        :style="`height: ${extHeight}px`">
 
     <!-- Header with controls -->
     <div class="flex items-center gap-3 mb-2 flex-wrap flex-shrink-0">
       <div class="card-label !mb-0">FranklinWH Extension Registers
-        <span class="normal-case font-normal text-slate-600">(15000+ / 15500+)</span>
+        <span class="normal-case font-normal text-slate-600">(15000+ / 15500+ / 16000+)</span>
       </div>
 
       <div class="flex items-center gap-2 ml-auto flex-wrap">
@@ -256,6 +289,8 @@
         </tbody>
       </table>
     </div>
-  </div>
+  </div> <!-- end vendor extensions -->
+
+  </div> <!-- end outer flex-col container -->
 
 </div>

@@ -181,6 +181,14 @@ class CommandHandler:
             self._controller.send_command, cmd, duration_s=self._state.watchdog_s
         )
 
+        # Write WSetRvrtTms to activate VPP mode and provide visible countdown.
+        # Hardware revert is cosmetic (countdown ticks but device doesn't actually
+        # revert at expiry), so the software watchdog handles actual release.
+        if success:
+            await asyncio.to_thread(
+                self._write_revert_timer, self._state.watchdog_s
+            )
+
         self._state.active = True
         self._state.action = action
         self._state.power_w = abs(watts)
@@ -248,6 +256,24 @@ class CommandHandler:
             logger.warning("Failed to clear revert timer: %s", exc)
 
         return success
+
+    def _write_revert_timer(self, duration_s: int) -> None:
+        """Write WSetRvrtTms to M704 to activate VPP mode on the aGate.
+
+        This provides a visible countdown in the HA entity and dashboard.
+        The hardware countdown is cosmetic — the software watchdog handles
+        actual release — but WSetRvrtTms > 0 signals VPP mode to the firmware.
+        """
+        try:
+            m704 = self._controller.get_model(704)
+            if m704:
+                m704.WSetRvrtTms.value = duration_s
+                m704.write()
+                logger.info(
+                    "Wrote WSetRvrtTms=%ds (VPP mode activated)", duration_s
+                )
+        except Exception as exc:
+            logger.warning("Failed to write WSetRvrtTms: %s", exc)
 
     async def _handle_operating_mode(self, mode_name: str) -> None:
         mode_val = OPERATING_MODES.get(mode_name)

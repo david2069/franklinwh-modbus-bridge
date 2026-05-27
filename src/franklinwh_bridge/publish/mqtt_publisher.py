@@ -149,6 +149,7 @@ class MqttPublisher:
         self._stop_event = asyncio.Event()
         self._device_info: DeviceInfo | None = None
         self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
+        self._removed_entities: list[EntityDef] = []
         self._ac_type: int = 0
         self._command_handler: CommandHandler | None = None
 
@@ -174,19 +175,28 @@ class MqttPublisher:
         ac_type 0 (single): publish phase=None + phase=1
         ac_type 1 (split):  publish phase=None + phase=1 + phase=2
         ac_type 2 (three):  publish all
+
+        Entities removed by phase filtering are tracked so their stale
+        retained MQTT discovery configs can be tombstoned on next publish.
         """
         self._ac_type = ac_type
-        self._entities = [
+        new_entities = [
             e for e in BRIDGE_ENTITIES
             if e.phase is None or e.phase <= ac_type + 1
         ]
+        active_slugs = {e.slug for e in new_entities}
+        self._removed_entities = [
+            e for e in BRIDGE_ENTITIES if e.slug not in active_slugs
+        ]
+        self._entities = new_entities
         AC_TYPE_NAMES = {0: "Single Phase", 1: "Split Phase", 2: "Three Phase"}
         phase_count = sum(1 for e in self._entities if e.phase is not None)
         logger.info(
-            "AC type %s: publishing %d entities (%d per-phase)",
+            "AC type %s: publishing %d entities (%d per-phase, %d removed)",
             AC_TYPE_NAMES.get(ac_type, f"Unknown({ac_type})"),
             len(self._entities),
             phase_count,
+            len(self._removed_entities),
         )
         # Re-publish discovery with updated entity list
         self._state.discovery_published = False
@@ -195,13 +205,27 @@ class MqttPublisher:
         self._command_handler = handler
 
     async def _publish_discovery(self, client: aiomqtt.Client) -> None:
-        """Publish HA Discovery config for all registered entities."""
+        """Publish HA Discovery config for all registered entities.
+
+        Also tombstones (empty retained payload) any entities that were
+        removed by phase filtering, so HA removes stale entities.
+        """
         if not self._device_info:
             return
 
         from franklinwh_bridge import __version__
 
         short_id = self._device_info.short_id
+
+        # Tombstone removed entities first (empty retained = HA deletes them)
+        if self._removed_entities:
+            for entity in self._removed_entities:
+                topic = entity.discovery_topic(short_id)
+                await client.publish(topic, b"", retain=True)
+            logger.info(
+                "Tombstoned %d removed entities", len(self._removed_entities)
+            )
+
         for entity in self._entities:
             topic = entity.discovery_topic(short_id)
             payload = build_discovery_payload(
@@ -412,7 +436,12 @@ class MqttPublisher:
         self._state.discovery_published = False
 
     async def unpublish_discovery(self) -> int:
-        """Send empty retained payloads to all discovery topics (tombstones)."""
+        """Send empty retained payloads to ALL discovery topics (tombstones).
+
+        Uses BRIDGE_ENTITIES (the full registry) rather than the filtered
+        ``self._entities`` list, so orphaned entities from previous phase
+        configurations are also cleaned up.
+        """
         if not self._device_info:
             return 0
 
@@ -425,7 +454,7 @@ class MqttPublisher:
                 username=self._username,
                 password=self._password,
             ) as client:
-                for entity in self._entities:
+                for entity in BRIDGE_ENTITIES:
                     topic = entity.discovery_topic(short_id)
                     await client.publish(topic, b"", retain=True)
                     count += 1

@@ -78,9 +78,7 @@ class SQLiteMetrics:
 
     async def prune(self, ttl_days: int = DEFAULT_TTL_DAYS) -> int:
         cutoff = time.time() - (ttl_days * 86400)
-        cursor = await self._db.execute(
-            "DELETE FROM metric_samples WHERE ts < ?", (cutoff,)
-        )
+        cursor = await self._db.execute("DELETE FROM metric_samples WHERE ts < ?", (cutoff,))
         await self._db.commit()
         pruned = cursor.rowcount
         if pruned:
@@ -136,12 +134,49 @@ class SQLiteMetrics:
 # ---------------------------------------------------------------------------
 
 
+# Absolute power ceiling for metrics DB writes.  Any value above this is
+# physically impossible for residential FranklinWH systems and indicates
+# Modbus register corruption (e.g. 0xFFFF sentinel = 65535 or summed
+# sentinels = 196605).  This is a last-resort guard — the poller's
+# _sanitize_extension_values() should catch these first.
+_METRICS_MAX_POWER_W = 15_000
+_METRICS_MAX_HOME_W = 50_000  # home can spike during mode transitions
+
+# Modbus uint16 "not available" sentinel
+_METRICS_SENTINEL = 65535
+
+
 async def record_sample(db: aiosqlite.Connection, points: dict) -> None:
-    """Insert a metrics row from poller sample points."""
+    """Insert a metrics row from poller sample points.
+
+    Applies a final sanity check: rejects samples where any power metric
+    exceeds physical limits or contains Modbus 0xFFFF sentinel values.
+    """
     row = {col: points.get(key) for key, col in POWER_METRIC_KEYS.items()}
     # Only write if at least one metric has a value
     if not any(v is not None for v in row.values()):
         return
+
+    # Guard: reject rows with physically impossible or sentinel values
+    for col, limit in [
+        ("solar_w", _METRICS_MAX_POWER_W),
+        ("battery_w", _METRICS_MAX_POWER_W),
+        ("grid_w", _METRICS_MAX_POWER_W),
+        ("home_w", _METRICS_MAX_HOME_W),
+    ]:
+        val = row.get(col)
+        if val is not None and (
+            abs(val) > limit or val == _METRICS_SENTINEL or val == -_METRICS_SENTINEL
+        ):
+            logger.warning(
+                "Rejected metrics sample: %s=%s exceeds sanity limit %d "
+                "(likely Modbus 0xFFFF corruption)",
+                col,
+                val,
+                limit,
+            )
+            return
+
     await db.execute(
         "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
         "VALUES (?, ?, ?, ?, ?, ?)",

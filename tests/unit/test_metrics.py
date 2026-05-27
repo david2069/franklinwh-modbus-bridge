@@ -30,9 +30,7 @@ def metrics(db):
 
 
 async def test_write_and_read_latest(metrics):
-    sample = Sample(
-        gateway_id="gw1", ts=1000.0, points={"soc": 85, "power": -1200}, quality="ok"
-    )
+    sample = Sample(gateway_id="gw1", ts=1000.0, points={"soc": 85, "power": -1200}, quality="ok")
     await metrics.write_sample(sample)
     latest = await metrics.read_latest("gw1")
     assert latest["soc"] == 85
@@ -70,9 +68,7 @@ async def test_read_history(metrics):
 
 async def test_read_history_with_time_range(metrics):
     for i in range(5):
-        sample = Sample(
-            gateway_id="gw1", ts=1000.0 + i, points={"soc": 80 + i}, quality="ok"
-        )
+        sample = Sample(gateway_id="gw1", ts=1000.0 + i, points={"soc": 80 + i}, quality="ok")
         await metrics.write_sample(sample)
 
     history = await metrics.read_history("gw1", "soc", from_ts=1002.0, to_ts=1003.0)
@@ -206,3 +202,83 @@ async def test_retention_days_set_and_get(db):
     await set_retention_days(db, 90)
     days = await get_retention_days(db)
     assert days == 90
+
+
+# ---------------------------------------------------------------------------
+# Metrics sanity guard tests (0xFFFF / extreme value rejection)
+# ---------------------------------------------------------------------------
+
+
+async def test_record_sample_rejects_0xffff_solar(db):
+    """solar_w = 196605 (3 × 0xFFFF) is rejected — row not written."""
+    points = {
+        "battery_power_w": 0,
+        "grid_power_w": 369,
+        "total_solar": 196605,
+        "home_load_ext": 350,
+        "soc": 47,
+    }
+    await record_sample(db, points)
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 0
+
+
+async def test_record_sample_rejects_0xffff_home(db):
+    """home_w = 65535 (exact 0xFFFF sentinel) is rejected."""
+    points = {
+        "battery_power_w": 0,
+        "grid_power_w": 369,
+        "total_solar": 0,
+        "home_load_ext": 65535,
+        "soc": 47,
+    }
+    await record_sample(db, points)
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 0
+
+
+async def test_record_sample_rejects_extreme_power(db):
+    """Power values exceeding the 15kW sanity limit are rejected."""
+    points = {
+        "battery_power_w": 20000,  # > 15000 limit
+        "grid_power_w": 0,
+        "total_solar": 0,
+        "home_load_ext": 350,
+        "soc": 50,
+    }
+    await record_sample(db, points)
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 0
+
+
+async def test_record_sample_accepts_normal_values(db):
+    """Normal power values within limits are written successfully."""
+    points = {
+        "battery_power_w": -3000,
+        "grid_power_w": -50,
+        "total_solar": 4200,
+        "home_load_ext": 650,
+        "soc": 75,
+    }
+    await record_sample(db, points)
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 1
+
+
+async def test_record_sample_accepts_high_home_during_transition(db):
+    """Home values up to 50kW are allowed (mode transitions spike home)."""
+    points = {
+        "battery_power_w": 0,
+        "grid_power_w": 0,
+        "total_solar": 3000,
+        "home_load_ext": 3000,
+        "soc": 100,
+    }
+    await record_sample(db, points)
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 1

@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -146,6 +146,16 @@ MIGRATIONS: dict[int, str] = {
     );
     CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics(ts);
     """,
+    6: """
+    CREATE TABLE IF NOT EXISTS pics_compliance (
+        model_id    INTEGER NOT NULL,
+        point_name  TEXT NOT NULL,
+        status      TEXT NOT NULL DEFAULT 'U',
+        notes       TEXT,
+        updated_at  REAL NOT NULL,
+        PRIMARY KEY (model_id, point_name)
+    );
+    """,
 }
 
 
@@ -251,6 +261,54 @@ async def load_control_state(db: aiosqlite.Connection) -> dict:
         "watchdog_s": row["watchdog_s"],
         "updated_at": row["updated_at"],
     }
+
+
+# ── PICS compliance ──────────────────────────────────────────
+
+PICS_VALID_STATUSES = frozenset("STFUX")
+
+
+async def get_pics_compliance(db: aiosqlite.Connection) -> list[dict]:
+    """Return all PICS compliance rows."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows = []
+        async with db.execute(
+            "SELECT model_id, point_name, status, notes, updated_at "
+            "FROM pics_compliance ORDER BY model_id, point_name"
+        ) as cursor:
+            async for row in cursor:
+                rows.append({
+                    "model_id": row["model_id"],
+                    "point_name": row["point_name"],
+                    "status": row["status"],
+                    "notes": row["notes"],
+                    "updated_at": row["updated_at"],
+                })
+        return rows
+    finally:
+        db.row_factory = None
+
+
+async def set_pics_status(
+    db: aiosqlite.Connection,
+    model_id: int,
+    point_name: str,
+    status: str,
+    notes: str | None = None,
+) -> None:
+    """Upsert a PICS compliance status for a model point."""
+    if status not in PICS_VALID_STATUSES:
+        raise ValueError(f"Invalid PICS status '{status}', must be one of {PICS_VALID_STATUSES}")
+    await db.execute(
+        "INSERT INTO pics_compliance (model_id, point_name, status, notes, updated_at) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(model_id, point_name) DO UPDATE SET "
+        "status=excluded.status, notes=excluded.notes, "
+        "updated_at=excluded.updated_at",
+        (model_id, point_name, status, notes, time.time()),
+    )
+    await db.commit()
 
 
 MQTT_CONFIG_COLUMNS = (

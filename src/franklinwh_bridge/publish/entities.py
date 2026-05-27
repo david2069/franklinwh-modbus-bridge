@@ -34,6 +34,9 @@ class EntityDef:
     # phase=1 → single/split/three, phase=2 → split/three, phase=3 → three only
     phase: int | None = None
 
+    # SunSpec source: model.point notation (e.g. "701.W", "ext.15506", "virtual")
+    source: str = ""
+
     is_control: bool = False
     options: list[str] = field(default_factory=list)
     min_val: float | None = None
@@ -85,6 +88,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="battery",
         state_class="measurement",
         icon="mdi:battery",
+        source="713.SoC",
     ),
     EntityDef(
         slug="battery_soh",
@@ -95,6 +99,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         unit="%",
         state_class="measurement",
         icon="mdi:battery-heart-variant",
+        source="713.SoH",
     ),
     EntityDef(
         slug="battery_power_kw",
@@ -108,6 +113,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:battery-charging",
         value_scale=0.001,
         value_precision=3,
+        source="714.DCW",
     ),
     # battery_current_a removed — aGate M714.DCA always returns 0
     EntityDef(
@@ -117,6 +123,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_group="battery",
         stat_key="battery_state",
         icon="mdi:battery-sync",
+        source="714.DCW",
     ),
     EntityDef(
         slug="total_capacity_kwh",
@@ -130,6 +137,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         entity_category="diagnostic",
         value_scale=0.001,
         value_precision=3,
+        source="713.WHRtg",
     ),
     EntityDef(
         slug="available_capacity_kwh",
@@ -142,6 +150,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         value_scale=0.001,
         value_precision=3,
+        source="713.WHAvail",
     ),
     EntityDef(
         slug="max_charge_rate_kw",
@@ -155,6 +164,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         entity_category="diagnostic",
         value_scale=0.001,
         value_precision=1,
+        source="702.WChaRteMaxRtg",
     ),
     EntityDef(
         slug="max_discharge_rate_kw",
@@ -168,6 +178,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         entity_category="diagnostic",
         value_scale=0.001,
         value_precision=1,
+        source="702.WDisChaRteMaxRtg",
     ),
 
     # === GRID / AC (from read_grid_status) ===
@@ -183,6 +194,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:transmission-tower",
         value_scale=0.001,
         value_precision=3,
+        source="701.W",
     ),
     EntityDef(
         slug="grid_voltage_v",
@@ -194,6 +206,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="voltage",
         state_class="measurement",
         icon="mdi:flash",
+        source="701.LNV",
     ),
     EntityDef(
         slug="grid_frequency_hz",
@@ -205,6 +218,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="frequency",
         state_class="measurement",
         icon="mdi:sine-wave",
+        source="701.Hz",
     ),
     EntityDef(
         slug="grid_current_a",
@@ -216,6 +230,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="current",
         state_class="measurement",
         icon="mdi:current-ac",
+        source="701.A",
     ),
     EntityDef(
         slug="grid_apparent_power_va",
@@ -227,6 +242,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="apparent_power",
         state_class="measurement",
         icon="mdi:flash-triangle",
+        source="701.VA",
     ),
     EntityDef(
         slug="grid_reactive_power_var",
@@ -238,6 +254,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="reactive_power",
         state_class="measurement",
         icon="mdi:math-sin",
+        source="701.Var",
     ),
     EntityDef(
         slug="grid_power_factor",
@@ -248,6 +265,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="power_factor",
         state_class="measurement",
         icon="mdi:angle-acute",
+        source="701.PF",
     ),
     EntityDef(
         slug="grid_connection_state",
@@ -257,6 +275,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="connection_state",
         icon="mdi:transmission-tower-import",
         entity_category="diagnostic",
+        source="701.ConnSt",
     ),
     EntityDef(
         slug="inverter_state",
@@ -266,6 +285,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="inverter_state",
         icon="mdi:power-settings",
         entity_category="diagnostic",
+        source="701.InvSt",
     ),
     EntityDef(
         slug="grid_export_kwh",
@@ -279,6 +299,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:transmission-tower-export",
         value_scale=0.001,
         value_precision=3,
+        source="701.TotWhInj",
     ),
     EntityDef(
         slug="grid_import_kwh",
@@ -292,6 +313,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:transmission-tower-import",
         value_scale=0.001,
         value_precision=3,
+        source="701.TotWhAbs",
     ),
 
     # === PER-PHASE AC (auto-detected from M701 ACType) ===
@@ -309,6 +331,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=1,
+        source="701.VL1",
     ),
     EntityDef(
         slug="grid_current_l1_a",
@@ -321,6 +344,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:current-ac",
         phase=1,
+        source="701.AL1",
     ),
     EntityDef(
         slug="grid_power_l1_w",
@@ -333,6 +357,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=1,
+        source="701.WL1",
     ),
     EntityDef(
         slug="grid_pf_l1",
@@ -344,6 +369,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:angle-acute",
         phase=1,
+        source="701.PFL1",
     ),
     EntityDef(
         slug="grid_va_l1",
@@ -356,6 +382,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash-triangle",
         phase=1,
+        source="701.VAL1",
     ),
     EntityDef(
         slug="grid_var_l1",
@@ -368,6 +395,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:math-sin",
         phase=1,
+        source="701.VarL1",
     ),
 
     # ── L2 (phase 2 — split + three-phase) ────────────────
@@ -382,6 +410,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=2,
+        source="701.VL2",
     ),
     EntityDef(
         slug="grid_current_l2_a",
@@ -394,6 +423,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:current-ac",
         phase=2,
+        source="701.AL2",
     ),
     EntityDef(
         slug="grid_power_l2_w",
@@ -406,6 +436,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=2,
+        source="701.WL2",
     ),
     EntityDef(
         slug="grid_pf_l2",
@@ -417,6 +448,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:angle-acute",
         phase=2,
+        source="701.PFL2",
     ),
     EntityDef(
         slug="grid_va_l2",
@@ -429,6 +461,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash-triangle",
         phase=2,
+        source="701.VAL2",
     ),
     EntityDef(
         slug="grid_var_l2",
@@ -441,6 +474,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:math-sin",
         phase=2,
+        source="701.VarL2",
     ),
     EntityDef(
         slug="grid_voltage_l1l2_v",
@@ -453,6 +487,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=2,
+        source="701.VL1L2",
     ),
 
     # ── L3 (phase 3 — three-phase only) ───────────────────
@@ -467,6 +502,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=3,
+        source="701.VL3",
     ),
     EntityDef(
         slug="grid_current_l3_a",
@@ -479,6 +515,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:current-ac",
         phase=3,
+        source="701.AL3",
     ),
     EntityDef(
         slug="grid_power_l3_w",
@@ -491,6 +528,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=3,
+        source="701.WL3",
     ),
     EntityDef(
         slug="grid_pf_l3",
@@ -502,6 +540,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:angle-acute",
         phase=3,
+        source="701.PFL3",
     ),
     EntityDef(
         slug="grid_va_l3",
@@ -514,6 +553,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash-triangle",
         phase=3,
+        source="701.VAL3",
     ),
     EntityDef(
         slug="grid_var_l3",
@@ -526,6 +566,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:math-sin",
         phase=3,
+        source="701.VarL3",
     ),
     EntityDef(
         slug="grid_voltage_l2l3_v",
@@ -538,6 +579,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=3,
+        source="701.VL2L3",
     ),
     EntityDef(
         slug="grid_voltage_l3l1_v",
@@ -550,6 +592,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:flash",
         phase=3,
+        source="701.VL3L1",
     ),
 
     # === TEMPERATURES (from read_grid_status) ===
@@ -564,6 +607,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:thermometer",
         entity_category="diagnostic",
+        source="701.TmpAmb",
     ),
     EntityDef(
         slug="cabinet_temp_c",
@@ -576,6 +620,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:thermometer",
         entity_category="diagnostic",
+        source="701.TmpCab",
     ),
 
     # === SOLAR (from read_solar_status) ===
@@ -591,6 +636,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:solar-power",
         value_scale=0.001,
         value_precision=3,
+        source="502.OutPw",
     ),
 
     # === EXTENSION REGISTERS (from read_solar_status → extension) ===
@@ -606,6 +652,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:home-lightning-bolt",
         value_scale=0.001,
         value_precision=3,
+        source="ext.16000",
     ),
     EntityDef(
         slug="pv_total_kw",
@@ -619,6 +666,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:solar-power-variant",
         value_scale=0.001,
         value_precision=3,
+        source="ext.15502",
     ),
     EntityDef(
         slug="pv_proximal_kw",
@@ -632,6 +680,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:solar-panel",
         value_scale=0.001,
         value_precision=3,
+        source="ext.15503",
     ),
     EntityDef(
         slug="pv_remote1_kw",
@@ -645,6 +694,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:solar-panel",
         value_scale=0.001,
         value_precision=3,
+        source="ext.15504",
     ),
     EntityDef(
         slug="pv_remote2_kw",
@@ -658,6 +708,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:solar-panel",
         value_scale=0.001,
         value_precision=3,
+        source="ext.15505",
     ),
 
     # === ENERGY COUNTERS (from M714 + extension reg 15510) ===
@@ -673,6 +724,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:solar-power-variant",
         value_scale=0.001,
         value_precision=2,
+        source="ext.15510",
     ),
     EntityDef(
         slug="battery_energy_discharged_kwh",
@@ -686,6 +738,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:battery-arrow-up",
         value_scale=0.001,
         value_precision=2,
+        source="714.DCWhInj",
     ),
     EntityDef(
         slug="battery_energy_charged_kwh",
@@ -699,6 +752,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:battery-arrow-down",
         value_scale=0.001,
         value_precision=2,
+        source="714.DCWhAbs",
     ),
 
     # === OPERATING MODE (from read_native_mode) ===
@@ -710,6 +764,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="mode_name",
         icon="mdi:cog-outline",
         entity_category="diagnostic",
+        source="ext.15507",
     ),
 
     # === CONTROL (from read_control_status) ===
@@ -721,6 +776,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="loc_rem_ctl_name",
         icon="mdi:remote",
         entity_category="diagnostic",
+        source="715.LocRemCtl",
     ),
     EntityDef(
         slug="wset_enabled",
@@ -730,6 +786,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="wset_enabled",
         icon="mdi:toggle-switch",
         entity_category="diagnostic",
+        source="704.WSetEna",
     ),
     EntityDef(
         slug="power_setpoint_kw",
@@ -743,6 +800,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         entity_category="diagnostic",
         value_scale=0.001,
         value_precision=3,
+        source="704.WSet",
     ),
     EntityDef(
         slug="wset_mode",
@@ -752,6 +810,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="wset_mode",
         icon="mdi:cog-transfer",
         entity_category="diagnostic",
+        source="704.WSetMod",
     ),
     EntityDef(
         slug="wset_pct",
@@ -763,6 +822,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_class="measurement",
         icon="mdi:percent",
         entity_category="diagnostic",
+        source="704.WSetPct",
     ),
     EntityDef(
         slug="hw_revert_time_s",
@@ -774,6 +834,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="duration",
         icon="mdi:timer-cog-outline",
         entity_category="diagnostic",
+        source="704.WSetRvrtTms",
     ),
     EntityDef(
         slug="hw_revert_remain_s",
@@ -785,6 +846,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="duration",
         icon="mdi:timer-sand",
         entity_category="diagnostic",
+        source="704.WSetRvrtRem",
     ),
 
     # === SOFTWARE TIMER (from CommandHandler virtual points) ===
@@ -798,6 +860,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="duration",
         icon="mdi:timer-alert-outline",
         entity_category="diagnostic",
+        source="virtual",
     ),
     EntityDef(
         slug="command_elapsed_s",
@@ -809,6 +872,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         device_class="duration",
         icon="mdi:timer-outline",
         entity_category="diagnostic",
+        source="virtual",
     ),
     EntityDef(
         slug="last_command_result",
@@ -818,6 +882,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="last_command_result",
         icon="mdi:message-text-outline",
         entity_category="diagnostic",
+        source="virtual",
     ),
 
     # === WRITABLE CONTROLS ===
@@ -830,6 +895,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:cog",
         is_control=True,
         options=["Emergency Backup", "Self-Consumption", "Time of Use"],
+        source="ext.15507",
     ),
     EntityDef(
         slug="self_reserve_pct",
@@ -843,6 +909,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=0,
         max_val=100,
         step=1,
+        source="ext.15508",
     ),
     EntityDef(
         slug="tou_reserve_pct",
@@ -856,6 +923,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=0,
         max_val=100,
         step=1,
+        source="ext.15509",
     ),
 
     # === BATTERY COMMAND CONTROLS ===
@@ -868,6 +936,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:battery-sync",
         is_control=True,
         options=["Not Active", "Charge", "Discharge", "Idle", "Stop", "Release"],
+        source="virtual",
     ),
     EntityDef(
         slug="battery_command_power",
@@ -882,6 +951,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=0,
         max_val=5000,
         step=100,
+        source="virtual",
     ),
     EntityDef(
         slug="battery_command_power_pct",
@@ -895,6 +965,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=0,
         max_val=100,
         step=5,
+        source="virtual",
     ),
     EntityDef(
         slug="battery_command_duration",
@@ -909,6 +980,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=60,
         max_val=7200,
         step=60,
+        source="virtual",
     ),
 
 ]

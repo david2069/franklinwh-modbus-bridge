@@ -189,6 +189,10 @@ async def test_mqtt_topics_with_device_info(client):
     assert "battery_soc" in slugs
     assert "battery_power_kw" in slugs
 
+    # Verify source annotation is included in API response
+    soc_topic = next(t for t in topics if t["slug"] == "battery_soc")
+    assert soc_topic["source"] == "713.SoC"
+
 
 async def test_mqtt_test_connection_api(client):
     resp = await client.post("/api/mqtt/test")

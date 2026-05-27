@@ -8,6 +8,9 @@ function settingsTab() {
     entities: [],
     entityFilter: '',
     metricsRetention: 30,
+    republishing: false,
+    unpublishing: false,
+    showTopics: false,
 
     async init() {
       await this.loadAll();
@@ -20,15 +23,15 @@ function settingsTab() {
     },
 
     async loadAll() {
-      const [mqttStatus, health, topics] = await Promise.all([
+      const [mqttStatus, appStatus, topics] = await Promise.all([
         fetchJSON('api/mqtt/status'),
-        fetchJSON('api/health'),
+        fetchJSON('api/status'),
         fetchJSON('api/mqtt/topics'),
       ]);
 
       if (mqttStatus && !mqttStatus.error) this.mqtt = mqttStatus;
-      if (health && health.components && health.components.poller) {
-        this.poller = health.components.poller;
+      if (appStatus && appStatus.components && appStatus.components.poller) {
+        this.poller = appStatus.components.poller;
       }
       if (topics && topics.topics) this.entities = topics.topics;
     },
@@ -58,7 +61,8 @@ function settingsTab() {
       return this.entities.filter(e =>
         e.slug.toLowerCase().includes(q) ||
         e.name.toLowerCase().includes(q) ||
-        e.ha_type.toLowerCase().includes(q)
+        e.ha_type.toLowerCase().includes(q) ||
+        (e.source || '').toLowerCase().includes(q)
       );
     },
 
@@ -67,24 +71,69 @@ function settingsTab() {
       return pts[slug] !== undefined ? String(pts[slug]) : '--';
     },
 
+    /** Colour-code the source badge by model family. */
+    sourceClass(source) {
+      if (!source) return 'bg-slate-700/50 text-slate-500';
+      if (source === 'virtual') return 'bg-purple-900/50 text-purple-300';
+      if (source.startsWith('ext.')) return 'bg-amber-900/50 text-amber-300';
+      if (source.startsWith('701.')) return 'bg-blue-900/50 text-blue-300';
+      if (source.startsWith('713.') || source.startsWith('714.')) return 'bg-emerald-900/50 text-emerald-300';
+      if (source.startsWith('704.') || source.startsWith('715.')) return 'bg-orange-900/50 text-orange-300';
+      if (source.startsWith('702.')) return 'bg-teal-900/50 text-teal-300';
+      if (source.startsWith('502.')) return 'bg-yellow-900/50 text-yellow-300';
+      return 'bg-slate-700/50 text-slate-400';
+    },
+
     async republishDiscovery() {
-      const data = await fetchJSON('api/mqtt/publish', { method: 'POST' });
-      if (data && !data.error) {
-        Alpine.store('app').toast('Discovery republish queued', 'info');
-      } else {
-        Alpine.store('app').toast('Republish failed: ' + (data?.error || 'unknown'), 'error');
+      this.republishing = true;
+      try {
+        const data = await fetchJSON('api/mqtt/publish', { method: 'POST' });
+        if (data && !data.error) {
+          Alpine.store('app').toast('Discovery republish queued', 'info');
+          // Poll for confirmation — discovery_published should flip to true
+          await this._pollDiscoveryStatus(true);
+        } else {
+          Alpine.store('app').toast('Republish failed: ' + (data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.republishing = false;
       }
-      setTimeout(() => this.loadAll(), 1000);
     },
 
     async unpublishDiscovery() {
-      const data = await fetchJSON('api/mqtt/unpublish', { method: 'POST' });
-      if (data && !data.error) {
-        Alpine.store('app').toast(`Discovery unpublished (${data.topics_cleared} topics)`, 'info');
-      } else {
-        Alpine.store('app').toast('Unpublish failed: ' + (data?.error || 'unknown'), 'error');
+      this.unpublishing = true;
+      try {
+        const data = await fetchJSON('api/mqtt/unpublish', { method: 'POST' });
+        if (data && !data.error) {
+          const count = data.topics_cleared ?? 0;
+          Alpine.store('app').toast(
+            `Discovery unpublished — ${count} topics tombstoned`,
+            'info',
+          );
+          await this.loadAll();
+        } else {
+          Alpine.store('app').toast('Unpublish failed: ' + (data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.unpublishing = false;
       }
-      setTimeout(() => this.loadAll(), 1000);
+    },
+
+    /** Poll MQTT status until discovery_published matches expected, max 5s. */
+    async _pollDiscoveryStatus(expected) {
+      for (let i = 0; i < 5; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        await this.loadAll();
+        if (this.mqtt.discovery_published === expected) {
+          Alpine.store('app').toast(
+            `Discovery published — ${this.mqtt.entity_count ?? '?'} entities`,
+            'info',
+          );
+          return;
+        }
+      }
+      // Timed out — still refresh
+      await this.loadAll();
     },
   };
 }

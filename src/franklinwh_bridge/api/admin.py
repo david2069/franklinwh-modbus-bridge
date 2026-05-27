@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
+from franklinwh_bridge.store.db import get_pics_compliance, set_pics_status
 from franklinwh_bridge.store.metrics import (
     RANGE_MAP,
     get_retention_days,
@@ -100,6 +101,58 @@ async def get_models(request: Request):
         })
 
     return {"gateway_id": gateway_id, "models": list(models.values())}
+
+
+@router.post("/models/{model_id}/read")
+async def read_model(model_id: int, request: Request):
+    """On-demand read of a single SunSpec model from the device.
+
+    Connects to the controller, calls model.read() to fetch live register
+    values, then returns the point name→value map.  Also injects the values
+    into the sample bus so the Explorer sees them immediately.
+    """
+    controller = getattr(request.app.state, "controller", None)
+    if controller is None:
+        raise HTTPException(503, "No Modbus controller available")
+
+    def _do_read() -> dict:
+        was_connected = getattr(controller, "dev", None) is not None
+        if not was_connected:
+            controller.connect()
+        try:
+            model_obj = controller.get_model(model_id)
+            if model_obj is None:
+                return {"error": f"Model {model_id} not found on device"}
+            model_obj.read()
+            values: dict[str, Any] = {}
+            pts = getattr(model_obj, "points", None)
+            if pts:
+                for pt_name, pt_obj in pts.items():
+                    val = getattr(pt_obj, "value", None)
+                    if val is not None:
+                        values[f"{model_id}.{pt_name}"] = val
+            return {"values": values}
+        finally:
+            if not was_connected:
+                controller.disconnect()
+
+    result = await asyncio.to_thread(_do_read)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+
+    # Inject as sticky points so they survive poll cycles (5-min TTL)
+    sample_bus = request.app.state.sample_bus
+    sample_bus.inject_sticky(result["values"])
+    # Also update current sample for immediate visibility
+    last = sample_bus.last_sample
+    if last is not None:
+        last.points.update(result["values"])
+
+    return {
+        "model_id": model_id,
+        "points_read": len(result["values"]),
+        "values": result["values"],
+    }
 
 
 @router.post("/models/refresh")
@@ -392,3 +445,37 @@ async def rename_sequence(name: str, body: SequenceRenameRequest):
         return {"ok": False, "error": f"'{body.new_name}' already exists"}
     old_path.rename(new_path)
     return {"ok": True, "old_name": name, "new_name": body.new_name}
+
+
+# ── PICS compliance endpoints ──────────────────────────────────
+
+
+class PicsUpdateRequest(BaseModel):
+    model_id: int
+    point_name: str
+    status: str
+    notes: str | None = None
+
+
+@router.get("/pics")
+async def get_pics(request: Request):
+    """Return all PICS compliance statuses."""
+    db: aiosqlite.Connection = request.app.state.db
+    rows = await get_pics_compliance(db)
+    return {"pics": rows}
+
+
+@router.put("/pics")
+async def put_pics(body: PicsUpdateRequest, request: Request):
+    """Upsert a PICS compliance status for a model point."""
+    db: aiosqlite.Connection = request.app.state.db
+    try:
+        await set_pics_status(db, body.model_id, body.point_name, body.status, body.notes)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {
+        "ok": True,
+        "model_id": body.model_id,
+        "point_name": body.point_name,
+        "status": body.status,
+    }

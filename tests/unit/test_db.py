@@ -5,9 +5,11 @@ import pytest
 from franklinwh_bridge.store.db import (
     CURRENT_SCHEMA_VERSION,
     get_mqtt_config,
+    get_pics_compliance,
     get_schema_version,
     init_db,
     log_startup_event,
+    set_pics_status,
 )
 
 
@@ -109,6 +111,40 @@ async def test_mqtt_config_seeded_by_migration(db):
     assert config["discovery_prefix"] == "homeassistant"
 
 
-async def test_schema_version_is_5(db):
+async def test_schema_version_is_6(db):
     version = await get_schema_version(db)
-    assert version == 5
+    assert version == 6
+
+
+async def test_pics_compliance_empty(db):
+    rows = await get_pics_compliance(db)
+    assert rows == []
+
+
+async def test_pics_set_and_get(db):
+    await set_pics_status(db, 701, "W", "S")
+    await set_pics_status(db, 701, "V", "T", notes="reads ok")
+    await set_pics_status(db, 702, "CtrlModes", "F", notes="always 0")
+
+    rows = await get_pics_compliance(db)
+    assert len(rows) == 3
+    assert rows[0]["model_id"] == 701
+    assert rows[0]["point_name"] == "V"
+    assert rows[0]["status"] == "T"
+    assert rows[0]["notes"] == "reads ok"
+    assert rows[1]["point_name"] == "W"
+    assert rows[1]["status"] == "S"
+    assert rows[2]["model_id"] == 702
+
+
+async def test_pics_upsert(db):
+    await set_pics_status(db, 701, "W", "U")
+    await set_pics_status(db, 701, "W", "S")
+    rows = await get_pics_compliance(db)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "S"
+
+
+async def test_pics_invalid_status(db):
+    with pytest.raises(ValueError, match="Invalid PICS status"):
+        await set_pics_status(db, 701, "W", "Z")

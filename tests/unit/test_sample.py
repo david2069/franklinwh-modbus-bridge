@@ -1,6 +1,8 @@
 """Tests for Sample dataclass and SampleBus."""
 
-from franklinwh_bridge.modbus.sample import Sample, SampleBus
+import time
+
+from franklinwh_bridge.modbus.sample import STICKY_TTL_SECONDS, Sample, SampleBus
 
 
 def test_sample_creation():
@@ -84,3 +86,101 @@ async def test_sample_bus_handles_subscriber_error():
     bus.subscribe(good_cb)
     await bus.publish(Sample.now("gw1", {}))
     assert len(good_received) == 1
+
+
+# ── Sticky overlay tests ──────────────────────────────────────
+
+
+async def test_sticky_points_survive_publish():
+    """Sticky points should appear in the sample after a new publish."""
+    bus = SampleBus()
+    bus.inject_sticky({"703.SN": "ABC123", "703.Md": "aGate"})
+    assert bus.sticky_count == 2
+
+    # Simulate a poll that doesn't include model 703
+    await bus.publish(Sample.now("gw1", {"soc": 85, "voltage_v": 240}))
+
+    last = bus.last_sample
+    assert last is not None
+    assert last.points["soc"] == 85
+    assert last.points["703.SN"] == "ABC123"
+    assert last.points["703.Md"] == "aGate"
+
+
+async def test_sticky_poll_wins_on_conflict():
+    """When poll data and sticky have the same key, poll data wins."""
+    bus = SampleBus()
+    bus.inject_sticky({"soc": 50, "703.SN": "ABC"})
+
+    await bus.publish(Sample.now("gw1", {"soc": 85}))
+
+    last = bus.last_sample
+    assert last is not None
+    assert last.points["soc"] == 85  # poll wins
+    assert last.points["703.SN"] == "ABC"  # sticky preserved
+
+
+async def test_sticky_expires_after_ttl():
+    """Sticky points should be purged after TTL elapses."""
+    bus = SampleBus()
+    bus.inject_sticky({"703.SN": "OLD"})
+
+    # Fast-forward past TTL
+    expired_ts = time.time() - STICKY_TTL_SECONDS - 1
+    bus._sticky_points["703.SN"] = ("OLD", expired_ts)
+
+    await bus.publish(Sample.now("gw1", {"soc": 85}))
+
+    last = bus.last_sample
+    assert last is not None
+    assert "703.SN" not in last.points
+    assert bus.sticky_count == 0
+
+
+async def test_sticky_partial_expiry():
+    """Only expired sticky points are purged; fresh ones survive."""
+    bus = SampleBus()
+    now = time.time()
+    bus._sticky_points["703.SN"] = ("OLD", now - STICKY_TTL_SECONDS - 1)
+    bus._sticky_points["703.Md"] = ("FRESH", now)
+
+    await bus.publish(Sample.now("gw1", {"soc": 85}))
+
+    last = bus.last_sample
+    assert last is not None
+    assert "703.SN" not in last.points  # expired
+    assert last.points["703.Md"] == "FRESH"  # still alive
+    assert bus.sticky_count == 1
+
+
+def test_clear_sticky_all():
+    """clear_sticky() with no prefix removes everything."""
+    bus = SampleBus()
+    bus.inject_sticky({"703.SN": "A", "701.W": 100})
+    assert bus.sticky_count == 2
+    removed = bus.clear_sticky()
+    assert removed == 2
+    assert bus.sticky_count == 0
+
+
+def test_clear_sticky_prefix():
+    """clear_sticky(prefix) only removes matching keys."""
+    bus = SampleBus()
+    bus.inject_sticky({"703.SN": "A", "703.Md": "B", "701.W": 100})
+    removed = bus.clear_sticky(prefix="703.")
+    assert removed == 2
+    assert bus.sticky_count == 1
+    assert "701.W" in {k for k in bus._sticky_points}
+
+
+async def test_sticky_survives_multiple_publishes():
+    """Sticky points persist across multiple poll cycles."""
+    bus = SampleBus()
+    bus.inject_sticky({"703.SN": "ABC123"})
+
+    # Three consecutive polls
+    for i in range(3):
+        await bus.publish(Sample.now("gw1", {"soc": 80 + i}))
+        assert bus.last_sample is not None
+        assert bus.last_sample.points["703.SN"] == "ABC123"
+        assert bus.last_sample.points["soc"] == 80 + i

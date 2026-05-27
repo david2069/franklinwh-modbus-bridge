@@ -483,8 +483,9 @@ body {
 }
 /* SOC ring track */
 [data-theme="light"] .soc-ring-track { stroke: var(--surface-2); }
-/* Modal & overlay backgrounds */
-[data-theme="light"] .bg-slate-900\/50 { background-color: rgba(0,0,0,0.05) !important; }
+/* Dark surfaces used for tiles, modals, overlays — need visible bg in light */
+[data-theme="light"] .bg-slate-900\/50,
+[data-theme="light"] .bg-slate-900\/40 { background-color: #f1f5f9 !important; }  /* slate-100 */
 /* Sidebar tooltip */
 [data-theme="light"] .bg-slate-700 { background-color: #1e293b !important; }
 /* Hover states */
@@ -496,6 +497,48 @@ body {
 /* Ensure sidebar/topbar backdrop */
 [data-theme="light"] aside { background-color: rgba(255,255,255,0.85) !important; }
 [data-theme="light"] header { background-color: rgba(255,255,255,0.90) !important; }
+
+/* ── Light theme: sequencer syntax highlighting ─────────── */
+[data-theme="light"] .syntax-overlay { color: #334155; }          /* slate-700 base text */
+[data-theme="light"] .syntax-editor-wrap textarea { caret-color: #1e293b; }
+[data-theme="light"] .sh-keyword  { color: #b45309; }             /* amber-700 */
+[data-theme="light"] .sh-model    { color: #0e7490; }             /* cyan-700 */
+[data-theme="light"] .sh-point    { color: #047857; }             /* emerald-700 */
+[data-theme="light"] .sh-string   { color: #059669; }             /* emerald-600 */
+[data-theme="light"] .sh-number   { color: #6d28d9; }             /* violet-700 */
+[data-theme="light"] .sh-bool     { color: #dc2626; }             /* red-600 */
+[data-theme="light"] .sh-bracket  { color: #64748b; }             /* slate-500 */
+/* Sequencer output terminal — ensure readable in light mode */
+[data-theme="light"] .text-emerald-300 { color: #047857 !important; }
+[data-theme="light"] .text-red-300 { color: #dc2626 !important; }
+[data-theme="light"] .text-violet-400 { color: #6d28d9 !important; }
+
+/* ── Light theme: source & status badge colours ──────── */
+/* Tinted backgrounds: dark translucent → light translucent */
+[data-theme="light"] .bg-purple-900\/50 { background-color: rgba(147, 51, 234, 0.10) !important; }
+[data-theme="light"] .bg-amber-900\/50  { background-color: rgba(217, 119, 6, 0.12) !important; }
+[data-theme="light"] .bg-blue-900\/50   { background-color: rgba(37, 99, 235, 0.10) !important; }
+[data-theme="light"] .bg-emerald-900\/50{ background-color: rgba(16, 185, 129, 0.10) !important; }
+[data-theme="light"] .bg-orange-900\/50 { background-color: rgba(234, 88, 12, 0.10) !important; }
+[data-theme="light"] .bg-teal-900\/50   { background-color: rgba(13, 148, 136, 0.10) !important; }
+[data-theme="light"] .bg-yellow-900\/50 { background-color: rgba(202, 138, 4, 0.12) !important; }
+/* Pastel text → rich saturated text */
+[data-theme="light"] .text-purple-300 { color: #7c3aed !important; } /* purple-600 */
+[data-theme="light"] .text-amber-300  { color: #b45309 !important; } /* amber-700 */
+[data-theme="light"] .text-blue-300   { color: #1d4ed8 !important; } /* blue-700 */
+[data-theme="light"] .text-orange-300 { color: #c2410c !important; } /* orange-700 */
+[data-theme="light"] .text-teal-300   { color: #0f766e !important; } /* teal-700 */
+[data-theme="light"] .text-yellow-300 { color: #a16207 !important; } /* yellow-700 */
+/* text-emerald-300 already overridden above (→ #047857) */
+
+/* ── Light theme: Live Points panel & deep surfaces ───── */
+/* Override near-invisible white borders to dark hairlines */
+[data-theme="light"] .border-white\/\[0\.05\] {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+[data-theme="light"] .hover\:border-white\/\[0\.1\]:hover {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {

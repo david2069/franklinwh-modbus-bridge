@@ -38,12 +38,8 @@
               x-text="$store.app.points.inverter_state || '--'"></span>
       </div>
       <button @click="showDiagnostics = true"
-              class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
-              title="Diagnostics">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-      </button>
+              class="text-[10px] text-slate-500 hover:text-slate-200 font-medium transition"
+              title="Diagnostics">Info</button>
     </div>
   </div>
 
@@ -61,19 +57,12 @@
          x-transition:leave-end="opacity-0 scale-95">
       <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.08]">
         <h3 class="text-sm font-semibold text-slate-200">Diagnostics</h3>
-        <button @click="showDiagnostics = false" class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <button @click="showDiagnostics = false" class="text-sm text-slate-400 hover:text-slate-200 font-bold transition px-2">✕</button>
       </div>
       <div class="overflow-y-auto max-h-[60vh] p-5 space-y-3 text-sm">
         <template x-for="item in diagnosticItems" :key="item.label">
           <div class="flex items-center justify-between py-1.5 border-b border-white/[0.04]">
-            <div class="flex items-center gap-2.5">
-              <span class="text-slate-500" x-text="item.icon"></span>
-              <span class="text-slate-400" x-text="item.label"></span>
-            </div>
+            <span class="text-slate-400" x-text="item.label"></span>
             <span class="font-mono text-sm text-slate-200" x-text="item.value"></span>
           </div>
         </template>
@@ -91,20 +80,20 @@
       <div class="card-label mb-3">Power Flow Summary</div>
       <div class="space-y-2">
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400 w-20">Solar</span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Solar <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('total_solar')"></span></span>
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.solarPowerW, 'solar')"
                 x-text="fmt.w($store.app.solarPowerW) + 'W'"></span>
           <span class="text-xs text-slate-500 w-28 text-right"
                 x-text="$store.app.solarPowerW > 0 ? 'Generating' : 'Idle'"></span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400 w-20">Home</span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Home <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('home_load_ext')"></span></span>
           <span class="text-sm font-bold font-mono"
                 x-text="fmt.w($store.app.homePowerW) + 'W'"></span>
           <span class="text-xs text-slate-500 w-28 text-right">Consuming</span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400 w-20">Battery</span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Battery <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('battery_power_w')"></span></span>
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.batteryPowerW, 'battery')"
                 x-text="fmt.w($store.app.batteryPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
@@ -112,7 +101,7 @@
                 x-text="$store.app.batteryPowerW > 0 ? 'Discharging' : ($store.app.batteryPowerW < 0 ? 'Charging' : 'Idle')"></span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400 w-20">Grid</span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Grid <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('grid_power_w')"></span></span>
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.gridPowerW, 'grid')"
                 x-text="fmt.w($store.app.gridPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
@@ -122,109 +111,123 @@
       </div>
     </div>
 
-    <!-- AC Power -->
-    <div class="card">
-      <div class="card-label mb-3">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
+    <!-- AC Power (with expandable per-phase detail for split/three-phase) -->
+    <div class="card" x-data="{ phaseExpanded: false }">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label !mb-0">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
+        <!-- Phase expand button — only for split/three-phase -->
+        <button x-show="$store.app.acTypeCode >= 1" @click="phaseExpanded = !phaseExpanded"
+                class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition"
+                :class="phaseExpanded ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'">
+          <span class="text-[8px]" x-text="phaseExpanded ? '▼' : '▶'"></span>
+          <span x-text="phaseExpanded ? 'Hide Phases' : 'Per-Phase'"></span>
+        </button>
+      </div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div class="flex justify-between">
-          <span class="text-slate-500">Voltage</span>
+          <span class="text-slate-500">Voltage <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.LNV</span></span>
           <span class="font-mono" x-text="($store.app.points.voltage_v ?? '--') + ' V'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Current</span>
+          <span class="text-slate-500">Current <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.A</span></span>
           <span class="font-mono" x-text="($store.app.points.current_a ?? '--') + ' A'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Frequency</span>
+          <span class="text-slate-500">Frequency <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.Hz</span></span>
           <span class="font-mono" x-text="($store.app.points.frequency_hz ?? '--') + ' Hz'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Power Factor</span>
+          <span class="text-slate-500">Power Factor <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.PF</span></span>
           <span class="font-mono" x-text="$store.app.points.power_factor ?? '--'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Apparent</span>
+          <span class="text-slate-500">Apparent <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.VA</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_va ?? '--') + ' VA'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Reactive</span>
+          <span class="text-slate-500">Reactive <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.Var</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_var ?? '--') + ' VAR'"></span>
         </div>
       </div>
-    </div>
 
-    <!-- Per-Phase AC Detail -->
-    <div class="card lg:col-span-2" x-show="$store.app.points.voltage_l1_v != null">
-      <div class="card-label mb-3">Phase Detail
-        <span class="normal-case font-normal text-slate-600"
-              x-text="'(' + $store.app.acTypeName + ')'"></span>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-[10px] uppercase text-slate-500 font-semibold">
-              <th class="text-left py-1 pr-4">Metric</th>
-              <th class="text-right py-1 px-3">L1</th>
-              <th class="text-right py-1 px-3" x-show="$store.app.acTypeCode >= 1">L2</th>
-              <th class="text-right py-1 px-3" x-show="$store.app.acTypeCode >= 2">L3</th>
-            </tr>
-          </thead>
-          <tbody class="font-mono">
-            <tr class="border-t border-white/[0.04]">
-              <td class="text-slate-500 py-1.5 pr-4">Voltage (V)</td>
-              <td class="text-right px-3" x-text="($store.app.points.voltage_l1_v ?? '--') + ' V'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.voltage_l2_v ?? '--') + ' V'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.voltage_l3_v ?? '--') + ' V'"></td>
-            </tr>
-            <tr class="border-t border-white/[0.04]">
-              <td class="text-slate-500 py-1.5 pr-4">Current (A)</td>
-              <td class="text-right px-3" x-text="($store.app.points.current_l1_a ?? '--') + ' A'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.current_l2_a ?? '--') + ' A'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.current_l3_a ?? '--') + ' A'"></td>
-            </tr>
-            <tr class="border-t border-white/[0.04]">
-              <td class="text-slate-500 py-1.5 pr-4">Power (W)</td>
-              <td class="text-right px-3" :style="'color:' + powerColour($store.app.points.power_l1_w, 'grid')"
-                  x-text="($store.app.points.power_l1_w ?? '--') + ' W'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1"
-                  :style="'color:' + powerColour($store.app.points.power_l2_w, 'grid')"
-                  x-text="($store.app.points.power_l2_w ?? '--') + ' W'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2"
-                  :style="'color:' + powerColour($store.app.points.power_l3_w, 'grid')"
-                  x-text="($store.app.points.power_l3_w ?? '--') + ' W'"></td>
-            </tr>
-            <tr class="border-t border-white/[0.04]">
-              <td class="text-slate-500 py-1.5 pr-4">Power Factor</td>
-              <td class="text-right px-3" x-text="$store.app.points.pf_l1 ?? '--'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="$store.app.points.pf_l2 ?? '--'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="$store.app.points.pf_l3 ?? '--'"></td>
-            </tr>
-            <tr class="border-t border-white/[0.04]">
-              <td class="text-slate-500 py-1.5 pr-4">Apparent (VA)</td>
-              <td class="text-right px-3" x-text="($store.app.points.va_l1 ?? '--') + ' VA'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.va_l2 ?? '--') + ' VA'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.va_l3 ?? '--') + ' VA'"></td>
-            </tr>
-            <tr class="border-t border-white/[0.04]">
-              <td class="text-slate-500 py-1.5 pr-4">Reactive (VAR)</td>
-              <td class="text-right px-3" x-text="($store.app.points.var_l1 ?? '--') + ' VAR'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.var_l2 ?? '--') + ' VAR'"></td>
-              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.var_l3 ?? '--') + ' VAR'"></td>
-            </tr>
-            <!-- Line-line voltages (split + three-phase only) -->
-            <template x-if="$store.app.acTypeCode >= 1">
+      <!-- Per-Phase Detail (expandable, split/three-phase only) -->
+      <div x-show="phaseExpanded && $store.app.acTypeCode >= 1"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 max-h-0"
+           x-transition:enter-end="opacity-100 max-h-[500px]"
+           x-transition:leave="transition ease-in duration-150"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           class="mt-3 pt-3 border-t border-white/[0.06]">
+        <div class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider mb-2">
+          Per-Phase Detail
+          <span class="normal-case font-normal text-slate-600"
+                x-text="'(' + $store.app.acTypeName + ')'"></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-[10px] uppercase text-slate-500 font-semibold">
+                <th class="text-left py-1 pr-4">Metric</th>
+                <th class="text-right py-1 px-3">L1</th>
+                <th class="text-right py-1 px-3">L2</th>
+                <th class="text-right py-1 px-3" x-show="$store.app.acTypeCode >= 2">L3</th>
+              </tr>
+            </thead>
+            <tbody class="font-mono text-xs">
+              <tr class="border-t border-white/[0.04]">
+                <td class="text-slate-500 py-1 pr-4">Voltage</td>
+                <td class="text-right px-3" x-text="($store.app.points.voltage_l1_v ?? '--') + ' V'"></td>
+                <td class="text-right px-3" x-text="($store.app.points.voltage_l2_v ?? '--') + ' V'"></td>
+                <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.voltage_l3_v ?? '--') + ' V'"></td>
+              </tr>
+              <tr class="border-t border-white/[0.04]">
+                <td class="text-slate-500 py-1 pr-4">Current</td>
+                <td class="text-right px-3" x-text="($store.app.points.current_l1_a ?? '--') + ' A'"></td>
+                <td class="text-right px-3" x-text="($store.app.points.current_l2_a ?? '--') + ' A'"></td>
+                <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.current_l3_a ?? '--') + ' A'"></td>
+              </tr>
+              <tr class="border-t border-white/[0.04]">
+                <td class="text-slate-500 py-1 pr-4">Power</td>
+                <td class="text-right px-3" :style="'color:' + powerColour($store.app.points.power_l1_w, 'grid')"
+                    x-text="($store.app.points.power_l1_w ?? '--') + ' W'"></td>
+                <td class="text-right px-3" :style="'color:' + powerColour($store.app.points.power_l2_w, 'grid')"
+                    x-text="($store.app.points.power_l2_w ?? '--') + ' W'"></td>
+                <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2"
+                    :style="'color:' + powerColour($store.app.points.power_l3_w, 'grid')"
+                    x-text="($store.app.points.power_l3_w ?? '--') + ' W'"></td>
+              </tr>
+              <tr class="border-t border-white/[0.04]">
+                <td class="text-slate-500 py-1 pr-4">PF</td>
+                <td class="text-right px-3" x-text="$store.app.points.pf_l1 ?? '--'"></td>
+                <td class="text-right px-3" x-text="$store.app.points.pf_l2 ?? '--'"></td>
+                <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="$store.app.points.pf_l3 ?? '--'"></td>
+              </tr>
+              <tr class="border-t border-white/[0.04]">
+                <td class="text-slate-500 py-1 pr-4">VA</td>
+                <td class="text-right px-3" x-text="($store.app.points.va_l1 ?? '--')"></td>
+                <td class="text-right px-3" x-text="($store.app.points.va_l2 ?? '--')"></td>
+                <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.va_l3 ?? '--')"></td>
+              </tr>
+              <tr class="border-t border-white/[0.04]">
+                <td class="text-slate-500 py-1 pr-4">VAR</td>
+                <td class="text-right px-3" x-text="($store.app.points.var_l1 ?? '--')"></td>
+                <td class="text-right px-3" x-text="($store.app.points.var_l2 ?? '--')"></td>
+                <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.var_l3 ?? '--')"></td>
+              </tr>
+              <!-- Line-line voltages -->
               <tr class="border-t border-white/[0.06]">
-                <td class="text-slate-500 py-1.5 pr-4">V Line-Line</td>
-                <td class="text-right px-3 text-slate-400 text-xs"
+                <td class="text-slate-500 py-1 pr-4">V L-L</td>
+                <td class="text-right px-3 text-slate-400 text-[10px]"
                     x-text="'L1-L2: ' + ($store.app.points.voltage_l1l2_v ?? '--') + ' V'"></td>
-                <td class="text-right px-3 text-slate-400 text-xs" x-show="$store.app.acTypeCode >= 1"
+                <td class="text-right px-3 text-slate-400 text-[10px]"
                     x-text="$store.app.acTypeCode >= 2 ? 'L2-L3: ' + ($store.app.points.voltage_l2l3_v ?? '--') + ' V' : ''"></td>
-                <td class="text-right px-3 text-slate-400 text-xs" x-show="$store.app.acTypeCode >= 2"
+                <td class="text-right px-3 text-slate-400 text-[10px]" x-show="$store.app.acTypeCode >= 2"
                     x-text="'L3-L1: ' + ($store.app.points.voltage_l3l1_v ?? '--') + ' V'"></td>
               </tr>
-            </template>
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -246,15 +249,15 @@
         </div>
         <div class="flex-1 text-sm space-y-1">
           <div class="flex justify-between">
-            <span class="text-slate-500">Reserve</span>
+            <span class="text-slate-500">Reserve <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15508</span></span>
             <span class="font-mono" x-text="($store.app.points.self_reserve_pct ?? '--') + '%'"></span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">SoH</span>
+            <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoH</span></span>
             <span class="font-mono" x-text="($store.app.points.soh ?? '--') + '%'"></span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">Mode</span>
+            <span class="text-slate-500">Mode <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15507</span></span>
             <span class="font-medium" x-text="$store.app.points.mode_name || '--'"></span>
           </div>
         </div>
@@ -266,20 +269,20 @@
       <div class="card-label mb-3">Solar AC Inputs</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between font-semibold">
-          <span class="text-slate-400">Total Solar</span>
+          <span class="text-slate-400">Total Solar <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600 font-normal">ext.15502</span></span>
           <span class="font-mono" :style="'color:' + powerColour($store.app.points.total_solar, 'solar')"
                 x-text="fmt.w($store.app.points.total_solar) + 'W'"></span>
         </div>
         <div class="flex justify-between pl-4">
-          <span class="text-slate-500">Proximal</span>
+          <span class="text-slate-500">Proximal <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15503</span></span>
           <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_proximal) + 'W'"></span>
         </div>
         <div class="flex justify-between pl-4">
-          <span class="text-slate-500">Remote 1 (APbox)</span>
+          <span class="text-slate-500">Remote 1 (APbox) <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15504</span></span>
           <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_remote1) + 'W'"></span>
         </div>
         <div class="flex justify-between pl-4">
-          <span class="text-slate-500">Remote 2</span>
+          <span class="text-slate-500">Remote 2 <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15505</span></span>
           <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_remote2) + 'W'"></span>
         </div>
       </div>
@@ -290,31 +293,31 @@
       <div class="card-label mb-3">DC Power (Battery)</div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div class="flex justify-between">
-          <span class="text-slate-500">Power</span>
+          <span class="text-slate-500">Power <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCW</span></span>
           <span class="font-mono font-semibold" x-text="fmt.w($store.app.points.battery_dc_power_w) + ' W'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">SoC</span>
+          <span class="text-slate-500">SoC <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoC</span></span>
           <span class="font-mono" x-text="($store.app.points.soc ?? '--') + ' %'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">SoH</span>
+          <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoH</span></span>
           <span class="font-mono" x-text="($store.app.points.soh ?? '--') + ' %'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Ambient</span>
+          <span class="text-slate-500">Ambient <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpAmb</span></span>
           <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' °C'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Cabinet</span>
+          <span class="text-slate-500">Cabinet <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpCab</span></span>
           <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' °C'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Available</span>
+          <span class="text-slate-500">Available <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.WHAvail</span></span>
           <span class="font-mono" x-text="($store.app.points.wh_available != null ? ($store.app.points.wh_available / 1000).toFixed(1) : '--') + ' kWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Rated</span>
+          <span class="text-slate-500">Rated <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.WHRtg</span></span>
           <span class="font-mono" x-text="($store.app.points.wh_rating != null ? ($store.app.points.wh_rating / 1000).toFixed(1) : '--') + ' kWh'"></span>
         </div>
       </div>
@@ -325,23 +328,23 @@
       <div class="card-label mb-3">Lifetime Energy</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
-          <span class="text-amber-400">Solar PV Total</span>
+          <span class="text-amber-400">Solar PV Total <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15510</span></span>
           <span class="font-mono font-semibold" x-text="($store.app.points.pv_energy_total_wh != null ? ($store.app.points.pv_energy_total_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-emerald-400">Discharged</span>
+          <span class="text-emerald-400">Discharged <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCWhInj</span></span>
           <span class="font-mono" x-text="($store.app.points.dc_energy_discharged_wh != null ? ($store.app.points.dc_energy_discharged_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-cyan-400">Charged</span>
+          <span class="text-cyan-400">Charged <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCWhAbs</span></span>
           <span class="font-mono" x-text="($store.app.points.dc_energy_charged_wh != null ? ($store.app.points.dc_energy_charged_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-emerald-400">Grid Export</span>
+          <span class="text-emerald-400">Grid Export <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TotWhInj</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_export_wh != null ? ($store.app.points.grid_export_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-red-400">Grid Import</span>
+          <span class="text-red-400">Grid Import <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TotWhAbs</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_import_wh != null ? ($store.app.points.grid_import_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
       </div>
@@ -403,7 +406,7 @@
         </div>
       </div>
 
-      <!-- Active status + last result -->
+      <!-- Active status + timers -->
       <div class="border-t border-white/[0.06] pt-2 mt-1">
         <div class="flex items-center justify-between text-xs mb-1">
           <span class="text-slate-500">Active:</span>
@@ -411,6 +414,14 @@
                 :class="$store.app.points.battery_command_state && $store.app.points.battery_command_state !== 'Not Active' ? 'text-cyan-400' : 'text-slate-500'"
                 x-text="($store.app.points.battery_command_state || 'Not Active') + ($store.app.points.battery_command_power_w ? ' ' + $store.app.points.battery_command_power_w + 'W' : '')"></span>
           <span class="text-slate-600" x-text="$store.app.points.sw_watchdog_remain_s ? $store.app.points.sw_watchdog_remain_s + 's left' : ''"></span>
+        </div>
+        <!-- HW Revert Timer (shown when active) -->
+        <div class="flex items-center justify-between text-xs mb-1"
+             x-show="$store.app.points.wset_revert_time_s > 0">
+          <span class="text-slate-500">HW Revert Timer:</span>
+          <span class="font-mono text-amber-400"
+                x-text="($store.app.points.wset_revert_remain_s ?? 0) + 's / ' + ($store.app.points.wset_revert_time_s ?? 0) + 's'"></span>
+          <span class="text-[10px] text-slate-600">VPP Mode</span>
         </div>
         <div class="text-xs font-mono px-2 py-1 rounded bg-slate-900/50 border border-white/5"
              :class="lastResult.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'"
@@ -485,29 +496,16 @@
     <!-- Header bar -->
     <div class="flex items-center justify-between -mx-4 -mt-4 px-4 py-2.5 border-b border-white/[0.06] bg-slate-800/40 rounded-t-lg">
       <button @click="expanded = !expanded" class="flex items-center gap-2 group">
-        <svg class="w-3.5 h-3.5 text-slate-400 transition-transform" :class="expanded && 'rotate-90'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
+        <span class="text-[10px] text-slate-400 transition-transform" :class="expanded && 'rotate-90'">▶</span>
         <span class="card-label !mb-0 group-hover:text-slate-300 transition">Live Points</span>
         <span class="text-[10px] text-slate-600" x-text="selectedCount + ' points'"></span>
       </button>
       <div class="flex items-center gap-2">
         <span class="text-[10px] text-slate-600" x-show="!expanded">collapsed</span>
         <button @click="showConfig = !showConfig"
-                class="p-1 rounded hover:bg-slate-700 transition"
-                :class="showConfig ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'"
-                title="Configure visible points">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
-        <button @click="showDiagnostics = true"
-                class="p-1 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
-                title="Full Diagnostics">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
-        </button>
+                class="px-2 py-0.5 rounded text-[10px] font-medium transition"
+                :class="showConfig ? 'text-cyan-400 bg-cyan-500/10' : 'text-slate-500 hover:text-slate-200'"
+                title="Configure visible points">Config</button>
       </div>
     </div>
 
@@ -541,16 +539,14 @@
     <!-- Live points grid (expandable) -->
     <div x-show="expanded" x-transition.duration.200ms class="mt-3">
       <div x-show="activePoints.length === 0" class="text-center text-slate-600 text-xs py-4">
-        No points selected. Click the gear icon to configure.
+        No points selected. Click Config to configure.
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         <template x-for="pt in activePoints" :key="pt.key">
           <div class="bg-slate-900/50 rounded-lg border border-white/[0.05] px-3 py-2 hover:border-white/[0.1] transition">
-            <div class="flex items-center gap-1.5 mb-1">
-              <span class="text-[11px]" x-text="pt.icon"></span>
-              <span class="text-[10px] text-slate-500 uppercase font-semibold tracking-wider truncate" x-text="pt.label"></span>
-            </div>
+            <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wider truncate mb-1" x-text="pt.label"></div>
             <div class="text-sm font-mono font-semibold" :class="pt.colorClass" x-text="pt.value"></div>
+            <div x-show="$store.app.showSources && pt.source" class="text-[8px] font-mono text-slate-600 mt-0.5" x-text="pt.source"></div>
           </div>
         </template>
       </div>
@@ -587,29 +583,14 @@
           <div class="w-px h-4 bg-white/[0.08] mx-1"></div>
           <button @click="exportChartData('csv')"
                   class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition"
-                  title="Export CSV">
-            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            CSV
-          </button>
+                  title="Export CSV">CSV</button>
           <button @click="exportChartData('json')"
                   class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition"
-                  title="Export JSON">
-            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            JSON
-          </button>
+                  title="Export JSON">JSON</button>
           <div class="w-px h-4 bg-white/[0.08] mx-1"></div>
           <button @click="openChartModal()"
                   class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition"
-                  title="Expand chart">
-            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-              <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-            </svg>
-          </button>
+                  title="Expand chart">Expand</button>
         </div>
       </div>
       <div class="relative" style="height: 280px;">
@@ -709,11 +690,7 @@
           <button @click="exportChartData('json')"
                   class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">JSON</button>
         </div>
-        <button @click="closeChartModal()" class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <button @click="closeChartModal()" class="text-sm text-slate-400 hover:text-slate-200 font-bold transition px-2">✕</button>
       </div>
       <!-- Modal chart -->
       <div class="flex-1 p-5" style="min-height: 400px;">

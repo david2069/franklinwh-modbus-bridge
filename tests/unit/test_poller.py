@@ -129,6 +129,7 @@ async def test_poller_start_stop(poller):
 
 # --- AC Type detection ---
 
+
 def test_ac_type_default(poller):
     """AC type defaults to 0 (single-phase)."""
     assert poller.ac_type == 0
@@ -193,6 +194,7 @@ def test_detect_ac_type_corrupt_value(mock_controller, sample_bus):
 
 # --- Per-phase reading ---
 
+
 def _make_m701_with_phases(ac_type=0):
     """Create a mock M701 model with per-phase values and scale factors."""
     m701 = MagicMock()
@@ -207,8 +209,12 @@ def _make_m701_with_phases(ac_type=0):
 
     # L1 values (raw unscaled)
     for pt_name, val in [
-        ("VL1", 2430), ("AL1", 52), ("WL1", 12500),
-        ("PFL1", 980), ("VAL1", 13000), ("VarL1", -250),
+        ("VL1", 2430),
+        ("AL1", 52),
+        ("WL1", 12500),
+        ("PFL1", 980),
+        ("VAL1", 13000),
+        ("VarL1", -250),
     ]:
         pt = MagicMock()
         pt.value = val
@@ -216,8 +222,12 @@ def _make_m701_with_phases(ac_type=0):
 
     # L2 values (raw unscaled)
     for pt_name, val in [
-        ("VL2", 2410), ("AL2", 48), ("WL2", 11000),
-        ("PFL2", 970), ("VAL2", 11500), ("VarL2", -200),
+        ("VL2", 2410),
+        ("AL2", 48),
+        ("WL2", 11000),
+        ("PFL2", 970),
+        ("VAL2", 11500),
+        ("VarL2", -200),
         ("VL1L2", 4150),
     ]:
         pt = MagicMock()
@@ -226,9 +236,14 @@ def _make_m701_with_phases(ac_type=0):
 
     # L3 values (raw unscaled)
     for pt_name, val in [
-        ("VL3", 2420), ("AL3", 50), ("WL3", 12000),
-        ("PFL3", 990), ("VAL3", 12500), ("VarL3", -230),
-        ("VL2L3", 4180), ("VL3L1", 4170),
+        ("VL3", 2420),
+        ("AL3", 50),
+        ("WL3", 12000),
+        ("PFL3", 990),
+        ("VAL3", 12500),
+        ("VarL3", -230),
+        ("VL2L3", 4180),
+        ("VL3L1", 4170),
     ]:
         pt = MagicMock()
         pt.value = val
@@ -243,6 +258,7 @@ def test_read_grid_phases_scaling(mock_controller, sample_bus):
 
     def get_model(mid):
         return m701 if mid == 701 else None
+
     mock_controller.get_model.side_effect = get_model
 
     poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
@@ -265,6 +281,7 @@ def test_read_grid_phases_all_phases(mock_controller, sample_bus):
 
     def get_model(mid):
         return m701 if mid == 701 else None
+
     mock_controller.get_model.side_effect = get_model
 
     poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
@@ -284,3 +301,106 @@ def test_read_grid_phases_all_phases(mock_controller, sample_bus):
     assert "voltage_l3l1_v" in points
 
     assert points["ac_type_code"] == 2
+
+
+# --- Extension value sanitization (0xFFFF guard) ---
+
+
+def test_sanitize_replaces_0xffff_with_zero(poller):
+    """Individual 0xFFFF register values are replaced with 0 (no previous good value)."""
+    points = {
+        "total_solar": 0,
+        "pv_total": 0,
+        "pv_proximal": 65535,
+        "pv_remote1": 65535,
+        "pv_remote2": 65535,
+        "home_load_ext": 350,
+    }
+    poller._sanitize_extension_values(points)
+    assert points["pv_proximal"] == 0
+    assert points["pv_remote1"] == 0
+    assert points["pv_remote2"] == 0
+    assert points["total_solar"] == 0  # recalculated from cleaned components
+    assert points["home_load_ext"] == 350  # untouched
+
+
+def test_sanitize_catches_summed_0xffff(poller):
+    """Library-computed total_solar = 196605 (3×65535) is caught and zeroed."""
+    points = {
+        "total_solar": 196605,  # 65535 * 3
+        "pv_total": 0,
+        "pv_proximal": 65535,
+        "pv_remote1": 65535,
+        "pv_remote2": 65535,
+        "home_load_ext": 65535,
+    }
+    poller._sanitize_extension_values(points)
+    assert points["total_solar"] == 0
+    assert points["pv_proximal"] == 0
+    assert points["pv_remote1"] == 0
+    assert points["pv_remote2"] == 0
+    assert points["home_load_ext"] == 0
+
+
+def test_sanitize_uses_previous_good_value(poller):
+    """Corrupted values are replaced with last-known-good from previous poll."""
+    # First poll: normal values
+    points1 = {
+        "total_solar": 3200,
+        "pv_total": 3200,
+        "pv_proximal": 3200,
+        "pv_remote1": 0,
+        "pv_remote2": 0,
+        "home_load_ext": 400,
+    }
+    poller._sanitize_extension_values(points1)
+    assert points1["total_solar"] == 3200  # cached as good
+
+    # Second poll: corruption
+    points2 = {
+        "total_solar": 196605,
+        "pv_total": 0,
+        "pv_proximal": 65535,
+        "pv_remote1": 65535,
+        "pv_remote2": 65535,
+        "home_load_ext": 65535,
+    }
+    poller._sanitize_extension_values(points2)
+    assert points2["pv_proximal"] == 3200  # previous good value
+    assert points2["pv_remote1"] == 0
+    assert points2["pv_remote2"] == 0
+    assert points2["home_load_ext"] == 400  # previous good value
+    # Recalculated total_solar from cleaned components
+    assert points2["total_solar"] == 3200
+
+
+def test_sanitize_rejects_above_max_sane_power(poller):
+    """Values above MAX_SANE_POWER_W (15000) are rejected even if not 0xFFFF."""
+    points = {
+        "total_solar": 20000,
+        "pv_total": 20000,
+        "pv_proximal": 20000,
+        "pv_remote1": 0,
+        "pv_remote2": 0,
+        "home_load_ext": 500,
+    }
+    poller._sanitize_extension_values(points)
+    assert points["total_solar"] == 0  # no previous good value
+    assert points["pv_proximal"] == 0
+    assert points["pv_total"] == 0
+
+
+def test_sanitize_passes_normal_values(poller):
+    """Normal production values pass through unchanged."""
+    points = {
+        "total_solar": 4200,
+        "pv_total": 4200,
+        "pv_proximal": 4200,
+        "pv_remote1": 0,
+        "pv_remote2": 0,
+        "home_load_ext": 650,
+    }
+    poller._sanitize_extension_values(points)
+    assert points["total_solar"] == 4200
+    assert points["pv_proximal"] == 4200
+    assert points["home_load_ext"] == 650

@@ -340,3 +340,60 @@ def test_set_ac_type_resets_discovery():
     publisher._state.discovery_published = True
     publisher.set_ac_type(0)
     assert publisher.state.discovery_published is False
+
+
+def test_set_ac_type_tracks_removed_entities():
+    """Phase filtering should track removed entities for tombstoning."""
+    publisher = MqttPublisher()
+    publisher.set_ac_type(0)  # Single phase
+
+    # Should have removed L2 and L3 entities
+    removed_slugs = {e.slug for e in publisher._removed_entities}
+    assert "grid_voltage_l2_v" in removed_slugs
+    assert "grid_voltage_l3_v" in removed_slugs
+    assert "grid_voltage_l1l2_v" in removed_slugs
+    assert "grid_voltage_l2l3_v" in removed_slugs
+
+    # L1 entities should NOT be in removed list
+    assert "grid_voltage_l1_v" not in removed_slugs
+    # Non-phase entities should NOT be in removed list
+    assert "battery_soc" not in removed_slugs
+
+    # Total removed = 15 (7 L2 + 8 L3)
+    assert len(publisher._removed_entities) == 15
+
+
+def test_set_ac_type_split_tracks_removed():
+    """Split phase should only remove L3 entities."""
+    publisher = MqttPublisher()
+    publisher.set_ac_type(1)  # Split phase
+
+    removed_slugs = {e.slug for e in publisher._removed_entities}
+    assert "grid_voltage_l2_v" not in removed_slugs  # L2 kept
+    assert "grid_voltage_l3_v" in removed_slugs  # L3 removed
+    assert len(publisher._removed_entities) == 8  # 8 L3 entities
+
+
+def test_set_ac_type_three_phase_no_removed():
+    """Three-phase should have no removed entities."""
+    publisher = MqttPublisher()
+    publisher.set_ac_type(2)
+    assert len(publisher._removed_entities) == 0
+
+
+def test_entity_source_annotations():
+    """Every entity should have a source annotation."""
+    for entity in BRIDGE_ENTITIES:
+        assert entity.source, f"Entity {entity.slug} missing source annotation"
+
+
+def test_entity_source_format():
+    """Source annotations follow model.point or ext.addr or virtual format."""
+    import re
+    valid_pattern = re.compile(
+        r"^(\d{3}\.\w+|ext\.\d{5}|virtual)$"
+    )
+    for entity in BRIDGE_ENTITIES:
+        assert valid_pattern.match(entity.source), (
+            f"Entity {entity.slug} has invalid source format: {entity.source!r}"
+        )

@@ -20,6 +20,16 @@ const VENDOR_EXT_15500 = [
   { addr: 15512, name: 'proximalOutputWh',  desc: 'PV Energy Proximal',             keys: ['pv_energy_proximal_wh'],              unit: 'Wh', access: 'R',  type: 'uint32', span: 2 },
 ];
 
+const VENDOR_EXT_16000 = [
+  { addr: 16000, name: 'HomeLoadHiRes', desc: 'Home Load (High Resolution)', keys: ['vreg_16000'], unit: 'W', access: 'R', type: 'uint16' },
+  { addr: 16001, name: 'Reg16001',      desc: 'Unknown',                     keys: ['vreg_16001'], unit: '',  access: 'R', type: 'uint16' },
+  { addr: 16002, name: 'Reg16002',      desc: 'Unknown',                     keys: ['vreg_16002'], unit: '',  access: 'R', type: 'uint16' },
+];
+
+// PICS status codes and cycle order
+const PICS_CODES = ['U', 'S', 'T', 'F', 'X'];
+const PICS_LABELS = { U: 'Unimplemented', S: 'Supported', T: 'Tested', F: 'Failed', X: 'N/A' };
+
 // Default layout constants for explorer
 const EXPLORER_DEFAULTS = { treeWidth: 256, extHeight: 280 };
 const EXPLORER_LAYOUT_KEY = 'fwh-layout-explorer';
@@ -38,6 +48,12 @@ function explorerTab() {
     extFilter: '',
     extSuppressZeros: true,
 
+    // PICS compliance state: { "model_id:point_name": "S"|"T"|"F"|"U"|"X" }
+    picsData: {},
+
+    // On-demand model read state
+    readingModel: false,
+
     // Resizable panel dimensions
     treeWidth: EXPLORER_DEFAULTS.treeWidth,
     extHeight: EXPLORER_DEFAULTS.extHeight,
@@ -55,7 +71,7 @@ function explorerTab() {
       document.addEventListener('mousemove', this._onMouseMove);
       document.addEventListener('mouseup', this._onMouseUp);
 
-      await Promise.all([this.loadGateway(), this.loadModels()]);
+      await Promise.all([this.loadGateway(), this.loadModels(), this.loadPicsData()]);
       // Force-refresh point values so they're populated immediately
       Alpine.store('app').refresh();
     },
@@ -161,6 +177,31 @@ function explorerTab() {
       this.selectedModelId = modelId;
     },
 
+    async readModel() {
+      if (!this.selectedModelId || this.readingModel) return;
+      this.readingModel = true;
+      try {
+        const data = await fetchJSON(`api/models/${this.selectedModelId}/read`, { method: 'POST' });
+        if (data && !data.error) {
+          // Refresh points so the values appear
+          await Alpine.store('app').refresh();
+          Alpine.store('app').toast(
+            `Model ${this.selectedModelId}: ${data.points_read} points read`,
+            'info'
+          );
+        } else {
+          Alpine.store('app').toast(
+            'Read failed: ' + (data?.detail || data?.error || 'unknown'),
+            'error'
+          );
+        }
+      } catch (e) {
+        Alpine.store('app').toast('Read failed: ' + e.message, 'error');
+      } finally {
+        this.readingModel = false;
+      }
+    },
+
     // ── Computed properties ────────────────────────────────
 
     get modelCount() {
@@ -193,6 +234,27 @@ function explorerTab() {
     get selectedModel() {
       if (!this.selectedModelId) return null;
       return this.models.find(m => m.model_id === this.selectedModelId) || null;
+    },
+
+    modelHasValues(model) {
+      // Check if any point in this model has a live value
+      const pts = Alpine.store('app').points;
+      for (const pt of model.points) {
+        const mqKey = `${model.model_id}.${pt.name}`;
+        if (pts[mqKey] !== undefined) return true;
+      }
+      return false;
+    },
+
+    get selectedModelValueCount() {
+      if (!this.selectedModel) return 0;
+      const pts = Alpine.store('app').points;
+      let count = 0;
+      for (const pt of this.selectedModel.points) {
+        const mqKey = `${this.selectedModelId}.${pt.name}`;
+        if (pts[mqKey] !== undefined) count++;
+      }
+      return count;
     },
 
     get selectedModelPoints() {
@@ -245,8 +307,26 @@ function explorerTab() {
       const val = this.getPointValue(pt.name);
       if (val == null) return '--';
 
+      const ptype = (pt.type || '').toLowerCase();
+
+      // Bitfield expansion: show decimal + hex + set bit names
+      if (ptype.startsWith('bitfield') && pt.symbols && typeof val === 'number') {
+        const bits = [];
+        for (const [bitStr, name] of Object.entries(pt.symbols)) {
+          const bit = parseInt(bitStr, 10);
+          if (!isNaN(bit) && (val & (1 << bit))) {
+            bits.push(name);
+          }
+        }
+        const hex = '0x' + (val >>> 0).toString(16).toUpperCase();
+        if (bits.length > 0) {
+          return val + ' (' + hex + ') [' + bits.join(', ') + ']';
+        }
+        return val + ' (' + hex + ')';
+      }
+
       // Resolve enum symbol if available
-      if (pt.symbols && pt.symbols[String(val)]) {
+      if (ptype === 'enum16' && pt.symbols && pt.symbols[String(val)]) {
         return val + ' (' + pt.symbols[String(val)] + ')';
       }
       // Format numbers reasonably
@@ -261,6 +341,89 @@ function explorerTab() {
       // SunSpec addresses are 1-based (40001+), Base-0 are the raw register number
       if (this.addrMode === 'base0') return String(addr);
       return String(40001 + addr);
+    },
+
+    // ── Symbols tooltip ───────────────────────────────────
+
+    getSymbolsTooltip(pt) {
+      if (!pt.symbols) return '';
+      const ptype = (pt.type || '').toLowerCase();
+      const entries = Object.entries(pt.symbols);
+      if (entries.length === 0) return '';
+
+      if (ptype.startsWith('bitfield')) {
+        return entries
+          .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+          .map(([bit, name]) => `Bit ${bit}: ${name}`)
+          .join('\n');
+      }
+      // enum16
+      return entries
+        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+        .map(([val, name]) => `${val} = ${name}`)
+        .join('\n');
+    },
+
+    // ── PICS compliance ───────────────────────────────────
+
+    _picsKey(pointName) {
+      return this.selectedModelId != null ? `${this.selectedModelId}:${pointName}` : null;
+    },
+
+    getPicsStatus(pointName) {
+      const key = this._picsKey(pointName);
+      if (!key) return 'U';
+      // Explicit DB override takes priority
+      if (this.picsData[key]) return this.picsData[key];
+      // Auto-detect: if we have a live value, it's at least Supported
+      if (this.getPointValue(pointName) != null) return 'S';
+      return 'U';
+    },
+
+    picsStatusClass(pointName) {
+      const s = this.getPicsStatus(pointName);
+      switch (s) {
+        case 'S': return 'bg-emerald-500/20 text-emerald-400';
+        case 'T': return 'bg-cyan-500/20 text-cyan-400';
+        case 'F': return 'bg-red-500/20 text-red-400';
+        case 'X': return 'bg-slate-700/50 text-slate-500';
+        default:  return 'bg-amber-500/15 text-amber-400/60';
+      }
+    },
+
+    picsStatusTitle(pointName) {
+      const s = this.getPicsStatus(pointName);
+      return PICS_LABELS[s] || 'Unknown';
+    },
+
+    async cyclePicsStatus(pointName) {
+      const key = this._picsKey(pointName);
+      if (!key) return;
+      const current = this.getPicsStatus(pointName);
+      const idx = PICS_CODES.indexOf(current);
+      const next = PICS_CODES[(idx + 1) % PICS_CODES.length];
+      this.picsData[key] = next;
+
+      // Persist to backend
+      await fetchJSON('api/pics', {
+        method: 'PUT',
+        body: JSON.stringify({
+          model_id: this.selectedModelId,
+          point_name: pointName,
+          status: next,
+        }),
+      });
+    },
+
+    async loadPicsData() {
+      const data = await fetchJSON('api/pics');
+      if (data && data.pics) {
+        const map = {};
+        for (const row of data.pics) {
+          map[`${row.model_id}:${row.point_name}`] = row.status;
+        }
+        this.picsData = map;
+      }
     },
 
     // ── Vendor Extensions ─────────────────────────────────
@@ -311,6 +474,25 @@ function explorerTab() {
           hex: hex,
           symbols: def.symbols,
           span: def.span,
+        });
+      }
+
+      // 16000-16002: High-resolution extension registers
+      for (const def of VENDOR_EXT_16000) {
+        const value = this._resolveExtValue(def.keys);
+        let hex = null;
+        if (value != null) {
+          hex = ('0000' + (value & 0xFFFF).toString(16).toUpperCase()).slice(-4);
+        }
+        regs.push({
+          addr: def.addr,
+          name: def.name,
+          desc: def.desc,
+          value: value,
+          type: def.type,
+          access: def.access,
+          unit: def.unit || '',
+          hex: hex,
         });
       }
 

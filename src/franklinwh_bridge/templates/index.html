@@ -115,13 +115,8 @@
       <div class="flex items-center justify-between px-5 py-3 border-b"
            :class="$store.app.isReleaseable ? 'border-red-500/30 bg-red-500/10' : 'border-slate-700 bg-slate-800/50'">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-full flex items-center justify-center"
-               :class="$store.app.isReleaseable ? 'bg-red-500/20' : 'bg-slate-700'">
-            <svg class="w-4 h-4" :class="$store.app.isReleaseable ? 'text-red-400' : 'text-slate-500'"
-                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M18.36 6.64A9 9 0 1 1 5.64 18.36M12 2v4m0 12v4"/>
-            </svg>
-          </div>
+          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+               :class="$store.app.isReleaseable ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-500'">⏻</div>
           <div>
             <h3 class="text-sm font-semibold text-slate-100">Battery Control State</h3>
             <p class="text-xs" :class="$store.app.isReleaseable ? 'text-red-400' : 'text-slate-500'"
@@ -129,11 +124,7 @@
           </div>
         </div>
         <button @click="$store.app.showReleaseModal = false"
-                class="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
+                class="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition text-sm font-bold leading-none">✕</button>
       </div>
 
       <!-- Body: Control state grid -->
@@ -207,9 +198,7 @@
           <template x-if="$store.app.isReleaseable">
             <div>
               <div class="flex items-start gap-2 mb-3 p-2.5 rounded bg-red-500/10 border border-red-500/20">
-                <svg class="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
-                </svg>
+                <span class="text-red-400 flex-shrink-0 mt-0.5 text-sm font-bold leading-none">!</span>
                 <div class="text-xs text-red-300/80 leading-relaxed">
                   <strong>Force Release</strong> will zero WSetPct and WSet, then disable WSetEna.
                   Any active battery dispatch will be stopped and the inverter returned to native mode.
@@ -226,9 +215,7 @@
                     <span class="loading-spinner" style="border-top-color: #f87171;"></span>
                   </template>
                   <template x-if="!$store.app.releasing">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path d="M18.36 6.64A9 9 0 1 1 5.64 18.36M12 2v4m0 12v4"/>
-                    </svg>
+                    <span class="text-sm font-bold">⏻</span>
                   </template>
                   <span x-text="$store.app.releasing ? 'Releasing…' : 'Force Release'"></span>
                 </button>
@@ -243,9 +230,7 @@
           <template x-if="!$store.app.isReleaseable">
             <div class="text-center py-3">
               <div class="flex items-center justify-center gap-2 mb-2">
-                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
-                </svg>
+                <span class="text-emerald-400 text-sm font-bold">✓</span>
                 <span class="text-sm font-semibold text-emerald-400">No Active Control</span>
               </div>
               <p class="text-xs text-slate-500">Battery is operating in native mode. No release needed.</p>

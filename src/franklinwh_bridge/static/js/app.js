@@ -66,6 +66,38 @@ async function fetchJSON(url, options = {}) {
   }
 }
 
+// ── Point-to-Source Map (SunSpec model.point notation) ────────
+const POINT_SOURCES = {
+  soc: '713.SoC', soh: '713.SoH',
+  battery_power_w: '714.DCW', battery_dc_power_w: '714.DCW', battery_state: '714.DCW',
+  battery_current_a: '714.DCA',
+  total_solar: 'ext.15502', pv_proximal: 'ext.15503', pv_remote1: 'ext.15504', pv_remote2: 'ext.15505',
+  home_load_ext: 'ext.16000',
+  grid_power_w: '701.W', voltage_v: '701.LNV', current_a: '701.A', frequency_hz: '701.Hz',
+  power_factor: '701.PF', grid_va: '701.VA', grid_var: '701.Var',
+  connection_state: '701.ConnSt', inverter_state: '701.InvSt', grid_mode: '701.ConnSt',
+  ambient_temp_c: '701.TmpAmb', cabinet_temp_c: '701.TmpCab',
+  mode_name: 'ext.15507', wset_enabled: '704.WSetEna', wset_pct: '704.WSetPct',
+  wset_watts: '704.WSet', wset_mode: '704.WSetMod',
+  wset_revert_time_s: '704.WSetRvrtTms', wset_revert_remain_s: '704.WSetRvrtRem',
+  loc_rem_ctl_name: '715.LocRemCtl',
+  sw_watchdog_remain_s: 'virtual', command_elapsed_s: 'virtual', last_command_result: 'virtual',
+  self_reserve_pct: 'ext.15508', tou_reserve_pct: 'ext.15509',
+  wh_available: '713.WHAvail', wh_rating: '713.WHRtg',
+  max_charge_rate_w: '702.WChaRteMaxRtg', max_discharge_rate_w: '702.WDisChaRteMaxRtg',
+  pv_energy_total_wh: 'ext.15510', dc_energy_discharged_wh: '714.DCWhInj', dc_energy_charged_wh: '714.DCWhAbs',
+  grid_export_wh: '701.TotWhInj', grid_import_wh: '701.TotWhAbs',
+  ac_type_code: '701.ACType',
+  voltage_l1_v: '701.VL1', current_l1_a: '701.AL1', power_l1_w: '701.WL1',
+  pf_l1: '701.PFL1', va_l1: '701.VAL1', var_l1: '701.VarL1',
+  voltage_l2_v: '701.VL2', current_l2_a: '701.AL2', power_l2_w: '701.WL2',
+  pf_l2: '701.PFL2', va_l2: '701.VAL2', var_l2: '701.VarL2',
+  voltage_l1l2_v: '701.VL1L2', voltage_l2l3_v: '701.VL2L3', voltage_l3l1_v: '701.VL3L1',
+  voltage_l3_v: '701.VL3', current_l3_a: '701.AL3', power_l3_w: '701.WL3',
+  pf_l3: '701.PFL3', va_l3: '701.VAL3', var_l3: '701.VarL3',
+  battery_command_state: 'virtual', battery_command_power_w: 'virtual',
+};
+
 // ── Main Alpine App ──────────────────────────────────────────
 document.addEventListener('alpine:init', () => {
 
@@ -78,6 +110,9 @@ document.addEventListener('alpine:init', () => {
 
     // Theme
     theme: localStorage.getItem('fwh-theme') || 'dark',
+
+    // Model point source annotations
+    showSources: localStorage.getItem('fwh-showSources') === 'true',
 
     // Connection state
     connected: false,
@@ -110,6 +145,16 @@ document.addEventListener('alpine:init', () => {
       this.theme = this.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', this.theme);
       localStorage.setItem('fwh-theme', this.theme);
+    },
+
+    toggleSources() {
+      this.showSources = !this.showSources;
+      localStorage.setItem('fwh-showSources', this.showSources);
+    },
+
+    /** Return SunSpec source string for a point key, or '' if hidden */
+    src(key) {
+      return this.showSources ? (POINT_SOURCES[key] || '') : '';
     },
 
     setTab(tab) {

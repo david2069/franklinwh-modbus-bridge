@@ -498,27 +498,30 @@ function dashboardTab() {
     // Diagnostics computed property
     get diagnosticItems() {
       const pts = Alpine.store('app').points;
+      const s = Alpine.store('app').showSources;
       const fmt_val = (v, unit) => v != null ? v + ' ' + unit : '--';
+      const lbl = (name, key) => s ? name + ' (' + (POINT_SOURCES[key] || '') + ')' : name;
       return [
-        { icon: '🌡', label: 'Ambient Temperature', value: fmt_val(pts.ambient_temp_c, '°C') },
-        { icon: '🌡', label: 'Cabinet Temperature', value: fmt_val(pts.cabinet_temp_c, '°C') },
-        { icon: '⏱', label: 'Command Elapsed Time', value: fmt_val(pts.command_elapsed_s, 's') },
-        { icon: '📡', label: 'Control Mode', value: pts.loc_rem_ctl_name || '--' },
-        { icon: '🔌', label: 'Grid Connection', value: pts.connection_state || '--' },
-        { icon: '⏪', label: 'HW Revert Remaining', value: fmt_val(pts.wset_revert_remain_s, 's') },
-        { icon: '⏰', label: 'HW Revert Timer', value: fmt_val(pts.wset_revert_time_s, 's') },
-        { icon: '⚡', label: 'Inverter State', value: pts.inverter_state || '--' },
-        { icon: '📋', label: 'Last Command Result', value: pts.last_command_result || '--' },
-        { icon: '🔋', label: 'Max Charge Rate', value: pts.max_charge_rate_w != null ? (pts.max_charge_rate_w / 1000).toFixed(2) + ' kW' : '--' },
-        { icon: '🔋', label: 'Max Discharge Rate', value: pts.max_discharge_rate_w != null ? (pts.max_discharge_rate_w / 1000).toFixed(2) + ' kW' : '--' },
-        { icon: '⚙️', label: 'Operating Mode', value: pts.mode_name || '--' },
-        { icon: '🎯', label: 'Power Setpoint', value: pts.wset_watts != null ? (pts.wset_watts / 1000).toFixed(2) + ' kW' : '--' },
-        { icon: '📊', label: 'Power Setpoint %', value: pts.wset_pct != null ? pts.wset_pct + '%' : '--' },
-        { icon: '🔘', label: 'Remote Power Control', value: pts.wset_enabled ?? '--' },
-        { icon: '⚠️', label: 'SW Watchdog Remaining', value: fmt_val(pts.sw_watchdog_remain_s, 's') },
-        { icon: '🔋', label: 'Total Capacity', value: pts.wh_rating != null ? (pts.wh_rating / 1000).toFixed(3) + ' kWh' : '--' },
-        { icon: '⚪', label: 'WSet Enabled', value: pts.wset_enabled === 2 || pts.wset_enabled === true ? 'On' : 'Off' },
-        { icon: '⚙️', label: 'WSet Mode', value: pts.wset_mode ?? '--' },
+        { label: lbl('Ambient Temperature', 'ambient_temp_c'), value: fmt_val(pts.ambient_temp_c, '°C') },
+        { label: lbl('Cabinet Temperature', 'cabinet_temp_c'), value: fmt_val(pts.cabinet_temp_c, '°C') },
+        { label: lbl('Command Elapsed Time', 'command_elapsed_s'), value: fmt_val(pts.command_elapsed_s, 's') },
+        { label: lbl('Control Mode', 'loc_rem_ctl_name'), value: pts.loc_rem_ctl_name || '--' },
+        { label: lbl('Grid Connection', 'connection_state'), value: pts.connection_state || '--' },
+        { label: lbl('Grid Frequency', 'frequency_hz'), value: fmt_val(pts.frequency_hz, 'Hz') },
+        { label: lbl('HW Revert Remaining', 'wset_revert_remain_s'), value: fmt_val(pts.wset_revert_remain_s, 's') },
+        { label: lbl('HW Revert Timer', 'wset_revert_time_s'), value: fmt_val(pts.wset_revert_time_s, 's') },
+        { label: lbl('Inverter State', 'inverter_state'), value: pts.inverter_state || '--' },
+        { label: lbl('Last Command Result', 'last_command_result'), value: pts.last_command_result || '--' },
+        { label: lbl('Max Charge Rate', 'max_charge_rate_w'), value: pts.max_charge_rate_w != null ? (pts.max_charge_rate_w / 1000).toFixed(2) + ' kW' : '--' },
+        { label: lbl('Max Discharge Rate', 'max_discharge_rate_w'), value: pts.max_discharge_rate_w != null ? (pts.max_discharge_rate_w / 1000).toFixed(2) + ' kW' : '--' },
+        { label: lbl('Operating Mode', 'mode_name'), value: pts.mode_name || '--' },
+        { label: lbl('Power Setpoint', 'wset_watts'), value: pts.wset_watts != null ? (pts.wset_watts / 1000).toFixed(2) + ' kW' : '--' },
+        { label: lbl('Power Setpoint %', 'wset_pct'), value: pts.wset_pct != null ? pts.wset_pct + '%' : '--' },
+        { label: lbl('Remote Power Control', 'wset_enabled'), value: pts.wset_enabled ?? '--' },
+        { label: lbl('SW Watchdog Remaining', 'sw_watchdog_remain_s'), value: fmt_val(pts.sw_watchdog_remain_s, 's') },
+        { label: lbl('Total Capacity', 'wh_rating'), value: pts.wh_rating != null ? (pts.wh_rating / 1000).toFixed(3) + ' kWh' : '--' },
+        { label: lbl('WSet Enabled', 'wset_enabled'), value: pts.wset_enabled === 2 || pts.wset_enabled === true ? 'On' : 'Off' },
+        { label: lbl('WSet Mode', 'wset_mode'), value: pts.wset_mode ?? '--' },
       ];
     },
   };
