@@ -1,6 +1,14 @@
 /**
  * Sequencer Tab — manage, edit, validate, and execute sequence files
+ *
+ * Syntax highlighting: uses a <pre> overlay positioned on top of a
+ * transparent <textarea>. The textarea captures input; the overlay
+ * renders the coloured text. Both share the same font, size, padding.
  */
+// Default layout constants for sequencer
+const SEQUENCER_DEFAULTS = { listWidth: 220, syntaxRefHeight: 160, outputFlex: 300 };
+const SEQUENCER_LAYOUT_KEY = 'fwh-layout-sequencer';
+
 function sequencerTab() {
   return {
     sequences: [],
@@ -20,17 +28,20 @@ function sequencerTab() {
     showSyntaxRef: false,
 
     // Resizable panel dimensions
-    listWidth: 220,
-    outputFlex: 300,
-    resizing: null,  // 'list' | 'output' | null
+    listWidth: SEQUENCER_DEFAULTS.listWidth,
+    syntaxRefHeight: SEQUENCER_DEFAULTS.syntaxRefHeight,
+    outputFlex: SEQUENCER_DEFAULTS.outputFlex,
+    resizing: null,
     _startX: 0,
     _startY: 0,
     _startVal: 0,
 
     async init() {
+      // Restore saved layout
+      this._loadLayout();
+
       await this.loadSequences();
 
-      // Bind global mouse events for resize
       this._onMouseMove = (e) => this._handleResize(e);
       this._onMouseUp = () => this._stopResize();
       document.addEventListener('mousemove', this._onMouseMove);
@@ -46,7 +57,9 @@ function sequencerTab() {
       this.resizing = which;
       this._startX = e.clientX;
       this._startY = e.clientY;
-      this._startVal = which === 'list' ? this.listWidth : this.outputFlex;
+      this._startVal = which === 'list' ? this.listWidth
+                     : which === 'syntaxRef' ? this.syntaxRefHeight
+                     : this.outputFlex;
       document.body.style.cursor = which === 'list' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
     },
@@ -56,8 +69,11 @@ function sequencerTab() {
       if (this.resizing === 'list') {
         const dx = e.clientX - this._startX;
         this.listWidth = Math.max(140, Math.min(500, this._startVal + dx));
+      } else if (this.resizing === 'syntaxRef') {
+        const dy = this._startY - e.clientY;
+        this.syntaxRefHeight = Math.max(60, Math.min(400, this._startVal + dy));
       } else if (this.resizing === 'output') {
-        const dy = this._startY - e.clientY;  // drag up = bigger output
+        const dy = this._startY - e.clientY;
         this.outputFlex = Math.max(80, Math.min(700, this._startVal + dy));
       }
     },
@@ -67,7 +83,100 @@ function sequencerTab() {
       this.resizing = null;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      this._saveLayout();
     },
+
+    _loadLayout() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SEQUENCER_LAYOUT_KEY));
+        if (saved) {
+          if (saved.listWidth) this.listWidth = saved.listWidth;
+          if (saved.syntaxRefHeight) this.syntaxRefHeight = saved.syntaxRefHeight;
+          if (saved.outputFlex) this.outputFlex = saved.outputFlex;
+        }
+      } catch (_) {}
+    },
+
+    _saveLayout() {
+      localStorage.setItem(SEQUENCER_LAYOUT_KEY, JSON.stringify({
+        listWidth: this.listWidth,
+        syntaxRefHeight: this.syntaxRefHeight,
+        outputFlex: this.outputFlex,
+      }));
+    },
+
+    resetLayout() {
+      this.listWidth = SEQUENCER_DEFAULTS.listWidth;
+      this.syntaxRefHeight = SEQUENCER_DEFAULTS.syntaxRefHeight;
+      this.outputFlex = SEQUENCER_DEFAULTS.outputFlex;
+      localStorage.removeItem(SEQUENCER_LAYOUT_KEY);
+      Alpine.store('app').toast('Sequencer layout reset', 'info');
+    },
+
+    // ── Syntax highlighting ─────────────────────────────────
+    get highlightedHtml() {
+      return this._highlightJson(this.editor);
+    },
+
+    _highlightJson(text) {
+      if (!text) return '';
+      // Escape HTML first
+      let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      // Model.Point references: "704.WSetEna", "703.Conn" etc
+      html = html.replace(
+        /(&quot;|")((\d{3,4})\.([A-Za-z]\w*))(&quot;|")/g,
+        '$1<span class="sh-model">$3</span>.<span class="sh-point">$4</span>$5'
+      );
+
+      // JSON keys (step, writes, reads, verify, etc)
+      const keywords = ['step','writes','reads','verify','verify_timeout_ms','wait_for',
+                         'sleep_ms','abort_on_failure','require_transition','note','dry_run'];
+      const kwPat = new RegExp(
+        '(&quot;|")(' + keywords.join('|') + ')(&quot;|")(\\s*:)',
+        'g'
+      );
+      html = html.replace(kwPat, '$1<span class="sh-keyword">$2</span>$3$4');
+
+      // Remaining quoted strings (values) — but not already highlighted
+      html = html.replace(
+        /(&quot;|")([^"<]*?)(&quot;|")/g,
+        (m, q1, val, q2) => {
+          if (val.includes('sh-')) return m; // already highlighted
+          return q1 + '<span class="sh-string">' + val + '</span>' + q2;
+        }
+      );
+
+      // Numbers
+      html = html.replace(
+        /\b(-?\d+\.?\d*)\b/g,
+        '<span class="sh-number">$1</span>'
+      );
+
+      // Booleans / null
+      html = html.replace(
+        /\b(true|false|null)\b/g,
+        '<span class="sh-bool">$1</span>'
+      );
+
+      // Brackets/braces
+      html = html.replace(/([{}\[\]])/g, '<span class="sh-bracket">$1</span>');
+
+      return html;
+    },
+
+    syncScroll(e) {
+      const overlay = this.$el.querySelector('.syntax-overlay');
+      if (overlay) {
+        overlay.scrollTop = e.target.scrollTop;
+        overlay.scrollLeft = e.target.scrollLeft;
+      }
+    },
+
+    // ── CRUD operations ─────────────────────────────────────
 
     async loadSequences() {
       this.loading = true;
@@ -247,7 +356,6 @@ function sequencerTab() {
         this.output = ['ERROR: ' + (data?.error || 'Unknown error')];
       }
 
-      // Scroll terminal to bottom
       this.$nextTick(() => {
         const el = this.$refs.seqTabTerminal;
         if (el) el.scrollTop = el.scrollHeight;

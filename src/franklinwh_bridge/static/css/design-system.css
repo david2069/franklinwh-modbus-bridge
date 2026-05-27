@@ -45,8 +45,8 @@
   --primary-light: #22d3ee;
 }
 
-/* ── Theme (dark only) ─────────────────────────────────── */
-:root {
+/* ── Theme: Dark (default) ─────────────────────────────── */
+:root, [data-theme="dark"] {
   --bg:           #0f172a; /* slate-900 */
   --surface-0:    #1e293b; /* slate-800 */
   --surface-1:    #334155; /* slate-700 */
@@ -56,8 +56,26 @@
 
   --text-primary:   #f8fafc; /* slate-50 */
   --text-secondary: #cbd5e1; /* slate-300 */
+  --text-muted:     #94a3b8; /* slate-400 — boosted from slate-500 for readability */
+  --text-faint:     #64748b; /* slate-500 */
+}
+
+/* ── Theme: Light ──────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:           #f1f5f9; /* slate-100 */
+  --surface-0:    #ffffff;
+  --surface-1:    #f8fafc; /* slate-50 */
+  --surface-2:    #e2e8f0; /* slate-200 */
+  --border:       rgba(0, 0, 0, 0.10);
+  --glass-bg:     rgba(255, 255, 255, 0.90);
+
+  --text-primary:   #0f172a; /* slate-900 */
+  --text-secondary: #334155; /* slate-700 */
   --text-muted:     #64748b; /* slate-500 */
   --text-faint:     #94a3b8; /* slate-400 */
+
+  --accent-glow:    rgba(6, 182, 212, 0.10);
+  --border-accent:  rgba(6, 182, 212, 0.20);
 }
 
 /* ── Reset ──────────────────────────────────────────────── */
@@ -329,6 +347,62 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Syntax Highlighting (sequencer editor) ────────────── */
+.sh-keyword  { color: #f59e0b; font-weight: 600; }       /* amber-500: step, writes, reads … */
+.sh-model    { color: #06b6d4; }                          /* cyan-500: model IDs 704, 703 … */
+.sh-point    { color: #10b981; }                          /* emerald-500: point names WSetEna … */
+.sh-string   { color: #34d399; }                          /* emerald-400: string values */
+.sh-number   { color: #a78bfa; }                          /* violet-400: numbers */
+.sh-bool     { color: #f87171; }                          /* red-400: true/false/null */
+.sh-bracket  { color: #64748b; }                          /* slate-500: {} [] */
+
+/* Overlay editor: the <pre> sits on top of a transparent textarea */
+.syntax-editor-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;          /* establish clipping context */
+}
+.syntax-editor-wrap textarea {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  color: transparent;
+  caret-color: #e2e8f0;     /* slate-200 — visible caret */
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 1rem;
+  border: 0;
+  resize: none;
+  outline: none;
+  white-space: pre;
+  overflow-y: scroll;        /* always show vertical scrollbar */
+  overflow-x: auto;
+  z-index: 2;
+  tab-size: 2;
+}
+.syntax-overlay {
+  position: absolute;
+  inset: 0;
+  margin: 0;                 /* reset <pre> default margin */
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 1rem;
+  color: #cbd5e1;            /* slate-300 — base text colour */
+  white-space: pre;
+  overflow: auto;            /* must be scrollable for syncScroll */
+  pointer-events: none;
+  z-index: 1;
+  tab-size: 2;
+}
+/* Hide overlay's own scrollbar — textarea's scrollbar is the interactive one */
+.syntax-overlay::-webkit-scrollbar { display: none; }
+.syntax-overlay { scrollbar-width: none; }
+
 /* ── Colour helpers ─────────────────────────────────────── */
 .c-ok      { color: var(--ok); }
 .c-warn    { color: var(--warn); }
@@ -336,6 +410,92 @@ body {
 .c-accent  { color: var(--accent); }
 .c-muted   { color: var(--text-muted); }
 .c-solar   { color: var(--solar); }
+
+/* ── Light theme: override Tailwind utility classes ─────── */
+[data-theme="light"] {
+  color-scheme: light;
+}
+[data-theme="light"] body {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+/* Backgrounds */
+[data-theme="light"] .bg-slate-900 { background-color: var(--bg) !important; }
+[data-theme="light"] .bg-slate-800 { background-color: var(--surface-0) !important; }
+[data-theme="light"] .bg-slate-800\/30,
+[data-theme="light"] .bg-slate-800\/40,
+[data-theme="light"] .bg-slate-800\/50 { background-color: var(--surface-1) !important; }
+[data-theme="light"] .bg-slate-700\/40,
+[data-theme="light"] .bg-slate-700\/20,
+[data-theme="light"] .bg-slate-700\/50 { background-color: rgba(0,0,0,0.04) !important; }
+[data-theme="light"] .bg-slate-950 { background-color: #f1f5f9 !important; } /* terminal bg */
+/* Text colours */
+[data-theme="light"] .text-slate-100 { color: var(--text-primary) !important; }
+[data-theme="light"] .text-slate-200 { color: var(--text-primary) !important; }
+[data-theme="light"] .text-slate-300 { color: var(--text-secondary) !important; }
+[data-theme="light"] .text-slate-400 { color: var(--text-muted) !important; }
+[data-theme="light"] .text-slate-500 { color: var(--text-muted) !important; }
+[data-theme="light"] .text-slate-600 { color: var(--text-faint) !important; }
+[data-theme="light"] .text-slate-700 { color: #94a3b8 !important; }
+/* Accent text — darken slightly for light bg */
+[data-theme="light"] .text-cyan-300 { color: #0891b2 !important; }
+[data-theme="light"] .text-cyan-400 { color: #0e7490 !important; }
+[data-theme="light"] .text-amber-400 { color: #d97706 !important; }
+[data-theme="light"] .text-emerald-400 { color: #059669 !important; }
+[data-theme="light"] .text-red-400 { color: #dc2626 !important; }
+/* Borders */
+[data-theme="light"] .border-white\/\[0\.08\],
+[data-theme="light"] .border-white\/\[0\.06\],
+[data-theme="light"] .border-white\/\[0\.04\] { border-color: rgba(0,0,0,0.08) !important; }
+/* Card & surface overrides */
+[data-theme="light"] .card {
+  background: var(--surface-0);
+  border-color: var(--border-accent);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+[data-theme="light"] .card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+}
+/* Scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track { background: var(--surface-1); }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--surface-2); }
+/* Status chip backgrounds */
+[data-theme="light"] .bg-cyan-500\/10,
+[data-theme="light"] .bg-cyan-500\/15,
+[data-theme="light"] .bg-cyan-500\/20 { background-color: rgba(6,182,212,0.12) !important; }
+[data-theme="light"] .bg-amber-500\/20 { background-color: rgba(245,158,11,0.12) !important; }
+/* Nav & sidebar */
+[data-theme="light"] aside,
+[data-theme="light"] .nav-item { color: var(--text-secondary); }
+[data-theme="light"] .nav-item:hover { background: var(--surface-2); }
+/* Topbar */
+[data-theme="light"] header { border-color: rgba(0,0,0,0.06) !important; }
+/* Toast */
+[data-theme="light"] .toast-item {
+  background: var(--surface-0);
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+}
+/* Form controls */
+[data-theme="light"] .form-control {
+  background: var(--surface-1);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+/* SOC ring track */
+[data-theme="light"] .soc-ring-track { stroke: var(--surface-2); }
+/* Modal & overlay backgrounds */
+[data-theme="light"] .bg-slate-900\/50 { background-color: rgba(0,0,0,0.05) !important; }
+/* Sidebar tooltip */
+[data-theme="light"] .bg-slate-700 { background-color: #1e293b !important; }
+/* Hover states */
+[data-theme="light"] .hover\:bg-slate-700:hover { background-color: rgba(0,0,0,0.06) !important; }
+[data-theme="light"] .hover\:bg-slate-600:hover { background-color: rgba(0,0,0,0.08) !important; }
+/* Terminal/log backgrounds — slightly darker in light mode */
+[data-theme="light"] .bg-black\/20,
+[data-theme="light"] .bg-black\/30 { background-color: rgba(0,0,0,0.05) !important; }
+/* Ensure sidebar/topbar backdrop */
+[data-theme="light"] aside { background-color: rgba(255,255,255,0.85) !important; }
+[data-theme="light"] header { background-color: rgba(255,255,255,0.90) !important; }
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {

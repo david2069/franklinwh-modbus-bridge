@@ -149,6 +149,7 @@ class MqttPublisher:
         self._stop_event = asyncio.Event()
         self._device_info: DeviceInfo | None = None
         self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
+        self._ac_type: int = 0
         self._command_handler: CommandHandler | None = None
 
     @property
@@ -165,6 +166,29 @@ class MqttPublisher:
 
     def set_device_info(self, info: DeviceInfo) -> None:
         self._device_info = info
+        self._state.discovery_published = False
+
+    def set_ac_type(self, ac_type: int) -> None:
+        """Configure phase filtering based on detected AC wiring type.
+
+        ac_type 0 (single): publish phase=None + phase=1
+        ac_type 1 (split):  publish phase=None + phase=1 + phase=2
+        ac_type 2 (three):  publish all
+        """
+        self._ac_type = ac_type
+        self._entities = [
+            e for e in BRIDGE_ENTITIES
+            if e.phase is None or e.phase <= ac_type + 1
+        ]
+        AC_TYPE_NAMES = {0: "Single Phase", 1: "Split Phase", 2: "Three Phase"}
+        phase_count = sum(1 for e in self._entities if e.phase is not None)
+        logger.info(
+            "AC type %s: publishing %d entities (%d per-phase)",
+            AC_TYPE_NAMES.get(ac_type, f"Unknown({ac_type})"),
+            len(self._entities),
+            phase_count,
+        )
+        # Re-publish discovery with updated entity list
         self._state.discovery_published = False
 
     def set_command_handler(self, handler: CommandHandler) -> None:

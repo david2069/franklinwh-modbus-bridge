@@ -153,6 +153,81 @@
       </div>
     </div>
 
+    <!-- Per-Phase AC Detail -->
+    <div class="card lg:col-span-2" x-show="$store.app.points.voltage_l1_v != null">
+      <div class="card-label mb-3">Phase Detail
+        <span class="normal-case font-normal text-slate-600"
+              x-text="'(' + $store.app.acTypeName + ')'"></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-[10px] uppercase text-slate-500 font-semibold">
+              <th class="text-left py-1 pr-4">Metric</th>
+              <th class="text-right py-1 px-3">L1</th>
+              <th class="text-right py-1 px-3" x-show="$store.app.acTypeCode >= 1">L2</th>
+              <th class="text-right py-1 px-3" x-show="$store.app.acTypeCode >= 2">L3</th>
+            </tr>
+          </thead>
+          <tbody class="font-mono">
+            <tr class="border-t border-white/[0.04]">
+              <td class="text-slate-500 py-1.5 pr-4">Voltage (V)</td>
+              <td class="text-right px-3" x-text="($store.app.points.voltage_l1_v ?? '--') + ' V'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.voltage_l2_v ?? '--') + ' V'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.voltage_l3_v ?? '--') + ' V'"></td>
+            </tr>
+            <tr class="border-t border-white/[0.04]">
+              <td class="text-slate-500 py-1.5 pr-4">Current (A)</td>
+              <td class="text-right px-3" x-text="($store.app.points.current_l1_a ?? '--') + ' A'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.current_l2_a ?? '--') + ' A'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.current_l3_a ?? '--') + ' A'"></td>
+            </tr>
+            <tr class="border-t border-white/[0.04]">
+              <td class="text-slate-500 py-1.5 pr-4">Power (W)</td>
+              <td class="text-right px-3" :style="'color:' + powerColour($store.app.points.power_l1_w, 'grid')"
+                  x-text="($store.app.points.power_l1_w ?? '--') + ' W'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1"
+                  :style="'color:' + powerColour($store.app.points.power_l2_w, 'grid')"
+                  x-text="($store.app.points.power_l2_w ?? '--') + ' W'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2"
+                  :style="'color:' + powerColour($store.app.points.power_l3_w, 'grid')"
+                  x-text="($store.app.points.power_l3_w ?? '--') + ' W'"></td>
+            </tr>
+            <tr class="border-t border-white/[0.04]">
+              <td class="text-slate-500 py-1.5 pr-4">Power Factor</td>
+              <td class="text-right px-3" x-text="$store.app.points.pf_l1 ?? '--'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="$store.app.points.pf_l2 ?? '--'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="$store.app.points.pf_l3 ?? '--'"></td>
+            </tr>
+            <tr class="border-t border-white/[0.04]">
+              <td class="text-slate-500 py-1.5 pr-4">Apparent (VA)</td>
+              <td class="text-right px-3" x-text="($store.app.points.va_l1 ?? '--') + ' VA'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.va_l2 ?? '--') + ' VA'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.va_l3 ?? '--') + ' VA'"></td>
+            </tr>
+            <tr class="border-t border-white/[0.04]">
+              <td class="text-slate-500 py-1.5 pr-4">Reactive (VAR)</td>
+              <td class="text-right px-3" x-text="($store.app.points.var_l1 ?? '--') + ' VAR'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 1" x-text="($store.app.points.var_l2 ?? '--') + ' VAR'"></td>
+              <td class="text-right px-3" x-show="$store.app.acTypeCode >= 2" x-text="($store.app.points.var_l3 ?? '--') + ' VAR'"></td>
+            </tr>
+            <!-- Line-line voltages (split + three-phase only) -->
+            <template x-if="$store.app.acTypeCode >= 1">
+              <tr class="border-t border-white/[0.06]">
+                <td class="text-slate-500 py-1.5 pr-4">V Line-Line</td>
+                <td class="text-right px-3 text-slate-400 text-xs"
+                    x-text="'L1-L2: ' + ($store.app.points.voltage_l1l2_v ?? '--') + ' V'"></td>
+                <td class="text-right px-3 text-slate-400 text-xs" x-show="$store.app.acTypeCode >= 1"
+                    x-text="$store.app.acTypeCode >= 2 ? 'L2-L3: ' + ($store.app.points.voltage_l2l3_v ?? '--') + ' V' : ''"></td>
+                <td class="text-right px-3 text-slate-400 text-xs" x-show="$store.app.acTypeCode >= 2"
+                    x-text="'L3-L1: ' + ($store.app.points.voltage_l3l1_v ?? '--') + ' V'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Battery State of Charge -->
     <div class="card">
       <div class="card-label mb-3">Battery State of Charge</div>
@@ -223,20 +298,16 @@
           <span class="font-mono" x-text="($store.app.points.soc ?? '--') + ' %'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Current</span>
-          <span class="font-mono" x-text="($store.app.points.battery_current_a ?? '--') + ' A'"></span>
-        </div>
-        <div class="flex justify-between">
           <span class="text-slate-500">SoH</span>
           <span class="font-mono" x-text="($store.app.points.soh ?? '--') + ' %'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Ambient</span>
-          <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' C'"></span>
+          <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' °C'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Cabinet</span>
-          <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' C'"></span>
+          <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' °C'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Available</span>
@@ -409,6 +480,83 @@
 
   </div>
 
+  <!-- ══ Live Points Panel ══════════════════════════════════ -->
+  <div class="card mb-4" x-data="livePointsPanel()">
+    <!-- Header bar -->
+    <div class="flex items-center justify-between -mx-4 -mt-4 px-4 py-2.5 border-b border-white/[0.06] bg-slate-800/40 rounded-t-lg">
+      <button @click="expanded = !expanded" class="flex items-center gap-2 group">
+        <svg class="w-3.5 h-3.5 text-slate-400 transition-transform" :class="expanded && 'rotate-90'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <span class="card-label !mb-0 group-hover:text-slate-300 transition">Live Points</span>
+        <span class="text-[10px] text-slate-600" x-text="selectedCount + ' points'"></span>
+      </button>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] text-slate-600" x-show="!expanded">collapsed</span>
+        <button @click="showConfig = !showConfig"
+                class="p-1 rounded hover:bg-slate-700 transition"
+                :class="showConfig ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'"
+                title="Configure visible points">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+        <button @click="showDiagnostics = true"
+                class="p-1 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+                title="Full Diagnostics">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Configuration panel (slide down) -->
+    <div x-show="showConfig" x-transition.duration.200ms class="border-b border-white/[0.06] -mx-4 px-4 py-3 bg-slate-900/40">
+      <div class="flex items-center gap-3 mb-3">
+        <input type="text" x-model="filterText" placeholder="Filter points..."
+               class="form-control !py-1 !text-xs !w-48">
+        <button @click="resetDefaults()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition">
+          Reset to defaults
+        </button>
+        <span class="text-[10px] text-slate-600 ml-auto" x-text="selectedCount + ' selected'"></span>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-1 max-h-48 overflow-y-auto">
+        <template x-for="group in groups" :key="group">
+          <div class="space-y-0.5">
+            <div class="text-[9px] uppercase text-slate-500 font-semibold tracking-wider mt-1" x-text="group"></div>
+            <template x-for="[key, def] in pointsForGroup(group)" :key="key">
+              <label class="flex items-center gap-1.5 text-[11px] cursor-pointer hover:text-slate-200 transition"
+                     :class="isSelected(key) ? 'text-slate-300' : 'text-slate-600'">
+                <input type="checkbox" :checked="isSelected(key)" @change="togglePoint(key)"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-cyan-500">
+                <span x-text="def.label"></span>
+              </label>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Live points grid (expandable) -->
+    <div x-show="expanded" x-transition.duration.200ms class="mt-3">
+      <div x-show="activePoints.length === 0" class="text-center text-slate-600 text-xs py-4">
+        No points selected. Click the gear icon to configure.
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+        <template x-for="pt in activePoints" :key="pt.key">
+          <div class="bg-slate-900/50 rounded-lg border border-white/[0.05] px-3 py-2 hover:border-white/[0.1] transition">
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="text-[11px]" x-text="pt.icon"></span>
+              <span class="text-[10px] text-slate-500 uppercase font-semibold tracking-wider truncate" x-text="pt.label"></span>
+            </div>
+            <div class="text-sm font-mono font-semibold" :class="pt.colorClass" x-text="pt.value"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <!-- Tabbed bottom section: Power History | Modbus Sequencer -->
   <div class="card">
     <!-- Tab bar -->
@@ -453,6 +601,15 @@
             </svg>
             JSON
           </button>
+          <div class="w-px h-4 bg-white/[0.08] mx-1"></div>
+          <button @click="openChartModal()"
+                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition"
+                  title="Expand chart">
+            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+              <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div class="relative" style="height: 280px;">
@@ -461,12 +618,13 @@
     </div>
 
     <!-- Modbus Sequencer tab -->
-    <div x-show="bottomTab === 'sequencer'" x-data="sequencerPanel()">
+    <div x-show="bottomTab === 'sequencer'">
+      <div x-data="sequencerPanel()">
       <div class="grid grid-cols-2 gap-4" style="min-height: 320px;">
         <!-- Left: CLI Input -->
         <div class="flex flex-col">
           <label class="card-label !mb-2">Sequence Command</label>
-          <textarea rows="3"
+          <textarea x-model="seqInput" x-ref="seqTextarea" rows="3"
                     placeholder='{"704.WSetEna": 1, "704.WSetPct": 30}'
                     class="form-control !text-xs font-mono flex-shrink-0 mb-2"></textarea>
           <div class="flex items-center gap-2 mb-3">
@@ -515,6 +673,52 @@
               Enter a JSON sequence and click Execute...
             </div>
           </div>
+        </div>
+      </div>
+      </div><!-- close x-data="sequencerPanel()" -->
+    </div>
+  </div>
+
+  <!-- ══ Chart Popup Modal ════════════════════════════════════ -->
+  <div x-show="showChartModal" x-cloak
+       class="fixed inset-0 z-[100] flex items-center justify-center p-6"
+       @keydown.escape.window="closeChartModal()">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="closeChartModal()"></div>
+    <div class="relative bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden flex flex-col"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95">
+      <!-- Modal header -->
+      <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.08]">
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-semibold text-slate-200">Power History</h3>
+          <div class="flex items-center gap-1">
+            <template x-for="r in chartRanges" :key="'modal-' + r.value">
+              <button @click="setChartRange(r.value)"
+                      class="px-2 py-0.5 text-[10px] font-medium rounded transition"
+                      :class="chartRange === r.value ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'"
+                      x-text="r.label"></button>
+            </template>
+          </div>
+          <div class="w-px h-4 bg-white/[0.08]"></div>
+          <button @click="exportChartData('csv')"
+                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition">CSV</button>
+          <button @click="exportChartData('json')"
+                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">JSON</button>
+        </div>
+        <button @click="closeChartModal()" class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <!-- Modal chart -->
+      <div class="flex-1 p-5" style="min-height: 400px;">
+        <div class="relative w-full h-full">
+          <canvas x-ref="modalChart"></canvas>
         </div>
       </div>
     </div>

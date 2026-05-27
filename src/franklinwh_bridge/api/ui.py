@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+
+# Cache-bust token — changes on each server restart
+_CACHE_BUST = str(int(time.time()))
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -29,7 +33,7 @@ async def index(request: Request):
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"base_path": base_path},
+        {"base_path": base_path, "cache_bust": _CACHE_BUST},
     )
 
 

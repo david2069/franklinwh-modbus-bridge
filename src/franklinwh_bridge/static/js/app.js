@@ -76,6 +76,9 @@ document.addEventListener('alpine:init', () => {
     // Sidebar state
     sidebarCollapsed: false,
 
+    // Theme
+    theme: localStorage.getItem('fwh-theme') || 'dark',
+
     // Connection state
     connected: false,
     lastPollTs: null,
@@ -89,12 +92,24 @@ document.addEventListener('alpine:init', () => {
     // Toast notifications
     toasts: [],
 
+    // Release modal
+    showReleaseModal: false,
+    releasing: false,
+
     // Refresh interval handle
     _interval: null,
 
     init() {
+      // Apply saved theme
+      document.documentElement.setAttribute('data-theme', this.theme);
       this.refresh();
       this._interval = setInterval(() => this.refresh(), 10000);
+    },
+
+    toggleTheme() {
+      this.theme = this.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', this.theme);
+      localStorage.setItem('fwh-theme', this.theme);
     },
 
     setTab(tab) {
@@ -129,6 +144,65 @@ document.addEventListener('alpine:init', () => {
       }, 4000);
     },
 
+    // ── Release control helpers ──────────────────────────
+    get hasActiveCommand() {
+      const state = this.points.battery_command_state;
+      return state && state !== 'Not Active' && state !== 'Released';
+    },
+
+    get wsetEnabled() {
+      return this.points.wset_enabled ?? null;
+    },
+
+    get isReleaseable() {
+      // Releaseable if WSetEna is active OR a software command is running
+      const wsetEna = this.wsetEnabled;
+      const hwActive = wsetEna != null && wsetEna !== 0 && wsetEna !== '0';
+      return hwActive || this.hasActiveCommand;
+    },
+
+    get releaseControlState() {
+      const pts = this.points;
+      return {
+        wsetEna:    pts.wset_enabled ?? null,
+        wsetPct:    pts.wset_pct ?? null,
+        wsetPctRaw: pts.wset_pct_raw ?? null,
+        wsetW:      pts.wset_watts ?? null,
+        wsetMod:    pts.wset_mode ?? null,
+        locRemCtl:  pts.loc_rem_ctl_name ?? null,
+        cmdState:   pts.battery_command_state ?? 'Unknown',
+        cmdPower:   pts.battery_command_power_w ?? null,
+        watchdog:   pts.sw_watchdog_remain_s ?? null,
+        elapsed:    pts.command_elapsed_s ?? null,
+      };
+    },
+
+    async forceRelease() {
+      if (this.releasing) return;
+      this.releasing = true;
+
+      try {
+        // Send the release command through the command handler
+        const data = await fetchJSON('api/command', {
+          method: 'POST',
+          body: JSON.stringify({ slug: 'battery_command', value: 'Release' }),
+        });
+
+        if (data && data.ok) {
+          this.toast('Control released — battery returned to native mode', 'info');
+        } else {
+          this.toast(`Release failed: ${data?.result || data?.error || 'Unknown error'}`, 'error');
+        }
+
+        // Refresh state after short delay for registers to settle
+        setTimeout(() => this.refresh(), 800);
+      } catch (e) {
+        this.toast(`Release error: ${e.message}`, 'error');
+      } finally {
+        this.releasing = false;
+      }
+    },
+
     // Convenience getters for templates
     // Keys must match what GET /api/points actually returns
     get batteryPowerW() { return this.points.battery_power_w ?? null; },
@@ -136,6 +210,11 @@ document.addEventListener('alpine:init', () => {
     get solarPowerW() { return this.points.total_solar ?? null; },
     get homePowerW() { return this.points.home_load_ext ?? null; },
     get batterySoc() { return this.points.soc ?? null; },
+    get acTypeCode() { return this.points.ac_type_code ?? 0; },
+    get acTypeName() {
+      const names = { 0: 'Single Phase', 1: 'Split Phase', 2: 'Three Phase' };
+      return names[this.acTypeCode] ?? 'Unknown';
+    },
   });
 
 });

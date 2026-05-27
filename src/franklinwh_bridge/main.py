@@ -257,6 +257,13 @@ async def lifespan(app: FastAPI):
 
                 app.state.reader_fn = _reader_fn
 
+                # Detect AC wiring type while controller is connected
+                try:
+                    await asyncio.to_thread(poller._detect_ac_type)
+                    mqtt_publisher.set_ac_type(poller.ac_type)
+                except Exception as exc:
+                    logger.warning("AC type detection failed: %s", exc)
+
                 await asyncio.to_thread(controller.disconnect)
 
             await poller.start()

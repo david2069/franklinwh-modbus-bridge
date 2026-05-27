@@ -125,3 +125,162 @@ async def test_poller_start_stop(poller):
     await asyncio.sleep(0.05)
     await poller.stop()
     assert poller._task.done()
+
+
+# --- AC Type detection ---
+
+def test_ac_type_default(poller):
+    """AC type defaults to 0 (single-phase)."""
+    assert poller.ac_type == 0
+
+
+def test_detect_ac_type_single(mock_controller, sample_bus):
+    """Detect single-phase ACType=0."""
+    m701 = MagicMock()
+    m701.ACType = MagicMock()
+    m701.ACType.value = 0
+    mock_controller.get_model.return_value = m701
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    poller._detect_ac_type()
+    assert poller.ac_type == 0
+
+
+def test_detect_ac_type_split(mock_controller, sample_bus):
+    """Detect split-phase ACType=1."""
+    m701 = MagicMock()
+    m701.ACType = MagicMock()
+    m701.ACType.value = 1
+    mock_controller.get_model.return_value = m701
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    poller._detect_ac_type()
+    assert poller.ac_type == 1
+
+
+def test_detect_ac_type_three(mock_controller, sample_bus):
+    """Detect three-phase ACType=2."""
+    m701 = MagicMock()
+    m701.ACType = MagicMock()
+    m701.ACType.value = 2
+    mock_controller.get_model.return_value = m701
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    poller._detect_ac_type()
+    assert poller.ac_type == 2
+
+
+def test_detect_ac_type_no_model(mock_controller, sample_bus):
+    """Falls back to single-phase when M701 not available."""
+    mock_controller.get_model.return_value = None
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    poller._detect_ac_type()
+    assert poller.ac_type == 0
+
+
+def test_detect_ac_type_corrupt_value(mock_controller, sample_bus):
+    """Falls back to single-phase when ACType value is out of range."""
+    m701 = MagicMock()
+    m701.ACType = MagicMock()
+    m701.ACType.value = 99
+    mock_controller.get_model.return_value = m701
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    poller._detect_ac_type()
+    assert poller.ac_type == 0
+
+
+# --- Per-phase reading ---
+
+def _make_m701_with_phases(ac_type=0):
+    """Create a mock M701 model with per-phase values and scale factors."""
+    m701 = MagicMock()
+    m701.ACType = MagicMock()
+    m701.ACType.value = ac_type
+
+    # Scale factors (typical: -1)
+    for sf_name in ("W_SF", "V_SF", "A_SF", "PF_SF", "VA_SF", "Var_SF"):
+        sf = MagicMock()
+        sf.value = -1
+        setattr(m701, sf_name, sf)
+
+    # L1 values (raw unscaled)
+    for pt_name, val in [
+        ("VL1", 2430), ("AL1", 52), ("WL1", 12500),
+        ("PFL1", 980), ("VAL1", 13000), ("VarL1", -250),
+    ]:
+        pt = MagicMock()
+        pt.value = val
+        setattr(m701, pt_name, pt)
+
+    # L2 values (raw unscaled)
+    for pt_name, val in [
+        ("VL2", 2410), ("AL2", 48), ("WL2", 11000),
+        ("PFL2", 970), ("VAL2", 11500), ("VarL2", -200),
+        ("VL1L2", 4150),
+    ]:
+        pt = MagicMock()
+        pt.value = val
+        setattr(m701, pt_name, pt)
+
+    # L3 values (raw unscaled)
+    for pt_name, val in [
+        ("VL3", 2420), ("AL3", 50), ("WL3", 12000),
+        ("PFL3", 990), ("VAL3", 12500), ("VarL3", -230),
+        ("VL2L3", 4180), ("VL3L1", 4170),
+    ]:
+        pt = MagicMock()
+        pt.value = val
+        setattr(m701, pt_name, pt)
+
+    return m701
+
+
+def test_read_grid_phases_scaling(mock_controller, sample_bus):
+    """Per-phase values are correctly scaled by scale factors."""
+    m701 = _make_m701_with_phases(ac_type=0)
+
+    def get_model(mid):
+        return m701 if mid == 701 else None
+    mock_controller.get_model.side_effect = get_model
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    points = poller._read_grid_phases()
+
+    # sf=-1, so raw * 10^(-1) = raw / 10
+    assert points["voltage_l1_v"] == 243.0
+    assert points["current_l1_a"] == 5.2
+    assert points["power_l1_w"] == 1250  # precision=0
+    assert points["pf_l1"] == 98.0  # 980 * 0.1, precision=3 → 98.0
+    assert points["va_l1"] == 1300
+    assert points["var_l1"] == -25
+
+    assert points["ac_type_code"] == 0
+
+
+def test_read_grid_phases_all_phases(mock_controller, sample_bus):
+    """All L1/L2/L3 phase values and line-line voltages are present."""
+    m701 = _make_m701_with_phases(ac_type=2)
+
+    def get_model(mid):
+        return m701 if mid == 701 else None
+    mock_controller.get_model.side_effect = get_model
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    points = poller._read_grid_phases()
+
+    # L2 values
+    assert "voltage_l2_v" in points
+    assert "current_l2_a" in points
+    assert "power_l2_w" in points
+    assert "voltage_l1l2_v" in points
+
+    # L3 values
+    assert "voltage_l3_v" in points
+    assert "current_l3_a" in points
+    assert "power_l3_w" in points
+    assert "voltage_l2l3_v" in points
+    assert "voltage_l3l1_v" in points
+
+    assert points["ac_type_code"] == 2

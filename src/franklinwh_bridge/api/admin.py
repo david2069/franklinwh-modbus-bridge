@@ -134,9 +134,16 @@ async def get_points(request: Request):
     last = sample_bus.last_sample
     if last is None:
         return {"gateway_id": request.app.state.gateway_id, "points": {}, "ts": None}
+
+    # Merge command handler virtual points (software-tracked command state)
+    points = dict(last.points)
+    command_handler = getattr(request.app.state, "command_handler", None)
+    if command_handler is not None:
+        points.update(command_handler.virtual_points)
+
     return {
         "gateway_id": last.gateway_id,
-        "points": last.points,
+        "points": points,
         "ts": last.ts,
         "quality": last.quality,
     }
@@ -211,12 +218,13 @@ def _get_sequences_dir() -> Path:
     seq_dir = data_dir / "sequences"
 
     if data_dir.is_dir():
-        # Use data dir for persistence; seed with bundled examples
+        # Use data dir for persistence; seed/update from bundled examples
         seq_dir.mkdir(parents=True, exist_ok=True)
         if bundled_dir.is_dir():
             for src in bundled_dir.glob("*.json"):
                 dst = seq_dir / src.name
-                if not dst.exists():
+                # Copy if missing OR if bundled version is newer (code update)
+                if not dst.exists() or src.stat().st_mtime > dst.stat().st_mtime:
                     dst.write_text(src.read_text())
         return seq_dir
 

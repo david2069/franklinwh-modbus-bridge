@@ -250,3 +250,93 @@ def test_backoff_delay():
     assert publisher._backoff_delay(0) == 5.0
     assert publisher._backoff_delay(3) == 40.0
     assert publisher._backoff_delay(10) == 60.0
+
+
+# --- Per-phase entity definitions ---
+
+def test_per_phase_entities_exist():
+    """Verify all 21 per-phase entities are defined."""
+    phase_entities = [e for e in BRIDGE_ENTITIES if e.phase is not None]
+    assert len(phase_entities) == 21
+
+    # L1 (phase=1): 6 entities
+    l1 = [e for e in phase_entities if e.phase == 1]
+    assert len(l1) == 6
+
+    # L2 (phase=2): 7 entities (6 + VL1L2)
+    l2 = [e for e in phase_entities if e.phase == 2]
+    assert len(l2) == 7
+
+    # L3 (phase=3): 8 entities (6 + VL2L3 + VL3L1)
+    l3 = [e for e in phase_entities if e.phase == 3]
+    assert len(l3) == 8
+
+
+def test_per_phase_entity_slugs():
+    """Verify L1 per-phase entity slugs."""
+    slugs = {e.slug for e in BRIDGE_ENTITIES if e.phase == 1}
+    assert "grid_voltage_l1_v" in slugs
+    assert "grid_current_l1_a" in slugs
+    assert "grid_power_l1_w" in slugs
+    assert "grid_pf_l1" in slugs
+    assert "grid_va_l1" in slugs
+    assert "grid_var_l1" in slugs
+
+
+def test_total_entity_count():
+    """Verify total entity count including per-phase."""
+    assert len(BRIDGE_ENTITIES) == 69
+
+
+# --- Phase filtering in MQTT publisher ---
+
+def test_set_ac_type_single_phase():
+    """Single-phase (ac_type=0): publishes phase=None + phase=1."""
+    publisher = MqttPublisher()
+    publisher.set_ac_type(0)
+
+    phases_present = {e.phase for e in publisher.entities}
+    assert None in phases_present
+    assert 1 in phases_present
+    assert 2 not in phases_present
+    assert 3 not in phases_present
+
+    phase_count = sum(1 for e in publisher.entities if e.phase is not None)
+    assert phase_count == 6  # 6 L1 entities
+
+
+def test_set_ac_type_split_phase():
+    """Split-phase (ac_type=1): publishes phase=None + phase=1 + phase=2."""
+    publisher = MqttPublisher()
+    publisher.set_ac_type(1)
+
+    phases_present = {e.phase for e in publisher.entities}
+    assert None in phases_present
+    assert 1 in phases_present
+    assert 2 in phases_present
+    assert 3 not in phases_present
+
+    phase_count = sum(1 for e in publisher.entities if e.phase is not None)
+    assert phase_count == 13  # 6 L1 + 7 L2
+
+
+def test_set_ac_type_three_phase():
+    """Three-phase (ac_type=2): publishes all entities."""
+    publisher = MqttPublisher()
+    publisher.set_ac_type(2)
+
+    phases_present = {e.phase for e in publisher.entities}
+    assert None in phases_present
+    assert 1 in phases_present
+    assert 2 in phases_present
+    assert 3 in phases_present
+
+    assert len(publisher.entities) == len(BRIDGE_ENTITIES)
+
+
+def test_set_ac_type_resets_discovery():
+    """Setting AC type should reset discovery_published flag."""
+    publisher = MqttPublisher()
+    publisher._state.discovery_published = True
+    publisher.set_ac_type(0)
+    assert publisher.state.discovery_published is False

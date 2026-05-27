@@ -57,6 +57,12 @@ class ModbusPoller:
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._startup_points: dict[str, Any] = {}
+        self._ac_type: int = 0  # 0=Single, 1=Split, 2=Three-Phase
+
+    @property
+    def ac_type(self) -> int:
+        """Detected AC wiring type: 0=Single, 1=Split, 2=Three-Phase."""
+        return self._ac_type
 
     @property
     def state(self) -> PollerState:
@@ -123,11 +129,131 @@ class ModbusPoller:
             except Exception as exc:
                 logger.debug("M702 rating read failed: %s", exc)
 
+        # Detect AC wiring type (single/split/three-phase) from M701
+        self._detect_ac_type()
+
         self._startup_points = points
         logger.info(
-            "Startup reads complete: %d points (M1 nameplate, M702 ratings)",
+            "Startup reads complete: %d points (M1 nameplate, M702 ratings, ACType=%d)",
             len(points),
+            self._ac_type,
         )
+
+    def _detect_ac_type(self) -> None:
+        """Read M701 ACType once to determine AC wiring configuration.
+
+        ACType enum: 0=Single Phase, 1=Split Phase, 2=Three Phase.
+        Called during startup after the first successful read of M701.
+        """
+        m701 = self._controller.get_model(701)
+        if not m701:
+            logger.warning("M701 not available — defaulting to single-phase")
+            return
+
+        try:
+            m701.read()
+            ac_pt = getattr(m701, "ACType", None)
+            if ac_pt and hasattr(ac_pt, "value") and ac_pt.value is not None:
+                val = int(ac_pt.value)
+                if 0 <= val <= 2:
+                    self._ac_type = val
+                    AC_TYPE_NAMES = {0: "Single Phase", 1: "Split Phase", 2: "Three Phase"}
+                    logger.info(
+                        "AC type detected: %s (ACType=%d)",
+                        AC_TYPE_NAMES.get(val, "Unknown"),
+                        val,
+                    )
+                else:
+                    logger.warning("Unexpected ACType value %d — defaulting to single-phase", val)
+            else:
+                logger.info("ACType point not available — defaulting to single-phase")
+        except Exception as exc:
+            logger.warning("ACType detection failed: %s — defaulting to single-phase", exc)
+
+    def _get_scale_factor(self, model: Any, sf_name: str) -> int:
+        """Get scale factor value from a model, default to 0.
+
+        SunSpec scale factors are in range [-10, 10]. Values outside this
+        range (e.g. -32768 / 0x8000) indicate corrupt data.
+        """
+        sf_point = getattr(model, sf_name, None)
+        if sf_point and hasattr(sf_point, "value"):
+            val = sf_point.value
+            if val is not None and -10 <= val <= 10:
+                return val
+        return 0
+
+    def _read_grid_phases(self) -> dict[str, Any]:
+        """Read per-phase grid measurements from M701 with scale factors applied.
+
+        Uses the model object already read by POLL_METHODS (read_grid_status),
+        so the model has cached data from its last `.read()` call.
+        No additional Modbus traffic.
+        """
+        points: dict[str, Any] = {}
+        m701 = self._controller.get_model(701)
+        if not m701:
+            return points
+
+        # Store ac_type_code for dashboard display
+        ac_pt = getattr(m701, "ACType", None)
+        if ac_pt and hasattr(ac_pt, "value") and ac_pt.value is not None:
+            points["ac_type_code"] = int(ac_pt.value)
+        else:
+            points["ac_type_code"] = self._ac_type
+
+        # Scale factors (already read by read_grid_status)
+        sf_w = self._get_scale_factor(m701, "W_SF")
+        sf_v = self._get_scale_factor(m701, "V_SF")
+        sf_a = self._get_scale_factor(m701, "A_SF")
+        sf_pf = self._get_scale_factor(m701, "PF_SF")
+        sf_va = self._get_scale_factor(m701, "VA_SF")
+        sf_var = self._get_scale_factor(m701, "Var_SF")
+
+        def _scaled(pt_name: str, sf: int, precision: int) -> float | None:
+            pt = getattr(m701, pt_name, None)
+            if pt and hasattr(pt, "value") and pt.value is not None:
+                return round(pt.value * (10 ** sf), precision)
+            return None
+
+        # Per-phase mapping: (sunspec_point, output_key, scale_factor, precision)
+        phase_map: list[tuple[str, str, int, int]] = [
+            # Line-neutral voltages
+            ("VL1", "voltage_l1_v", sf_v, 1),
+            ("VL2", "voltage_l2_v", sf_v, 1),
+            ("VL3", "voltage_l3_v", sf_v, 1),
+            # Line-line voltages
+            ("VL1L2", "voltage_l1l2_v", sf_v, 1),
+            ("VL2L3", "voltage_l2l3_v", sf_v, 1),
+            ("VL3L1", "voltage_l3l1_v", sf_v, 1),
+            # Current
+            ("AL1", "current_l1_a", sf_a, 1),
+            ("AL2", "current_l2_a", sf_a, 1),
+            ("AL3", "current_l3_a", sf_a, 1),
+            # Power
+            ("WL1", "power_l1_w", sf_w, 0),
+            ("WL2", "power_l2_w", sf_w, 0),
+            ("WL3", "power_l3_w", sf_w, 0),
+            # Power factor
+            ("PFL1", "pf_l1", sf_pf, 3),
+            ("PFL2", "pf_l2", sf_pf, 3),
+            ("PFL3", "pf_l3", sf_pf, 3),
+            # Apparent power
+            ("VAL1", "va_l1", sf_va, 0),
+            ("VAL2", "va_l2", sf_va, 0),
+            ("VAL3", "va_l3", sf_va, 0),
+            # Reactive power
+            ("VarL1", "var_l1", sf_var, 0),
+            ("VarL2", "var_l2", sf_var, 0),
+            ("VarL3", "var_l3", sf_var, 0),
+        ]
+
+        for sunspec_pt, out_key, sf, precision in phase_map:
+            val = _scaled(sunspec_pt, sf, precision)
+            if val is not None:
+                points[out_key] = val
+
+        return points
 
     async def _poll_once(self) -> Sample:
         """Run all read methods and merge into a single Sample."""
@@ -164,9 +290,44 @@ class ModbusPoller:
 
         return Sample.now(self._gateway_id, points, quality)
 
+    # Models read during POLL_METHODS (their point values are already cached)
+    _POLLED_MODELS = [1, 502, 701, 702, 704, 713, 714, 715]
+
+    def _extract_raw_model_values(self) -> dict[str, Any]:
+        """Extract raw SunSpec point values from already-read model objects.
+
+        Called after POLL_METHODS have run, so model objects have cached data
+        from their last `.read()` call.  No additional Modbus traffic.
+
+        Keys are formatted as ``{model_id}.{point_name}`` (e.g. ``704.WSetEna``)
+        so the SunSpec Explorer can match them to catalog entries.
+        """
+        raw: dict[str, Any] = {}
+        for mid in self._POLLED_MODELS:
+            model = self._controller.get_model(mid)
+            if model is None:
+                continue
+            points_dict = getattr(model, "points", None)
+            if not points_dict:
+                continue
+            for pt_name, pt_obj in points_dict.items():
+                val = getattr(pt_obj, "value", None)
+                if val is not None:
+                    raw[f"{mid}.{pt_name}"] = val
+        return raw
+
     def _read_extra_points(self) -> dict[str, Any]:
         """Read points not covered by the standard controller methods."""
         points: dict[str, Any] = {}
+
+        # ── Raw SunSpec model values for the Explorer ───────────
+        # POLL_METHODS already called model.read() on M502, M701, M704,
+        # M713, M714, M715.  Extract raw point values from the cached
+        # model objects (no additional Modbus traffic).
+        points.update(self._extract_raw_model_values())
+
+        # ── Per-phase grid measurements (scaled from M701) ─────
+        points.update(self._read_grid_phases())
 
         # M714 DC energy counters (battery lifetime charge/discharge)
         m714 = self._controller.get_model(714)
@@ -179,25 +340,53 @@ class ModbusPoller:
             if absorb and absorb.value is not None:
                 points["dc_energy_charged_wh"] = int(absorb.value)
 
-        # PVOutputWh at extension register 15510 (32-bit unsigned)
-        EXT_PV_OUTPUT_WH = getattr(self._controller, "EXT_BASE", 15500) + 10
+        # Raw vendor extension register reads via pymodbus
+        self._read_vendor_registers(points)
+
+        return points
+
+    def _read_vendor_registers(self, points: dict[str, Any]) -> None:
+        """Read FranklinWH vendor extension registers via raw Modbus.
+
+        Three ranges:
+        - 15000-15039: Undocumented registers (raw values only)
+        - 15500-15509: Documented extension registers (raw + library overlap)
+        - 15510-15513: PV energy totals (uint32 composed values)
+        """
         try:
             from pymodbus.client import ModbusTcpClient
+
             client = ModbusTcpClient(
                 self._controller.ip_address, port=self._controller.port
             )
             client.connect()
-            result = client.read_holding_registers(
-                EXT_PV_OUTPUT_WH, count=2, device_id=self._controller.unit_id
-            )
-            if not result.isError():
-                val = (result.registers[0] << 16) | result.registers[1]
-                points["pv_energy_total_wh"] = val
+            uid = self._controller.unit_id
+
+            # Range 1: 15000-15039 (undocumented vendor range)
+            r1 = client.read_holding_registers(15000, count=40, device_id=uid)
+            if not r1.isError():
+                for i, val in enumerate(r1.registers):
+                    points[f"vreg_{15000 + i}"] = val
+
+            # Range 2: 15500-15513 (documented extension range, full raw read)
+            # The library already reads these via _read_extension_solar() and
+            # provides named keys (pv_total, ongrid_mode, etc.), but registers
+            # 15500-15501 have no named mapping.  Raw vreg_ keys fill the gap.
+            r2 = client.read_holding_registers(15500, count=14, device_id=uid)
+            if not r2.isError():
+                for i, val in enumerate(r2.registers):
+                    points[f"vreg_{15500 + i}"] = val
+                # uint32 composed values (15510-15511 and 15512-15513)
+                points["pv_energy_total_wh"] = (
+                    (r2.registers[10] << 16) | r2.registers[11]
+                )
+                points["pv_energy_proximal_wh"] = (
+                    (r2.registers[12] << 16) | r2.registers[13]
+                )
+
             client.close()
         except Exception as exc:
-            logger.debug("PVOutputWh read failed: %s", exc)
-
-        return points
+            logger.debug("Vendor register reads failed: %s", exc)
 
     def _backoff_delay(self) -> float:
         return min(5.0 * (2 ** self._state.consecutive_errors), 60.0)

@@ -1,0 +1,35 @@
+[
+  {
+    "step": "Stop & Clear Previous Command",
+    "writes": {
+      "704.WSetEna": 0
+    },
+    "verify": true,
+    "sleep_ms": 300,
+    "note": "Clean slate — disable any active control first"
+  },
+  {
+    "step": "Configure Charge at 100% (5kW)",
+    "writes": {
+      "704.WSetMod": 0,
+      "704.WSetPct": -100
+    },
+    "verify": true,
+    "sleep_ms": 300,
+    "note": "WSetPct negative = charge. -100% of 5kW rated = 5000W charge from grid"
+  },
+  {
+    "step": "Enable Remote Control",
+    "writes": {
+      "704.WSetEna": 1
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Activate — battery should start charging from grid"
+  },
+  {
+    "step": "Verify Command Active",
+    "reads": ["704.WSetEna", "704.WSetPct", "704.WSet", "704.WSetMod"],
+    "note": "Confirm registers: WSetEna=1, WSetPct=-100"
+  }
+]

@@ -7,19 +7,23 @@
  */
 function sequencerPanel() {
   return {
+    seqInput: '',   // x-model bound — avoids DOM querying issues
     seqOutput: [],
     seqRunning: false,
     dryRun: false,
 
-    _getInput() {
-      const ta = this.$el.querySelector('textarea');
-      return ta ? ta.value.trim() : '';
-    },
-
     async executeInline() {
-      if (this.seqRunning) return;
+      console.log('[SeqPanel] executeInline called');
 
-      const input = this._getInput();
+      if (this.seqRunning) {
+        console.log('[SeqPanel] BLOCKED: already running');
+        return;
+      }
+
+      // Read input from x-model binding
+      const input = (this.seqInput || '').trim();
+      console.log('[SeqPanel] input length:', input.length, 'preview:', input.substring(0, 60));
+
       if (!input) {
         this.seqOutput = ['ERROR: No sequence input provided'];
         return;
@@ -28,22 +32,29 @@ function sequencerPanel() {
       this.seqRunning = true;
       this.seqOutput = ['>>> Executing' + (this.dryRun ? ' (DRY RUN)' : '') + '...'];
 
-      const data = await fetchJSON('api/sequence/execute', {
-        method: 'POST',
-        body: JSON.stringify({ inline: input, dry_run: this.dryRun }),
-      });
+      try {
+        const data = await fetchJSON('api/sequence/execute', {
+          method: 'POST',
+          body: JSON.stringify({ inline: input, dry_run: this.dryRun }),
+        });
 
-      this.seqRunning = false;
+        console.log('[SeqPanel] API response:', JSON.stringify(data).substring(0, 200));
 
-      if (data && data.output) {
-        this.seqOutput = data.output;
-      } else {
-        this.seqOutput = ['ERROR: ' + (data?.error || 'Unknown error')];
+        if (data && data.output) {
+          this.seqOutput = data.output;
+        } else {
+          this.seqOutput = ['ERROR: ' + (data?.error || 'Unknown error')];
+        }
+      } catch (e) {
+        console.error('[SeqPanel] Exception:', e);
+        this.seqOutput = ['ERROR: Exception: ' + e.message];
+      } finally {
+        this.seqRunning = false;
       }
 
       // Scroll terminal to bottom
       this.$nextTick(() => {
-        const el = this.$el.querySelector('[x-ref="seqTerminal"]') ||
+        const el = this.$refs.seqTerminal ||
                    this.$el.querySelector('.bg-slate-950');
         if (el) el.scrollTop = el.scrollHeight;
       });

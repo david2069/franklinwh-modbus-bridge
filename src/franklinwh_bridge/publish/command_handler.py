@@ -204,7 +204,7 @@ class CommandHandler:
         prev_power = self._state.power_w
 
         self._cancel_watchdog()
-        success = await asyncio.to_thread(self._controller.reset_control_state)
+        success = await asyncio.to_thread(self._full_release)
 
         self._state.active = False
         self._state.action = ""
@@ -223,6 +223,31 @@ class CommandHandler:
             await self._on_state_changed()
 
         logger.info("Battery command released: %s (reason=%s)", self._state.last_result, reason)
+
+    def _full_release(self) -> bool:
+        """Full release: clear setpoints, disable WSetEna, AND zero revert timer.
+
+        The library's reset_control_state() only clears WSetEna/WSetPct/WSet.
+        The aGate firmware keeps the device in "VPP Mode" as long as
+        WSetRvrtTms > 0 (the hardware revert timer is still counting down).
+        The official FranklinWH app cannot change modes while VPP mode is active.
+        """
+        success = self._controller.reset_control_state()
+
+        # Clear the hardware revert timer so the aGate exits VPP mode
+        try:
+            m704 = self._controller.get_model(704)
+            if m704:
+                m704.WSetRvrtTms.value = 0
+                m704.WSetEnaRvrt.value = 0
+                m704.write()
+                logger.info(
+                    "Cleared revert timer: WSetRvrtTms=0, WSetEnaRvrt=0 (exit VPP mode)"
+                )
+        except Exception as exc:
+            logger.warning("Failed to clear revert timer: %s", exc)
+
+        return success
 
     async def _handle_operating_mode(self, mode_name: str) -> None:
         mode_val = OPERATING_MODES.get(mode_name)

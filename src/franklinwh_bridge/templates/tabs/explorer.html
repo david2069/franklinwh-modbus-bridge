@@ -13,6 +13,14 @@
       <div class="flex items-center gap-2 ml-auto">
         <span class="text-xs text-slate-500" x-show="modelCount > 0"
               x-text="modelCount + ' models, ' + pointCount + ' points'"></span>
+        <button @click="resetLayout()"
+                class="p-1.5 rounded hover:bg-slate-700/50 text-slate-600 hover:text-slate-300 transition"
+                title="Reset panel sizes to defaults">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
         <button @click="refreshCatalog()"
                 class="px-3 py-1.5 text-xs font-medium rounded bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition disabled:opacity-40"
                 :disabled="refreshing">
@@ -47,10 +55,11 @@
   </div>
 
   <!-- Two-panel layout -->
-  <div x-show="!loading && models.length > 0" class="flex gap-4" style="height: calc(100vh - 200px);">
+  <div x-show="!loading && models.length > 0" class="flex" style="height: calc(100vh - 200px); min-height: 300px;">
 
     <!-- ══ LEFT: Model Tree ═══════════════════════════════ -->
-    <div class="w-64 flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden">
+    <div class="flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden"
+         :style="`width: ${treeWidth}px`">
 
       <!-- Search -->
       <div class="p-2 border-b border-white/[0.06]">
@@ -65,12 +74,19 @@
                   class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-700/40 transition text-xs"
                   :class="selectedModelId === model.model_id ? 'bg-cyan-500/10 border-l-2 border-cyan-400' : 'border-l-2 border-transparent'">
             <span class="font-mono font-bold text-cyan-400 w-10 flex-shrink-0"
-                  x-text="'M' + model.model_id"></span>
+                  x-text="model.model_id"></span>
             <span class="text-slate-300 truncate flex-1" x-text="model.label"></span>
             <span class="text-slate-600 flex-shrink-0" x-text="model.points.length"></span>
           </button>
         </template>
       </div>
+    </div>
+
+    <!-- ── Resize handle: tree ↔ detail ──────────────────── -->
+    <div class="resize-handle w-2"
+         :class="resizing === 'tree' && 'active'"
+         @mousedown.prevent="startResize('tree', $event)">
+      <div class="resize-handle-dots"></div>
     </div>
 
     <!-- ══ RIGHT: Points Detail ═══════════════════════════ -->
@@ -84,9 +100,10 @@
       <!-- Model header -->
       <div x-show="selectedModel" class="px-4 py-3 border-b border-white/[0.06] bg-slate-800/40">
         <div class="flex items-center gap-3">
-          <span class="text-sm font-bold text-cyan-400 font-mono" x-text="'M' + (selectedModel?.model_id || '')"></span>
+          <span class="text-sm font-bold text-cyan-400 font-mono" x-text="selectedModel?.model_id || ''"></span>
           <span class="text-sm font-semibold text-slate-200" x-text="selectedModel?.label || ''"></span>
           <div class="ml-auto flex items-center gap-3">
+            <!-- Address mode toggle -->
             <div class="flex items-center gap-1.5 text-[10px]">
               <span class="text-slate-600">Addr:</span>
               <button @click="addrMode = 'sunspec'"
@@ -95,6 +112,11 @@
               <button @click="addrMode = 'base0'"
                       class="px-1.5 py-0.5 rounded transition"
                       :class="addrMode === 'base0' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-0</button>
+            </div>
+            <!-- Export buttons -->
+            <div class="flex items-center gap-1 text-[10px]">
+              <button @click="exportSunSpecJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export JSON">JSON</button>
+              <button @click="exportSunSpecCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export CSV">CSV</button>
             </div>
             <span class="text-xs text-slate-500" x-text="(selectedModel?.points?.length || 0) + ' points'"></span>
           </div>
@@ -138,6 +160,101 @@
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Resize handle: SunSpec panels ↔ extensions ────────── -->
+  <div x-show="!loading && models.length > 0"
+       class="resize-handle resize-handle-v h-2 my-1"
+       :class="resizing === 'ext' && 'active'"
+       @mousedown.prevent="startResize('ext', $event)">
+    <div class="resize-handle-dots"></div>
+  </div>
+
+  <!-- ══ Vendor Extensions Panel ════════════════════════════ -->
+  <div x-show="!loading && models.length > 0" class="card !p-3 overflow-hidden flex flex-col"
+       :style="`height: ${extHeight}px`">
+
+    <!-- Header with controls -->
+    <div class="flex items-center gap-3 mb-2 flex-wrap flex-shrink-0">
+      <div class="card-label !mb-0">FranklinWH Extension Registers
+        <span class="normal-case font-normal text-slate-600">(15000+ / 15500+)</span>
+      </div>
+
+      <div class="flex items-center gap-2 ml-auto flex-wrap">
+        <!-- Search -->
+        <input type="text" x-model="extFilter" placeholder="Search registers..."
+               class="form-control !py-1 !px-2 !text-xs !w-40" @input.debounce.200ms="">
+
+        <!-- Suppress zeros toggle -->
+        <label class="flex items-center gap-1.5 text-[10px] text-slate-500 cursor-pointer select-none">
+          <input type="checkbox" x-model="extSuppressZeros"
+                 class="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500/30 w-3 h-3">
+          Hide zeros
+        </label>
+
+        <!-- Export -->
+        <div class="flex items-center gap-1 text-[10px] border-l border-white/[0.06] pl-2">
+          <button @click="exportExtJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">JSON</button>
+          <button @click="exportExtCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">CSV</button>
+        </div>
+
+        <!-- Count -->
+        <span class="text-[10px] text-slate-600" x-text="filteredExtensions.length + ' / ' + vendorExtensions.length + ' regs'"></span>
+      </div>
+    </div>
+
+    <!-- Extension registers table -->
+    <div class="flex-1 overflow-auto min-h-0">
+      <table class="w-full text-xs">
+        <thead class="sticky top-0 bg-slate-800 z-10">
+          <tr class="border-b border-white/[0.08]">
+            <th class="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider w-16">Addr</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider">Register</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider">Description</th>
+            <th class="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider">Value</th>
+            <th class="text-center px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider w-12">Hex</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider w-14">Type</th>
+            <th class="text-center px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider w-10">Acc</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wider w-10">Unit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Empty state -->
+          <template x-if="filteredExtensions.length === 0">
+            <tr>
+              <td colspan="8" class="px-3 py-6 text-center text-slate-600 text-xs">
+                <span x-show="extSuppressZeros">All registers are zero — uncheck "Hide zeros" to see all</span>
+                <span x-show="!extSuppressZeros && extFilter">No registers match filter</span>
+                <span x-show="!extSuppressZeros && !extFilter">No extension data available</span>
+              </td>
+            </tr>
+          </template>
+
+          <template x-for="reg in filteredExtensions" :key="reg.addr">
+            <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition"
+                :class="reg.desc === 'Unknown' ? 'opacity-60' : ''">
+              <td class="px-3 py-1.5 text-right text-slate-600 font-mono" x-text="reg.addr"></td>
+              <td class="px-3 py-1.5 font-mono"
+                  :class="reg.desc === 'Unknown' ? 'text-slate-500' : 'text-amber-400'"
+                  x-text="reg.name"></td>
+              <td class="px-3 py-1.5 text-slate-500 max-w-[200px] truncate" x-text="reg.desc"></td>
+              <td class="px-3 py-1.5 text-right font-mono font-semibold">
+                <span :class="reg.value != null ? 'text-cyan-300' : 'text-slate-700'"
+                      x-text="formatExtDisplay(reg)"></span>
+              </td>
+              <td class="px-3 py-1.5 text-center font-mono text-slate-600 text-[10px]" x-text="reg.hex || '--'"></td>
+              <td class="px-3 py-1.5 text-slate-600 font-mono" x-text="reg.type"></td>
+              <td class="px-3 py-1.5 text-center">
+                <span class="px-1 py-0.5 rounded text-[10px] font-medium"
+                      :class="reg.access === 'RW' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700/50 text-slate-500'"
+                      x-text="reg.access"></span>
+              </td>
+              <td class="px-3 py-1.5 text-slate-600 text-[10px]" x-text="reg.unit"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
     </div>
   </div>
 

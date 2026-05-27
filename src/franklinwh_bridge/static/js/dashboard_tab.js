@@ -7,8 +7,15 @@
  * proxy handler recurses infinitely through it → stack overflow.
  */
 function dashboardTab() {
-  // Chart.js instance — kept outside Alpine's reactive scope
+  // Chart.js instances — kept outside Alpine's reactive scope (prevents proxy recursion)
   let _chart = null;
+  let _modalChart = null;
+
+  // Live in-memory buffer — also outside Alpine scope to avoid Proxy arrays
+  // leaking into Chart.js (Chart.js traverses array elements → Alpine proxy
+  // getter fires → Chart.js re-reads → infinite recursion → stack overflow)
+  const _liveHistory = { labels: [], battery: [], grid: [], solar: [], home: [] };
+  const MAX_LIVE_POINTS = 180;
 
   return {
     deviceIp: '--',
@@ -18,9 +25,13 @@ function dashboardTab() {
     // Bottom section tab (chart vs sequencer)
     bottomTab: 'chart',
 
+    // Chart popup modal
+    showChartModal: false,
+
     // Chart range selector
     chartRange: '30m',
     chartRanges: [
+      { value: 'live', label: 'Live' },
       { value: '30m', label: '30m' },
       { value: '1h',  label: '1h' },
       { value: '6h',  label: '6h' },
@@ -29,9 +40,8 @@ function dashboardTab() {
       { value: '30d', label: '30d' },
     ],
 
-    // Live in-memory buffer for real-time (last 30m)
-    liveHistory: { labels: [], battery: [], grid: [], solar: [], home: [] },
-    maxLivePoints: 180,
+    // Fast poll interval for live mode
+    _fastInterval: null,
 
     async init() {
       await this._loadGateway();
@@ -55,7 +65,30 @@ function dashboardTab() {
 
     async setChartRange(range) {
       this.chartRange = range;
-      await this._loadMetrics();
+
+      // Fast polling for live mode (2s), normal for everything else
+      if (range === 'live') {
+        this._startFastPoll();
+      } else {
+        this._stopFastPoll();
+        await this._loadMetrics();
+      }
+    },
+
+    _startFastPoll() {
+      this._stopFastPoll();
+      // Immediate update
+      this._recordPoint();
+      this._fastInterval = setInterval(() => {
+        this._recordPoint();
+      }, 2000);
+    },
+
+    _stopFastPoll() {
+      if (this._fastInterval) {
+        clearInterval(this._fastInterval);
+        this._fastInterval = null;
+      }
     },
 
     _formatChartLabel(ts) {
@@ -64,7 +97,7 @@ function dashboardTab() {
       const sameDay = d.toDateString() === now.toDateString();
       const range = this.chartRange;
 
-      if (range === '30m' || range === '1h') {
+      if (range === 'live' || range === '30m' || range === '1h') {
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       }
       if (range === '6h' || range === '24h') {
@@ -80,25 +113,50 @@ function dashboardTab() {
     },
 
     async _loadMetrics() {
+      // Live mode uses in-memory buffer only, no DB fetch
+      if (this.chartRange === 'live') {
+        this._updateChartData(
+          _liveHistory.labels,
+          _liveHistory.battery,
+          _liveHistory.grid,
+          _liveHistory.solar,
+          _liveHistory.home,
+        );
+        this._updateModalChart(
+          _liveHistory.labels,
+          _liveHistory.battery,
+          _liveHistory.grid,
+          _liveHistory.solar,
+          _liveHistory.home,
+        );
+        return;
+      }
+
       const data = await fetchJSON('api/metrics?range=' + this.chartRange);
       if (data && !data.error && data.points && data.points.length > 0) {
         const labels = data.points.map(p => this._formatChartLabel(p.ts));
+        const battery = data.points.map(p => p.battery_w);
+        const grid = data.points.map(p => p.grid_w);
+        const solar = data.points.map(p => p.solar_w);
+        const home = data.points.map(p => p.home_w);
 
-        this._updateChartData(
-          labels,
-          data.points.map(p => p.battery_w),
-          data.points.map(p => p.grid_w),
-          data.points.map(p => p.solar_w),
-          data.points.map(p => p.home_w),
-        );
+        this._updateChartData(labels, battery, grid, solar, home);
+        this._updateModalChart(labels, battery, grid, solar, home);
       } else if (this.chartRange === '30m') {
         // Fallback to live buffer if no stored metrics yet
         this._updateChartData(
-          this.liveHistory.labels,
-          this.liveHistory.battery,
-          this.liveHistory.grid,
-          this.liveHistory.solar,
-          this.liveHistory.home,
+          _liveHistory.labels,
+          _liveHistory.battery,
+          _liveHistory.grid,
+          _liveHistory.solar,
+          _liveHistory.home,
+        );
+        this._updateModalChart(
+          _liveHistory.labels,
+          _liveHistory.battery,
+          _liveHistory.grid,
+          _liveHistory.solar,
+          _liveHistory.home,
         );
       }
     },
@@ -234,8 +292,8 @@ function dashboardTab() {
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'dashboard') {
           this._recordPoint();
-          // Refresh metrics from DB every 30s for stored ranges
-          if (this.chartRange !== '30m') {
+          // Refresh metrics from DB every 30s for stored ranges (not live/30m)
+          if (this.chartRange !== '30m' && this.chartRange !== 'live') {
             this._loadMetrics();
           }
         }
@@ -247,40 +305,50 @@ function dashboardTab() {
       const now = new Date();
       const label = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      this.liveHistory.labels.push(label);
-      this.liveHistory.battery.push(pts.battery_power_w ?? null);
-      this.liveHistory.grid.push(pts.grid_power_w ?? null);
-      this.liveHistory.solar.push(pts.total_solar ?? null);
-      this.liveHistory.home.push(pts.home_load_ext ?? null);
+      _liveHistory.labels.push(label);
+      _liveHistory.battery.push(pts.battery_power_w ?? null);
+      _liveHistory.grid.push(pts.grid_power_w ?? null);
+      _liveHistory.solar.push(pts.total_solar ?? null);
+      _liveHistory.home.push(pts.home_load_ext ?? null);
 
-      if (this.liveHistory.labels.length > this.maxLivePoints) {
-        this.liveHistory.labels.shift();
-        this.liveHistory.battery.shift();
-        this.liveHistory.grid.shift();
-        this.liveHistory.solar.shift();
-        this.liveHistory.home.shift();
+      if (_liveHistory.labels.length > MAX_LIVE_POINTS) {
+        _liveHistory.labels.shift();
+        _liveHistory.battery.shift();
+        _liveHistory.grid.shift();
+        _liveHistory.solar.shift();
+        _liveHistory.home.shift();
       }
 
-      // Only update chart from live data when showing 30m range
-      if (this.chartRange === '30m') {
+      // Update chart from live data when showing 30m or live range
+      if (this.chartRange === '30m' || this.chartRange === 'live') {
         this._updateChartData(
-          this.liveHistory.labels,
-          this.liveHistory.battery,
-          this.liveHistory.grid,
-          this.liveHistory.solar,
-          this.liveHistory.home,
+          _liveHistory.labels,
+          _liveHistory.battery,
+          _liveHistory.grid,
+          _liveHistory.solar,
+          _liveHistory.home,
+        );
+        // Also update modal chart if open
+        this._updateModalChart(
+          _liveHistory.labels,
+          _liveHistory.battery,
+          _liveHistory.grid,
+          _liveHistory.solar,
+          _liveHistory.home,
         );
       }
     },
 
     // Export chart data to CSV or JSON
     exportChartData(format) {
-      if (!_chart || !_chart.data.labels.length) {
+      // Use modal chart data if modal is open, otherwise main chart
+      const src = (this.showChartModal && _modalChart) ? _modalChart : _chart;
+      if (!src || !src.data.labels.length) {
         Alpine.store('app').toast('No chart data to export', 'error');
         return;
       }
-      const labels = _chart.data.labels;
-      const ds = _chart.data.datasets;
+      const labels = src.data.labels;
+      const ds = src.data.datasets;
       let content, filename, mime;
 
       if (format === 'csv') {
@@ -312,6 +380,119 @@ function dashboardTab() {
       a.click();
       URL.revokeObjectURL(url);
       Alpine.store('app').toast(`Exported ${labels.length} points as ${format.toUpperCase()}`, 'info');
+    },
+
+    // ── Chart Modal ─────────────────────────────────────────
+    openChartModal() {
+      this.showChartModal = true;
+      this.$nextTick(() => {
+        requestAnimationFrame(() => this._createModalChart());
+      });
+    },
+
+    closeChartModal() {
+      this.showChartModal = false;
+      if (_modalChart) {
+        _modalChart.destroy();
+        _modalChart = null;
+      }
+    },
+
+    _createModalChart() {
+      const ctx = this.$refs.modalChart;
+      if (!ctx) return;
+
+      const rect = ctx.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        requestAnimationFrame(() => this._createModalChart());
+        return;
+      }
+
+      if (_modalChart) { _modalChart.destroy(); _modalChart = null; }
+
+      const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
+
+      // Copy current data from main chart (or live buffer)
+      let labels = [], battery = [], grid = [], solar = [], home = [];
+      if (_chart && _chart.data.labels.length) {
+        labels = [..._chart.data.labels];
+        battery = [..._chart.data.datasets[0].data];
+        grid = [..._chart.data.datasets[1].data];
+        solar = [..._chart.data.datasets[2].data];
+        home = [..._chart.data.datasets[3].data];
+      }
+
+      _modalChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Battery', data: battery, borderColor: '#06b6d4', backgroundColor: 'rgba(6, 182, 212, 0.1)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true },
+            { label: 'Grid', data: grid, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.05)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: false },
+            { label: 'Solar', data: solar, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true },
+            { label: 'Home', data: home, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.05)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: false },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 300 },
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 14, padding: 20 },
+            },
+            tooltip: {
+              backgroundColor: '#1e293b',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              titleColor: '#f8fafc',
+              bodyColor: '#cbd5e1',
+              titleFont: { size: 13 },
+              bodyFont: { size: 12 },
+              callbacks: {
+                label: (item) => `${item.dataset.label}: ${(item.parsed.y / 1000).toFixed(2)} kW`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#64748b', font: { size: 11 }, maxTicksLimit: 15 },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+            },
+            y: {
+              suggestedMin: -maxRating,
+              suggestedMax: maxRating,
+              ticks: {
+                color: '#64748b',
+                font: { size: 11 },
+                callback: (v) => (v / 1000).toFixed(1) + ' kW',
+              },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+            },
+          },
+        },
+      });
+    },
+
+    _updateModalChart(labels, battery, grid, solar, home) {
+      if (!_modalChart) return;
+      _modalChart.data.labels = labels;
+      _modalChart.data.datasets[0].data = battery;
+      _modalChart.data.datasets[1].data = grid;
+      _modalChart.data.datasets[2].data = solar;
+      _modalChart.data.datasets[3].data = home;
+
+      const yScale = _modalChart.options?.scales?.y;
+      if (yScale) {
+        const maxRating = Alpine.store('app').points.max_discharge_rate_w || 5000;
+        yScale.suggestedMin = -maxRating;
+        yScale.suggestedMax = maxRating;
+      }
+
+      _modalChart.resize();
+      _modalChart.update();
     },
 
     // Diagnostics computed property

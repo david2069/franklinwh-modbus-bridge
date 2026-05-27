@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FranklinWH Modbus Bridge</title>
   <base href="{{ base_path }}/">
-  <link rel="stylesheet" href="static/css/design-system.css">
+  <link rel="stylesheet" href="static/css/design-system.css?v={{ cache_bust }}">
 
   <!-- Tailwind 3.4.1 — local, no CDN -->
   <script src="static/js/tailwind-3.4.1.min.js"></script>
@@ -26,14 +26,15 @@
   <script src="static/js/chartjs-4.4.7.umd.min.js"></script>
 
   <!-- App JS — must load before Alpine -->
-  <script src="static/js/app.js"></script>
-  <script src="static/js/dashboard_tab.js"></script>
-  <script src="static/js/controls_tab.js"></script>
-  <script src="static/js/explorer_tab.js"></script>
-  <script src="static/js/logs_tab.js"></script>
-  <script src="static/js/settings_tab.js"></script>
-  <script src="static/js/sequencer_panel.js"></script>
-  <script src="static/js/sequencer_tab.js"></script>
+  <script src="static/js/app.js?v={{ cache_bust }}"></script>
+  <script src="static/js/dashboard_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/controls_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/explorer_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/logs_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/settings_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/sequencer_panel.js?v={{ cache_bust }}"></script>
+  <script src="static/js/sequencer_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/live_points_panel.js?v={{ cache_bust }}"></script>
 
   <!-- Alpine.js — local -->
   <script defer src="static/js/alpinejs-3.14.1.min.js"></script>
@@ -81,6 +82,183 @@
 
       </main>
     </div>
+
+    <!-- ── Release Control Modal (inside x-data scope) ── -->
+    <div x-show="$store.app.showReleaseModal"
+         x-cloak
+         class="fixed inset-0 z-[9998] flex items-center justify-center p-4"
+         @keydown.escape.window="$store.app.showReleaseModal = false">
+
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+         @click="$store.app.showReleaseModal = false"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"></div>
+
+    <!-- Modal panel -->
+    <div class="relative w-full max-w-lg rounded-lg border shadow-2xl overflow-hidden"
+         :class="$store.app.isReleaseable
+           ? 'border-red-500/40 bg-slate-800'
+           : 'border-slate-600/40 bg-slate-800'"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-5 py-3 border-b"
+           :class="$store.app.isReleaseable ? 'border-red-500/30 bg-red-500/10' : 'border-slate-700 bg-slate-800/50'">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center"
+               :class="$store.app.isReleaseable ? 'bg-red-500/20' : 'bg-slate-700'">
+            <svg class="w-4 h-4" :class="$store.app.isReleaseable ? 'text-red-400' : 'text-slate-500'"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M18.36 6.64A9 9 0 1 1 5.64 18.36M12 2v4m0 12v4"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-slate-100">Battery Control State</h3>
+            <p class="text-xs" :class="$store.app.isReleaseable ? 'text-red-400' : 'text-slate-500'"
+               x-text="$store.app.isReleaseable ? 'Active control detected' : 'No active control'"></p>
+          </div>
+        </div>
+        <button @click="$store.app.showReleaseModal = false"
+                class="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Body: Control state grid -->
+      <div class="px-5 py-4 space-y-4">
+
+        <!-- Hardware registers -->
+        <div>
+          <h4 class="text-[0.65rem] font-semibold text-slate-500 uppercase tracking-wider mb-2">M704 Hardware Registers</h4>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">WSetEna</span>
+              <span class="font-mono font-semibold"
+                    :class="$store.app.releaseControlState.wsetEna === 1 ? 'text-red-400' : 'text-slate-400'"
+                    x-text="$store.app.releaseControlState.wsetEna ?? '--'"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">WSetPct</span>
+              <span class="font-mono font-semibold"
+                    :class="$store.app.releaseControlState.wsetPctRaw != null && $store.app.releaseControlState.wsetPctRaw !== 0 ? 'text-amber-400' : 'text-slate-400'"
+                    x-text="$store.app.releaseControlState.wsetPctRaw != null ? $store.app.releaseControlState.wsetPctRaw + '%' : '--'"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">WSet</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.wsetW != null ? Math.round($store.app.releaseControlState.wsetW) + 'W' : '--'"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">WSetMod</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.wsetMod ?? '--'"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50 col-span-2">
+              <span class="text-slate-500">LocRemCtl</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.locRemCtl ?? '--'"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Software command state -->
+        <div>
+          <h4 class="text-[0.65rem] font-semibold text-slate-500 uppercase tracking-wider mb-2">Software Command State</h4>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">State</span>
+              <span class="font-semibold"
+                    :class="$store.app.hasActiveCommand ? 'text-amber-400' : 'text-emerald-400'"
+                    x-text="$store.app.releaseControlState.cmdState"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">Power</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.cmdPower != null ? $store.app.releaseControlState.cmdPower + 'W' : '--'"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">Elapsed</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.elapsed != null ? Math.floor($store.app.releaseControlState.elapsed / 60) + 'm ' + ($store.app.releaseControlState.elapsed % 60) + 's' : '--'"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">Watchdog</span>
+              <span class="font-mono font-semibold"
+                    :class="$store.app.releaseControlState.watchdog != null && $store.app.releaseControlState.watchdog < 300 ? 'text-red-400' : 'text-slate-400'"
+                    x-text="$store.app.releaseControlState.watchdog != null ? Math.floor($store.app.releaseControlState.watchdog / 60) + 'm ' + ($store.app.releaseControlState.watchdog % 60) + 's' : '--'"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Warning + Release button -->
+        <div class="pt-2 border-t border-slate-700/50">
+          <template x-if="$store.app.isReleaseable">
+            <div>
+              <div class="flex items-start gap-2 mb-3 p-2.5 rounded bg-red-500/10 border border-red-500/20">
+                <svg class="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
+                </svg>
+                <div class="text-xs text-red-300/80 leading-relaxed">
+                  <strong>Force Release</strong> will zero WSetPct and WSet, then disable WSetEna.
+                  Any active battery dispatch will be stopped and the inverter returned to native mode.
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <button @click="$store.app.forceRelease()"
+                        :disabled="$store.app.releasing"
+                        class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded font-semibold text-sm transition-all duration-200
+                               bg-red-500/20 text-red-400 border border-red-500/40
+                               hover:bg-red-500/30 hover:border-red-400
+                               disabled:opacity-50 disabled:cursor-wait">
+                  <template x-if="$store.app.releasing">
+                    <span class="loading-spinner" style="border-top-color: #f87171;"></span>
+                  </template>
+                  <template x-if="!$store.app.releasing">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path d="M18.36 6.64A9 9 0 1 1 5.64 18.36M12 2v4m0 12v4"/>
+                    </svg>
+                  </template>
+                  <span x-text="$store.app.releasing ? 'Releasing…' : 'Force Release'"></span>
+                </button>
+                <button @click="$store.app.showReleaseModal = false"
+                        class="px-4 py-2.5 rounded font-semibold text-sm bg-slate-700 text-slate-300 hover:bg-slate-600 transition">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="!$store.app.isReleaseable">
+            <div class="text-center py-3">
+              <div class="flex items-center justify-center gap-2 mb-2">
+                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
+                </svg>
+                <span class="text-sm font-semibold text-emerald-400">No Active Control</span>
+              </div>
+              <p class="text-xs text-slate-500">Battery is operating in native mode. No release needed.</p>
+              <button @click="$store.app.showReleaseModal = false"
+                      class="mt-3 px-4 py-2 rounded font-semibold text-sm bg-slate-700 text-slate-300 hover:bg-slate-600 transition">
+                Close
+              </button>
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </div>
   </div>
 
   <!-- Toast notifications -->
@@ -96,6 +274,8 @@
       </div>
     </template>
   </div>
+
+  </div> <!-- closes x-data scope -->
 
 </body>
 </html>

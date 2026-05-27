@@ -1,0 +1,36 @@
+[
+  {
+    "step": "Clear Power Setpoints",
+    "writes": {
+      "704.WSetPct": 0,
+      "704.WSet": 0
+    },
+    "verify": true,
+    "sleep_ms": 300,
+    "note": "Zero out percentage and watt setpoints first"
+  },
+  {
+    "step": "Disable Remote Control",
+    "writes": {
+      "704.WSetEna": 0
+    },
+    "verify": true,
+    "sleep_ms": 300,
+    "note": "Disable WSet master switch"
+  },
+  {
+    "step": "Clear Revert Timer (exit VPP mode)",
+    "writes": {
+      "704.WSetRvrtTms": 0,
+      "704.WSetEnaRvrt": 0
+    },
+    "verify": true,
+    "sleep_ms": 500,
+    "note": "Zero the hardware revert timer — aGate stays in VPP mode until this expires or is cleared"
+  },
+  {
+    "step": "Verify Full Release",
+    "reads": ["704.WSetEna", "704.WSetPct", "704.WSet", "704.WSetRvrtTms", "704.WSetRvrtRem", "704.WSetEnaRvrt"],
+    "note": "Confirm: WSetEna=0, setpoints=0, revert timer cleared, aGate should exit VPP mode"
+  }
+]
