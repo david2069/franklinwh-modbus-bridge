@@ -9,7 +9,9 @@ from franklinwh_bridge.store.db import init_db
 from franklinwh_bridge.store.metrics import (
     DEFAULT_RETENTION_DAYS,
     SQLiteMetrics,
+    archive_old_metrics,
     get_retention_days,
+    get_storage_stats,
     purge_old,
     query_metrics,
     record_sample,
@@ -282,3 +284,176 @@ async def test_record_sample_accepts_high_home_during_transition(db):
     async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
         count = (await cur.fetchone())[0]
     assert count == 1
+
+
+async def test_record_sample_returns_true_on_write(db):
+    """record_sample returns True when a row is actually written."""
+    points = {
+        "battery_power_w": 100,
+        "grid_power_w": 50,
+        "total_solar": 200,
+        "home_load_ext": 150,
+        "soc": 80,
+    }
+    result = await record_sample(db, points)
+    assert result is True
+
+
+async def test_record_sample_returns_false_on_skip(db):
+    """record_sample returns False when no power keys present."""
+    result = await record_sample(db, {"some_other_key": 42})
+    assert result is False
+
+
+async def test_record_sample_returns_false_on_reject(db):
+    """record_sample returns False when values are rejected."""
+    points = {
+        "battery_power_w": 0,
+        "grid_power_w": 0,
+        "total_solar": 196605,  # 3 × 0xFFFF
+        "home_load_ext": 350,
+        "soc": 47,
+    }
+    result = await record_sample(db, points)
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Metrics archival tests
+# ---------------------------------------------------------------------------
+
+
+async def test_archive_no_old_data(db):
+    """Archive with no old data returns 0."""
+    archived = await archive_old_metrics(db)
+    assert archived == 0
+
+
+async def test_archive_old_data(db):
+    """Old raw rows are archived into 5-min buckets."""
+    now = time.time()
+    old_base = now - 10 * 86400  # 10 days ago
+
+    # Insert 60 raw rows across 30 minutes (one every 30s)
+    for i in range(60):
+        ts = old_base + i * 30
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, 100.0 + i, 200.0, 300.0, 400.0, 50.0),
+        )
+    await db.commit()
+
+    archived = await archive_old_metrics(db)
+    assert archived == 60
+
+    # Raw rows should be gone
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        raw_count = (await cur.fetchone())[0]
+    assert raw_count == 0
+
+    # Archive should have 5-min bucket rows
+    # Exact count depends on bucket alignment; expect 6-7 for 30 min span
+    async with db.execute("SELECT COUNT(*) FROM metrics_archive") as cur:
+        archive_count = (await cur.fetchone())[0]
+    assert 6 <= archive_count <= 7
+
+
+async def test_archive_preserves_recent(db):
+    """Recent data (< 7 days) is NOT archived."""
+    now = time.time()
+    recent = now - 1 * 86400  # 1 day ago
+
+    await db.execute(
+        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (recent, 100, 200, 300, 400, 50),
+    )
+    await db.commit()
+
+    archived = await archive_old_metrics(db)
+    assert archived == 0
+
+    # Raw row should still be there
+    async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 1
+
+
+async def test_archive_idempotent(db):
+    """Running archive twice doesn't re-archive same data."""
+    now = time.time()
+    old_base = now - 10 * 86400
+
+    for i in range(10):
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (old_base + i * 60, 100, 200, 300, 400, 50),
+        )
+    await db.commit()
+
+    first = await archive_old_metrics(db)
+    assert first == 10
+
+    # Second run: no more raw data to archive
+    second = await archive_old_metrics(db)
+    assert second == 0
+
+
+# ---------------------------------------------------------------------------
+# Storage stats tests
+# ---------------------------------------------------------------------------
+
+
+async def test_storage_stats_returns_tables(db):
+    """get_storage_stats returns info for known tables."""
+    stats = await get_storage_stats(db)
+    assert "tables" in stats
+    assert "db_size_bytes" in stats
+    assert "db_size_human" in stats
+    table_names = [t["table"] for t in stats["tables"]]
+    assert "metrics" in table_names
+    assert "metrics_archive" in table_names
+
+
+async def test_storage_stats_row_counts(db):
+    """Row counts reflect inserted data."""
+    now = time.time()
+    for i in range(5):
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (now - 60 + i * 10, 100, 200, 300, 400, 50),
+        )
+    await db.commit()
+
+    stats = await get_storage_stats(db)
+    metrics_info = next(
+        t for t in stats["tables"] if t["table"] == "metrics"
+    )
+    assert metrics_info["rows"] == 5
+
+
+async def test_storage_stats_time_range(db):
+    """Time range is reported for metrics table."""
+    now = time.time()
+    await db.execute(
+        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (now - 86400, 100, 200, 300, 400, 50),
+    )
+    await db.execute(
+        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (now, 100, 200, 300, 400, 50),
+    )
+    await db.commit()
+
+    stats = await get_storage_stats(db)
+    metrics_info = next(
+        t for t in stats["tables"] if t["table"] == "metrics"
+    )
+    assert "oldest_ts" in metrics_info
+    assert "newest_ts" in metrics_info
+    assert metrics_info["span_days"] == 1.0

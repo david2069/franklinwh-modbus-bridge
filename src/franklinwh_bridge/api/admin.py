@@ -16,8 +16,11 @@ from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.store.db import get_pics_compliance, set_pics_status
 from franklinwh_bridge.store.metrics import (
     RANGE_MAP,
+    archive_old_metrics,
     get_retention_days,
+    get_storage_stats,
     query_metrics,
+    query_metrics_with_archive,
     set_retention_days,
 )
 
@@ -225,8 +228,28 @@ async def get_metrics(request: Request, range: str = "30m"):  # noqa: A002
             f"Invalid range '{range}'. Valid: {', '.join(sorted(RANGE_MAP))}",
         )
     db: aiosqlite.Connection = request.app.state.db
-    points = await query_metrics(db, RANGE_MAP[range])
+    range_s = RANGE_MAP[range]
+    # Use archive-aware query for ranges > 6h
+    if range_s > 6 * 3600:
+        points = await query_metrics_with_archive(db, range_s)
+    else:
+        points = await query_metrics(db, range_s)
     return {"range": range, "points": points}
+
+
+@router.get("/stats/storage")
+async def get_storage_info(request: Request):
+    """Return DB storage statistics (row counts, sizes, time ranges)."""
+    db: aiosqlite.Connection = request.app.state.db
+    return await get_storage_stats(db)
+
+
+@router.post("/metrics/archive")
+async def run_archive(request: Request):
+    """Manually trigger metrics archival (downsample old raw data)."""
+    db: aiosqlite.Connection = request.app.state.db
+    archived = await archive_old_metrics(db)
+    return {"archived_rows": archived}
 
 
 @router.get("/settings/metrics")
@@ -249,6 +272,15 @@ async def put_metrics_settings(body: MetricsSettingsUpdate, request: Request):
     db: aiosqlite.Connection = request.app.state.db
     await set_retention_days(db, body.retention_days)
     return {"retention_days": body.retention_days}
+
+
+@router.get("/stats")
+async def get_stats(request: Request):
+    """Return operational statistics (uptime, polls, errors, data quality)."""
+    stats = getattr(request.app.state, "stats", None)
+    if stats is None:
+        return {"error": "Stats not initialised"}
+    return stats.snapshot.to_dict()
 
 
 @router.get("/logs")

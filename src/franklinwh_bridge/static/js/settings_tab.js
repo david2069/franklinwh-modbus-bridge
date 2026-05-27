@@ -11,10 +11,13 @@ function settingsTab() {
     republishing: false,
     unpublishing: false,
     showTopics: false,
+    storage: null,
+    archiving: false,
 
     async init() {
       await this.loadAll();
       await this.loadMetricsSettings();
+      await this.loadStorage();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -40,6 +43,36 @@ function settingsTab() {
       const data = await fetchJSON('api/settings/metrics');
       if (data && !data.error) {
         this.metricsRetention = data.retention_days;
+      }
+    },
+
+    async loadStorage() {
+      const data = await fetchJSON('api/stats/storage');
+      if (data && !data.error) {
+        this.storage = data;
+      }
+    },
+
+    async runArchive() {
+      this.archiving = true;
+      try {
+        const data = await fetchJSON('api/metrics/archive', {
+          method: 'POST',
+        });
+        if (data && !data.error) {
+          const msg = data.archived_rows > 0
+            ? `Archived ${data.archived_rows} rows`
+            : 'No rows to archive';
+          Alpine.store('app').toast(msg, 'info');
+          await this.loadStorage();
+        } else {
+          Alpine.store('app').toast(
+            'Archive failed: ' + (data?.error || 'unknown'),
+            'error',
+          );
+        }
+      } finally {
+        this.archiving = false;
       }
     },
 

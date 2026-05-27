@@ -75,6 +75,73 @@
 
     <!-- ══ LEFT COLUMN ═══════════════════════════════════ -->
 
+    <!-- Bridge Status -->
+    <div class="card" x-show="$store.app.bridgeStats">
+      <div class="card-label mb-3">Bridge Status</div>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Uptime</span>
+          <span class="font-mono text-emerald-400" x-text="$store.app.bridgeStats?.uptime_human ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Quality</span>
+          <span class="font-mono font-semibold"
+                :class="($store.app.bridgeStats?.data_quality_pct ?? 100) >= 99 ? 'text-emerald-400' :
+                         ($store.app.bridgeStats?.data_quality_pct ?? 100) >= 95 ? 'text-amber-400' : 'text-red-400'"
+                x-text="($store.app.bridgeStats?.data_quality_pct ?? '--') + '%'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Polls OK</span>
+          <span class="font-mono text-slate-300" x-text="$store.app.bridgeStats?.polls_ok?.toLocaleString() ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Polls Stale</span>
+          <span class="font-mono" :class="($store.app.bridgeStats?.polls_stale ?? 0) > 0 ? 'text-amber-400' : 'text-slate-500'"
+                x-text="$store.app.bridgeStats?.polls_stale?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Polls Error</span>
+          <span class="font-mono" :class="($store.app.bridgeStats?.polls_error ?? 0) > 0 ? 'text-red-400' : 'text-slate-500'"
+                x-text="$store.app.bridgeStats?.polls_error?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Sanitized</span>
+          <span class="font-mono" :class="($store.app.bridgeStats?.sanitizations ?? 0) > 0 ? 'text-amber-400' : 'text-slate-500'"
+                x-text="$store.app.bridgeStats?.sanitizations?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">DB Samples</span>
+          <span class="font-mono text-slate-300" x-text="$store.app.bridgeStats?.samples_recorded?.toLocaleString() ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Rejected</span>
+          <span class="font-mono" :class="($store.app.bridgeStats?.samples_rejected ?? 0) > 0 ? 'text-red-400' : 'text-slate-500'"
+                x-text="$store.app.bridgeStats?.samples_rejected?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Conn Drops</span>
+          <span class="font-mono" :class="($store.app.bridgeStats?.conn_drops ?? 0) > 0 ? 'text-amber-400' : 'text-slate-500'"
+                x-text="$store.app.bridgeStats?.conn_drops?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Recoveries</span>
+          <span class="font-mono" :class="($store.app.bridgeStats?.conn_recoveries ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'"
+                x-text="$store.app.bridgeStats?.conn_recoveries?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">MQTT Sent</span>
+          <span class="font-mono text-slate-300" x-text="$store.app.bridgeStats?.mqtt_sent?.toLocaleString() ?? '0'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Last Error</span>
+          <span class="font-mono text-xs truncate max-w-[180px]"
+                :class="$store.app.bridgeStats?.last_error ? 'text-red-400' : 'text-slate-600'"
+                :title="$store.app.bridgeStats?.last_error || 'None'"
+                x-text="$store.app.bridgeStats?.last_error || 'None'"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- Power Flow Summary -->
     <div class="card">
       <div class="card-label mb-3">Power Flow Summary</div>

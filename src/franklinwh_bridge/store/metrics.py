@@ -146,16 +146,18 @@ _METRICS_MAX_HOME_W = 50_000  # home can spike during mode transitions
 _METRICS_SENTINEL = 65535
 
 
-async def record_sample(db: aiosqlite.Connection, points: dict) -> None:
+async def record_sample(db: aiosqlite.Connection, points: dict) -> bool:
     """Insert a metrics row from poller sample points.
 
     Applies a final sanity check: rejects samples where any power metric
     exceeds physical limits or contains Modbus 0xFFFF sentinel values.
+
+    Returns True if a row was written, False if skipped/rejected.
     """
     row = {col: points.get(key) for key, col in POWER_METRIC_KEYS.items()}
     # Only write if at least one metric has a value
     if not any(v is not None for v in row.values()):
-        return
+        return False
 
     # Guard: reject rows with physically impossible or sentinel values
     for col, limit in [
@@ -175,7 +177,7 @@ async def record_sample(db: aiosqlite.Connection, points: dict) -> None:
                 val,
                 limit,
             )
-            return
+            return False
 
     await db.execute(
         "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
@@ -183,6 +185,7 @@ async def record_sample(db: aiosqlite.Connection, points: dict) -> None:
         (time.time(), row["battery_w"], row["grid_w"], row["solar_w"], row["home_w"], row["soc"]),
     )
     await db.commit()
+    return True
 
 
 async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> list[dict]:
@@ -249,11 +252,22 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> 
 
 
 async def purge_old(db: aiosqlite.Connection, retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
-    """Delete metrics older than retention. Return count deleted."""
+    """Delete metrics older than retention (both raw and archive). Return total deleted."""
     cutoff = time.time() - (retention_days * 86400)
+
     cursor = await db.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
-    await db.commit()
     deleted = cursor.rowcount
+
+    # Also purge archive table
+    try:
+        cur2 = await db.execute(
+            "DELETE FROM metrics_archive WHERE ts < ?", (cutoff,)
+        )
+        deleted += cur2.rowcount
+    except Exception:
+        pass  # table may not exist on older schemas
+
+    await db.commit()
     if deleted:
         logger.info("Purged %d metrics rows older than %d days", deleted, retention_days)
     return deleted
@@ -281,3 +295,238 @@ async def set_retention_days(db: aiosqlite.Connection, days: int) -> None:
         ("metrics_retention_days", str(days)),
     )
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# DB Storage stats
+# ---------------------------------------------------------------------------
+
+# Tables to report storage info for
+_STORAGE_TABLES = (
+    "metrics",
+    "metrics_archive",
+    "metric_samples",
+    "control_log",
+    "startup_log",
+    "operational_stats",
+)
+
+
+async def get_storage_stats(db: aiosqlite.Connection) -> dict:
+    """Return row counts and time ranges for data tables.
+
+    Also reports the DB file size and per-table page counts if available.
+    """
+    tables: list[dict] = []
+    for table in _STORAGE_TABLES:
+        try:
+            async with db.execute(
+                f"SELECT COUNT(*) FROM {table}"  # noqa: S608
+            ) as cur:
+                count = (await cur.fetchone())[0]
+        except Exception:
+            continue  # table may not exist yet
+
+        info: dict = {"table": table, "rows": count}
+
+        # Time range (for tables with a `ts` column)
+        if table in ("metrics", "metrics_archive", "metric_samples",
+                      "control_log", "startup_log"):
+            try:
+                async with db.execute(
+                    f"SELECT MIN(ts), MAX(ts) FROM {table}"  # noqa: S608
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row and row[0] is not None:
+                        info["oldest_ts"] = row[0]
+                        info["newest_ts"] = row[1]
+                        info["span_days"] = round(
+                            (row[1] - row[0]) / 86400, 1
+                        )
+            except Exception:
+                pass
+
+        tables.append(info)
+
+    # DB file size
+    db_size: int | None = None
+    try:
+        async with db.execute("PRAGMA page_count") as cur:
+            page_count = (await cur.fetchone())[0]
+        async with db.execute("PRAGMA page_size") as cur:
+            page_size = (await cur.fetchone())[0]
+        db_size = page_count * page_size
+    except Exception:
+        pass
+
+    return {
+        "tables": tables,
+        "db_size_bytes": db_size,
+        "db_size_human": _human_bytes(db_size) if db_size else None,
+    }
+
+
+def _human_bytes(n: int) -> str:
+    """Format bytes as human-readable string."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if abs(n) < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024  # type: ignore[assignment]
+    return f"{n:.1f} TB"
+
+
+# ---------------------------------------------------------------------------
+# Metrics archive (5-minute rollup)
+# ---------------------------------------------------------------------------
+
+#: Number of seconds in one 5-minute bucket
+ARCHIVE_BUCKET_S = 300
+
+#: Raw data older than this (seconds) is eligible for archival
+ARCHIVE_RAW_AGE_S = 7 * 86400  # 7 days
+
+
+async def archive_old_metrics(
+    db: aiosqlite.Connection,
+    raw_age_s: int = ARCHIVE_RAW_AGE_S,
+) -> int:
+    """Downsample raw metrics older than *raw_age_s* into 5-min buckets.
+
+    Inserts averaged rows into ``metrics_archive`` then deletes the
+    archived raw rows.  Returns the number of raw rows archived.
+    """
+    cutoff = time.time() - raw_age_s
+
+    # Find the newest already-archived timestamp to avoid re-archiving
+    try:
+        async with db.execute(
+            "SELECT MAX(ts) FROM metrics_archive"
+        ) as cur:
+            row = await cur.fetchone()
+            archive_fence = row[0] if row and row[0] else 0
+    except Exception:
+        archive_fence = 0
+
+    # Only archive rows older than cutoff AND newer than what's already archived
+    # (or all old rows if archive is empty)
+    lower_bound = max(archive_fence, 0)
+
+    # Count eligible rows
+    async with db.execute(
+        "SELECT COUNT(*) FROM metrics WHERE ts < ? AND ts > ?",
+        (cutoff, lower_bound),
+    ) as cur:
+        eligible = (await cur.fetchone())[0]
+
+    if eligible == 0:
+        return 0
+
+    # Aggregate into 5-min buckets and insert into archive
+    await db.execute(
+        """
+        INSERT INTO metrics_archive (ts, battery_w, grid_w, solar_w, home_w, soc, sample_count)
+        SELECT
+            (CAST(ts / ? AS INTEGER) * ?) + ? / 2.0 AS bucket_ts,
+            ROUND(AVG(battery_w), 1),
+            ROUND(AVG(grid_w), 1),
+            ROUND(AVG(solar_w), 1),
+            ROUND(AVG(home_w), 1),
+            ROUND(AVG(soc), 1),
+            COUNT(*)
+        FROM metrics
+        WHERE ts < ? AND ts > ?
+        GROUP BY CAST(ts / ? AS INTEGER)
+        """,
+        (ARCHIVE_BUCKET_S, ARCHIVE_BUCKET_S, ARCHIVE_BUCKET_S,
+         cutoff, lower_bound, ARCHIVE_BUCKET_S),
+    )
+
+    # Delete the archived raw rows
+    cursor = await db.execute(
+        "DELETE FROM metrics WHERE ts < ? AND ts > ?",
+        (cutoff, lower_bound),
+    )
+    await db.commit()
+
+    archived = cursor.rowcount
+    if archived:
+        logger.info(
+            "Archived %d raw metric rows into 5-min buckets (cutoff=%.0f)",
+            archived, cutoff,
+        )
+    return archived
+
+
+async def query_metrics_with_archive(
+    db: aiosqlite.Connection,
+    range_seconds: int = 1800,
+) -> list[dict]:
+    """Query metrics, transparently using archive for older ranges.
+
+    For ranges within the raw data window, uses ``metrics`` table directly.
+    For ranges that span into archived territory, unions raw + archive data.
+    """
+    now = time.time()
+    cutoff = now - range_seconds
+    six_hours = 6 * 3600
+
+    # Check if metrics_archive table exists
+    has_archive = False
+    try:
+        async with db.execute(
+            "SELECT 1 FROM metrics_archive LIMIT 1"
+        ):
+            has_archive = True
+    except Exception:
+        pass
+
+    if range_seconds <= six_hours or not has_archive:
+        # Use original query_metrics for short ranges
+        return await query_metrics(db, range_seconds)
+
+    # For longer ranges, union raw recent + archived older data
+    bucket_size = range_seconds / MAX_POINTS
+
+    # Raw recent data (last 7 days)
+    raw_cutoff = now - ARCHIVE_RAW_AGE_S
+
+    query = """
+        SELECT
+            CAST((ts - ?) / ? AS INTEGER) AS bucket,
+            AVG(battery_w),
+            AVG(grid_w),
+            AVG(solar_w),
+            AVG(home_w),
+            AVG(soc)
+        FROM (
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+            FROM metrics
+            WHERE ts >= ?
+
+            UNION ALL
+
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+            FROM metrics_archive
+            WHERE ts >= ? AND ts < ?
+        )
+        WHERE ts >= ?
+        GROUP BY bucket
+        ORDER BY bucket
+    """
+    rows: list[dict] = []
+    async with db.execute(
+        query,
+        (cutoff, bucket_size, max(cutoff, raw_cutoff),
+         cutoff, raw_cutoff, cutoff),
+    ) as cursor:
+        async for row in cursor:
+            bucket_ts = cutoff + (row[0] + 0.5) * bucket_size
+            rows.append({
+                "ts": round(bucket_ts, 1),
+                "battery_w": round(row[1], 1) if row[1] else None,
+                "grid_w": round(row[2], 1) if row[2] else None,
+                "solar_w": round(row[3], 1) if row[3] else None,
+                "home_w": round(row[4], 1) if row[4] else None,
+                "soc": round(row[5], 1) if row[5] else None,
+            })
+    return rows

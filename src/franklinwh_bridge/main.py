@@ -32,10 +32,12 @@ from franklinwh_bridge.store.db import (
     log_startup_event,
 )
 from franklinwh_bridge.store.metrics import (
+    archive_old_metrics,
     get_retention_days,
     purge_old,
     record_sample,
 )
+from franklinwh_bridge.store.stats import OperationalStats
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +98,13 @@ async def lifespan(app: FastAPI):
             )
             await db.commit()
 
+    stats = await OperationalStats.load(db)
+
     sample_bus = SampleBus()
 
     app.state.config = config
     app.state.db = db
+    app.state.stats = stats
     app.state.sample_bus = sample_bus
     app.state.gateway_id = gateway_id
     app.state.log_buffer = log_buffer
@@ -135,6 +140,7 @@ async def lifespan(app: FastAPI):
             sample_bus=sample_bus,
             gateway_id=gateway_id,
             poll_interval=gw.poll_interval,
+            stats=stats,
         )
         app.state.poller = poller
         app.state.controller = controller
@@ -152,16 +158,37 @@ async def lifespan(app: FastAPI):
         # Metrics recorder — writes power readings to the metrics table every sample
         async def _record_metrics(sample: Sample) -> None:
             try:
-                await record_sample(db, sample.points)
+                written = await record_sample(db, sample.points)
+                if written:
+                    stats.record_sample_recorded()
+                elif any(
+                    sample.points.get(k) is not None
+                    for k in (
+                        "battery_power_w", "grid_power_w",
+                        "total_solar", "home_load_ext", "soc",
+                    )
+                ):
+                    # Had power data but was rejected by sanity guard
+                    stats.record_sample_rejected()
             except Exception as exc:
                 logger.debug("Metrics record failed: %s", exc)
+                stats.record_sample_rejected()
 
         sample_bus.subscribe(_record_metrics)
 
-        # Periodic purge of old metrics (runs on startup then every hour)
+        # Periodic purge + archive of old metrics (runs on startup then hourly)
         async def _metrics_purge_loop() -> None:
             while True:
                 try:
+                    # Archive raw data > 7 days into 5-min buckets
+                    archived = await archive_old_metrics(db)
+                    if archived:
+                        logger.info("Metrics archive: rolled up %d rows", archived)
+                except Exception as exc:
+                    logger.warning("Metrics archive failed: %s", exc)
+
+                try:
+                    # Purge data older than retention (both raw + archive)
                     retention = await get_retention_days(db)
                     deleted = await purge_old(db, retention)
                     if deleted:
@@ -294,6 +321,7 @@ async def lifespan(app: FastAPI):
             "discovery_published": mqtt_publisher.state.discovery_published,
         },
     )
+    register_component("stats", lambda: stats.snapshot.to_dict())
 
     logger.info("Bridge started (env=%s, v%s)", config.environment, __version__)
 
@@ -336,6 +364,9 @@ async def lifespan(app: FastAPI):
 
     # 5. Stop MQTT
     await mqtt_publisher.stop()
+
+    # 6. Flush operational stats one final time
+    await stats.flush()
 
     await log_startup_event(db, "shutdown", f"v{__version__}")
     await db.close()

@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -155,6 +155,36 @@ MIGRATIONS: dict[int, str] = {
         updated_at  REAL NOT NULL,
         PRIMARY KEY (model_id, point_name)
     );
+    """,
+    7: """
+    CREATE TABLE IF NOT EXISTS operational_stats (
+        id          INTEGER PRIMARY KEY CHECK (id = 1),
+        started_at  REAL NOT NULL,
+        polls_ok    INTEGER NOT NULL DEFAULT 0,
+        polls_stale INTEGER NOT NULL DEFAULT 0,
+        polls_error INTEGER NOT NULL DEFAULT 0,
+        samples_recorded INTEGER NOT NULL DEFAULT 0,
+        samples_rejected INTEGER NOT NULL DEFAULT 0,
+        sanitizations    INTEGER NOT NULL DEFAULT 0,
+        conn_drops       INTEGER NOT NULL DEFAULT 0,
+        conn_recoveries  INTEGER NOT NULL DEFAULT 0,
+        mqtt_sent        INTEGER NOT NULL DEFAULT 0,
+        last_poll_ts     REAL,
+        last_error       TEXT,
+        updated_at       REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS metrics_archive (
+        ts           REAL NOT NULL,
+        battery_w    REAL,
+        grid_w       REAL,
+        solar_w      REAL,
+        home_w       REAL,
+        soc          REAL,
+        sample_count INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_metrics_archive_ts
+        ON metrics_archive(ts);
     """,
 }
 

@@ -70,6 +70,7 @@ class ModbusPoller:
         sample_bus: SampleBus,
         gateway_id: str = "default",
         poll_interval: int = 30,
+        stats: Any | None = None,
     ) -> None:
         self._controller = controller
         self._bus = sample_bus
@@ -82,6 +83,7 @@ class ModbusPoller:
         self._ac_type: int = 0  # 0=Single, 1=Split, 2=Three-Phase
         self._vreg_client: Any | None = None  # cached pymodbus client
         self._last_good_ext: dict[str, int | float] = {}  # previous good extension values
+        self._stats = stats  # OperationalStats (optional)
 
     @property
     def ac_type(self) -> int:
@@ -103,6 +105,8 @@ class ModbusPoller:
                         self._controller.ip_address,
                         self._state.consecutive_errors,
                     )
+                    if self._stats:
+                        self._stats.record_conn_recovery()
                 else:
                     logger.info("Connected to aGate at %s", self._controller.ip_address)
             return self._state.connected
@@ -325,6 +329,8 @@ class ModbusPoller:
                 )
                 points[key] = prev
                 corrupted = True
+                if self._stats:
+                    self._stats.record_sanitization()
 
         # If any component was corrupted, recalculate total_solar from clean parts
         if corrupted and "total_solar" in points:
@@ -592,11 +598,17 @@ class ModbusPoller:
                     self._state.last_error = "All reads failed"
                     if self._state.connected:
                         logger.warning("Modbus connection lost — all reads failed")
+                        if self._stats:
+                            self._stats.record_conn_drop()
                     self._state.connected = False
                     self._startup_points = {}  # Re-read on reconnect
                 else:
                     self._state.consecutive_errors = 0
                     self._state.last_error = None
+
+                # Record poll quality in operational stats
+                if self._stats:
+                    self._stats.record_poll(sample.quality)
 
                 await self._bus.publish(sample)
 
@@ -606,9 +618,17 @@ class ModbusPoller:
                 self._state.last_error = str(exc)
                 if self._state.connected:
                     logger.warning("Modbus connection lost: %s", exc)
+                    if self._stats:
+                        self._stats.record_conn_drop()
                 self._state.connected = False
                 self._startup_points = {}  # Re-read on reconnect
                 logger.error("Poll failed: %s", exc)
+                if self._stats:
+                    self._stats.record_error(str(exc))
+
+            # Periodically flush stats to DB
+            if self._stats:
+                await self._stats.maybe_flush()
 
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._poll_interval)

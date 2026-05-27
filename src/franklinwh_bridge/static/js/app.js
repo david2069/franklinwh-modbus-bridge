@@ -123,6 +123,7 @@ document.addEventListener('alpine:init', () => {
     // Data cache
     points: {},
     quality: null,
+    bridgeStats: null,
 
     // Toast notifications
     toasts: [],
@@ -178,6 +179,11 @@ document.addEventListener('alpine:init', () => {
       if (health && !health.error) {
         this.version = health.version || '--';
         this.env = health.environment || '';
+      }
+
+      const stats = await fetchJSON('api/stats');
+      if (stats && !stats.error) {
+        this.bridgeStats = stats;
       }
     },
 
