@@ -9,16 +9,21 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
+from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import get_pics_compliance, set_pics_status
 from franklinwh_bridge.store.metrics import (
     RANGE_MAP,
     archive_old_metrics,
+    export_metrics,
+    format_metrics_csv,
     get_retention_days,
     get_storage_stats,
+    import_metrics_csv,
     query_metrics,
     query_metrics_with_archive,
     set_retention_days,
@@ -511,3 +516,152 @@ async def put_pics(body: PicsUpdateRequest, request: Request):
         "point_name": body.point_name,
         "status": body.status,
     }
+
+
+# ── Backup endpoints ───────────────────────────────────────────
+
+
+def _get_backup_manager(request: Request) -> BackupManager:
+    mgr = getattr(request.app.state, "backup_manager", None)
+    if mgr is None:
+        raise HTTPException(503, "Backup manager not initialised")
+    return mgr
+
+
+class BackupCreateRequest(BaseModel):
+    label: str | None = None
+
+
+@router.post("/backup/create")
+async def create_backup(request: Request, body: BackupCreateRequest | None = None):
+    """Create a new database backup."""
+    mgr = _get_backup_manager(request)
+    label = body.label if body else None
+    info = await mgr.create(label=label)
+    return {
+        "name": info.name,
+        "created_at": info.created_at,
+        "schema_version": info.schema_version,
+        "app_version": info.app_version,
+        "size_bytes": info.size_bytes,
+    }
+
+
+@router.get("/backup/list")
+async def list_backups(request: Request):
+    """List available backups, newest first."""
+    mgr = _get_backup_manager(request)
+    backups = mgr.list_backups()
+    return {
+        "backups": [
+            {
+                "name": b.name,
+                "created_at": b.created_at,
+                "schema_version": b.schema_version,
+                "app_version": b.app_version,
+                "size_bytes": b.size_bytes,
+            }
+            for b in backups
+        ]
+    }
+
+
+class BackupRestoreRequest(BaseModel):
+    name: str
+
+
+@router.post("/backup/restore")
+async def restore_backup(body: BackupRestoreRequest, request: Request):
+    """Restore the database from a named backup.
+
+    Creates a pre-restore snapshot automatically.  The bridge should be
+    restarted after restore to reload state.
+    """
+    mgr = _get_backup_manager(request)
+    backup_path = mgr._backup_dir / f"{body.name}.zip"
+    try:
+        await mgr.restore(backup_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, f"Backup '{body.name}' not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "restored_from": body.name}
+
+
+@router.get("/backup/download/{name}")
+async def download_backup(name: str, request: Request):
+    """Download a backup archive as a ZIP file."""
+    mgr = _get_backup_manager(request)
+    backup_path = mgr._backup_dir / f"{name}.zip"
+    if not backup_path.exists():
+        raise HTTPException(404, f"Backup '{name}' not found")
+    return FileResponse(
+        path=str(backup_path),
+        media_type="application/zip",
+        filename=f"{name}.zip",
+    )
+
+
+# ── Metrics export / import ────────────────────────────────────
+
+
+@router.get("/metrics/export")
+async def export_metrics_endpoint(
+    request: Request,
+    range: str = "24h",  # noqa: A002
+    format: str = "csv",  # noqa: A002
+):
+    """Export metrics as CSV or JSON for the given time range.
+
+    Unlike the chart endpoint, this returns every stored row (no
+    downsampling) so exports are lossless.
+    """
+    if range not in RANGE_MAP:
+        raise HTTPException(
+            400,
+            f"Invalid range '{range}'. Valid: {', '.join(sorted(RANGE_MAP))}",
+        )
+    if format not in ("csv", "json"):
+        raise HTTPException(400, "format must be 'csv' or 'json'")
+
+    db: aiosqlite.Connection = request.app.state.db
+    rows = await export_metrics(db, RANGE_MAP[range])
+
+    if format == "json":
+        return Response(
+            content=json.dumps({"rows": rows, "count": len(rows)}, indent=2),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="metrics_{range}.json"'
+            },
+        )
+
+    csv_text = format_metrics_csv(rows)
+    return PlainTextResponse(
+        content=csv_text,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="metrics_{range}.csv"'
+        },
+    )
+
+
+@router.post("/metrics/import")
+async def import_metrics_endpoint(request: Request, file: UploadFile):
+    """Import metrics from a CSV file.
+
+    Expects columns: timestamp, battery_w, grid_w, solar_w, home_w, soc.
+    Timestamp can be ISO-8601 or Unix epoch float.
+    """
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(400, "File must be a .csv")
+
+    content = await file.read()
+    try:
+        csv_text = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(400, "File must be UTF-8 encoded") from exc
+
+    db: aiosqlite.Connection = request.app.state.db
+    imported = await import_metrics_csv(db, csv_text)
+    return {"imported_rows": imported}

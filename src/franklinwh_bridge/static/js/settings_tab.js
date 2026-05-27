@@ -13,11 +13,15 @@ function settingsTab() {
     showTopics: false,
     storage: null,
     archiving: false,
+    backups: [],
+    backupBusy: false,
+    exportRange: '24h',
 
     async init() {
       await this.loadAll();
       await this.loadMetricsSettings();
       await this.loadStorage();
+      await this.loadBackups();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -85,6 +89,35 @@ function settingsTab() {
         Alpine.store('app').toast(`Retention set to ${this.metricsRetention} days`, 'info');
       } else {
         Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    async loadBackups() {
+      const data = await fetchJSON('api/backup/list');
+      if (data && !data.error) {
+        this.backups = data.backups || [];
+      }
+    },
+
+    async createBackup() {
+      this.backupBusy = true;
+      try {
+        const data = await fetchJSON('api/backup/create', {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        if (data && !data.error) {
+          Alpine.store('app').toast(`Backup created: ${data.name}`, 'info');
+          await this.loadBackups();
+          await this.loadStorage();
+        } else {
+          Alpine.store('app').toast(
+            'Backup failed: ' + (data?.error || 'unknown'),
+            'error',
+          );
+        }
+      } finally {
+        this.backupBusy = false;
       }
     },
 

@@ -24,6 +24,7 @@ from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
+from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_mqtt_config,
     init_db,
@@ -99,12 +100,14 @@ async def lifespan(app: FastAPI):
             await db.commit()
 
     stats = await OperationalStats.load(db)
+    backup_manager = BackupManager(config.db_path, config.backup_dir)
 
     sample_bus = SampleBus()
 
     app.state.config = config
     app.state.db = db
     app.state.stats = stats
+    app.state.backup_manager = backup_manager
     app.state.sample_bus = sample_bus
     app.state.gateway_id = gateway_id
     app.state.log_buffer = log_buffer

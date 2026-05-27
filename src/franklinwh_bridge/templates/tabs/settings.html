@@ -150,6 +150,67 @@
         Refresh
       </button>
     </div>
+
+    <!-- Backup Management -->
+    <div class="card">
+      <div class="card-label mb-3">Backup &amp; Export</div>
+      <div class="space-y-3">
+
+        <!-- Backup actions -->
+        <div class="flex gap-2">
+          <button @click="createBackup()" :disabled="backupBusy"
+                  class="btn btn-sm btn-primary">
+            <template x-if="backupBusy">
+              <span class="inline-flex items-center gap-1">
+                <span class="loading-spinner !w-3 !h-3"></span>
+                Creating...
+              </span>
+            </template>
+            <template x-if="!backupBusy">
+              <span>Create Backup</span>
+            </template>
+          </button>
+        </div>
+
+        <!-- Recent backups -->
+        <div x-show="backups.length > 0">
+          <div class="text-[10px] text-slate-500 mb-1">Recent Backups</div>
+          <div class="max-h-[120px] overflow-y-auto">
+            <template x-for="b in backups" :key="b.name">
+              <div class="flex items-center justify-between text-xs py-1 border-b border-slate-700/50">
+                <span class="font-mono text-slate-400 truncate max-w-[200px]" x-text="b.name"></span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] text-slate-500"
+                        x-text="fmt.ago(b.created_at)"></span>
+                  <a :href="'/api/backup/download/' + b.name"
+                     class="text-cyan-400 hover:text-cyan-300 text-[10px]"
+                     download>Download</a>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Export metrics -->
+        <div>
+          <div class="text-[10px] text-slate-500 mb-1">Export Metrics</div>
+          <div class="flex items-center gap-2">
+            <select x-model="exportRange"
+                    class="form-control !py-1 !text-xs w-24">
+              <option value="1h">1 hour</option>
+              <option value="6h">6 hours</option>
+              <option value="24h">24 hours</option>
+              <option value="7d">7 days</option>
+              <option value="30d">30 days</option>
+            </select>
+            <a :href="'/api/metrics/export?format=csv&range=' + exportRange"
+               class="btn btn-sm btn-secondary" download>CSV</a>
+            <a :href="'/api/metrics/export?format=json&range=' + exportRange"
+               class="btn btn-sm btn-secondary" download>JSON</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Entity List -->

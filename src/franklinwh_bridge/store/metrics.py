@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Protocol
 
 import aiosqlite
@@ -530,3 +533,141 @@ async def query_metrics_with_archive(
                 "soc": round(row[5], 1) if row[5] else None,
             })
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Metrics export / import
+# ---------------------------------------------------------------------------
+
+#: CSV column headers for export
+_EXPORT_COLUMNS = ("timestamp", "battery_w", "grid_w", "solar_w", "home_w", "soc")
+
+
+async def export_metrics(
+    db: aiosqlite.Connection,
+    range_seconds: int = 86400,
+) -> list[dict]:
+    """Export raw metrics rows (union of raw + archive) for the given range.
+
+    Returns list of dicts with ISO-8601 timestamps for human readability.
+    Unlike ``query_metrics``, this does NOT downsample — it returns every
+    stored row so exports are lossless.
+    """
+    now = time.time()
+    cutoff = now - range_seconds
+
+    rows: list[dict] = []
+
+    # Raw metrics
+    async with db.execute(
+        "SELECT ts, battery_w, grid_w, solar_w, home_w, soc "
+        "FROM metrics WHERE ts >= ? ORDER BY ts",
+        (cutoff,),
+    ) as cursor:
+        async for row in cursor:
+            rows.append(_export_row(row))
+
+    # Archive metrics (older data in 5-min buckets)
+    try:
+        async with db.execute(
+            "SELECT ts, battery_w, grid_w, solar_w, home_w, soc "
+            "FROM metrics_archive WHERE ts >= ? AND ts < ? ORDER BY ts",
+            (cutoff, now - ARCHIVE_RAW_AGE_S),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(_export_row(row))
+    except Exception:
+        pass  # archive table may not exist
+
+    # Sort combined results by timestamp
+    rows.sort(key=lambda r: r["timestamp"])
+    return rows
+
+
+def _export_row(row: tuple) -> dict:
+    """Convert a DB row to an export dict with ISO timestamp."""
+    return {
+        "timestamp": datetime.fromtimestamp(row[0], tz=UTC).isoformat(),
+        "battery_w": row[1],
+        "grid_w": row[2],
+        "solar_w": row[3],
+        "home_w": row[4],
+        "soc": row[5],
+    }
+
+
+def format_metrics_csv(rows: list[dict]) -> str:
+    """Format export rows as CSV string."""
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=_EXPORT_COLUMNS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue()
+
+
+async def import_metrics_csv(
+    db: aiosqlite.Connection,
+    csv_text: str,
+) -> int:
+    """Import metrics rows from CSV text.
+
+    Expects columns: timestamp, battery_w, grid_w, solar_w, home_w, soc.
+    Timestamp can be ISO-8601 or Unix epoch float.
+
+    Returns the number of rows imported.
+    """
+    reader = csv.DictReader(io.StringIO(csv_text))
+    imported = 0
+
+    for row in reader:
+        ts = _parse_timestamp(row.get("timestamp", ""))
+        if ts is None:
+            continue
+
+        try:
+            battery_w = _to_float(row.get("battery_w"))
+            grid_w = _to_float(row.get("grid_w"))
+            solar_w = _to_float(row.get("solar_w"))
+            home_w = _to_float(row.get("home_w"))
+            soc = _to_float(row.get("soc"))
+        except (ValueError, TypeError):
+            continue
+
+        # Skip completely empty rows
+        if all(v is None for v in (battery_w, grid_w, solar_w, home_w, soc)):
+            continue
+
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, battery_w, grid_w, solar_w, home_w, soc),
+        )
+        imported += 1
+
+    if imported:
+        await db.commit()
+        logger.info("Imported %d metrics rows from CSV", imported)
+    return imported
+
+
+def _parse_timestamp(value: str) -> float | None:
+    """Parse a timestamp string as either ISO-8601 or Unix epoch."""
+    if not value or not value.strip():
+        return None
+    value = value.strip()
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        dt = datetime.fromisoformat(value)
+        return dt.timestamp()
+    except ValueError:
+        return None
+
+
+def _to_float(value: str | None) -> float | None:
+    """Convert a string to float, returning None for empty/missing."""
+    if value is None or value.strip() == "":
+        return None
+    return float(value)
