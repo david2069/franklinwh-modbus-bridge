@@ -26,7 +26,7 @@ from franklinwh_bridge.store.db import log_control_event, save_control_state
 logger = logging.getLogger(__name__)
 
 DEFAULT_WATCHDOG_S = 3600
-MAX_POWER_W = 5000
+DEFAULT_MAX_POWER_W = 5000
 
 OPERATING_MODES = {
     "Emergency Backup": 1,
@@ -53,6 +53,8 @@ class CommandHandler:
         controller: Any,
         db: aiosqlite.Connection,
         on_state_changed: Callable[[], Coroutine] | None = None,
+        max_charge_w: int = DEFAULT_MAX_POWER_W,
+        max_discharge_w: int = DEFAULT_MAX_POWER_W,
     ) -> None:
         self._controller = controller
         self._db = db
@@ -62,10 +64,47 @@ class CommandHandler:
         self._command_power_w: int = 0
         self._command_power_pct: int = 0
         self._command_duration_s: int = DEFAULT_WATCHDOG_S
+        self._max_charge_w: int = max_charge_w
+        self._max_discharge_w: int = max_discharge_w
 
     @property
     def state(self) -> CommandState:
         return self._state
+
+    @property
+    def max_charge_w(self) -> int:
+        return self._max_charge_w
+
+    @property
+    def max_discharge_w(self) -> int:
+        return self._max_discharge_w
+
+    @property
+    def max_power_w(self) -> int:
+        """Symmetric max: the larger of charge/discharge limits."""
+        return max(self._max_charge_w, self._max_discharge_w)
+
+    def set_power_limits(self, charge_w: int, discharge_w: int) -> None:
+        """Update max power limits from hardware nameplate (M702)."""
+        self._max_charge_w = charge_w
+        self._max_discharge_w = discharge_w
+        logger.info(
+            "Power limits updated: charge=%dW, discharge=%dW",
+            charge_w, discharge_w,
+        )
+
+    @property
+    def power_limits(self) -> dict[str, int]:
+        """Return current power limits for REST/dashboard."""
+        return {
+            "max_charge_w": self._max_charge_w,
+            "max_discharge_w": self._max_discharge_w,
+            "source": (
+                "hardware"
+                if self._max_charge_w != DEFAULT_MAX_POWER_W
+                else "default"
+            ),
+        }
 
     @property
     def virtual_points(self) -> dict[str, Any]:
@@ -122,7 +161,7 @@ class CommandHandler:
             if slug == "battery_command":
                 await self._handle_battery_command(payload)
             elif slug == "battery_command_power":
-                self._command_power_w = max(0, min(int(float(payload)), MAX_POWER_W))
+                self._command_power_w = max(0, min(int(float(payload)), self.max_power_w))
                 self._command_power_pct = 0  # watts takes precedence, clear pct
                 if self._on_state_changed:
                     await self._on_state_changed()
@@ -164,11 +203,16 @@ class CommandHandler:
         if action == "Idle":
             watts = 0
         elif action in ("Charge", "Discharge"):
+            # Pick directional limit
+            max_w = (
+                self._max_charge_w if action == "Charge"
+                else self._max_discharge_w
+            )
             if self._command_power_pct > 0:
-                # Percentage mode: convert to watts using max rate
-                watts = int(MAX_POWER_W * self._command_power_pct / 100)
+                # Percentage mode: convert to watts using directional max
+                watts = int(max_w * self._command_power_pct / 100)
             else:
-                watts = self._command_power_w or MAX_POWER_W
+                watts = min(self._command_power_w or max_w, max_w)
             if action == "Discharge":
                 watts = -watts
         else:

@@ -152,6 +152,8 @@ class MqttPublisher:
         self._removed_entities: list[EntityDef] = []
         self._ac_type: int = 0
         self._command_handler: CommandHandler | None = None
+        # Per-slug overrides for discovery max_val (set by power limit detection)
+        self._max_val_overrides: dict[str, float] = {}
 
     @property
     def state(self) -> MqttState:
@@ -204,6 +206,19 @@ class MqttPublisher:
     def set_command_handler(self, handler: CommandHandler) -> None:
         self._command_handler = handler
 
+    def set_power_limits(self, max_charge_w: int, max_discharge_w: int) -> None:
+        """Override the battery_command_power entity max_val from hardware.
+
+        Triggers re-discovery so HA picks up the new slider range.
+        """
+        max_w = max(max_charge_w, max_discharge_w)
+        self._max_val_overrides["battery_command_power"] = float(max_w)
+        logger.info(
+            "Power entity max updated to %dW from hardware nameplate", max_w,
+        )
+        # Trigger re-discovery on next loop tick
+        self._state.discovery_published = False
+
     async def _publish_discovery(self, client: aiomqtt.Client) -> None:
         """Publish HA Discovery config for all registered entities.
 
@@ -231,6 +246,9 @@ class MqttPublisher:
             payload = build_discovery_payload(
                 entity, self._device_info, app_version=__version__
             )
+            # Apply runtime max_val overrides (e.g. from M702 nameplate)
+            if entity.slug in self._max_val_overrides:
+                payload["max"] = self._max_val_overrides[entity.slug]
             await client.publish(topic, json.dumps(payload), retain=True)
 
         logger.info("Published HA Discovery for %d entities", len(self._entities))

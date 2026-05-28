@@ -179,6 +179,28 @@ async def lifespan(app: FastAPI):
 
         sample_bus.subscribe(_record_metrics)
 
+        # Auto-detect power limits from M702 nameplate on first sample
+        _limits_detected = False
+
+        async def _detect_power_limits(sample: Sample) -> None:
+            nonlocal _limits_detected
+            if _limits_detected:
+                return
+            charge = sample.points.get("max_charge_rate_w")
+            discharge = sample.points.get("max_discharge_rate_w")
+            if charge is not None and discharge is not None:
+                _limits_detected = True
+                charge_w = int(charge)
+                discharge_w = int(discharge)
+                command_handler.set_power_limits(charge_w, discharge_w)
+                mqtt_publisher.set_power_limits(charge_w, discharge_w)
+                logger.info(
+                    "Power limits detected from M702: charge=%dW, discharge=%dW",
+                    charge_w, discharge_w,
+                )
+
+        sample_bus.subscribe(_detect_power_limits)
+
         # Periodic purge + archive of old metrics (runs on startup then hourly)
         async def _metrics_purge_loop() -> None:
             while True:

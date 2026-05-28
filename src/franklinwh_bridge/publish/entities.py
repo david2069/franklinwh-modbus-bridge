@@ -949,7 +949,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         icon="mdi:flash",
         is_control=True,
         min_val=0,
-        max_val=5000,
+        max_val=5000,  # default; overridden at runtime from M702 nameplate
         step=100,
         source="virtual",
     ),

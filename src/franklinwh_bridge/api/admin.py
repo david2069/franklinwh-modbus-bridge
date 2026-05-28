@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
+from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import get_pics_compliance, set_pics_status
 from franklinwh_bridge.store.metrics import (
@@ -516,6 +517,22 @@ async def put_pics(body: PicsUpdateRequest, request: Request):
         "point_name": body.point_name,
         "status": body.status,
     }
+
+
+# ── Battery limits endpoint ─────────────────────────────────────
+
+
+@router.get("/battery/limits")
+async def get_battery_limits(request: Request):
+    """Return current battery power limits (from M702 nameplate or defaults)."""
+    handler = getattr(request.app.state, "command_handler", None)
+    if handler is None:
+        return {
+            "max_charge_w": DEFAULT_MAX_POWER_W,
+            "max_discharge_w": DEFAULT_MAX_POWER_W,
+            "source": "default",
+        }
+    return handler.power_limits
 
 
 # ── Backup endpoints ───────────────────────────────────────────
