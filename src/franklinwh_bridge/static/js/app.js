@@ -96,6 +96,7 @@ const POINT_SOURCES = {
   voltage_l3_v: '701.VL3', current_l3_a: '701.AL3', power_l3_w: '701.WL3',
   pf_l3: '701.PFL3', va_l3: '701.VAL3', var_l3: '701.VarL3',
   battery_command_state: 'virtual', battery_command_power_w: 'virtual',
+  battery_command_target_soc: 'virtual',
 };
 
 // ── Main Alpine App ──────────────────────────────────────────
@@ -206,10 +207,11 @@ document.addEventListener('alpine:init', () => {
     },
 
     get isReleaseable() {
-      // Releaseable if WSetEna is active OR a software command is running
+      // Releaseable if WSetEna is active, revert timer running, OR a software command is running
       const wsetEna = this.wsetEnabled;
       const hwActive = wsetEna != null && wsetEna !== 0 && wsetEna !== '0';
-      return hwActive || this.hasActiveCommand;
+      const rvrtActive = (this.points.wset_revert_remain_s ?? 0) > 0;
+      return hwActive || rvrtActive || this.hasActiveCommand;
     },
 
     get releaseControlState() {
@@ -220,6 +222,8 @@ document.addEventListener('alpine:init', () => {
         wsetPctRaw: pts.wset_pct_raw ?? null,
         wsetW:      pts.wset_watts ?? null,
         wsetMod:    pts.wset_mode ?? null,
+        rvrtTms:    pts.wset_revert_time_s ?? null,
+        rvrtRem:    pts.wset_revert_remain_s ?? null,
         locRemCtl:  pts.loc_rem_ctl_name ?? null,
         cmdState:   pts.battery_command_state ?? 'Unknown',
         cmdPower:   pts.battery_command_power_w ?? null,

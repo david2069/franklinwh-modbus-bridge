@@ -7,6 +7,7 @@ function controlsTab() {
     powerW: 0,
     powerPct: 0,
     duration: 3600,
+    targetSoc: 0,
     operatingMode: '',
     selfReserve: 20,
     touReserve: 20,
@@ -34,6 +35,9 @@ function controlsTab() {
       }
       if (pts.battery_command_duration_s != null) {
         this.duration = pts.battery_command_duration_s;
+      }
+      if (pts.battery_command_target_soc != null) {
+        this.targetSoc = pts.battery_command_target_soc;
       }
       if (pts.last_command_result) {
         this.lastResult = pts.last_command_result;

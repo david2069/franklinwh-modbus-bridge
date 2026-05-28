@@ -185,20 +185,20 @@
       <div class="card-label mb-3">Power Flow Summary</div>
       <div class="space-y-2">
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Solar <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('total_solar')"></span></span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Solar <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('total_solar')"></span></span>
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.solarPowerW, 'solar')"
                 x-text="fmt.w($store.app.solarPowerW) + 'W'"></span>
           <span class="text-xs text-slate-500 w-28 text-right"
                 x-text="$store.app.solarPowerW > 0 ? 'Generating' : 'Idle'"></span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Home <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('home_load_ext')"></span></span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Home <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('home_load_ext')"></span></span>
           <span class="text-sm font-bold font-mono"
                 x-text="fmt.w($store.app.homePowerW) + 'W'"></span>
           <span class="text-xs text-slate-500 w-28 text-right">Consuming</span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Battery <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('battery_power_w')"></span></span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Battery <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('battery_power_w')"></span></span>
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.batteryPowerW, 'battery')"
                 x-text="fmt.w($store.app.batteryPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
@@ -206,7 +206,7 @@
                 x-text="$store.app.batteryPowerW > 0 ? 'Discharging' : ($store.app.batteryPowerW < 0 ? 'Charging' : 'Idle')"></span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Grid <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600" x-text="$store.app.src('grid_power_w')"></span></span>
+          <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Grid <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('grid_power_w')"></span></span>
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.gridPowerW, 'grid')"
                 x-text="fmt.w($store.app.gridPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
@@ -230,27 +230,27 @@
       </div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div class="flex justify-between">
-          <span class="text-slate-500">Voltage <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.LNV</span></span>
+          <span class="text-slate-500">Voltage <span x-show="$store.app.showSources" class="source-tag">701.LNV</span></span>
           <span class="font-mono" x-text="($store.app.points.voltage_v ?? '--') + ' V'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Current <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.A</span></span>
+          <span class="text-slate-500">Current <span x-show="$store.app.showSources" class="source-tag">701.A</span></span>
           <span class="font-mono" x-text="($store.app.points.current_a ?? '--') + ' A'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Frequency <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.Hz</span></span>
+          <span class="text-slate-500">Frequency <span x-show="$store.app.showSources" class="source-tag">701.Hz</span></span>
           <span class="font-mono" x-text="($store.app.points.frequency_hz ?? '--') + ' Hz'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Power Factor <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.PF</span></span>
+          <span class="text-slate-500">Power Factor <span x-show="$store.app.showSources" class="source-tag">701.PF</span></span>
           <span class="font-mono" x-text="$store.app.points.power_factor ?? '--'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Apparent <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.VA</span></span>
+          <span class="text-slate-500">Apparent <span x-show="$store.app.showSources" class="source-tag">701.VA</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_va ?? '--') + ' VA'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Reactive <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.Var</span></span>
+          <span class="text-slate-500">Reactive <span x-show="$store.app.showSources" class="source-tag">701.Var</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_var ?? '--') + ' VAR'"></span>
         </div>
       </div>
@@ -354,15 +354,15 @@
         </div>
         <div class="flex-1 text-sm space-y-1">
           <div class="flex justify-between">
-            <span class="text-slate-500">Reserve <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15508</span></span>
+            <span class="text-slate-500">Reserve <span x-show="$store.app.showSources" class="source-tag">ext.15508</span></span>
             <span class="font-mono" x-text="($store.app.points.self_reserve_pct ?? '--') + '%'"></span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoH</span></span>
+            <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="source-tag">713.SoH</span></span>
             <span class="font-mono" x-text="($store.app.points.soh ?? '--') + '%'"></span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">Mode <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15507</span></span>
+            <span class="text-slate-500">Mode <span x-show="$store.app.showSources" class="source-tag">ext.15507</span></span>
             <span class="font-medium" x-text="$store.app.points.mode_name || '--'"></span>
           </div>
         </div>
@@ -374,20 +374,20 @@
       <div class="card-label mb-3">Solar AC Inputs</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between font-semibold">
-          <span class="text-slate-400">Total Solar <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600 font-normal">ext.15502</span></span>
+          <span class="text-slate-400">Total Solar <span x-show="$store.app.showSources" class="source-tag font-normal">ext.15502</span></span>
           <span class="font-mono" :style="'color:' + powerColour($store.app.points.total_solar, 'solar')"
                 x-text="fmt.w($store.app.points.total_solar) + 'W'"></span>
         </div>
         <div class="flex justify-between pl-4">
-          <span class="text-slate-500">Proximal <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15503</span></span>
+          <span class="text-slate-500">Proximal <span x-show="$store.app.showSources" class="source-tag">ext.15503</span></span>
           <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_proximal) + 'W'"></span>
         </div>
         <div class="flex justify-between pl-4">
-          <span class="text-slate-500">Remote 1 (APbox) <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15504</span></span>
+          <span class="text-slate-500">Remote 1 (APbox) <span x-show="$store.app.showSources" class="source-tag">ext.15504</span></span>
           <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_remote1) + 'W'"></span>
         </div>
         <div class="flex justify-between pl-4">
-          <span class="text-slate-500">Remote 2 <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15505</span></span>
+          <span class="text-slate-500">Remote 2 <span x-show="$store.app.showSources" class="source-tag">ext.15505</span></span>
           <span class="font-mono text-slate-400" x-text="fmt.w($store.app.points.pv_remote2) + 'W'"></span>
         </div>
       </div>
@@ -399,11 +399,11 @@
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <!-- Power + Status -->
         <div class="flex justify-between">
-          <span class="text-slate-500">DC Power <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCW</span></span>
+          <span class="text-slate-500">DC Power <span x-show="$store.app.showSources" class="source-tag">714.DCW</span></span>
           <span class="font-mono font-semibold" x-text="fmt.w($store.app.points.battery_dc_power_w) + ' W'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Status <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.Sta</span></span>
+          <span class="text-slate-500">Status <span x-show="$store.app.showSources" class="source-tag">714.DCW</span></span>
           <span class="font-mono font-medium"
                 :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
                         $store.app.points.battery_state === 'Discharging' ? 'text-amber-400' :
@@ -412,38 +412,38 @@
         </div>
         <!-- SoC / SoH -->
         <div class="flex justify-between">
-          <span class="text-slate-500">SoC <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoC</span></span>
+          <span class="text-slate-500">SoC <span x-show="$store.app.showSources" class="source-tag">713.SoC</span></span>
           <span class="font-mono" x-text="($store.app.points.soc ?? '--') + '%'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoH</span></span>
+          <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="source-tag">713.SoH</span></span>
           <span class="font-mono" x-text="($store.app.points.soh ?? '--') + '%'"></span>
         </div>
         <!-- Capacity -->
         <div class="flex justify-between">
-          <span class="text-slate-500">Available <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.WHAvail</span></span>
+          <span class="text-slate-500">Available <span x-show="$store.app.showSources" class="source-tag">713.WHAvail</span></span>
           <span class="font-mono" x-text="($store.app.points.wh_available != null ? ($store.app.points.wh_available / 1000).toFixed(1) : '--') + ' kWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Rated <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.WHRtg</span></span>
+          <span class="text-slate-500">Rated <span x-show="$store.app.showSources" class="source-tag">713.WHRtg</span></span>
           <span class="font-mono" x-text="($store.app.points.wh_rating != null ? ($store.app.points.wh_rating / 1000).toFixed(1) : '--') + ' kWh'"></span>
         </div>
         <!-- Nameplate ratings -->
         <div class="flex justify-between">
-          <span class="text-slate-500">Max Charge <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">702.WMax</span></span>
+          <span class="text-slate-500">Max Charge <span x-show="$store.app.showSources" class="source-tag">702.WChaMax</span></span>
           <span class="font-mono text-slate-400" x-text="($store.app.points.max_charge_rate_w ?? '--') + ' W'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Max Discharge <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">702.WMax</span></span>
+          <span class="text-slate-500">Max Discharge <span x-show="$store.app.showSources" class="source-tag">702.WDisChaMax</span></span>
           <span class="font-mono text-slate-400" x-text="($store.app.points.max_discharge_rate_w ?? '--') + ' W'"></span>
         </div>
         <!-- Temperatures -->
         <div class="flex justify-between">
-          <span class="text-slate-500">Ambient <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpAmb</span></span>
+          <span class="text-slate-500">Ambient <span x-show="$store.app.showSources" class="source-tag">701.TmpAmb</span></span>
           <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' °C'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Cabinet <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpCab</span></span>
+          <span class="text-slate-500">Cabinet <span x-show="$store.app.showSources" class="source-tag">701.TmpCab</span></span>
           <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' °C'"></span>
         </div>
       </div>
@@ -454,23 +454,23 @@
       <div class="card-label mb-3">Lifetime Energy</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
-          <span class="text-amber-400">Solar PV Total <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">ext.15510</span></span>
+          <span class="text-amber-400">Solar PV Total <span x-show="$store.app.showSources" class="source-tag">ext.15510</span></span>
           <span class="font-mono font-semibold" x-text="($store.app.points.pv_energy_total_wh != null ? ($store.app.points.pv_energy_total_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-emerald-400">Discharged <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCWhInj</span></span>
+          <span class="text-emerald-400">Discharged <span x-show="$store.app.showSources" class="source-tag">714.DCWhInj</span></span>
           <span class="font-mono" x-text="($store.app.points.dc_energy_discharged_wh != null ? ($store.app.points.dc_energy_discharged_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-cyan-400">Charged <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCWhAbs</span></span>
+          <span class="text-cyan-400">Charged <span x-show="$store.app.showSources" class="source-tag">714.DCWhAbs</span></span>
           <span class="font-mono" x-text="($store.app.points.dc_energy_charged_wh != null ? ($store.app.points.dc_energy_charged_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-emerald-400">Grid Export <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TotWhInj</span></span>
+          <span class="text-emerald-400">Grid Export <span x-show="$store.app.showSources" class="source-tag">701.TotWhInj</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_export_wh != null ? ($store.app.points.grid_export_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-red-400">Grid Import <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TotWhAbs</span></span>
+          <span class="text-red-400">Grid Import <span x-show="$store.app.showSources" class="source-tag">701.TotWhAbs</span></span>
           <span class="font-mono" x-text="($store.app.points.grid_import_wh != null ? ($store.app.points.grid_import_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
       </div>
@@ -488,14 +488,16 @@
           <option value="Not Active">Not Active</option>
           <option value="Charge">Charge</option>
           <option value="Discharge">Discharge</option>
+          <option value="Max Charge">⚡ Max Charge</option>
+          <option value="Max Discharge">⚡ Max Discharge</option>
           <option value="Idle">Idle</option>
           <option value="Stop">Stop</option>
           <option value="Release">Release</option>
         </select>
       </div>
 
-      <!-- Power + Duration -->
-      <div class="grid grid-cols-3 gap-3 mb-3">
+      <!-- Power + Duration + Target SoC -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Power (W)</label>
           <div class="flex items-center gap-1">
@@ -530,6 +532,18 @@
           </div>
           <div class="text-[10px] text-slate-600 mt-0.5" x-text="Math.floor(duration / 60) + 'm ' + (duration % 60) + 's'"></div>
         </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Target SoC</label>
+          <div class="flex items-center gap-1">
+            <input type="range" min="0" max="100" step="5" x-model="targetSoc"
+                   class="flex-1 accent-amber-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('battery_command_target_soc', targetSoc)">
+            <input type="number" x-model="targetSoc" min="0" max="100" step="5"
+                   class="form-control !py-1 !text-xs w-14 text-center"
+                   @change="sendCommand('battery_command_target_soc', targetSoc)">
+          </div>
+          <div class="text-[10px] text-slate-600 mt-0.5" x-text="targetSoc > 0 ? 'Stop at ' + targetSoc + '%' : 'Disabled (0%)'"></div>
+        </div>
       </div>
 
       <!-- Active status + timers -->
@@ -540,6 +554,13 @@
                 :class="$store.app.points.battery_command_state && $store.app.points.battery_command_state !== 'Not Active' ? 'text-cyan-400' : 'text-slate-500'"
                 x-text="($store.app.points.battery_command_state || 'Not Active') + ($store.app.points.battery_command_power_w ? ' ' + $store.app.points.battery_command_power_w + 'W' : '')"></span>
           <span class="text-slate-600" x-text="$store.app.points.sw_watchdog_remain_s ? $store.app.points.sw_watchdog_remain_s + 's left' : ''"></span>
+        </div>
+        <!-- Target SoC indicator (shown when set) -->
+        <div class="flex items-center justify-between text-xs mb-1"
+             x-show="$store.app.points.battery_command_target_soc > 0">
+          <span class="text-slate-500">Target SoC:</span>
+          <span class="font-mono text-amber-400"
+                x-text="($store.app.points.battery_command_target_soc ?? 0) + '% (current: ' + ($store.app.points.soc ?? '--') + '%)'"></span>
         </div>
         <!-- HW Revert Timer (shown when active) -->
         <div class="flex items-center justify-between text-xs mb-1"
@@ -654,7 +675,7 @@
           <div class="bg-slate-900/50 rounded-lg border border-white/[0.05] px-3 py-2 hover:border-white/[0.1] transition">
             <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wider truncate mb-1" x-text="pt.label"></div>
             <div class="text-sm font-mono font-semibold" :class="pt.colorClass" x-text="pt.value"></div>
-            <div x-show="$store.app.showSources && pt.source" class="text-[8px] font-mono text-slate-600 mt-0.5" x-text="pt.source"></div>
+            <div x-show="$store.app.showSources && pt.source" class="source-tag mt-0.5" x-text="pt.source"></div>
           </div>
         </template>
       </div>

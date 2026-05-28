@@ -935,7 +935,11 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="battery_command_state",
         icon="mdi:battery-sync",
         is_control=True,
-        options=["Not Active", "Charge", "Discharge", "Idle", "Stop", "Release"],
+        options=[
+            "Not Active", "Charge", "Discharge",
+            "Max Charge", "Max Discharge",
+            "Idle", "Stop", "Release",
+        ],
         source="virtual",
     ),
     EntityDef(
@@ -980,6 +984,20 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         min_val=60,
         max_val=7200,
         step=60,
+        source="virtual",
+    ),
+    EntityDef(
+        slug="battery_command_target_soc",
+        name="Target SoC",
+        ha_type="number",
+        state_group="control",
+        stat_key="battery_command_target_soc",
+        unit="%",
+        icon="mdi:battery-charging-wireless",
+        is_control=True,
+        min_val=0,
+        max_val=100,
+        step=5,
         source="virtual",
     ),
 

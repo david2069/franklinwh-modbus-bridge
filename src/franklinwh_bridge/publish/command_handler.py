@@ -2,8 +2,14 @@
 
 Handles command topics for battery control (charge/discharge/idle) and
 operating mode changes. Includes a software watchdog that auto-releases
-battery commands after a timeout (hardware WSetRvrtTms is cosmetic on
-FranklinWH).
+battery commands after a timeout.
+
+WSetRvrtTms is written to M704 to keep the aGate in VPP (remote-control)
+mode for the command duration.  NOTE: the hardware countdown (WSetRvrtRem)
+is cosmetic on the aGate — it stays at 0 regardless of the configured
+value (PICS Issue 4).  The *software* watchdog is the real safety timer.
+Writing WSetRvrtTms > 0 is still required to prevent the mobile app from
+overriding VPP mode while a dispatch is active.
 
 All control actions are logged to the control_log table with hardware state
 snapshots. Active command state is persisted to control_state so it survives
@@ -27,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WATCHDOG_S = 3600
 DEFAULT_MAX_POWER_W = 5000
+SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
 
 OPERATING_MODES = {
     "Emergency Backup": 1,
@@ -64,6 +71,7 @@ class CommandHandler:
         self._command_power_w: int = 0
         self._command_power_pct: int = 0
         self._command_duration_s: int = DEFAULT_WATCHDOG_S
+        self._target_soc: int = 0  # 0 = disabled; otherwise stop at this SoC
         self._max_charge_w: int = max_charge_w
         self._max_discharge_w: int = max_discharge_w
 
@@ -116,6 +124,7 @@ class CommandHandler:
             "battery_command_power_w": self._command_power_w,
             "battery_command_power_pct": self._command_power_pct,
             "battery_command_duration_s": self._command_duration_s,
+            "battery_command_target_soc": self._target_soc,
             "sw_watchdog_remain_s": remain,
             "command_elapsed_s": elapsed,
             "last_command_result": self._state.last_result or "None",
@@ -179,6 +188,10 @@ class CommandHandler:
                 self._state.watchdog_s = self._command_duration_s
                 if self._on_state_changed:
                     await self._on_state_changed()
+            elif slug == "battery_command_target_soc":
+                self._target_soc = max(0, min(int(float(payload)), 100))
+                if self._on_state_changed:
+                    await self._on_state_changed()
             elif slug == "operating_mode":
                 await self._handle_operating_mode(payload)
             elif slug == "self_reserve_pct":
@@ -202,6 +215,12 @@ class CommandHandler:
 
         if action == "Idle":
             watts = 0
+        elif action == "Max Charge":
+            watts = self._max_charge_w
+            action = "Charge"
+        elif action == "Max Discharge":
+            watts = -self._max_discharge_w
+            action = "Discharge"
         elif action in ("Charge", "Discharge"):
             # Pick directional limit
             max_w = (
@@ -225,9 +244,10 @@ class CommandHandler:
             self._controller.send_command, cmd, duration_s=self._state.watchdog_s
         )
 
-        # Write WSetRvrtTms to activate VPP mode and provide visible countdown.
-        # Hardware revert is cosmetic (countdown ticks but device doesn't actually
-        # revert at expiry), so the software watchdog handles actual release.
+        # Write WSetRvrtTms to keep the aGate in VPP (remote-control) mode.
+        # The hardware countdown (WSetRvrtRem) is cosmetic (stays at 0) on
+        # the aGate, but writing WSetRvrtTms > 0 is still required to lock
+        # out mobile-app overrides during the dispatch.
         if success:
             await asyncio.to_thread(
                 self._write_revert_timer, self._state.watchdog_s
@@ -280,9 +300,9 @@ class CommandHandler:
         """Full release: clear setpoints, disable WSetEna, AND zero revert timer.
 
         The library's reset_control_state() only clears WSetEna/WSetPct/WSet.
-        The aGate firmware keeps the device in "VPP Mode" as long as
-        WSetRvrtTms > 0 (the hardware revert timer is still counting down).
-        The official FranklinWH app cannot change modes while VPP mode is active.
+        We must also zero WSetRvrtTms to exit VPP mode — the aGate stays in
+        remote-control (VPP) mode as long as WSetRvrtTms > 0, blocking mode
+        changes from the FranklinWH mobile app.
         """
         success = self._controller.reset_control_state()
 
@@ -302,15 +322,21 @@ class CommandHandler:
         return success
 
     def _write_revert_timer(self, duration_s: int) -> None:
-        """Write WSetRvrtTms to M704 to activate VPP mode on the aGate.
+        """Write WSetRvrtTms to M704 to keep the aGate in VPP mode.
 
-        This provides a visible countdown in the HA entity and dashboard.
-        The hardware countdown is cosmetic — the software watchdog handles
-        actual release — but WSetRvrtTms > 0 signals VPP mode to the firmware.
+        WSetRvrtTms > 0 locks the aGate in remote-control (VPP) mode,
+        preventing the mobile app from overriding the dispatch.  The
+        hardware countdown (WSetRvrtRem) is cosmetic on the aGate — it
+        stays at 0 (PICS Issue 4).  The software watchdog is the real
+        safety timer that releases the command.
         """
         try:
             m704 = self._controller.get_model(704)
             if m704:
+                # Fresh read to avoid writing stale values — the poller may
+                # have called m704.read() between send_command and now,
+                # overwriting the in-memory model.
+                m704.read()
                 m704.WSetRvrtTms.value = duration_s
                 m704.write()
                 logger.info(
@@ -391,14 +417,64 @@ class CommandHandler:
             self._watchdog_task.cancel()
             self._watchdog_task = None
 
-    async def _watchdog_loop(self) -> None:
+    async def _read_soc(self) -> float | None:
+        """Read current SoC from the controller."""
         try:
-            await asyncio.sleep(self._state.watchdog_s)
-            logger.warning(
-                "Watchdog expired after %ds — releasing battery command",
-                self._state.watchdog_s,
+            status = await asyncio.to_thread(
+                self._controller.read_battery_status,
             )
-            await self._release_command(reason="watchdog_expired")
+            return status.get("soc")
+        except Exception as exc:
+            logger.debug("SoC read failed: %s", exc)
+            return None
+
+    async def _watchdog_loop(self) -> None:
+        """Software watchdog: enforces duration timeout and target SoC.
+
+        Checks SoC every ``SOC_CHECK_INTERVAL_S`` seconds and releases
+        the command when the target is reached.  Charging stops when SoC
+        >= target; discharging stops when SoC <= target.  If no target is
+        set (0) only the duration timeout applies.
+        """
+        try:
+            while True:
+                elapsed = time.time() - self._state.started_at
+                if elapsed >= self._state.watchdog_s:
+                    logger.warning(
+                        "Watchdog expired after %ds — releasing battery command",
+                        self._state.watchdog_s,
+                    )
+                    await self._release_command(reason="watchdog_expired")
+                    return
+
+                # Check target SoC
+                target = self._target_soc
+                if target > 0:
+                    soc = await self._read_soc()
+                    if soc is not None:
+                        is_charge = self._state.action == "Charge"
+                        if is_charge and soc >= target:
+                            logger.info(
+                                "Target SoC reached: %.1f%% >= %d%% — releasing",
+                                soc, target,
+                            )
+                            self._state.last_result = (
+                                f"Target SoC {target}% reached (actual {soc:.1f}%)"
+                            )
+                            await self._release_command(reason="target_soc_reached")
+                            return
+                        if not is_charge and soc <= target:
+                            logger.info(
+                                "Target SoC reached: %.1f%% <= %d%% — releasing",
+                                soc, target,
+                            )
+                            self._state.last_result = (
+                                f"Target SoC {target}% reached (actual {soc:.1f}%)"
+                            )
+                            await self._release_command(reason="target_soc_reached")
+                            return
+
+                await asyncio.sleep(SOC_CHECK_INTERVAL_S)
         except asyncio.CancelledError:
             pass
 

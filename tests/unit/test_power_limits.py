@@ -170,6 +170,73 @@ async def test_input_clamp_uses_symmetric_max(handler):
 
 
 # ---------------------------------------------------------------------------
+# Max Charge / Max Discharge convenience actions
+# ---------------------------------------------------------------------------
+
+
+async def test_max_charge_uses_max_charge_w(handler):
+    """'Max Charge' sends full max_charge_w."""
+    handler.set_power_limits(6000, 4000)
+    await handler._handle_battery_command("Max Charge")
+    args = handler._controller.send_command.call_args
+    cmd = args[0][0]
+    assert cmd.power_watts == 6000  # positive = charge
+
+
+async def test_max_discharge_uses_max_discharge_w(handler):
+    """'Max Discharge' sends full max_discharge_w (negative)."""
+    handler.set_power_limits(6000, 4000)
+    await handler._handle_battery_command("Max Discharge")
+    args = handler._controller.send_command.call_args
+    cmd = args[0][0]
+    assert cmd.power_watts == -4000  # negative = discharge
+
+
+async def test_max_charge_sets_action_to_charge(handler):
+    """'Max Charge' normalises to action='Charge' in state."""
+    handler.set_power_limits(5000, 5000)
+    await handler._handle_battery_command("Max Charge")
+    assert handler._state.action == "Charge"
+    assert handler._state.power_w == 5000
+
+
+async def test_max_discharge_sets_action_to_discharge(handler):
+    """'Max Discharge' normalises to action='Discharge' in state."""
+    handler.set_power_limits(5000, 5000)
+    await handler._handle_battery_command("Max Discharge")
+    assert handler._state.action == "Discharge"
+    assert handler._state.power_w == 5000
+
+
+# ---------------------------------------------------------------------------
+# Target SoC
+# ---------------------------------------------------------------------------
+
+
+async def test_target_soc_virtual_point(handler):
+    """battery_command_target_soc appears in virtual_points."""
+    await handler.handle_command("battery_command_target_soc", "80")
+    pts = handler.virtual_points
+    assert pts["battery_command_target_soc"] == 80
+
+
+async def test_target_soc_clamped(handler):
+    """Target SoC is clamped to 0-100."""
+    await handler.handle_command("battery_command_target_soc", "150")
+    assert handler._target_soc == 100
+    await handler.handle_command("battery_command_target_soc", "-10")
+    assert handler._target_soc == 0
+
+
+async def test_target_soc_zero_disables(handler):
+    """Target SoC of 0 disables the feature."""
+    await handler.handle_command("battery_command_target_soc", "0")
+    assert handler._target_soc == 0
+    pts = handler.virtual_points
+    assert pts["battery_command_target_soc"] == 0
+
+
+# ---------------------------------------------------------------------------
 # Custom init params
 # ---------------------------------------------------------------------------
 

@@ -32,6 +32,7 @@ from franklinwh_bridge.store.db import (
     load_control_state,
     log_control_event,
     log_startup_event,
+    save_control_state,
 )
 from franklinwh_bridge.store.metrics import (
     archive_old_metrics,
@@ -274,6 +275,18 @@ async def lifespan(app: FastAPI):
                     )
                     try:
                         await asyncio.to_thread(controller.reset_control_state)
+                        # Also clear the revert timer to exit VPP mode
+                        try:
+                            m704 = controller.get_model(704)
+                            if m704:
+                                m704.read()
+                                m704.WSetRvrtTms.value = 0
+                                m704.WSetEnaRvrt.value = 0
+                                m704.write()
+                        except Exception:
+                            pass
+                        # Clear the persisted state so we don't release again
+                        await save_control_state(db, active=False)
                         await log_control_event(
                             db,
                             event="startup_release",

@@ -418,6 +418,14 @@ body {
 .c-muted   { color: var(--text-muted); }
 .c-solar   { color: var(--solar); }
 
+/* ── SunSpec source annotation tags ────────────────────── */
+.source-tag {
+  font-size: 8px;
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+  opacity: 0.7;
+}
+
 /* ── Light theme: override Tailwind utility classes ─────── */
 [data-theme="light"] {
   color-scheme: light;

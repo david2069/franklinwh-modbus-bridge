@@ -61,7 +61,7 @@ async def test_battery_group_members(db):
 async def test_control_group_members(db):
     grp = await get_publishing_group(db, "control")
     assert grp is not None
-    assert len(grp["members"]) == 7
+    assert len(grp["members"]) == 8  # includes battery_command_target_soc
 
 
 async def test_status_group_members(db):

@@ -156,7 +156,15 @@
               <span class="font-mono font-semibold text-slate-400"
                     x-text="$store.app.releaseControlState.wsetMod ?? '--'"></span>
             </div>
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50 col-span-2">
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">RvrtTms</span>
+              <span class="font-mono font-semibold"
+                    :class="$store.app.releaseControlState.rvrtRem > 0 ? 'text-amber-400' : 'text-slate-400'"
+                    x-text="$store.app.releaseControlState.rvrtRem != null && $store.app.releaseControlState.rvrtRem > 0
+                      ? Math.floor($store.app.releaseControlState.rvrtRem / 60) + 'm ' + ($store.app.releaseControlState.rvrtRem % 60) + 's'
+                      : ($store.app.releaseControlState.rvrtTms ?? '--')"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">LocRemCtl</span>
               <span class="font-mono font-semibold text-slate-400"
                     x-text="$store.app.releaseControlState.locRemCtl ?? '--'"></span>
@@ -200,7 +208,8 @@
               <div class="flex items-start gap-2 mb-3 p-2.5 rounded bg-red-500/10 border border-red-500/20">
                 <span class="text-red-400 flex-shrink-0 mt-0.5 text-sm font-bold leading-none">!</span>
                 <div class="text-xs text-red-300/80 leading-relaxed">
-                  <strong>Force Release</strong> will zero WSetPct and WSet, then disable WSetEna.
+                  <strong>Force Release</strong> will zero WSetPct and WSet, disable WSetEna,
+                  and clear WSetRvrtTms to exit VPP mode.
                   Any active battery dispatch will be stopped and the inverter returned to native mode.
                 </div>
               </div>
