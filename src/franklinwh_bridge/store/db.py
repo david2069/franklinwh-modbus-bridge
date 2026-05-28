@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -186,6 +186,28 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX IF NOT EXISTS idx_metrics_archive_ts
         ON metrics_archive(ts);
     """,
+    # v8 is applied via Python code in run_migrations (needs entity import)
+    8: """
+    CREATE TABLE IF NOT EXISTS publishing_groups (
+        slug        TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        is_default  INTEGER NOT NULL DEFAULT 1,
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  REAL NOT NULL,
+        updated_at  REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS publishing_group_members (
+        group_slug   TEXT NOT NULL REFERENCES publishing_groups(slug) ON DELETE CASCADE,
+        entity_slug  TEXT NOT NULL,
+        PRIMARY KEY (group_slug, entity_slug)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pgm_entity
+        ON publishing_group_members(entity_slug);
+    """,
 }
 
 
@@ -215,6 +237,10 @@ async def run_migrations(db: aiosqlite.Connection) -> int:
             (version, time.time()),
         )
         await db.commit()
+
+        # v8: seed default publishing groups from entity definitions
+        if version == 8:
+            await seed_default_groups(db)
 
     final = await get_schema_version(db)
     logger.info("Schema at v%d", final)
@@ -402,3 +428,310 @@ async def set_mqtt_config(db: aiosqlite.Connection, updates: dict) -> dict:
     )
     await db.commit()
     return await get_mqtt_config(db)
+
+
+# ── Publishing Groups ──────────────────────────────────────────
+
+DEFAULT_GROUPS: list[dict] = [
+    {
+        "slug": "battery",
+        "name": "Battery",
+        "description": "SOC, SOH, power, and charge state",
+        "sort_order": 0,
+    },
+    {
+        "slug": "capacity",
+        "name": "Battery Capacity",
+        "description": "Total/available capacity and max charge/discharge rates",
+        "sort_order": 1,
+    },
+    {
+        "slug": "power",
+        "name": "Power",
+        "description": "Grid, home load, and per-phase active power",
+        "sort_order": 2,
+    },
+    {
+        "slug": "energy",
+        "name": "Energy",
+        "description": "Grid import/export, solar, and battery energy counters",
+        "sort_order": 3,
+    },
+    {
+        "slug": "solar",
+        "name": "Solar",
+        "description": "Solar power and PV string breakdown",
+        "sort_order": 4,
+    },
+    {
+        "slug": "status",
+        "name": "Status & Diagnostics",
+        "description": "Voltages, frequency, temperatures, control status, timers",
+        "sort_order": 5,
+    },
+    {
+        "slug": "control",
+        "name": "Control",
+        "description": "Writable entities: operating mode, reserves, battery commands",
+        "sort_order": 6,
+    },
+]
+
+
+async def seed_default_groups(db: aiosqlite.Connection) -> None:
+    """Populate default publishing groups from entity state_group values.
+
+    Called once after migration v8 DDL.  Imports entity definitions lazily
+    to avoid circular import at module level.
+    """
+    from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES
+
+    now = time.time()
+
+    for grp in DEFAULT_GROUPS:
+        await db.execute(
+            "INSERT OR IGNORE INTO publishing_groups "
+            "(slug, name, description, enabled, is_default, sort_order, created_at, updated_at) "
+            "VALUES (?, ?, ?, 1, 1, ?, ?, ?)",
+            (grp["slug"], grp["name"], grp["description"], grp["sort_order"], now, now),
+        )
+
+    # Map each entity to its state_group
+    for ent in BRIDGE_ENTITIES:
+        await db.execute(
+            "INSERT OR IGNORE INTO publishing_group_members (group_slug, entity_slug) "
+            "VALUES (?, ?)",
+            (ent.state_group, ent.slug),
+        )
+
+    await db.commit()
+    logger.info("Seeded %d default publishing groups", len(DEFAULT_GROUPS))
+
+
+async def get_publishing_groups(db: aiosqlite.Connection) -> list[dict]:
+    """List all publishing groups with member counts."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows = []
+        async with db.execute(
+            "SELECT g.*, "
+            "(SELECT COUNT(*) FROM publishing_group_members m "
+            " WHERE m.group_slug = g.slug) AS member_count "
+            "FROM publishing_groups g ORDER BY g.sort_order, g.slug"
+        ) as cursor:
+            async for row in cursor:
+                rows.append({
+                    "slug": row["slug"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "enabled": bool(row["enabled"]),
+                    "is_default": bool(row["is_default"]),
+                    "sort_order": row["sort_order"],
+                    "member_count": row["member_count"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                })
+        return rows
+    finally:
+        db.row_factory = None
+
+
+async def get_publishing_group(db: aiosqlite.Connection, slug: str) -> dict | None:
+    """Get a single publishing group with its member slugs."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT * FROM publishing_groups WHERE slug = ?", (slug,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        db.row_factory = None
+
+    if row is None:
+        return None
+
+    members: list[str] = []
+    async with db.execute(
+        "SELECT entity_slug FROM publishing_group_members "
+        "WHERE group_slug = ? ORDER BY entity_slug",
+        (slug,),
+    ) as cursor:
+        async for mrow in cursor:
+            members.append(mrow[0])
+
+    return {
+        "slug": row["slug"],
+        "name": row["name"],
+        "description": row["description"],
+        "enabled": bool(row["enabled"]),
+        "is_default": bool(row["is_default"]),
+        "sort_order": row["sort_order"],
+        "members": members,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+async def create_publishing_group(
+    db: aiosqlite.Connection,
+    slug: str,
+    name: str,
+    description: str = "",
+    enabled: bool = True,
+    members: list[str] | None = None,
+) -> dict:
+    """Create a new (non-default) publishing group."""
+    now = time.time()
+    # Find next sort_order
+    async with db.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM publishing_groups"
+    ) as cursor:
+        row = await cursor.fetchone()
+        sort_order = row[0] if row else 0
+
+    await db.execute(
+        "INSERT INTO publishing_groups "
+        "(slug, name, description, enabled, is_default, sort_order, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, 0, ?, ?, ?)",
+        (slug, name, description, int(enabled), sort_order, now, now),
+    )
+    if members:
+        await db.executemany(
+            "INSERT OR IGNORE INTO publishing_group_members (group_slug, entity_slug) "
+            "VALUES (?, ?)",
+            [(slug, m) for m in members],
+        )
+    await db.commit()
+    return await get_publishing_group(db, slug)  # type: ignore[return-value]
+
+
+async def update_publishing_group(
+    db: aiosqlite.Connection,
+    slug: str,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    enabled: bool | None = None,
+) -> dict | None:
+    """Update mutable fields of a publishing group."""
+    updates: dict[str, object] = {}
+    if name is not None:
+        updates["name"] = name
+    if description is not None:
+        updates["description"] = description
+    if enabled is not None:
+        updates["enabled"] = int(enabled)
+    if not updates:
+        return await get_publishing_group(db, slug)
+
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values())
+    values.append(slug)
+    await db.execute(
+        f"UPDATE publishing_groups SET {set_clause} WHERE slug = ?",  # noqa: S608
+        values,
+    )
+    await db.commit()
+    return await get_publishing_group(db, slug)
+
+
+async def delete_publishing_group(db: aiosqlite.Connection, slug: str) -> bool:
+    """Delete a non-default publishing group. Returns True if deleted."""
+    async with db.execute(
+        "SELECT is_default FROM publishing_groups WHERE slug = ?", (slug,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return False
+    if row[0]:
+        raise ValueError(f"Cannot delete default group '{slug}'")
+
+    await db.execute("DELETE FROM publishing_groups WHERE slug = ?", (slug,))
+    await db.commit()
+    return True
+
+
+async def get_group_members(db: aiosqlite.Connection, slug: str) -> list[str]:
+    """Return entity slugs belonging to a group."""
+    members: list[str] = []
+    async with db.execute(
+        "SELECT entity_slug FROM publishing_group_members "
+        "WHERE group_slug = ? ORDER BY entity_slug",
+        (slug,),
+    ) as cursor:
+        async for row in cursor:
+            members.append(row[0])
+    return members
+
+
+async def set_group_members(
+    db: aiosqlite.Connection, slug: str, entity_slugs: list[str]
+) -> list[str]:
+    """Replace all members of a group. Returns the new member list."""
+    await db.execute(
+        "DELETE FROM publishing_group_members WHERE group_slug = ?", (slug,)
+    )
+    if entity_slugs:
+        await db.executemany(
+            "INSERT INTO publishing_group_members (group_slug, entity_slug) "
+            "VALUES (?, ?)",
+            [(slug, s) for s in entity_slugs],
+        )
+    await db.execute(
+        "UPDATE publishing_groups SET updated_at = ? WHERE slug = ?",
+        (time.time(), slug),
+    )
+    await db.commit()
+    return await get_group_members(db, slug)
+
+
+async def add_group_member(
+    db: aiosqlite.Connection, slug: str, entity_slug: str
+) -> None:
+    """Add a single entity to a group (idempotent)."""
+    await db.execute(
+        "INSERT OR IGNORE INTO publishing_group_members (group_slug, entity_slug) "
+        "VALUES (?, ?)",
+        (slug, entity_slug),
+    )
+    await db.execute(
+        "UPDATE publishing_groups SET updated_at = ? WHERE slug = ?",
+        (time.time(), slug),
+    )
+    await db.commit()
+
+
+async def remove_group_member(
+    db: aiosqlite.Connection, slug: str, entity_slug: str
+) -> None:
+    """Remove a single entity from a group."""
+    await db.execute(
+        "DELETE FROM publishing_group_members "
+        "WHERE group_slug = ? AND entity_slug = ?",
+        (slug, entity_slug),
+    )
+    await db.execute(
+        "UPDATE publishing_groups SET updated_at = ? WHERE slug = ?",
+        (time.time(), slug),
+    )
+    await db.commit()
+
+
+async def get_disabled_entity_slugs(db: aiosqlite.Connection) -> set[str]:
+    """Return the set of entity slugs that belong to at least one disabled group
+    and do NOT belong to any enabled group.
+
+    An entity is considered disabled if every group it belongs to is disabled.
+    """
+    slugs: set[str] = set()
+    async with db.execute(
+        "SELECT m.entity_slug "
+        "FROM publishing_group_members m "
+        "JOIN publishing_groups g ON g.slug = m.group_slug "
+        "GROUP BY m.entity_slug "
+        "HAVING SUM(g.enabled) = 0"
+    ) as cursor:
+        async for row in cursor:
+            slugs.add(row[0])
+    return slugs

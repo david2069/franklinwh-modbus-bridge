@@ -12,8 +12,12 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import aiomqtt
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 from franklinwh_bridge.modbus.sample import Sample
 from franklinwh_bridge.publish.command_handler import CommandHandler
@@ -151,6 +155,7 @@ class MqttPublisher:
         self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
         self._removed_entities: list[EntityDef] = []
         self._ac_type: int = 0
+        self._disabled_slugs: set[str] = set()
         self._command_handler: CommandHandler | None = None
         # Per-slug overrides for discovery max_val (set by power limit detection)
         self._max_val_overrides: dict[str, float] = {}
@@ -171,6 +176,26 @@ class MqttPublisher:
         self._device_info = info
         self._state.discovery_published = False
 
+    def _rebuild_entity_lists(self) -> None:
+        """Rebuild active/removed entity lists from phase + group filters.
+
+        Call after any change to ``_ac_type`` or ``_disabled_slugs``.
+        """
+        ac_type = self._ac_type
+        disabled = self._disabled_slugs
+
+        new_entities = [
+            e for e in BRIDGE_ENTITIES
+            if (e.phase is None or e.phase <= ac_type + 1)
+            and e.slug not in disabled
+        ]
+        active_slugs = {e.slug for e in new_entities}
+        self._removed_entities = [
+            e for e in BRIDGE_ENTITIES if e.slug not in active_slugs
+        ]
+        self._entities = new_entities
+        self._state.discovery_published = False
+
     def set_ac_type(self, ac_type: int) -> None:
         """Configure phase filtering based on detected AC wiring type.
 
@@ -182,15 +207,7 @@ class MqttPublisher:
         retained MQTT discovery configs can be tombstoned on next publish.
         """
         self._ac_type = ac_type
-        new_entities = [
-            e for e in BRIDGE_ENTITIES
-            if e.phase is None or e.phase <= ac_type + 1
-        ]
-        active_slugs = {e.slug for e in new_entities}
-        self._removed_entities = [
-            e for e in BRIDGE_ENTITIES if e.slug not in active_slugs
-        ]
-        self._entities = new_entities
+        self._rebuild_entity_lists()
         AC_TYPE_NAMES = {0: "Single Phase", 1: "Split Phase", 2: "Three Phase"}
         phase_count = sum(1 for e in self._entities if e.phase is not None)
         logger.info(
@@ -200,8 +217,27 @@ class MqttPublisher:
             phase_count,
             len(self._removed_entities),
         )
-        # Re-publish discovery with updated entity list
-        self._state.discovery_published = False
+
+    async def sync_groups(self, db: aiosqlite.Connection) -> None:
+        """Sync disabled entity slugs from publishing group settings.
+
+        Reads the DB, rebuilds entity lists, and triggers re-discovery
+        if the set changed.
+        """
+        from franklinwh_bridge.store.db import get_disabled_entity_slugs
+
+        new_disabled = await get_disabled_entity_slugs(db)
+        if new_disabled == self._disabled_slugs:
+            return  # no change
+        old_count = len(self._entities)
+        self._disabled_slugs = new_disabled
+        self._rebuild_entity_lists()
+        logger.info(
+            "Publishing groups synced: %d entities active (%d disabled by groups, was %d)",
+            len(self._entities),
+            len(new_disabled),
+            old_count - len(self._entities) if old_count > len(self._entities) else 0,
+        )
 
     def set_command_handler(self, handler: CommandHandler) -> None:
         self._command_handler = handler

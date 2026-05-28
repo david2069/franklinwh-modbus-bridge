@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from franklinwh_bridge import __version__
 from franklinwh_bridge.api.admin import router as admin_router
+from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
@@ -123,6 +124,9 @@ async def lifespan(app: FastAPI):
 
     mqtt_publisher = MqttPublisher.from_db_config(mqtt_config, gateway_id=gateway_id)
     app.state.mqtt_publisher = mqtt_publisher
+
+    # Sync publishing group filters from DB before starting
+    await mqtt_publisher.sync_groups(db)
 
     if mqtt_config.get("enabled", True):
         await mqtt_publisher.start()
@@ -412,6 +416,7 @@ app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 app.include_router(health_router)
 app.include_router(admin_router)
 app.include_router(mqtt_router)
+app.include_router(groups_router)
 
 # UI router (serves GET / and POST /api/command)
 app.include_router(ui_router)

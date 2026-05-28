@@ -17,6 +17,8 @@ function settingsTab() {
     backups: [],
     backupBusy: false,
     exportRange: '24h',
+    groups: [],
+    groupsBusy: false,
 
     async init() {
       await this.loadAll();
@@ -24,6 +26,7 @@ function settingsTab() {
       await this.loadMetricsSettings();
       await this.loadStorage();
       await this.loadBackups();
+      await this.loadGroups();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -127,6 +130,38 @@ function settingsTab() {
         }
       } finally {
         this.backupBusy = false;
+      }
+    },
+
+    async loadGroups() {
+      const data = await fetchJSON('api/groups');
+      if (data && !data.error && data.groups) {
+        this.groups = data.groups;
+      }
+    },
+
+    async toggleGroup(slug, enabled) {
+      this.groupsBusy = true;
+      try {
+        const data = await fetchJSON(`api/groups/${slug}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ enabled }),
+        });
+        if (data && !data.error) {
+          await this.loadGroups();
+          await this.loadAll();
+          Alpine.store('app').toast(
+            `Group "${data.name}" ${enabled ? 'enabled' : 'disabled'}`,
+            'info',
+          );
+        } else {
+          Alpine.store('app').toast(
+            'Toggle failed: ' + (data?.error || 'unknown'),
+            'error',
+          );
+        }
+      } finally {
+        this.groupsBusy = false;
       }
     },
 

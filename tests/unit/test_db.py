@@ -65,6 +65,8 @@ async def test_tables_exist(db):
         "metrics",
         "operational_stats",
         "metrics_archive",
+        "publishing_groups",
+        "publishing_group_members",
     }
     assert expected.issubset(tables)
 
@@ -113,9 +115,9 @@ async def test_mqtt_config_seeded_by_migration(db):
     assert config["discovery_prefix"] == "homeassistant"
 
 
-async def test_schema_version_is_7(db):
+async def test_schema_version_is_current(db):
     version = await get_schema_version(db)
-    assert version == 7
+    assert version == CURRENT_SCHEMA_VERSION
 
 
 async def test_pics_compliance_empty(db):
