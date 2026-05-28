@@ -40,6 +40,44 @@
       <button @click="showDiagnostics = true"
               class="text-[10px] text-slate-500 hover:text-slate-200 font-medium transition"
               title="Diagnostics">Info</button>
+      <button @click="showCardConfig = !showCardConfig"
+              class="text-[10px] font-medium transition"
+              :class="showCardConfig ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-200'"
+              title="Configure visible cards">
+        <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/>
+        </svg>
+        Cards
+      </button>
+    </div>
+  </div>
+
+  <!-- Card Visibility Config (slide down) -->
+  <div x-show="showCardConfig" x-transition.duration.200ms class="card !p-3 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider">Visible Cards</span>
+      <button @click="resetCardDefaults()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition">Reset Defaults</button>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <template x-for="[key, label] in [
+        ['bridgeStatus', 'Bridge Status'],
+        ['powerFlow', 'Power Flow'],
+        ['acPower', 'AC Power'],
+        ['batterySoc', 'Battery SoC'],
+        ['solarInputs', 'Solar Inputs'],
+        ['battery', 'Battery'],
+        ['lifetimeEnergy', 'Lifetime Energy'],
+        ['batteryControl', 'Battery Control'],
+        ['operatingMode', 'Operating Mode'],
+        ['livePoints', 'Live Points'],
+      ]" :key="key">
+        <label class="flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
+               :class="cardVisible[key] ? 'text-slate-300' : 'text-slate-600'">
+          <input type="checkbox" :checked="cardVisible[key]" @change="toggleCard(key)"
+                 class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-cyan-500">
+          <span x-text="label"></span>
+        </label>
+      </template>
     </div>
   </div>
 
@@ -76,7 +114,7 @@
     <!-- ══ LEFT COLUMN ═══════════════════════════════════ -->
 
     <!-- Bridge Status -->
-    <div class="card" x-show="$store.app.bridgeStats">
+    <div class="card" x-show="cardVisible.bridgeStatus && $store.app.bridgeStats">
       <div class="card-label mb-3">Bridge Status</div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div class="flex justify-between">
@@ -143,7 +181,7 @@
     </div>
 
     <!-- Power Flow Summary -->
-    <div class="card">
+    <div class="card" x-show="cardVisible.powerFlow">
       <div class="card-label mb-3">Power Flow Summary</div>
       <div class="space-y-2">
         <div class="flex justify-between items-center">
@@ -179,7 +217,7 @@
     </div>
 
     <!-- AC Power (with expandable per-phase detail for split/three-phase) -->
-    <div class="card" x-data="{ phaseExpanded: false }">
+    <div class="card" x-show="cardVisible.acPower" x-data="{ phaseExpanded: false }">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
         <!-- Phase expand button — only for split/three-phase -->
@@ -299,7 +337,7 @@
     </div>
 
     <!-- Battery State of Charge -->
-    <div class="card">
+    <div class="card" x-show="cardVisible.batterySoc">
       <div class="card-label mb-3">Battery State of Charge</div>
       <div class="flex items-center gap-5">
         <div class="soc-ring">
@@ -332,7 +370,7 @@
     </div>
 
     <!-- Solar AC Inputs -->
-    <div class="card">
+    <div class="card" x-show="cardVisible.solarInputs">
       <div class="card-label mb-3">Solar AC Inputs</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between font-semibold">
@@ -355,30 +393,33 @@
       </div>
     </div>
 
-    <!-- DC Power (Battery) -->
-    <div class="card">
-      <div class="card-label mb-3">DC Power (Battery)</div>
+    <!-- Battery -->
+    <div class="card" x-show="cardVisible.battery">
+      <div class="card-label mb-3">Battery</div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <!-- Power + Status -->
         <div class="flex justify-between">
-          <span class="text-slate-500">Power <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCW</span></span>
+          <span class="text-slate-500">DC Power <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">714.DCW</span></span>
           <span class="font-mono font-semibold" x-text="fmt.w($store.app.points.battery_dc_power_w) + ' W'"></span>
         </div>
         <div class="flex justify-between">
+          <span class="text-slate-500">Status <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.Sta</span></span>
+          <span class="font-mono font-medium"
+                :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
+                        $store.app.points.battery_state === 'Discharging' ? 'text-amber-400' :
+                        $store.app.points.battery_state === 'Idle' ? 'text-slate-400' : 'text-slate-500'"
+                x-text="$store.app.points.battery_state || '--'"></span>
+        </div>
+        <!-- SoC / SoH -->
+        <div class="flex justify-between">
           <span class="text-slate-500">SoC <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoC</span></span>
-          <span class="font-mono" x-text="($store.app.points.soc ?? '--') + ' %'"></span>
+          <span class="font-mono" x-text="($store.app.points.soc ?? '--') + '%'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">SoH <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.SoH</span></span>
-          <span class="font-mono" x-text="($store.app.points.soh ?? '--') + ' %'"></span>
+          <span class="font-mono" x-text="($store.app.points.soh ?? '--') + '%'"></span>
         </div>
-        <div class="flex justify-between">
-          <span class="text-slate-500">Ambient <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpAmb</span></span>
-          <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' °C'"></span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-500">Cabinet <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpCab</span></span>
-          <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' °C'"></span>
-        </div>
+        <!-- Capacity -->
         <div class="flex justify-between">
           <span class="text-slate-500">Available <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.WHAvail</span></span>
           <span class="font-mono" x-text="($store.app.points.wh_available != null ? ($store.app.points.wh_available / 1000).toFixed(1) : '--') + ' kWh'"></span>
@@ -387,11 +428,29 @@
           <span class="text-slate-500">Rated <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">713.WHRtg</span></span>
           <span class="font-mono" x-text="($store.app.points.wh_rating != null ? ($store.app.points.wh_rating / 1000).toFixed(1) : '--') + ' kWh'"></span>
         </div>
+        <!-- Nameplate ratings -->
+        <div class="flex justify-between">
+          <span class="text-slate-500">Max Charge <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">702.WMax</span></span>
+          <span class="font-mono text-slate-400" x-text="($store.app.points.max_charge_rate_w ?? '--') + ' W'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Max Discharge <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">702.WMax</span></span>
+          <span class="font-mono text-slate-400" x-text="($store.app.points.max_discharge_rate_w ?? '--') + ' W'"></span>
+        </div>
+        <!-- Temperatures -->
+        <div class="flex justify-between">
+          <span class="text-slate-500">Ambient <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpAmb</span></span>
+          <span class="font-mono" x-text="($store.app.points.ambient_temp_c ?? '--') + ' °C'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Cabinet <span x-show="$store.app.showSources" class="text-[8px] font-mono text-slate-600">701.TmpCab</span></span>
+          <span class="font-mono" x-text="($store.app.points.cabinet_temp_c ?? '--') + ' °C'"></span>
+        </div>
       </div>
     </div>
 
     <!-- Lifetime Energy -->
-    <div class="card">
+    <div class="card" x-show="cardVisible.lifetimeEnergy">
       <div class="card-label mb-3">Lifetime Energy</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
@@ -418,7 +477,7 @@
     </div>
 
     <!-- Battery Control -->
-    <div class="card" x-data="controlsTab()">
+    <div class="card" x-show="cardVisible.batteryControl" x-data="controlsTab()">
       <div class="card-label mb-3">Battery Control</div>
 
       <!-- Battery Command -->
@@ -497,7 +556,7 @@
     </div>
 
     <!-- Operating Mode & Reserve -->
-    <div class="card" x-data="controlsTab()">
+    <div class="card" x-show="cardVisible.operatingMode" x-data="controlsTab()">
       <div class="card-label mb-3">Operating Mode & Reserve</div>
 
       <!-- Operating Mode -->
@@ -505,20 +564,14 @@
         <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Operating Mode</label>
         <select x-model="operatingMode" @change="sendCommand('operating_mode', operatingMode)"
                 class="form-control !py-1.5 !text-sm">
-          <option value="">-- Current --</option>
           <option value="Emergency Backup">Emergency Backup</option>
           <option value="Self-Consumption">Self-Consumption</option>
           <option value="Time of Use">Time of Use</option>
         </select>
       </div>
 
-      <div class="text-xs text-slate-400 mb-3 flex items-center gap-2">
-        <span class="text-slate-500">Current:</span>
-        <span class="font-medium" x-text="$store.app.points.mode_name || '--'"></span>
-      </div>
-
       <!-- Reserve SOC -->
-      <div class="grid grid-cols-2 gap-3 mb-3">
+      <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Self Reserve %</label>
           <div class="flex items-center gap-1">
@@ -542,24 +595,12 @@
           </div>
         </div>
       </div>
-
-      <!-- Max ratings info -->
-      <div class="border-t border-white/[0.06] pt-2 mt-1 grid grid-cols-2 gap-2 text-xs">
-        <div class="flex justify-between">
-          <span class="text-slate-500">Max Charge</span>
-          <span class="font-mono text-slate-400" x-text="($store.app.points.max_charge_rate_w ?? '--') + 'W'"></span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-500">Max Discharge</span>
-          <span class="font-mono text-slate-400" x-text="($store.app.points.max_discharge_rate_w ?? '--') + 'W'"></span>
-        </div>
-      </div>
     </div>
 
   </div>
 
   <!-- ══ Live Points Panel ══════════════════════════════════ -->
-  <div class="card mb-4" x-data="livePointsPanel()">
+  <div class="card mb-4" x-show="cardVisible.livePoints" x-data="livePointsPanel()">
     <!-- Header bar -->
     <div class="flex items-center justify-between -mx-4 -mt-4 px-4 py-2.5 border-b border-white/[0.06] bg-slate-800/40 rounded-t-lg">
       <button @click="expanded = !expanded" class="flex items-center gap-2 group">

@@ -4,6 +4,7 @@
 function settingsTab() {
   return {
     mqtt: {},
+    mqttConfig: {},
     poller: {},
     entities: [],
     entityFilter: '',
@@ -19,6 +20,7 @@ function settingsTab() {
 
     async init() {
       await this.loadAll();
+      await this.loadMqttConfig();
       await this.loadMetricsSettings();
       await this.loadStorage();
       await this.loadBackups();
@@ -41,6 +43,13 @@ function settingsTab() {
         this.poller = appStatus.components.poller;
       }
       if (topics && topics.topics) this.entities = topics.topics;
+    },
+
+    async loadMqttConfig() {
+      const data = await fetchJSON('api/mqtt/config');
+      if (data && !data.error && data.host) {
+        this.mqttConfig = data;
+      }
     },
 
     async loadMetricsSettings() {

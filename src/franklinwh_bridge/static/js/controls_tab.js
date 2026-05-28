@@ -14,9 +14,10 @@ function controlsTab() {
     sending: false,
 
     init() {
-      // Sync initial state from points
+      // Sync initial state from points (may not be loaded yet)
       this._syncFromPoints();
-      // Re-sync when data refreshes
+      // Re-sync when data refreshes — also use $watch for immediate reactivity
+      this.$watch('$store.app.points', () => this._syncFromPoints());
       setInterval(() => this._syncFromPoints(), 10000);
     },
 
@@ -36,6 +37,10 @@ function controlsTab() {
       }
       if (pts.last_command_result) {
         this.lastResult = pts.last_command_result;
+      }
+      // Sync operating mode from live points
+      if (pts.mode_name) {
+        this.operatingMode = pts.mode_name;
       }
     },
 

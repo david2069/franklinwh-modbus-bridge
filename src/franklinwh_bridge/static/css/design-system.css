@@ -403,6 +403,13 @@ body {
 .syntax-overlay::-webkit-scrollbar { display: none; }
 .syntax-overlay { scrollbar-width: none; }
 
+/* ── Sidebar Tooltip ────────────────────────────────────── */
+.sidebar-tooltip {
+  background: #1e293b;      /* slate-800 — always dark */
+  color: #f1f5f9;           /* slate-100 — always light text */
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 /* ── Colour helpers ─────────────────────────────────────── */
 .c-ok      { color: var(--ok); }
 .c-warn    { color: var(--warn); }
@@ -486,8 +493,7 @@ body {
 /* Dark surfaces used for tiles, modals, overlays — need visible bg in light */
 [data-theme="light"] .bg-slate-900\/50,
 [data-theme="light"] .bg-slate-900\/40 { background-color: #f1f5f9 !important; }  /* slate-100 */
-/* Sidebar tooltip */
-[data-theme="light"] .bg-slate-700 { background-color: #1e293b !important; }
+/* Sidebar tooltip — uses .sidebar-tooltip class (always dark bg, always light text) */
 /* Hover states */
 [data-theme="light"] .hover\:bg-slate-700:hover { background-color: rgba(0,0,0,0.06) !important; }
 [data-theme="light"] .hover\:bg-slate-600:hover { background-color: rgba(0,0,0,0.08) !important; }

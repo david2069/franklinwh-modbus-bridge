@@ -3,14 +3,47 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
-    <!-- MQTT Status -->
+    <!-- MQTT Broker Configuration -->
     <div class="card">
-      <div class="card-label mb-3">MQTT Status</div>
+      <div class="card-label mb-3">MQTT Broker</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
           <span class="text-slate-500">Connection</span>
           <span class="font-medium" :class="mqtt.connected ? 'text-emerald-400' : 'text-red-400'"
                 x-text="mqtt.connected ? 'Connected' : 'Disconnected'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Broker Host</span>
+          <span class="font-mono text-slate-300" x-text="mqttConfig.host ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Port</span>
+          <span class="font-mono text-slate-300" x-text="mqttConfig.port ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Username</span>
+          <span class="font-mono text-slate-300" x-text="mqttConfig.username || '(anonymous)'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">TLS Mode</span>
+          <span class="font-mono" :class="mqttConfig.tls_mode && mqttConfig.tls_mode !== 'off' ? 'text-emerald-400' : 'text-slate-500'"
+                x-text="mqttConfig.tls_mode ?? 'off'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Client ID</span>
+          <span class="font-mono text-slate-400" x-text="mqttConfig.client_id ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Topic Prefix</span>
+          <span class="font-mono text-slate-300" x-text="mqttConfig.topic_prefix ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Discovery Prefix</span>
+          <span class="font-mono text-slate-400" x-text="mqttConfig.discovery_prefix ?? '--'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">QoS</span>
+          <span class="font-mono text-slate-400" x-text="mqttConfig.qos ?? '--'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Messages Sent</span>
@@ -26,6 +59,17 @@
           <span class="font-mono" x-text="mqtt.entity_count ?? '--'"></span>
         </div>
       </div>
+
+      <p class="text-[10px] text-slate-600 mt-3">
+        Broker settings can be updated via
+        <code class="text-slate-500">PATCH /api/mqtt/config</code>
+        or environment variables
+        (<code class="text-slate-500">MQTT_HOST</code>,
+         <code class="text-slate-500">MQTT_PORT</code>,
+         <code class="text-slate-500">MQTT_USERNAME</code>,
+         <code class="text-slate-500">MQTT_PASSWORD</code>).
+        In HA addon mode, use the addon configuration panel.
+      </p>
 
       <!-- MQTT Actions -->
       <div class="flex gap-2 mt-4">

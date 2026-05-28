@@ -17,10 +17,34 @@ function dashboardTab() {
   const _liveHistory = { labels: [], battery: [], grid: [], solar: [], home: [] };
   const MAX_LIVE_POINTS = 180;
 
+  // Default card visibility (Bridge Status hidden by default)
+  const DEFAULT_CARDS = {
+    bridgeStatus: false,
+    powerFlow: true,
+    acPower: true,
+    batterySoc: true,
+    solarInputs: true,
+    battery: true,
+    lifetimeEnergy: true,
+    batteryControl: true,
+    operatingMode: true,
+    livePoints: true,
+  };
+
+  function loadCardPrefs() {
+    try {
+      const saved = localStorage.getItem('fwh-dashboard-cards');
+      if (saved) return { ...DEFAULT_CARDS, ...JSON.parse(saved) };
+    } catch (_) {}
+    return { ...DEFAULT_CARDS };
+  }
+
   return {
     deviceIp: '--',
     deviceUnit: '--',
     showDiagnostics: false,
+    showCardConfig: false,
+    cardVisible: loadCardPrefs(),
 
     // Bottom section tab (chart vs sequencer)
     bottomTab: 'chart',
@@ -53,6 +77,16 @@ function dashboardTab() {
         });
       });
       this._startPolling();
+    },
+
+    toggleCard(key) {
+      this.cardVisible[key] = !this.cardVisible[key];
+      localStorage.setItem('fwh-dashboard-cards', JSON.stringify(this.cardVisible));
+    },
+
+    resetCardDefaults() {
+      this.cardVisible = { ...DEFAULT_CARDS };
+      localStorage.removeItem('fwh-dashboard-cards');
     },
 
     async _loadGateway() {
