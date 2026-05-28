@@ -233,13 +233,20 @@ bridge mqtt test         # test MQTT broker connectivity
 
 ## REST API Reference
 
+Interactive API docs are available at `/docs` (Swagger UI) when the bridge
+is running.
+
 ### Health & Admin
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/health` | Lightweight health check |
 | GET | `/api/status` | Health check with component status |
-| GET | `/api/logs` | Recent log entries |
-| GET | `/api/config` | Current application config |
+| GET | `/api/logs` | Recent log entries (in-memory ring buffer) |
+| GET | `/api/config/{section}` | Read config section |
+| PUT | `/api/config/{key}` | Update config key |
+| GET | `/api/stats` | Operational statistics (polls, errors, uptime) |
+| GET | `/api/stats/storage` | DB size and table row counts |
 
 ### MQTT Administration
 
@@ -260,22 +267,72 @@ bridge mqtt test         # test MQTT broker connectivity
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/models` | List captured SunSpec models |
-| GET | `/api/models/{model_id}` | Model detail with points |
+| GET | `/api/models/{model_id}/read` | Read model points from hardware |
 | POST | `/api/models/refresh` | Re-capture catalog from aGate |
+
+### Data Points
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/points` | All current data points (latest poll) |
+| GET | `/api/points/{point_id}` | Single data point by key |
+| GET | `/api/gateway` | Gateway connection info |
+
+### Battery Control
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/command` | Send battery command (charge/discharge/idle) |
+| GET | `/api/battery/limits` | Current power limits (from M702 or defaults) |
+
+### Metrics & Archival
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/metrics` | Query metrics (charting, with downsampling) |
+| POST | `/api/metrics/archive` | Trigger metrics archival |
+| GET | `/api/metrics/export` | Export metrics as CSV or JSON (lossless) |
+| POST | `/api/metrics/import` | Import metrics from CSV upload |
+| GET | `/api/settings/metrics` | Get retention settings |
+| PUT | `/api/settings/metrics` | Update retention settings |
 
 ### Backup & Restore
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/backups` | List available backups |
-| POST | `/api/backups` | Create a new backup |
-| POST | `/api/backups/{name}/restore` | Restore from backup |
+| POST | `/api/backup/create` | Create a new backup (optional label) |
+| GET | `/api/backup/list` | List available backups |
+| POST | `/api/backup/restore` | Restore from named backup |
+| GET | `/api/backup/download/{name}` | Download backup as ZIP |
+
+### Sequences
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/sequences` | List saved command sequences |
+| POST | `/api/sequences/{name}` | Save a command sequence |
+| DELETE | `/api/sequences/{name}` | Delete a command sequence |
+| PUT | `/api/sequences/{name}/rename` | Rename a sequence |
+| POST | `/api/sequence/execute` | Execute a command sequence |
+
+### PICS Compliance
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/pics` | Get PICS compliance status |
+| PUT | `/api/pics` | Update PICS compliance entries |
 
 ## MQTT Entities
 
-The bridge publishes 32 curated Home Assistant entities via MQTT Discovery.
+The bridge publishes up to 69 curated Home Assistant entities via MQTT
+Discovery (48 core + 21 per-phase, filtered by detected AC wiring type).
 All power values are in **kW** and energy values in **kWh**, matching the
 FranklinWH HA integrator's conventions.
+
+The bridge auto-detects the AC wiring type at startup from M701 `ACType`:
+- **Single-phase (ACType=0):** 54 entities (48 core + 6 L1 phase)
+- **Split-phase (ACType=1):** 61 entities (48 core + 13 L1+L2 phase)
+- **Three-phase (ACType=2):** 69 entities (all)
 
 ### Topic Structure
 
@@ -358,6 +415,41 @@ Where `{short_id}` is the last 8 characters of the aGate serial number.
 | `tou_reserve_pct` | number | TOU reserve (%) |
 | `capacity_max_charge_kw` | number | Max charge rate (kW) |
 | `capacity_max_discharge_kw` | number | Max discharge rate (kW) |
+| `battery_command` | select | Charge / Discharge / Idle |
+| `battery_command_power` | number | Command power (W, 0--5000 default, runtime from M702) |
+| `battery_command_pct` | number | Command power as percentage (0--100%) |
+| `battery_command_duration` | number | Command duration (s) |
+| `battery_vpp_mode` | switch | VPP mode (auto-revert enable) |
+
+### Per-Phase Grid (conditional)
+
+These entities are published only for the detected AC wiring type. L1 is
+always published; L2 and line-line voltages for split/three-phase; L3 for
+three-phase only.
+
+| Entity | Phase | Unit | Device Class |
+|--------|-------|------|-------------|
+| `grid_voltage_l1_v` | L1 | V | voltage |
+| `grid_current_l1_a` | L1 | A | current |
+| `grid_power_l1_w` | L1 | W | power |
+| `grid_pf_l1` | L1 | -- | power_factor |
+| `grid_va_l1` | L1 | VA | apparent_power |
+| `grid_var_l1` | L1 | var | reactive_power |
+| `grid_voltage_l2_v` | L2 | V | voltage |
+| `grid_current_l2_a` | L2 | A | current |
+| `grid_power_l2_w` | L2 | W | power |
+| `grid_pf_l2` | L2 | -- | power_factor |
+| `grid_va_l2` | L2 | VA | apparent_power |
+| `grid_var_l2` | L2 | var | reactive_power |
+| `grid_voltage_l1l2_v` | L2 | V | voltage |
+| `grid_voltage_l3_v` | L3 | V | voltage |
+| `grid_current_l3_a` | L3 | A | current |
+| `grid_power_l3_w` | L3 | W | power |
+| `grid_pf_l3` | L3 | -- | power_factor |
+| `grid_va_l3` | L3 | VA | apparent_power |
+| `grid_var_l3` | L3 | var | reactive_power |
+| `grid_voltage_l2l3_v` | L3 | V | voltage |
+| `grid_voltage_l3l1_v` | L3 | V | voltage |
 
 ## Post-Installation Verification
 
@@ -388,7 +480,7 @@ After installing and starting the bridge, verify everything is working:
 5. **Check entity topics** -- list all published MQTT topics.
    ```bash
    curl http://localhost:8000/api/mqtt/topics
-   # Should show 32 entities with state and discovery topics
+   # Entity count depends on AC wiring type (54 single / 61 split / 69 three-phase)
    ```
 
 6. **Monitor MQTT traffic** -- subscribe to all bridge topics.
@@ -460,7 +552,7 @@ After installing and starting the bridge, verify everything is working:
 
 ### Database migration errors
 
-- The bridge uses forward-only SQLite migrations (currently schema v3).
+- The bridge uses forward-only SQLite migrations (currently schema v7).
 - If you see migration errors, check file permissions on the `data/`
   directory.
 - Create a backup before troubleshooting:
@@ -522,11 +614,17 @@ bridge --help            # full CLI reference
 
 ```
 src/franklinwh_bridge/
-  api/               REST endpoints (health, admin, mqtt_api)
+  api/               REST endpoints (health, admin, mqtt_api, ui)
   config/            Environment detection, settings, app config
   modbus/            Poller, SunSpec catalog, sample bus
-  publish/           MQTT publisher, HA entity definitions
-  store/             SQLite DB, migrations, metrics, backup
+  publish/           MQTT publisher, HA entity definitions, command handler
+  static/            JavaScript (Alpine.js), CSS
+  store/             SQLite DB, migrations, metrics, backup, stats
+  templates/         Jinja2 HTML (dashboard, settings, explorer tabs)
+tests/
+  unit/              Unit tests (mocked dependencies, no hardware)
+  integration/       End-to-end tests (full pipeline with mocked controller)
+  hardware/          Hardware tests (require real aGate, gated by -m hardware)
 ```
 
 ## License
