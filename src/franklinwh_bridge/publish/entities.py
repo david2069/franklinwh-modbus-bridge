@@ -937,7 +937,6 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         is_control=True,
         options=[
             "Not Active", "Charge", "Discharge",
-            "Max Charge", "Max Discharge",
             "Idle", "Stop", "Release",
         ],
         source="virtual",

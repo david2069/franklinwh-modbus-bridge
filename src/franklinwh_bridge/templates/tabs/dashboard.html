@@ -488,8 +488,6 @@
           <option value="Not Active">Not Active</option>
           <option value="Charge">Charge</option>
           <option value="Discharge">Discharge</option>
-          <option value="Max Charge">⚡ Max Charge</option>
-          <option value="Max Discharge">⚡ Max Discharge</option>
           <option value="Idle">Idle</option>
           <option value="Stop">Stop</option>
           <option value="Release">Release</option>
@@ -501,12 +499,28 @@
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Power (W)</label>
           <div class="flex items-center gap-1">
-            <input type="range" min="0" max="5000" step="100" x-model="powerW"
+            <input type="range" min="0"
+                   :max="Math.max($store.app.points.max_charge_rate_w ?? 5000, $store.app.points.max_discharge_rate_w ?? 5000)"
+                   step="100" x-model="powerW"
                    class="flex-1 accent-cyan-500 h-1.5 cursor-pointer" style="min-width:0"
                    @change="sendCommand('battery_command_power', powerW)">
-            <input type="number" x-model="powerW" min="0" max="5000" step="100"
+            <input type="number" x-model="powerW" min="0"
+                   :max="Math.max($store.app.points.max_charge_rate_w ?? 5000, $store.app.points.max_discharge_rate_w ?? 5000)"
+                   step="100"
                    class="form-control !py-1 !text-xs w-16 text-center"
                    @change="sendCommand('battery_command_power', powerW)">
+          </div>
+          <div class="flex gap-1 mt-1">
+            <button class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition font-medium"
+                    @click="powerW = $store.app.points.max_charge_rate_w ?? 5000; sendCommand('battery_command_power', powerW)"
+                    :title="'Set to max charge: ' + ($store.app.points.max_charge_rate_w ?? 5000) + 'W'">
+              ⚡ Max Chg
+            </button>
+            <button class="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 hover:bg-orange-500/25 transition font-medium"
+                    @click="powerW = $store.app.points.max_discharge_rate_w ?? 5000; sendCommand('battery_command_power', powerW)"
+                    :title="'Set to max discharge: ' + ($store.app.points.max_discharge_rate_w ?? 5000) + 'W'">
+              ⚡ Max Dis
+            </button>
           </div>
         </div>
         <div>

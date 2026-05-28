@@ -5,6 +5,11 @@ function settingsTab() {
   return {
     mqtt: {},
     mqttConfig: {},
+    mqttEditing: false,
+    mqttEdit: {},
+    mqttTesting: false,
+    mqttTestResult: null,
+    mqttSaving: false,
     poller: {},
     entities: [],
     entityFilter: '',
@@ -192,6 +197,88 @@ function settingsTab() {
       if (source.startsWith('702.')) return 'bg-teal-900/50 text-teal-300';
       if (source.startsWith('502.')) return 'bg-yellow-900/50 text-yellow-300';
       return 'bg-slate-700/50 text-slate-400';
+    },
+
+    startMqttEdit() {
+      this.mqttEdit = {
+        host: this.mqttConfig.host || 'localhost',
+        port: this.mqttConfig.port || 1883,
+        username: this.mqttConfig.username || '',
+        password: '',
+        tls_mode: this.mqttConfig.tls_mode || 'off',
+        topic_prefix: this.mqttConfig.topic_prefix || 'franklinwh',
+        discovery_prefix: this.mqttConfig.discovery_prefix || 'homeassistant',
+      };
+      this.mqttEditing = true;
+      this.mqttTestResult = null;
+    },
+
+    cancelMqttEdit() {
+      this.mqttEditing = false;
+      this.mqttTestResult = null;
+    },
+
+    async testMqttConnection() {
+      this.mqttTesting = true;
+      this.mqttTestResult = null;
+      try {
+        const data = await fetchJSON('api/mqtt/test', {
+          method: 'POST',
+          body: JSON.stringify({
+            host: this.mqttEdit.host,
+            port: Number(this.mqttEdit.port),
+          }),
+        });
+        if (data && data.ok) {
+          this.mqttTestResult = { ok: true, msg: 'Connection OK' };
+        } else {
+          this.mqttTestResult = {
+            ok: false,
+            msg: data?.error || data?.detail || 'Failed',
+          };
+        }
+      } catch (e) {
+        this.mqttTestResult = { ok: false, msg: String(e) };
+      } finally {
+        this.mqttTesting = false;
+      }
+    },
+
+    async saveMqttConfig() {
+      this.mqttSaving = true;
+      try {
+        const payload = {
+          host: this.mqttEdit.host,
+          port: Number(this.mqttEdit.port),
+          username: this.mqttEdit.username || null,
+          tls_mode: this.mqttEdit.tls_mode,
+          topic_prefix: this.mqttEdit.topic_prefix,
+          discovery_prefix: this.mqttEdit.discovery_prefix,
+        };
+        if (this.mqttEdit.password) {
+          payload.password = this.mqttEdit.password;
+        }
+        const data = await fetchJSON('api/mqtt/config', {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        if (data && !data.error) {
+          Alpine.store('app').toast('MQTT config saved', 'info');
+          this.mqttEditing = false;
+          await this.loadMqttConfig();
+          // Reconnect with new settings
+          await fetchJSON('api/mqtt/reconnect', { method: 'POST' });
+          Alpine.store('app').toast('MQTT reconnecting…', 'info');
+          await this.loadAll();
+        } else {
+          Alpine.store('app').toast(
+            'Save failed: ' + (data?.error || 'unknown'),
+            'error',
+          );
+        }
+      } finally {
+        this.mqttSaving = false;
+      }
     },
 
     async republishDiscovery() {

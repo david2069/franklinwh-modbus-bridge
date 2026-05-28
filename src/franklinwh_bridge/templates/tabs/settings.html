@@ -5,8 +5,16 @@
 
     <!-- MQTT Broker Configuration -->
     <div class="card">
-      <div class="card-label mb-3">MQTT Broker</div>
-      <div class="space-y-2 text-sm">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label">MQTT Broker</div>
+        <button x-show="!mqttEditing" @click="startMqttEdit()"
+                class="text-[10px] px-2 py-0.5 rounded bg-slate-700/50 text-slate-400 hover:text-slate-200 hover:bg-slate-700 border border-slate-600/30 transition font-medium">
+          Edit
+        </button>
+      </div>
+
+      <!-- ── Read-only view ── -->
+      <div x-show="!mqttEditing" class="space-y-2 text-sm">
         <div class="flex justify-between">
           <span class="text-slate-500">Connection</span>
           <span class="font-medium" :class="mqtt.connected ? 'text-emerald-400' : 'text-red-400'"
@@ -30,20 +38,12 @@
                 x-text="mqttConfig.tls_mode ?? 'off'"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-500">Client ID</span>
-          <span class="font-mono text-slate-400" x-text="mqttConfig.client_id ?? '--'"></span>
-        </div>
-        <div class="flex justify-between">
           <span class="text-slate-500">Topic Prefix</span>
           <span class="font-mono text-slate-300" x-text="mqttConfig.topic_prefix ?? '--'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Discovery Prefix</span>
           <span class="font-mono text-slate-400" x-text="mqttConfig.discovery_prefix ?? '--'"></span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-500">QoS</span>
-          <span class="font-mono text-slate-400" x-text="mqttConfig.qos ?? '--'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Messages Sent</span>
@@ -60,19 +60,78 @@
         </div>
       </div>
 
-      <p class="text-[10px] text-slate-600 mt-3">
-        Broker settings can be updated via
-        <code class="text-slate-500">PATCH /api/mqtt/config</code>
-        or environment variables
-        (<code class="text-slate-500">MQTT_HOST</code>,
-         <code class="text-slate-500">MQTT_PORT</code>,
-         <code class="text-slate-500">MQTT_USERNAME</code>,
-         <code class="text-slate-500">MQTT_PASSWORD</code>).
-        In HA addon mode, use the addon configuration panel.
-      </p>
+      <!-- ── Edit form ── -->
+      <div x-show="mqttEditing" x-cloak class="space-y-2 text-sm">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Host</label>
+          <input type="text" x-model="mqttEdit.host"
+                 class="form-control !py-1 !text-xs w-full font-mono"
+                 placeholder="localhost">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Port</label>
+          <input type="number" x-model="mqttEdit.port" min="1" max="65535"
+                 class="form-control !py-1 !text-xs w-28 font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Username</label>
+          <input type="text" x-model="mqttEdit.username"
+                 class="form-control !py-1 !text-xs w-full font-mono"
+                 placeholder="(anonymous)">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Password</label>
+          <input type="password" x-model="mqttEdit.password"
+                 class="form-control !py-1 !text-xs w-full font-mono"
+                 placeholder="(unchanged)">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">TLS Mode</label>
+          <select x-model="mqttEdit.tls_mode" class="form-control !py-1 !text-xs w-40">
+            <option value="off">Off</option>
+            <option value="tls">TLS</option>
+            <option value="tls_insecure">TLS (insecure)</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Topic Prefix</label>
+          <input type="text" x-model="mqttEdit.topic_prefix"
+                 class="form-control !py-1 !text-xs w-full font-mono"
+                 placeholder="franklinwh">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Discovery Prefix</label>
+          <input type="text" x-model="mqttEdit.discovery_prefix"
+                 class="form-control !py-1 !text-xs w-full font-mono"
+                 placeholder="homeassistant">
+        </div>
+
+        <!-- Test result -->
+        <div x-show="mqttTestResult" class="text-xs font-mono px-2 py-1 rounded border"
+             :class="mqttTestResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+             x-text="mqttTestResult?.msg"></div>
+
+        <!-- Edit actions -->
+        <div class="flex gap-2 pt-2">
+          <button @click="testMqttConnection()"
+                  class="btn btn-sm btn-secondary"
+                  :disabled="mqttTesting">
+            <span x-text="mqttTesting ? 'Testing…' : 'Test Connection'"></span>
+          </button>
+          <button @click="saveMqttConfig()"
+                  class="btn btn-sm btn-primary"
+                  :disabled="mqttSaving">
+            <span x-text="mqttSaving ? 'Saving…' : 'Save & Reconnect'"></span>
+          </button>
+          <button @click="cancelMqttEdit()"
+                  class="btn btn-sm btn-secondary">
+            Cancel
+          </button>
+        </div>
+      </div>
 
       <!-- MQTT Actions -->
-      <div class="flex gap-2 mt-4">
+      <div x-show="!mqttEditing" class="flex gap-2 mt-4">
         <button @click="republishDiscovery()" class="btn btn-sm btn-primary"
                 :disabled="republishing"
                 :class="{ 'opacity-50 cursor-not-allowed': republishing }">

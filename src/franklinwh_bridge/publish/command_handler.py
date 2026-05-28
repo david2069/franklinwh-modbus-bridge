@@ -62,10 +62,12 @@ class CommandHandler:
         on_state_changed: Callable[[], Coroutine] | None = None,
         max_charge_w: int = DEFAULT_MAX_POWER_W,
         max_discharge_w: int = DEFAULT_MAX_POWER_W,
+        points_getter: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self._controller = controller
         self._db = db
         self._on_state_changed = on_state_changed
+        self._points_getter = points_getter
         self._state = CommandState()
         self._watchdog_task: asyncio.Task | None = None
         self._command_power_w: int = 0
@@ -215,12 +217,6 @@ class CommandHandler:
 
         if action == "Idle":
             watts = 0
-        elif action == "Max Charge":
-            watts = self._max_charge_w
-            action = "Charge"
-        elif action == "Max Discharge":
-            watts = -self._max_discharge_w
-            action = "Discharge"
         elif action in ("Charge", "Discharge"):
             # Pick directional limit
             max_w = (
@@ -417,15 +413,22 @@ class CommandHandler:
             self._watchdog_task.cancel()
             self._watchdog_task = None
 
-    async def _read_soc(self) -> float | None:
-        """Read current SoC from the controller."""
+    def _read_soc(self) -> float | None:
+        """Read current SoC from the poller's cached points.
+
+        Uses the ``points_getter`` callback instead of making a separate
+        Modbus call — avoids racing with the poller on the same TCP
+        connection (which caused silent read failures and missed target
+        SoC thresholds).
+        """
+        if self._points_getter is None:
+            return None
         try:
-            status = await asyncio.to_thread(
-                self._controller.read_battery_status,
-            )
-            return status.get("soc")
+            pts = self._points_getter()
+            soc = pts.get("soc")
+            return float(soc) if soc is not None else None
         except Exception as exc:
-            logger.debug("SoC read failed: %s", exc)
+            logger.debug("SoC read from cached points failed: %s", exc)
             return None
 
     async def _watchdog_loop(self) -> None:
@@ -450,7 +453,7 @@ class CommandHandler:
                 # Check target SoC
                 target = self._target_soc
                 if target > 0:
-                    soc = await self._read_soc()
+                    soc = self._read_soc()
                     if soc is not None:
                         is_charge = self._state.action == "Charge"
                         if is_charge and soc >= target:

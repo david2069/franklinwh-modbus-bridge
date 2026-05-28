@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import socket
 from typing import Any
 
@@ -115,20 +116,32 @@ async def detect_broker():
 
 @router.post("/test")
 async def test_connection(request: Request):
+    """Test TCP connectivity.  Accepts optional {host, port} in the body
+    to test *before* saving; falls back to the stored config."""
     db: aiosqlite.Connection = request.app.state.db
-    config = await get_mqtt_config(db)
+    body: dict = {}
+    with contextlib.suppress(Exception):
+        body = await request.json()
 
-    if not config.get("host"):
+    host = body.get("host") if body else None
+    port = body.get("port") if body else None
+
+    if not host or not port:
+        config = await get_mqtt_config(db)
+        host = host or config.get("host")
+        port = port or config.get("port", 1883)
+
+    if not host:
         raise HTTPException(400, "No MQTT host configured")
 
     try:
         result = await asyncio.wait_for(
-            _test_tcp_connect(config["host"], config["port"]),
+            _test_tcp_connect(host, int(port)),
             timeout=5.0,
         )
-        return result
+        return {"ok": result.get("success", False), **result}
     except TimeoutError:
-        return {"success": False, "error": "Connection timed out (5s)"}
+        return {"ok": False, "error": "Connection timed out (5s)"}
 
 
 @router.get("/topics")

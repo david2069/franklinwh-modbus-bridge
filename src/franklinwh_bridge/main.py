@@ -153,10 +153,16 @@ async def lifespan(app: FastAPI):
         app.state.poller = poller
         app.state.controller = controller
 
+        def _get_cached_points() -> dict:
+            """Return latest poller points (no Modbus call)."""
+            s = sample_bus.last_sample
+            return s.points if s else {}
+
         command_handler = CommandHandler(
             controller,
             db,
             on_state_changed=mqtt_publisher.publish_command_state,
+            points_getter=_get_cached_points,
         )
         mqtt_publisher.set_command_handler(command_handler)
         app.state.command_handler = command_handler

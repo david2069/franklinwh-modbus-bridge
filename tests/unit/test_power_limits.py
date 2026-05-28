@@ -170,45 +170,6 @@ async def test_input_clamp_uses_symmetric_max(handler):
 
 
 # ---------------------------------------------------------------------------
-# Max Charge / Max Discharge convenience actions
-# ---------------------------------------------------------------------------
-
-
-async def test_max_charge_uses_max_charge_w(handler):
-    """'Max Charge' sends full max_charge_w."""
-    handler.set_power_limits(6000, 4000)
-    await handler._handle_battery_command("Max Charge")
-    args = handler._controller.send_command.call_args
-    cmd = args[0][0]
-    assert cmd.power_watts == 6000  # positive = charge
-
-
-async def test_max_discharge_uses_max_discharge_w(handler):
-    """'Max Discharge' sends full max_discharge_w (negative)."""
-    handler.set_power_limits(6000, 4000)
-    await handler._handle_battery_command("Max Discharge")
-    args = handler._controller.send_command.call_args
-    cmd = args[0][0]
-    assert cmd.power_watts == -4000  # negative = discharge
-
-
-async def test_max_charge_sets_action_to_charge(handler):
-    """'Max Charge' normalises to action='Charge' in state."""
-    handler.set_power_limits(5000, 5000)
-    await handler._handle_battery_command("Max Charge")
-    assert handler._state.action == "Charge"
-    assert handler._state.power_w == 5000
-
-
-async def test_max_discharge_sets_action_to_discharge(handler):
-    """'Max Discharge' normalises to action='Discharge' in state."""
-    handler.set_power_limits(5000, 5000)
-    await handler._handle_battery_command("Max Discharge")
-    assert handler._state.action == "Discharge"
-    assert handler._state.power_w == 5000
-
-
-# ---------------------------------------------------------------------------
 # Target SoC
 # ---------------------------------------------------------------------------
 
@@ -234,6 +195,47 @@ async def test_target_soc_zero_disables(handler):
     assert handler._target_soc == 0
     pts = handler.virtual_points
     assert pts["battery_command_target_soc"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _read_soc uses cached points (no Modbus race)
+# ---------------------------------------------------------------------------
+
+
+def test_read_soc_from_cached_points(mock_controller, db):
+    """_read_soc reads from points_getter, not Modbus."""
+    pts = {"soc": 72.5}
+    h = CommandHandler(
+        mock_controller, db,
+        points_getter=lambda: pts,
+    )
+    assert h._read_soc() == 72.5
+
+
+def test_read_soc_returns_none_without_getter(handler):
+    """_read_soc returns None when no points_getter is configured."""
+    assert handler._read_soc() is None
+
+
+def test_read_soc_returns_none_when_missing(mock_controller, db):
+    """_read_soc returns None when soc key is missing from points."""
+    h = CommandHandler(
+        mock_controller, db,
+        points_getter=lambda: {"grid_power_w": 1000},
+    )
+    assert h._read_soc() is None
+
+
+def test_read_soc_handles_exception(mock_controller, db):
+    """_read_soc catches exceptions from points_getter."""
+    def bad_getter():
+        raise RuntimeError("bus unavailable")
+
+    h = CommandHandler(
+        mock_controller, db,
+        points_getter=bad_getter,
+    )
+    assert h._read_soc() is None
 
 
 # ---------------------------------------------------------------------------
