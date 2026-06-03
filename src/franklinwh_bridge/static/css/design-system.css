@@ -378,9 +378,11 @@ body {
   user-select: none;
   white-space: pre;           /* preserve newlines */
 }
-.code-editor textarea {
+.code-editor textarea,
+.code-editor-highlight {
   flex: 1;
   min-width: 0;
+  margin: 0;
   background: transparent;
   color: #cbd5e1;            /* slate-300 */
   font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
@@ -393,6 +395,9 @@ body {
   white-space: pre;
   overflow: auto;
   tab-size: 2;
+}
+.code-editor-highlight {
+  cursor: text;              /* hint that clicking opens editor */
 }
 
 /* ── Sidebar Tooltip ────────────────────────────────────── */

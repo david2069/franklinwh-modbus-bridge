@@ -141,12 +141,19 @@
           </div>
         </div>
 
-        <!-- Editor body: plain textarea with line numbers -->
+        <!-- Editor body: syntax-highlighted view OR plain textarea -->
         <div x-show="selectedName" class="flex-1 flex flex-col overflow-hidden min-h-0">
           <div class="code-editor bg-slate-950">
             <div class="code-editor-lines" x-ref="lineNums" x-html="lineNumbers"></div>
-            <textarea x-model="editor"
+            <!-- Highlighted read-only view (click to edit) -->
+            <pre x-show="!editing" @click="startEditing()"
+                 class="code-editor-highlight"
+                 x-html="highlightedHtml"></pre>
+            <!-- Plain textarea (visible while editing) -->
+            <textarea x-show="editing" x-ref="editorTextarea"
+                      x-model="editor"
                       @input="onEditorInput()"
+                      @blur="editing = false"
                       @scroll="syncLineNumbers($event)"
                       spellcheck="false"></textarea>
           </div>

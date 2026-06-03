@@ -1,9 +1,8 @@
 /**
  * Sequencer Tab — manage, edit, validate, and execute sequence files
  *
- * Syntax highlighting: uses a <pre> overlay positioned on top of a
- * transparent <textarea>. The textarea captures input; the overlay
- * renders the coloured text. Both share the same font, size, padding.
+ * Syntax highlighting shown when not editing (read-only <pre>).
+ * Click to switch to a plain <textarea> for editing; blur switches back.
  */
 // Default layout constants for sequencer
 const SEQUENCER_DEFAULTS = { listWidth: 220, syntaxRefHeight: 160, outputFlex: 300 };
@@ -26,6 +25,7 @@ function sequencerTab() {
     renameName: '',
     validationError: null,
     showSyntaxRef: false,
+    editing: false,
 
     // Resizable panel dimensions
     listWidth: SEQUENCER_DEFAULTS.listWidth,
@@ -126,6 +126,61 @@ function sequencerTab() {
     syncLineNumbers(e) {
       const lines = this.$refs.lineNums;
       if (lines) lines.scrollTop = e.target.scrollTop;
+    },
+
+    // ── Syntax highlighting (read-only view) ────────────────
+    get highlightedHtml() {
+      return this._highlightJson(this.editor);
+    },
+
+    _highlightJson(text) {
+      if (!text) return '';
+      let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      // Model.Point references: "704.WSetEna" etc
+      html = html.replace(
+        /(&quot;|")((\d{3,4})\.([A-Za-z]\w*))(&quot;|")/g,
+        '$1<span class="sh-model">$3</span>.<span class="sh-point">$4</span>$5'
+      );
+
+      // JSON keys
+      const keywords = ['step','writes','reads','verify','verify_timeout_ms','wait_for',
+                         'sleep_ms','abort_on_failure','require_transition','note','dry_run'];
+      const kwPat = new RegExp(
+        '(&quot;|")(' + keywords.join('|') + ')(&quot;|")(\\s*:)', 'g'
+      );
+      html = html.replace(kwPat, '$1<span class="sh-keyword">$2</span>$3$4');
+
+      // String values
+      html = html.replace(
+        /(&quot;|")([^"<]*?)(&quot;|")/g,
+        (m, q1, val, q2) => {
+          if (val.includes('sh-')) return m;
+          return q1 + '<span class="sh-string">' + val + '</span>' + q2;
+        }
+      );
+
+      // Numbers
+      html = html.replace(/\b(-?\d+\.?\d*)\b/g, '<span class="sh-number">$1</span>');
+
+      // Booleans / null
+      html = html.replace(/\b(true|false|null)\b/g, '<span class="sh-bool">$1</span>');
+
+      // Brackets
+      html = html.replace(/([{}\[\]])/g, '<span class="sh-bracket">$1</span>');
+
+      return html;
+    },
+
+    startEditing() {
+      this.editing = true;
+      this.$nextTick(() => {
+        const ta = this.$refs.editorTextarea;
+        if (ta) ta.focus();
+      });
     },
 
     // ── CRUD operations ─────────────────────────────────────
