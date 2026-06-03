@@ -1,4 +1,8 @@
-"""Publishing groups REST endpoints."""
+"""Publishing groups REST endpoints.
+
+Provides CRUD for publishing groups and their entity members, plus a
+catalog of all available entity definitions for the Settings UI.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +12,7 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES
 from franklinwh_bridge.store.db import (
     add_group_member,
     create_publishing_group,
@@ -62,6 +67,32 @@ async def list_groups(request: Request):
     db: aiosqlite.Connection = request.app.state.db
     groups = await get_publishing_groups(db)
     return {"groups": groups}
+
+
+@router.get("/entities")
+async def list_entities():
+    """Return the full entity catalog — all available entity definitions.
+
+    Used by the Settings UI to populate group member pickers.  Each entry
+    includes slug, name, ha_type, state_group, and whether it's a control
+    entity.
+    """
+    return {
+        "entities": [
+            {
+                "slug": e.slug,
+                "name": e.name,
+                "ha_type": e.ha_type,
+                "state_group": e.state_group,
+                "unit": e.unit,
+                "is_control": e.is_control,
+                "source": e.source,
+                "phase": e.phase,
+            }
+            for e in BRIDGE_ENTITIES
+        ],
+        "total": len(BRIDGE_ENTITIES),
+    }
 
 
 @router.get("/disabled")
