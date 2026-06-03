@@ -71,6 +71,7 @@ class ModbusPoller:
         gateway_id: str = "default",
         poll_interval: int = 30,
         stats: Any | None = None,
+        modbus_lock: asyncio.Lock | None = None,
     ) -> None:
         self._controller = controller
         self._bus = sample_bus
@@ -84,6 +85,7 @@ class ModbusPoller:
         self._vreg_client: Any | None = None  # cached pymodbus client
         self._last_good_ext: dict[str, int | float] = {}  # previous good extension values
         self._stats = stats  # OperationalStats (optional)
+        self._modbus_lock = modbus_lock or asyncio.Lock()
 
     @property
     def ac_type(self) -> int:
@@ -95,83 +97,86 @@ class ModbusPoller:
         return self._state
 
     async def _connect(self) -> bool:
-        try:
-            result = await asyncio.to_thread(self._controller.connect)
-            self._state.connected = bool(result)
-            if self._state.connected:
-                if self._state.consecutive_errors > 0:
-                    logger.warning(
-                        "Reconnected to aGate at %s after %d errors",
-                        self._controller.ip_address,
-                        self._state.consecutive_errors,
-                    )
-                    if self._stats:
-                        self._stats.record_conn_recovery()
-                else:
-                    logger.info("Connected to aGate at %s", self._controller.ip_address)
-            return self._state.connected
-        except Exception as exc:
-            self._state.connected = False
-            self._state.last_error = str(exc)
-            logger.error("Connection failed: %s", exc)
-            return False
+        async with self._modbus_lock:
+            try:
+                result = await asyncio.to_thread(self._controller.connect)
+                self._state.connected = bool(result)
+                if self._state.connected:
+                    if self._state.consecutive_errors > 0:
+                        logger.warning(
+                            "Reconnected to aGate at %s after %d errors",
+                            self._controller.ip_address,
+                            self._state.consecutive_errors,
+                        )
+                        if self._stats:
+                            self._stats.record_conn_recovery()
+                    else:
+                        logger.info("Connected to aGate at %s", self._controller.ip_address)
+                return self._state.connected
+            except Exception as exc:
+                self._state.connected = False
+                self._state.last_error = str(exc)
+                logger.error("Connection failed: %s", exc)
+                return False
 
     async def _disconnect(self) -> None:
-        self._close_vreg_client()
-        with contextlib.suppress(Exception):
-            await asyncio.to_thread(self._controller.disconnect)
-        self._state.connected = False
+        async with self._modbus_lock:
+            self._close_vreg_client()
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(self._controller.disconnect)
+            self._state.connected = False
 
     async def _read_startup_points(self) -> None:
         """Read static data once after connect — nameplate and M702 ratings."""
         points: dict[str, Any] = {}
 
-        for method_name in STARTUP_METHODS:
-            method = getattr(self._controller, method_name, None)
-            if method is None:
-                continue
-            try:
-                result = await asyncio.to_thread(method)
-                if isinstance(result, dict):
-                    for k, v in result.items():
-                        if isinstance(v, dict):
-                            points.update(v)
-                        else:
-                            points[k] = v
-            except Exception as exc:
-                logger.warning("Startup read %s failed: %s", method_name, exc)
-
-        # M702 nameplate ratings (max charge/discharge rates) — static
-        m702 = self._controller.get_model(702)
-        if m702:
-            try:
-                m702.read()
-                sf = getattr(m702, "W_SF", None)
-                sf_val = sf.value if sf and sf.value is not None else 0
-                for attr, key in [
-                    ("WChaRteMaxRtg", "max_charge_rate_w"),
-                    ("WDisChaRteMaxRtg", "max_discharge_rate_w"),
-                ]:
-                    pt = getattr(m702, attr, None)
-                    if pt and pt.value is not None:
-                        points[key] = int(pt.value * (10**sf_val))
-            except Exception as exc:
-                logger.debug("M702 rating read failed: %s", exc)
-
-        # Read static-only models once (e.g. M703 DER Enter Service)
-        # These have no POLL_METHOD calling .read(), so raw values won't
-        # appear in the Explorer unless we read them here.
-        for mid in self._STARTUP_READ_MODELS:
-            model = self._controller.get_model(mid)
-            if model:
+        async with self._modbus_lock:
+            for method_name in STARTUP_METHODS:
+                method = getattr(self._controller, method_name, None)
+                if method is None:
+                    continue
                 try:
-                    model.read()
-                    logger.debug("Startup read M%d OK", mid)
+                    result = await asyncio.to_thread(method)
+                    if isinstance(result, dict):
+                        for k, v in result.items():
+                            if isinstance(v, dict):
+                                points.update(v)
+                            else:
+                                points[k] = v
                 except Exception as exc:
-                    logger.debug("Startup read M%d failed: %s", mid, exc)
+                    logger.warning("Startup read %s failed: %s", method_name, exc)
 
-        # Detect AC wiring type (single/split/three-phase) from M701
-        self._detect_ac_type()
+            # M702 nameplate ratings (max charge/discharge rates) — static
+            m702 = self._controller.get_model(702)
+            if m702:
+                try:
+                    m702.read()
+                    sf = getattr(m702, "W_SF", None)
+                    sf_val = sf.value if sf and sf.value is not None else 0
+                    for attr, key in [
+                        ("WChaRteMaxRtg", "max_charge_rate_w"),
+                        ("WDisChaRteMaxRtg", "max_discharge_rate_w"),
+                    ]:
+                        pt = getattr(m702, attr, None)
+                        if pt and pt.value is not None:
+                            points[key] = int(pt.value * (10**sf_val))
+                except Exception as exc:
+                    logger.debug("M702 rating read failed: %s", exc)
+
+            # Read static-only models once (e.g. M703 DER Enter Service)
+            # These have no POLL_METHOD calling .read(), so raw values won't
+            # appear in the Explorer unless we read them here.
+            for mid in self._STARTUP_READ_MODELS:
+                model = self._controller.get_model(mid)
+                if model:
+                    try:
+                        model.read()
+                        logger.debug("Startup read M%d OK", mid)
+                    except Exception as exc:
+                        logger.debug("Startup read M%d failed: %s", mid, exc)
+
+            # Detect AC wiring type (single/split/three-phase) from M701
+            self._detect_ac_type()
 
         self._startup_points = points
         logger.info(
@@ -360,37 +365,79 @@ class ModbusPoller:
                 self._last_good_ext[key] = val
 
     async def _poll_once(self) -> Sample:
-        """Run all read methods and merge into a single Sample."""
+        """Run all read methods and merge into a single Sample.
+
+        Acquires the shared Modbus lock for the entire poll cycle to
+        prevent command handler writes from interleaving with reads
+        (which causes TCP response timeouts and metric gaps).
+        """
         points: dict[str, Any] = {}
         quality = "ok"
 
         # Include cached startup points (nameplate, ratings)
         points.update(self._startup_points)
 
-        for method_name in POLL_METHODS:
-            method = getattr(self._controller, method_name, None)
-            if method is None:
-                continue
+        async with self._modbus_lock:
+            for method_name in POLL_METHODS:
+                method = getattr(self._controller, method_name, None)
+                if method is None:
+                    continue
+                try:
+                    result = await asyncio.to_thread(method)
+                    if isinstance(result, dict):
+                        for k, v in result.items():
+                            if isinstance(v, dict):
+                                points.update(v)
+                            else:
+                                points[k] = v
+                except Exception as exc:
+                    logger.warning("Read %s failed: %s", method_name, exc)
+                    quality = "stale"
+
+            # Derive battery health label from 713.Sta enum
+            _STA_MAP = {0: "OK", 1: "Warning", 3: "Error"}
+            sta = points.get("status_raw")
+            if sta is not None:
+                points["battery_health"] = _STA_MAP.get(sta, f"Unknown ({sta})")
+
+            # Normalise battery state: "Idle" → "Standby" to align with
+            # SunSpec M713 Sta enum and FranklinWH app terminology.
+            # The library returns "Idle" for |DCW| ≤ 50W; we remap here
+            # so all consumers (MQTT, dashboard, HA) see "Standby".
+            if points.get("battery_state") == "Idle":
+                points["battery_state"] = "Standby"
+
+            # Derive human-readable text for M704 WSetMod enum.
+            # SunSpec 704 WSetMod: 0=Off, 1=Pct of WMax (used by bridge).
+            # NOTE: The library writes WSetMod=0 during send_command (library
+            # quirk), but uses WSetPct for Pct-mode control.  We infer the
+            # effective mode from WSetEna + WSetPct so the UI reflects reality.
+            _WSET_MOD_MAP = {0: "Off", 1: "Pct"}
+            wm = points.get("wset_mode")
+            wset_ena = points.get("wset_enabled")
+            wset_pct = points.get("wset_pct")
+            if wset_ena and wset_pct:
+                # Active Pct-mode command — WSetMod register may read 0 but
+                # the aGate is effectively in Pct mode.
+                points["wset_mode_name"] = "Pct"
+            elif wm is not None:
+                points["wset_mode_name"] = _WSET_MOD_MAP.get(
+                    wm, f"Unknown ({wm})"
+                )
+
+            # Guard against Modbus 0xFFFF register corruption in extension values
+            self._sanitize_extension_values(points)
+
             try:
-                result = await asyncio.to_thread(method)
-                if isinstance(result, dict):
-                    for k, v in result.items():
-                        if isinstance(v, dict):
-                            points.update(v)
-                        else:
-                            points[k] = v
+                extra = await asyncio.to_thread(self._read_extra_points)
+                points.update(extra)
             except Exception as exc:
-                logger.warning("Read %s failed: %s", method_name, exc)
-                quality = "stale"
+                logger.warning("Extra point reads failed: %s", exc)
 
-        # Guard against Modbus 0xFFFF register corruption in extension values
-        self._sanitize_extension_values(points)
-
-        try:
-            extra = await asyncio.to_thread(self._read_extra_points)
-            points.update(extra)
-        except Exception as exc:
-            logger.warning("Extra point reads failed: %s", exc)
+            # Fallback: derive critical battery keys from raw model cache
+            # when the library's read_battery_status() returned {} (failed
+            # silently).  Prevents dashboard/HA "--" on transient failures.
+            self._derive_battery_from_model(points)
 
         if not points:
             quality = "error"
@@ -428,6 +475,52 @@ class ModbusPoller:
                 if val is not None:
                     raw[f"{mid}.{pt_name}"] = val
         return raw
+
+    def _derive_battery_from_model(self, points: dict[str, Any]) -> None:
+        """Fill in critical battery keys from raw model cache when missing.
+
+        The library's ``read_battery_status()`` returns ``soh``, ``wh_rating``,
+        ``wh_available`` etc., but if it fails silently (returns ``{}``) those
+        keys vanish from the sample.  Since ``_extract_raw_model_values()``
+        has already populated the raw ``713.SoH``, ``713.WHRtg`` etc. from
+        the model's cached last-read data, we can compute the derived keys
+        as a safety net.  This prevents dashboard/HA entities from showing
+        "--" during transient read failures.
+
+        Only fills keys that are NOT already present — never overwrites a
+        value from the library's high-level method.
+        """
+        m713 = self._controller.get_model(713)
+        if not m713:
+            return
+
+        # Scale factors from the model (already cached from last .read())
+        sf_pct = self._get_scale_factor(m713, "Pct_SF")
+        sf_wh = self._get_scale_factor(m713, "WH_SF")
+
+        # (derived_key, model_attr, scale_factor, precision)
+        _FALLBACKS: list[tuple[str, str, int, int]] = [
+            ("soc", "SoC", sf_pct, 1),
+            ("soh", "SoH", sf_pct, 1),
+            ("wh_rating", "WHRtg", sf_wh, 0),
+            ("wh_available", "WHAvail", sf_wh, 0),
+        ]
+
+        filled = []
+        for key, attr, sf, precision in _FALLBACKS:
+            if key in points:
+                continue  # library already provided it
+            pt = getattr(m713, attr, None)
+            if pt and hasattr(pt, "value") and pt.value is not None:
+                points[key] = round(pt.value * (10 ** sf), precision)
+                filled.append(key)
+
+        if filled:
+            logger.info(
+                "Derived %d battery key(s) from M713 model cache: %s",
+                len(filled),
+                ", ".join(filled),
+            )
 
     def _read_extra_points(self) -> dict[str, Any]:
         """Read points not covered by the standard controller methods."""

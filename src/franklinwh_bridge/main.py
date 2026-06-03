@@ -143,12 +143,19 @@ async def lifespan(app: FastAPI):
         gw = config.settings.gateway
         controller = FranklinWHController(ip_address=gw.host, port=gw.port, unit_id=gw.unit_id)
 
+        # Shared Modbus lock — prevents poller reads and command writes
+        # from interleaving on the same TCP connection, which causes
+        # response timeouts and metric data gaps.
+        modbus_lock = asyncio.Lock()
+        app.state.modbus_lock = modbus_lock
+
         poller = ModbusPoller(
             controller=controller,
             sample_bus=sample_bus,
             gateway_id=gateway_id,
             poll_interval=gw.poll_interval,
             stats=stats,
+            modbus_lock=modbus_lock,
         )
         app.state.poller = poller
         app.state.controller = controller
@@ -163,6 +170,7 @@ async def lifespan(app: FastAPI):
             db,
             on_state_changed=mqtt_publisher.publish_command_state,
             points_getter=_get_cached_points,
+            modbus_lock=modbus_lock,
         )
         mqtt_publisher.set_command_handler(command_handler)
         app.state.command_handler = command_handler
@@ -382,9 +390,11 @@ async def lifespan(app: FastAPI):
         await command_handler.stop()
 
     # 2. Take final hw state snapshot before disconnecting
+    #    Poller may still be running — acquire Modbus lock to avoid contention.
     if controller:
         try:
-            hw_state = await asyncio.to_thread(controller.read_control_status)
+            async with modbus_lock:
+                hw_state = await asyncio.to_thread(controller.read_control_status)
             await log_control_event(
                 db,
                 event="shutdown_hw_snapshot",

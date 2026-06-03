@@ -459,9 +459,11 @@ body {
 [data-theme="light"] .text-emerald-400 { color: #059669 !important; }
 [data-theme="light"] .text-red-400 { color: #dc2626 !important; }
 /* Borders */
+[data-theme="light"] .border-white\/5,
 [data-theme="light"] .border-white\/\[0\.08\],
 [data-theme="light"] .border-white\/\[0\.06\],
-[data-theme="light"] .border-white\/\[0\.04\] { border-color: rgba(0,0,0,0.08) !important; }
+[data-theme="light"] .border-white\/\[0\.04\],
+[data-theme="light"] .border-white\/\[0\.03\] { border-color: rgba(0,0,0,0.08) !important; }
 /* Card & surface overrides */
 [data-theme="light"] .card {
   background: var(--surface-0);
@@ -553,6 +555,30 @@ body {
 [data-theme="light"] .hover\:border-white\/\[0\.1\]:hover {
   border-color: rgba(0, 0, 0, 0.15) !important;
 }
+
+/* ── Light theme: Release Control modal ─────────────────── */
+/* Modal panel border + surface */
+[data-theme="light"] .border-slate-600\/40,
+[data-theme="light"] .border-slate-600\/30 { border-color: rgba(0,0,0,0.12) !important; }
+[data-theme="light"] .border-slate-700 { border-color: rgba(0,0,0,0.10) !important; }
+[data-theme="light"] .border-slate-700\/50 { border-color: rgba(0,0,0,0.06) !important; }
+/* Red-tinted elements — ensure contrast on white */
+[data-theme="light"] .border-red-500\/40 { border-color: rgba(220,38,38,0.35) !important; }
+[data-theme="light"] .border-red-500\/30 { border-color: rgba(220,38,38,0.25) !important; }
+[data-theme="light"] .border-red-500\/20 { border-color: rgba(220,38,38,0.20) !important; }
+[data-theme="light"] .bg-red-500\/10 { background-color: rgba(220,38,38,0.06) !important; }
+[data-theme="light"] .bg-red-500\/20 { background-color: rgba(220,38,38,0.10) !important; }
+[data-theme="light"] .hover\:bg-red-500\/30:hover { background-color: rgba(220,38,38,0.15) !important; }
+[data-theme="light"] .hover\:border-red-400:hover { border-color: rgba(220,38,38,0.50) !important; }
+/* Pale red text → readable on light bg */
+[data-theme="light"] .text-red-300,
+[data-theme="light"] .text-red-300\/80 { color: #b91c1c !important; } /* red-700 */
+/* Button surfaces */
+[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; } /* slate-200 */
+/* Release modal cells */
+[data-theme="light"] .release-cell { background-color: rgba(0,0,0,0.03) !important; }
+/* Backdrop — keep dark overlay */
+[data-theme="light"] .bg-black\/60 { background-color: rgba(0,0,0,0.40) !important; }
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {

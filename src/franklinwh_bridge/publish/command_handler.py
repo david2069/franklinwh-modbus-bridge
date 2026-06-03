@@ -31,7 +31,7 @@ from franklinwh_bridge.store.db import log_control_event, save_control_state
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_WATCHDOG_S = 3600
+DEFAULT_WATCHDOG_S = 0  # 0 = no time limit (run until explicitly released)
 DEFAULT_MAX_POWER_W = 5000
 SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
 
@@ -63,6 +63,7 @@ class CommandHandler:
         max_charge_w: int = DEFAULT_MAX_POWER_W,
         max_discharge_w: int = DEFAULT_MAX_POWER_W,
         points_getter: Callable[[], dict[str, Any]] | None = None,
+        modbus_lock: asyncio.Lock | None = None,
     ) -> None:
         self._controller = controller
         self._db = db
@@ -76,6 +77,7 @@ class CommandHandler:
         self._target_soc: int = 0  # 0 = disabled; otherwise stop at this SoC
         self._max_charge_w: int = max_charge_w
         self._max_discharge_w: int = max_discharge_w
+        self._modbus_lock = modbus_lock or asyncio.Lock()
 
     @property
     def state(self) -> CommandState:
@@ -134,7 +136,8 @@ class CommandHandler:
 
     async def _read_hw_state(self) -> dict | None:
         try:
-            return await asyncio.to_thread(self._controller.read_control_status)
+            async with self._modbus_lock:
+                return await asyncio.to_thread(self._controller.read_control_status)
         except Exception as exc:
             logger.debug("Could not read hw state for audit: %s", exc)
             return None
@@ -186,7 +189,7 @@ class CommandHandler:
                 if self._state.active:
                     await self._handle_battery_command(self._state.action)
             elif slug == "battery_command_duration":
-                self._command_duration_s = max(60, min(int(float(payload)), 7200))
+                self._command_duration_s = max(0, min(int(float(payload)), 7200))
                 self._state.watchdog_s = self._command_duration_s
                 if self._on_state_changed:
                     await self._on_state_changed()
@@ -215,8 +218,9 @@ class CommandHandler:
             await self._release_command(reason=action)
             return
 
-        if action == "Idle":
+        if action in ("Standby", "Idle"):  # "Idle" kept for backwards compat
             watts = 0
+            action = "Standby"  # normalise to canonical name
         elif action in ("Charge", "Discharge"):
             # Pick directional limit
             max_w = (
@@ -234,20 +238,47 @@ class CommandHandler:
             logger.warning("Unknown battery command: %s", action)
             return
 
+        # Validate target SoC against the command direction.  A stale
+        # target from a previous Charge (e.g. 75%) would cause an
+        # immediate release if SoC is already below that target when
+        # Discharging.  Clear it and warn.
+        if self._target_soc > 0:
+            soc = self._read_soc()
+            if soc is not None:
+                is_charge = action == "Charge"
+                if is_charge and soc >= self._target_soc:
+                    logger.warning(
+                        "Target SoC %d%% already reached (SoC=%.1f%%) — clearing target",
+                        self._target_soc, soc,
+                    )
+                    self._target_soc = 0
+                elif not is_charge and soc <= self._target_soc:
+                    logger.warning(
+                        "Target SoC %d%% already reached for %s (SoC=%.1f%%) — clearing target",
+                        self._target_soc, action, soc,
+                    )
+                    self._target_soc = 0
+
         self._state.watchdog_s = self._command_duration_s
         cmd = BatteryCommand(power_watts=watts)
-        success, msg = await asyncio.to_thread(
-            self._controller.send_command, cmd, duration_s=self._state.watchdog_s
-        )
+        # Pass duration to library only when > 0 (0 = no library timer)
+        lib_duration = self._state.watchdog_s if self._state.watchdog_s > 0 else None
 
-        # Write WSetRvrtTms to keep the aGate in VPP (remote-control) mode.
-        # The hardware countdown (WSetRvrtRem) is cosmetic (stays at 0) on
-        # the aGate, but writing WSetRvrtTms > 0 is still required to lock
-        # out mobile-app overrides during the dispatch.
-        if success:
-            await asyncio.to_thread(
-                self._write_revert_timer, self._state.watchdog_s
+        # Acquire Modbus lock for the entire send + revert-timer write
+        # to prevent interleaving with poller reads.
+        async with self._modbus_lock:
+            success, msg = await asyncio.to_thread(
+                self._controller.send_command, cmd, duration_s=lib_duration
             )
+
+            # Write WSetRvrtTms to keep the aGate in VPP (remote-control) mode.
+            # The hardware countdown (WSetRvrtRem) is cosmetic (stays at 0) on
+            # the aGate, but writing WSetRvrtTms > 0 is still required to lock
+            # out mobile-app overrides during the dispatch.
+            # For indefinite commands (duration=0), use max value to keep VPP locked.
+            if success:
+                rvrt_s = self._state.watchdog_s if self._state.watchdog_s > 0 else 7200
+                await asyncio.to_thread(self._write_revert_timer, rvrt_s)
 
         self._state.active = True
         self._state.action = action
@@ -271,13 +302,28 @@ class CommandHandler:
         prev_action = self._state.action
         prev_power = self._state.power_w
 
-        self._cancel_watchdog()
-        success = await asyncio.to_thread(self._full_release)
+        # Cancel watchdog only for external releases (user/shutdown).
+        # When called FROM the watchdog itself (watchdog_expired,
+        # target_soc_reached), _cancel_watchdog() would self-cancel the
+        # running task, aborting this release before state is updated.
+        if reason in ("watchdog_expired", "target_soc_reached"):
+            self._watchdog_task = None  # clear ref; task is already exiting
+        else:
+            self._cancel_watchdog()
+
+        async with self._modbus_lock:
+            success = await asyncio.to_thread(self._full_release)
 
         self._state.active = False
         self._state.action = ""
         self._state.power_w = 0
         self._state.last_result = "Released" if success else "Release failed"
+
+        # Clear target SoC so it doesn't poison the next command.
+        # Without this, a target set for Charge (e.g. 75%) would cause
+        # a subsequent Discharge to release immediately if SoC is already
+        # below the target.
+        self._target_soc = 0
 
         await self._persist_state()
         await self._log_event(
@@ -357,7 +403,8 @@ class CommandHandler:
             logger.warning("%s", self._state.last_result)
         else:
             try:
-                success, msg = await asyncio.to_thread(method, mode_val)
+                async with self._modbus_lock:
+                    success, msg = await asyncio.to_thread(method, mode_val)
                 self._state.last_result = msg
                 if success:
                     logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
@@ -387,7 +434,8 @@ class CommandHandler:
             logger.warning("%s", self._state.last_result)
         else:
             try:
-                success, msg = await asyncio.to_thread(method, pct)
+                async with self._modbus_lock:
+                    success, msg = await asyncio.to_thread(method, pct)
                 self._state.last_result = msg
                 if success:
                     logger.info("%s reserve set to %d%%", reserve_type, pct)
@@ -436,19 +484,29 @@ class CommandHandler:
 
         Checks SoC every ``SOC_CHECK_INTERVAL_S`` seconds and releases
         the command when the target is reached.  Charging stops when SoC
-        >= target; discharging stops when SoC <= target.  If no target is
-        set (0) only the duration timeout applies.
+        >= target; discharging stops when SoC <= target.
+
+        When duration is 0 (no limit), only the target SoC check applies.
+        If both are 0, the command runs until explicitly released.
         """
         try:
+            # Initial delay: let _handle_battery_command finish returning
+            # to the API before we start checking.  Without this, a stale
+            # target SoC can trigger an immediate release that overwrites
+            # last_result before the API reads it.
+            await asyncio.sleep(SOC_CHECK_INTERVAL_S)
+
             while True:
-                elapsed = time.time() - self._state.started_at
-                if elapsed >= self._state.watchdog_s:
-                    logger.warning(
-                        "Watchdog expired after %ds — releasing battery command",
-                        self._state.watchdog_s,
-                    )
-                    await self._release_command(reason="watchdog_expired")
-                    return
+                # Duration timeout (skip when 0 = no time limit)
+                if self._state.watchdog_s > 0:
+                    elapsed = time.time() - self._state.started_at
+                    if elapsed >= self._state.watchdog_s:
+                        logger.warning(
+                            "Watchdog expired after %ds — releasing battery command",
+                            self._state.watchdog_s,
+                        )
+                        await self._release_command(reason="watchdog_expired")
+                        return
 
                 # Check target SoC
                 target = self._target_soc

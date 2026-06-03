@@ -134,37 +134,49 @@
         <div>
           <h4 class="text-[0.65rem] font-semibold text-slate-500 uppercase tracking-wider mb-2">M704 Hardware Registers</h4>
           <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+            <!-- Row 1: Enable + Mode -->
+            <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">WSetEna</span>
               <span class="font-mono font-semibold"
                     :class="$store.app.releaseControlState.wsetEna === 1 ? 'text-red-400' : 'text-slate-400'"
                     x-text="$store.app.releaseControlState.wsetEna ?? '--'"></span>
             </div>
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+            <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">WSetMod</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.wsetMod ?? '--'"></span>
+            </div>
+            <!-- Row 2: Power targets -->
+            <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">WSetPct</span>
               <span class="font-mono font-semibold"
                     :class="$store.app.releaseControlState.wsetPctRaw != null && $store.app.releaseControlState.wsetPctRaw !== 0 ? 'text-amber-400' : 'text-slate-400'"
                     x-text="$store.app.releaseControlState.wsetPctRaw != null ? $store.app.releaseControlState.wsetPctRaw + '%' : '--'"></span>
             </div>
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+            <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">WSet</span>
               <span class="font-mono font-semibold text-slate-400"
                     x-text="$store.app.releaseControlState.wsetW != null ? Math.round($store.app.releaseControlState.wsetW) + 'W' : '--'"></span>
             </div>
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
-              <span class="text-slate-500">WSetMod</span>
-              <span class="font-mono font-semibold text-slate-400"
-                    x-text="$store.app.releaseControlState.wsetMod ?? '--'"></span>
-            </div>
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+            <!-- Row 3: Revert timer + countdown (paired) -->
+            <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">RvrtTms</span>
               <span class="font-mono font-semibold"
-                    :class="$store.app.releaseControlState.rvrtRem > 0 ? 'text-amber-400' : 'text-slate-400'"
+                    :class="$store.app.releaseControlState.rvrtTms > 0 ? 'text-amber-400' : 'text-slate-400'"
+                    x-text="$store.app.releaseControlState.rvrtTms != null
+                      ? Math.floor($store.app.releaseControlState.rvrtTms / 60) + 'm ' + ($store.app.releaseControlState.rvrtTms % 60) + 's'
+                      : '--'"></span>
+            </div>
+            <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">RvrtRem</span>
+              <span class="font-mono font-semibold"
+                    :class="$store.app.releaseControlState.rvrtRem > 0 ? 'text-emerald-400' : 'text-slate-400'"
                     x-text="$store.app.releaseControlState.rvrtRem != null && $store.app.releaseControlState.rvrtRem > 0
                       ? Math.floor($store.app.releaseControlState.rvrtRem / 60) + 'm ' + ($store.app.releaseControlState.rvrtRem % 60) + 's'
-                      : ($store.app.releaseControlState.rvrtTms ?? '--')"></span>
+                      : '0'"></span>
             </div>
-            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+            <!-- Row 4: Control mode (full width) -->
+            <div class="release-cell col-span-2 flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">LocRemCtl</span>
               <span class="font-mono font-semibold text-slate-400"
                     x-text="$store.app.releaseControlState.locRemCtl ?? '--'"></span>

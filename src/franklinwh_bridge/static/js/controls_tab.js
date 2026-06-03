@@ -6,13 +6,14 @@ function controlsTab() {
     command: 'Not Active',
     powerW: 0,
     powerPct: 0,
-    duration: 3600,
+    duration: 0,
     targetSoc: 0,
     operatingMode: '',
     selfReserve: 20,
     touReserve: 20,
     lastResult: '',
     sending: false,
+    commandLog: [],
 
     init() {
       // Sync initial state from points (may not be loaded yet)
@@ -48,6 +49,33 @@ function controlsTab() {
       }
     },
 
+    _logEntry(slug, value, ok, message) {
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const label = slug.replace(/^battery_command_/, '').replace(/_/g, ' ');
+      this.commandLog.push({ ts, slug: label, value, ok, message });
+      // Cap at 50 entries
+      if (this.commandLog.length > 50) {
+        this.commandLog.splice(0, this.commandLog.length - 50);
+      }
+      // Auto-scroll after Alpine renders
+      this.$nextTick(() => {
+        const el = this.$refs?.logScroll;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    setMaxCharge() {
+      const v = Alpine.store('app').points.max_charge_rate_w ?? 5000;
+      this.powerW = v;
+      this.sendCommand('battery_command_power', v);
+    },
+
+    setMaxDischarge() {
+      const v = Alpine.store('app').points.max_discharge_rate_w ?? 5000;
+      this.powerW = v;
+      this.sendCommand('battery_command_power', v);
+    },
+
     async sendCommand(slug, value) {
       if (this.sending) return;
       this.sending = true;
@@ -61,9 +89,11 @@ function controlsTab() {
 
       if (data && data.ok) {
         this.lastResult = data.result || 'Sent';
+        this._logEntry(slug, value, true, data.result || 'Sent');
         Alpine.store('app').toast(`${slug}: ${data.result}`, 'info');
       } else {
         this.lastResult = data?.result || data?.error || 'Failed';
+        this._logEntry(slug, value, false, this.lastResult);
         Alpine.store('app').toast(`Command failed: ${this.lastResult}`, 'error');
       }
 

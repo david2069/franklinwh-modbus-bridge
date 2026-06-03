@@ -14,8 +14,7 @@
           <option value="Not Active">Not Active</option>
           <option value="Charge">Charge</option>
           <option value="Discharge">Discharge</option>
-          <option value="Idle">Idle</option>
-          <option value="Stop">Stop</option>
+          <option value="Standby">Standby</option>
           <option value="Release">Release</option>
         </select>
       </div>
@@ -52,15 +51,16 @@
       <div class="card">
         <div class="card-label mb-3">Command Duration</div>
         <div class="flex items-center gap-3">
-          <input type="range" min="60" max="7200" step="60" x-model="duration"
+          <input type="range" min="0" max="7200" step="60" x-model="duration"
                  class="flex-1 accent-cyan-500 h-2 rounded-lg cursor-pointer"
                  @change="sendCommand('battery_command_duration', duration)">
-          <input type="number" x-model="duration" min="60" max="7200" step="60"
+          <input type="number" x-model="duration" min="0" max="7200" step="60"
                  class="form-control w-24 text-center"
                  @change="sendCommand('battery_command_duration', duration)">
           <span class="text-xs text-slate-500">sec</span>
         </div>
-        <div class="text-xs text-slate-500 mt-2" x-text="Math.floor(duration / 60) + ' min ' + (duration % 60) + 's'"></div>
+        <div class="text-xs text-slate-500 mt-2"
+             x-text="duration == 0 ? 'No limit (run until released)' : Math.floor(duration / 60) + ' min ' + (duration % 60) + 's'"></div>
       </div>
 
     </div>

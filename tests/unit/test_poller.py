@@ -404,3 +404,83 @@ def test_sanitize_passes_normal_values(poller):
     assert points["total_solar"] == 4200
     assert points["pv_proximal"] == 4200
     assert points["home_load_ext"] == 650
+
+
+# --- Battery model fallback ---
+
+
+def _make_m713_cached():
+    """Create a mock M713 model with cached point values (as if .read() ran)."""
+    m713 = MagicMock()
+
+    # Scale factors
+    pct_sf = MagicMock()
+    pct_sf.value = -1  # SoC/SoH: raw * 10^(-1)
+    m713.Pct_SF = pct_sf
+
+    wh_sf = MagicMock()
+    wh_sf.value = 0  # WHRtg/WHAvail: raw * 10^0 = raw
+    m713.WH_SF = wh_sf
+
+    # Battery point values (cached from last successful read)
+    m713.SoC = MagicMock(value=850)   # 850 * 10^(-1) = 85.0%
+    m713.SoH = MagicMock(value=955)   # 955 * 10^(-1) = 95.5%
+    m713.WHRtg = MagicMock(value=13600)   # 13600 Wh
+    m713.WHAvail = MagicMock(value=11066)  # 11066 Wh
+
+    return m713
+
+
+def test_battery_fallback_fills_missing_keys(mock_controller, sample_bus):
+    """Fallback derives soh/wh_rating/wh_available from M713 when library fails."""
+    m713 = _make_m713_cached()
+
+    def get_model(mid):
+        return m713 if mid == 713 else None
+
+    mock_controller.get_model.side_effect = get_model
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+
+    # Simulate: read_battery_status() returned {} (failed silently)
+    points: dict = {}
+    poller._derive_battery_from_model(points)
+
+    assert points["soc"] == 85.0
+    assert points["soh"] == 95.5
+    assert points["wh_rating"] == 13600
+    assert points["wh_available"] == 11066
+
+
+def test_battery_fallback_does_not_overwrite_library(mock_controller, sample_bus):
+    """Fallback skips keys that the library already provided."""
+    m713 = _make_m713_cached()
+
+    def get_model(mid):
+        return m713 if mid == 713 else None
+
+    mock_controller.get_model.side_effect = get_model
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+
+    # Simulate: read_battery_status() provided soc and soh normally
+    points = {"soc": 84.0, "soh": 95.0}
+    poller._derive_battery_from_model(points)
+
+    # Library values preserved
+    assert points["soc"] == 84.0
+    assert points["soh"] == 95.0
+    # Missing keys still derived
+    assert points["wh_rating"] == 13600
+    assert points["wh_available"] == 11066
+
+
+def test_battery_fallback_no_model_is_noop(mock_controller, sample_bus):
+    """Fallback is a no-op when M713 model is not available."""
+    mock_controller.get_model.return_value = None
+
+    poller = ModbusPoller(mock_controller, sample_bus, poll_interval=1)
+    points: dict = {}
+    poller._derive_battery_from_model(points)
+
+    assert points == {}

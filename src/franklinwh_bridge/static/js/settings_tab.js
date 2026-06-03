@@ -1,5 +1,5 @@
 /**
- * Settings Tab — MQTT status, entities, poller status, metrics config
+ * Settings Tab — MQTT status, gateway connectivity, entities, poller status, metrics config
  */
 function settingsTab() {
   return {
@@ -10,7 +10,12 @@ function settingsTab() {
     mqttTesting: false,
     mqttTestResult: null,
     mqttSaving: false,
+    confirmRepublish: false,
+    confirmUnpublish: false,
     poller: {},
+    gateway: {},
+    gwTesting: false,
+    gwTestResult: null,
     entities: [],
     entityFilter: '',
     metricsRetention: 30,
@@ -22,6 +27,8 @@ function settingsTab() {
     backups: [],
     backupBusy: false,
     exportRange: '24h',
+    confirmRestoreName: null,
+    restoring: false,
     groups: [],
     groupsBusy: false,
 
@@ -32,6 +39,7 @@ function settingsTab() {
       await this.loadStorage();
       await this.loadBackups();
       await this.loadGroups();
+      await this.loadGateway();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -57,6 +65,38 @@ function settingsTab() {
       const data = await fetchJSON('api/mqtt/config');
       if (data && !data.error && data.host) {
         this.mqttConfig = data;
+      }
+    },
+
+    async loadGateway() {
+      const data = await fetchJSON('api/gateway');
+      if (data && !data.error) {
+        this.gateway = data;
+      }
+    },
+
+    async testGateway() {
+      this.gwTesting = true;
+      this.gwTestResult = null;
+      try {
+        const data = await fetchJSON('api/gateway/test');
+        if (data && data.ok) {
+          this.gwTestResult = {
+            ok: true,
+            msg: `TCP connection OK to ${data.host}:${data.port}`,
+            latency: data.latency_ms,
+          };
+        } else {
+          this.gwTestResult = {
+            ok: false,
+            msg: data?.error || 'Connection failed',
+            latency: null,
+          };
+        }
+      } catch (e) {
+        this.gwTestResult = { ok: false, msg: String(e), latency: null };
+      } finally {
+        this.gwTesting = false;
       }
     },
 
@@ -138,6 +178,33 @@ function settingsTab() {
       }
     },
 
+    async restoreBackup(name) {
+      if (!name) return;
+      this.restoring = true;
+      try {
+        const data = await fetchJSON('api/backup/restore', {
+          method: 'POST',
+          body: JSON.stringify({ name }),
+        });
+        if (data && data.ok) {
+          Alpine.store('app').toast(
+            `Restored from "${name}". Restart the bridge to reload state.`,
+            'info',
+          );
+          await this.loadBackups();
+        } else {
+          Alpine.store('app').toast(
+            'Restore failed: ' + (data?.error || data?.detail || 'unknown'),
+            'error',
+          );
+        }
+      } catch (e) {
+        Alpine.store('app').toast('Restore failed: ' + String(e), 'error');
+      } finally {
+        this.restoring = false;
+      }
+    },
+
     async loadGroups() {
       const data = await fetchJSON('api/groups');
       if (data && !data.error && data.groups) {
@@ -181,9 +248,18 @@ function settingsTab() {
       );
     },
 
-    getEntityValue(slug) {
+    getEntityValue(entity) {
       const pts = Alpine.store('app').points;
-      return pts[slug] !== undefined ? String(pts[slug]) : '--';
+      const key = entity.stat_key || entity.slug;
+      const raw = pts[key];
+      if (raw === undefined || raw === null) return '--';
+      if (typeof raw === 'string') return raw;
+      // Binary sensors: show On/Off instead of 1/0
+      if (entity.ha_type === 'binary_sensor') return raw ? 'On' : 'Off';
+      const scale = entity.value_scale ?? 1;
+      const prec = entity.value_precision;
+      const val = raw * scale;
+      return prec != null ? val.toFixed(prec) : String(val);
     },
 
     /** Colour-code the source badge by model family. */

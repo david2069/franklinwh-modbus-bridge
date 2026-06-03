@@ -162,6 +162,9 @@ async def get_topics(request: Request):
             "name": entity.name,
             "ha_type": entity.ha_type,
             "source": entity.source,
+            "stat_key": entity.stat_key,
+            "value_scale": entity.value_scale,
+            "value_precision": entity.value_precision,
             "state_topic": entity.state_topic(short_id),
             "discovery_topic": entity.discovery_topic(short_id),
         }

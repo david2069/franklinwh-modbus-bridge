@@ -58,11 +58,31 @@ function dashboardTab() {
       { value: 'live', label: 'Live' },
       { value: '30m', label: '30m' },
       { value: '1h',  label: '1h' },
+      { value: '2h',  label: '2h' },
+      { value: '4h',  label: '4h' },
       { value: '6h',  label: '6h' },
+      { value: '18h', label: '18h' },
       { value: '24h', label: '24h' },
       { value: '7d',  label: '7d' },
       { value: '30d', label: '30d' },
     ],
+
+    // Time scale (bucket) selector
+    chartBucket: '',  // empty = auto
+    chartBuckets: [
+      { value: '',    label: 'Auto' },
+      { value: '1m',  label: '1m' },
+      { value: '5m',  label: '5m' },
+      { value: '10m', label: '10m' },
+      { value: '15m', label: '15m' },
+      { value: '30m', label: '30m' },
+      { value: '1h',  label: '1h' },
+    ],
+
+    // Date range picker
+    showDateRange: false,
+    dateStart: '',
+    dateEnd: '',
 
     // Fast poll interval for live mode
     _fastInterval: null,
@@ -99,6 +119,7 @@ function dashboardTab() {
 
     async setChartRange(range) {
       this.chartRange = range;
+      this.showDateRange = false;  // close date picker when selecting preset
 
       // Fast polling for live mode (2s), normal for everything else
       if (range === 'live') {
@@ -106,6 +127,51 @@ function dashboardTab() {
       } else {
         this._stopFastPoll();
         await this._loadMetrics();
+      }
+    },
+
+    async setChartBucket(bucket) {
+      this.chartBucket = bucket;
+      if (this.chartRange !== 'live') {
+        await this._loadMetrics();
+      }
+    },
+
+    async loadDateRange() {
+      if (!this.dateStart || !this.dateEnd) {
+        Alpine.store('app').toast('Select both start and end dates', 'error');
+        return;
+      }
+      const startTs = new Date(this.dateStart).getTime() / 1000;
+      const endTs = new Date(this.dateEnd).getTime() / 1000;
+      if (endTs <= startTs) {
+        Alpine.store('app').toast('End date must be after start date', 'error');
+        return;
+      }
+      // Cap to 90 days
+      if ((endTs - startTs) > 90 * 86400) {
+        Alpine.store('app').toast('Date range cannot exceed 90 days', 'error');
+        return;
+      }
+
+      this.chartRange = 'custom';
+      this._stopFastPoll();
+
+      let url = `api/metrics?start=${startTs}&end=${endTs}`;
+      if (this.chartBucket) url += `&bucket=${this.chartBucket}`;
+
+      const data = await fetchJSON(url);
+      if (data && !data.error && data.points && data.points.length > 0) {
+        const labels = data.points.map(p => this._formatChartLabel(p.ts));
+        const battery = data.points.map(p => p.battery_w);
+        const grid = data.points.map(p => p.grid_w);
+        const solar = data.points.map(p => p.solar_w);
+        const home = data.points.map(p => p.home_w);
+        this._updateChartData(labels, battery, grid, solar, home);
+        this._updateModalChart(labels, battery, grid, solar, home);
+        Alpine.store('app').toast(`Loaded ${data.points.length} points`, 'info');
+      } else {
+        Alpine.store('app').toast('No data found for selected range', 'error');
       }
     },
 
@@ -134,14 +200,14 @@ function dashboardTab() {
       if (range === 'live' || range === '30m' || range === '1h') {
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       }
-      if (range === '6h' || range === '24h') {
+      if (range === '2h' || range === '4h' || range === '6h' || range === '18h' || range === '24h') {
         if (!sameDay) {
           return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
                  d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
-      // 7d / 30d — always show date + time
+      // 7d, 30d, custom — always show date + time
       return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
              d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     },
@@ -166,7 +232,13 @@ function dashboardTab() {
         return;
       }
 
-      const data = await fetchJSON('api/metrics?range=' + this.chartRange);
+      // Custom date range is loaded via loadDateRange(), skip here
+      if (this.chartRange === 'custom') return;
+
+      let url = 'api/metrics?range=' + this.chartRange;
+      if (this.chartBucket) url += '&bucket=' + this.chartBucket;
+
+      const data = await fetchJSON(url);
       if (data && !data.error && data.points && data.points.length > 0) {
         const labels = data.points.map(p => this._formatChartLabel(p.ts));
         const battery = data.points.map(p => p.battery_w);
@@ -469,7 +541,8 @@ function dashboardTab() {
         },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
+          maintainAspectRatio: true,
+          aspectRatio: 2.2,
           animation: { duration: 300 },
           interaction: { mode: 'index', intersect: false },
           plugins: {
@@ -551,11 +624,10 @@ function dashboardTab() {
         { label: lbl('Operating Mode', 'mode_name'), value: pts.mode_name || '--' },
         { label: lbl('Power Setpoint', 'wset_watts'), value: pts.wset_watts != null ? (pts.wset_watts / 1000).toFixed(2) + ' kW' : '--' },
         { label: lbl('Power Setpoint %', 'wset_pct'), value: pts.wset_pct != null ? pts.wset_pct + '%' : '--' },
-        { label: lbl('Remote Power Control', 'wset_enabled'), value: pts.wset_enabled ?? '--' },
         { label: lbl('SW Watchdog Remaining', 'sw_watchdog_remain_s'), value: fmt_val(pts.sw_watchdog_remain_s, 's') },
         { label: lbl('Total Capacity', 'wh_rating'), value: pts.wh_rating != null ? (pts.wh_rating / 1000).toFixed(3) + ' kWh' : '--' },
-        { label: lbl('WSet Enabled', 'wset_enabled'), value: pts.wset_enabled === 2 || pts.wset_enabled === true ? 'On' : 'Off' },
-        { label: lbl('WSet Mode', 'wset_mode'), value: pts.wset_mode ?? '--' },
+        { label: lbl('WSet Enabled', 'wset_enabled'), value: pts.wset_enabled != null ? (pts.wset_enabled ? 'On' : 'Off') : '--' },
+        { label: lbl('WSet Mode', 'wset_mode_name'), value: pts.wset_mode_name || '--' },
       ];
     },
   };

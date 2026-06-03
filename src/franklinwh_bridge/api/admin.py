@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import socket
+import time
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import get_pics_compliance, set_pics_status
 from franklinwh_bridge.store.metrics import (
+    BUCKET_MAP,
     RANGE_MAP,
     archive_old_metrics,
     export_metrics,
@@ -26,6 +29,7 @@ from franklinwh_bridge.store.metrics import (
     get_storage_stats,
     import_metrics_csv,
     query_metrics,
+    query_metrics_daterange,
     query_metrics_with_archive,
     set_retention_days,
 )
@@ -82,6 +86,45 @@ async def get_gateway(request: Request):
         "unit_id": gw.unit_id,
         "poll_interval": gw.poll_interval,
     }
+
+
+@router.get("/gateway/test")
+async def test_gateway(request: Request) -> dict:
+    """Test TCP connectivity to the configured gateway host:port."""
+    config = getattr(request.app.state, "config", None)
+    if config is None:
+        raise HTTPException(503, "Bridge configuration not available")
+    gw = config.settings.gateway
+    host = gw.host
+    port = gw.port
+
+    def _tcp_connect() -> float:
+        """Blocking TCP connect; returns elapsed seconds."""
+        t0 = time.monotonic()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        try:
+            sock.connect((host, port))
+        finally:
+            sock.close()
+        return time.monotonic() - t0
+
+    try:
+        elapsed = await asyncio.wait_for(asyncio.to_thread(_tcp_connect), timeout=5)
+        return {
+            "ok": True,
+            "host": host,
+            "port": port,
+            "latency_ms": round(elapsed * 1000, 1),
+        }
+    except (ConnectionRefusedError, OSError, TimeoutError) as exc:
+        return {
+            "ok": False,
+            "host": host,
+            "port": port,
+            "latency_ms": None,
+            "error": str(exc) or type(exc).__name__,
+        }
 
 
 @router.get("/models")
@@ -145,7 +188,13 @@ async def read_model(model_id: int, request: Request):
             if not was_connected:
                 controller.disconnect()
 
-    result = await asyncio.to_thread(_do_read)
+    # Acquire Modbus lock to prevent interleaving with poller/commands
+    modbus_lock = getattr(request.app.state, "modbus_lock", None)
+    if modbus_lock:
+        async with modbus_lock:
+            result = await asyncio.to_thread(_do_read)
+    else:
+        result = await asyncio.to_thread(_do_read)
     if "error" in result:
         raise HTTPException(404, result["error"])
 
@@ -226,21 +275,64 @@ async def get_point(point_id: str, request: Request):
 
 
 @router.get("/metrics")
-async def get_metrics(request: Request, range: str = "30m"):  # noqa: A002
-    """Return power time-series for the dashboard chart."""
-    if range not in RANGE_MAP:
+async def get_metrics(
+    request: Request,
+    range: str | None = None,  # noqa: A002
+    start: float | None = None,
+    end: float | None = None,
+    bucket: str | None = None,
+):
+    """Return power time-series for the dashboard chart.
+
+    Supports two modes:
+    - **Relative range**: ``?range=30m`` (default) — last N from now.
+    - **Absolute date range**: ``?start=<epoch>&end=<epoch>`` — historical query.
+
+    Optional ``?bucket=5m`` downsamples to the given interval.
+    Valid buckets: 1m, 5m, 10m, 15m, 30m, 1h.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+
+    # Resolve bucket size if specified
+    bucket_seconds: int | None = None
+    if bucket is not None:
+        if bucket not in BUCKET_MAP:
+            raise HTTPException(
+                400,
+                f"Invalid bucket '{bucket}'. Valid: {', '.join(sorted(BUCKET_MAP))}",
+            )
+        bucket_seconds = BUCKET_MAP[bucket]
+
+    # Absolute date-range mode
+    if start is not None and end is not None:
+        if end <= start:
+            raise HTTPException(400, "end must be greater than start")
+        # Safety: cap range to 90 days
+        if (end - start) > 90 * 86400:
+            raise HTTPException(400, "Date range cannot exceed 90 days")
+        points = await query_metrics_daterange(db, start, end, bucket_seconds)
+        return {"range": "custom", "start": start, "end": end, "bucket": bucket, "points": points}
+
+    # Relative range mode (default to 30m)
+    range_key = range or "30m"
+    if range_key not in RANGE_MAP:
         raise HTTPException(
             400,
-            f"Invalid range '{range}'. Valid: {', '.join(sorted(RANGE_MAP))}",
+            f"Invalid range '{range_key}'. Valid: {', '.join(sorted(RANGE_MAP))}",
         )
-    db: aiosqlite.Connection = request.app.state.db
-    range_s = RANGE_MAP[range]
-    # Use archive-aware query for ranges > 6h
-    if range_s > 6 * 3600:
+    range_s = RANGE_MAP[range_key]
+
+    # Apply bucket override if specified, otherwise use default behaviour
+    if bucket_seconds is not None:
+        now = time.time()
+        points = await query_metrics_daterange(
+            db, now - range_s, now, bucket_seconds
+        )
+    elif range_s > 6 * 3600:
         points = await query_metrics_with_archive(db, range_s)
     else:
         points = await query_metrics(db, range_s)
-    return {"range": range, "points": points}
+    return {"range": range_key, "bucket": bucket, "points": points}
 
 
 @router.get("/stats/storage")
@@ -383,7 +475,13 @@ async def execute_sequence(body: SequenceExecRequest, request: Request):
             seq.verbose = True
             return seq.run_sequence(steps, dry_run=body.dry_run)
 
-        success = await asyncio.to_thread(_run)
+        # Acquire Modbus lock to prevent interleaving with poller/commands
+        modbus_lock = getattr(request.app.state, "modbus_lock", None)
+        if modbus_lock:
+            async with modbus_lock:
+                success = await asyncio.to_thread(_run)
+        else:
+            success = await asyncio.to_thread(_run)
 
         seq_logger.removeHandler(handler)
 

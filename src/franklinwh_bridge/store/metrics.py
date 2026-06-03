@@ -31,10 +31,23 @@ POWER_METRIC_KEYS: dict[str, str] = {
 RANGE_MAP: dict[str, int] = {
     "30m": 30 * 60,
     "1h": 60 * 60,
+    "2h": 2 * 60 * 60,
+    "4h": 4 * 60 * 60,
     "6h": 6 * 60 * 60,
+    "18h": 18 * 60 * 60,
     "24h": 24 * 60 * 60,
     "7d": 7 * 24 * 60 * 60,
     "30d": 30 * 24 * 60 * 60,
+}
+
+# Bucket string -> seconds (for user-selectable downsampling)
+BUCKET_MAP: dict[str, int] = {
+    "1m": 60,
+    "5m": 5 * 60,
+    "10m": 10 * 60,
+    "15m": 15 * 60,
+    "30m": 30 * 60,
+    "1h": 60 * 60,
 }
 
 # Maximum raw points before downsampling kicks in (> 6h ranges)
@@ -251,6 +264,117 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> 
                     "soc": round(row[5], 1) if row[5] is not None else None,
                 }
             )
+    return rows
+
+
+async def query_metrics_daterange(
+    db: aiosqlite.Connection,
+    start_ts: float,
+    end_ts: float,
+    bucket_seconds: int | None = None,
+) -> list[dict]:
+    """Query metrics between absolute timestamps with optional bucket averaging.
+
+    If *bucket_seconds* is given, data is averaged into buckets of that size.
+    Otherwise auto-selects: raw if span <= 6h, else auto-bucket to ~MAX_POINTS.
+    Transparently unions raw ``metrics`` + ``metrics_archive`` tables.
+    """
+    span = end_ts - start_ts
+    if span <= 0:
+        return []
+
+    # Determine bucket size
+    if bucket_seconds is not None:
+        do_bucket = True
+        bsize = bucket_seconds
+    elif span <= 6 * 3600:
+        do_bucket = False
+        bsize = 0
+    else:
+        do_bucket = True
+        bsize = span / MAX_POINTS
+
+    # Check if archive table exists
+    has_archive = False
+    try:
+        async with db.execute("SELECT 1 FROM metrics_archive LIMIT 1"):
+            has_archive = True
+    except Exception:
+        pass
+
+    if not do_bucket:
+        # Raw data query
+        if has_archive:
+            query = """
+                SELECT ts, battery_w, grid_w, solar_w, home_w, soc FROM (
+                    SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+                    FROM metrics WHERE ts >= ? AND ts <= ?
+                    UNION ALL
+                    SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+                    FROM metrics_archive WHERE ts >= ? AND ts <= ?
+                ) ORDER BY ts
+            """
+            params: list = [start_ts, end_ts, start_ts, end_ts]
+        else:
+            query = """
+                SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+                FROM metrics WHERE ts >= ? AND ts <= ? ORDER BY ts
+            """
+            params = [start_ts, end_ts]
+
+        rows: list[dict] = []
+        async with db.execute(query, params) as cursor:
+            async for row in cursor:
+                rows.append({
+                    "ts": row[0],
+                    "battery_w": row[1],
+                    "grid_w": row[2],
+                    "solar_w": row[3],
+                    "home_w": row[4],
+                    "soc": row[5],
+                })
+        return rows
+
+    # Bucketed query
+    if has_archive:
+        source = """(
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+            FROM metrics WHERE ts >= ? AND ts <= ?
+            UNION ALL
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+            FROM metrics_archive WHERE ts >= ? AND ts <= ?
+        )"""
+        base_params: list = [start_ts, end_ts, start_ts, end_ts]
+    else:
+        source = "metrics"
+        base_params = []
+
+    where_clause = "WHERE ts >= ? AND ts <= ?" if not has_archive else ""
+    extra_params = [start_ts, end_ts] if not has_archive else []
+
+    query = f"""
+        SELECT
+            CAST((ts - ?) / ? AS INTEGER) AS bucket,
+            AVG(battery_w), AVG(grid_w), AVG(solar_w), AVG(home_w), AVG(soc)
+        FROM {source}
+        {where_clause}
+        GROUP BY bucket
+        ORDER BY bucket
+    """
+    all_params = [start_ts, bsize] + base_params + extra_params
+
+    rows = []
+    async with db.execute(query, all_params) as cursor:
+        async for row in cursor:
+            bucket_ts = start_ts + (row[0] + 0.5) * bsize
+            rows.append({
+                "ts": round(bucket_ts, 1),
+                "battery_w": round(row[1], 1) if row[1] is not None else None,
+                "grid_w": round(row[2], 1) if row[2] is not None else None,
+                "solar_w": round(row[3], 1) if row[3] is not None else None,
+                "home_w": round(row[4], 1) if row[4] is not None else None,
+                "soc": round(row[5], 1) if row[5] is not None else None,
+            })
     return rows
 
 

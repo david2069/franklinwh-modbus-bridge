@@ -38,6 +38,7 @@ function livePointsPanel() {
     // ── Control ──
     mode_name:             { label: 'Operating Mode',       unit: '',    group: 'Control',  default: false },
     wset_enabled:          { label: 'WSet Enabled',         unit: '',    group: 'Control',  default: false },
+    wset_mode_name:        { label: 'WSet Mode',            unit: '',    group: 'Control',  default: false },
     wset_pct:              { label: 'Power Setpoint %',     unit: '%',   group: 'Control',  default: false },
     wset_watts:            { label: 'Power Setpoint',       unit: 'W',   group: 'Control',  default: false },
     sw_watchdog_remain_s:  { label: 'Watchdog Remaining',   unit: 's',   group: 'Control',  default: false },
@@ -161,9 +162,13 @@ function livePointsPanel() {
         if (Math.abs(raw) >= 10000) return (raw / 1000).toFixed(1) + ' kW';
         return Math.round(raw) + ' W';
       }
-      // WSet enabled — show On/Off
+      // WSet enabled — show On/Off (M704.WSetEna: 0=Off, 1=Enabled)
       if (key === 'wset_enabled') {
-        return (raw === 2 || raw === true) ? 'On' : 'Off';
+        return raw ? 'On' : 'Off';
+      }
+      // WSet mode — already a string from wset_mode_name derivation
+      if (key === 'wset_mode_name') {
+        return raw || '--';
       }
       // Default: value + unit
       return raw + (def.unit ? ' ' + def.unit : '');
