@@ -113,67 +113,19 @@ function sequencerTab() {
       Alpine.store('app').toast('Sequencer layout reset', 'info');
     },
 
-    // ── Syntax highlighting ─────────────────────────────────
-    get highlightedHtml() {
-      return this._highlightJson(this.editor);
-    },
-
-    _highlightJson(text) {
-      if (!text) return '';
-      // Escape HTML first
-      let html = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-      // Model.Point references: "704.WSetEna", "703.Conn" etc
-      html = html.replace(
-        /(&quot;|")((\d{3,4})\.([A-Za-z]\w*))(&quot;|")/g,
-        '$1<span class="sh-model">$3</span>.<span class="sh-point">$4</span>$5'
-      );
-
-      // JSON keys (step, writes, reads, verify, etc)
-      const keywords = ['step','writes','reads','verify','verify_timeout_ms','wait_for',
-                         'sleep_ms','abort_on_failure','require_transition','note','dry_run'];
-      const kwPat = new RegExp(
-        '(&quot;|")(' + keywords.join('|') + ')(&quot;|")(\\s*:)',
-        'g'
-      );
-      html = html.replace(kwPat, '$1<span class="sh-keyword">$2</span>$3$4');
-
-      // Remaining quoted strings (values) — but not already highlighted
-      html = html.replace(
-        /(&quot;|")([^"<]*?)(&quot;|")/g,
-        (m, q1, val, q2) => {
-          if (val.includes('sh-')) return m; // already highlighted
-          return q1 + '<span class="sh-string">' + val + '</span>' + q2;
-        }
-      );
-
-      // Numbers
-      html = html.replace(
-        /\b(-?\d+\.?\d*)\b/g,
-        '<span class="sh-number">$1</span>'
-      );
-
-      // Booleans / null
-      html = html.replace(
-        /\b(true|false|null)\b/g,
-        '<span class="sh-bool">$1</span>'
-      );
-
-      // Brackets/braces
-      html = html.replace(/([{}\[\]])/g, '<span class="sh-bracket">$1</span>');
-
+    // ── Line numbers ──────────────────────────────────────────
+    get lineNumbers() {
+      const count = (this.editor || '').split('\n').length;
+      let html = '';
+      for (let i = 1; i <= count; i++) {
+        html += i + '\n';
+      }
       return html;
     },
 
-    syncScroll(e) {
-      const overlay = this.$el.querySelector('.syntax-overlay');
-      if (overlay) {
-        overlay.scrollTop = e.target.scrollTop;
-        overlay.scrollLeft = e.target.scrollLeft;
-      }
+    syncLineNumbers(e) {
+      const lines = this.$refs.lineNums;
+      if (lines) lines.scrollTop = e.target.scrollTop;
     },
 
     // ── CRUD operations ─────────────────────────────────────

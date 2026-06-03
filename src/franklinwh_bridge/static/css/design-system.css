@@ -356,59 +356,43 @@ body {
 .sh-bool     { color: #f87171; }                          /* red-400: true/false/null */
 .sh-bracket  { color: #64748b; }                          /* slate-500: {} [] */
 
-/* Overlay editor: the <pre> sits on top of a transparent textarea.
-   The wrapper's flex parent provides a definite height via
-   position:relative + the wrapper using position:absolute;inset:0
-   so the textarea can scroll within known bounds. */
-.syntax-editor-outer {
-  position: relative;        /* positioning context with definite height */
+/* Code editor: plain textarea with line-number gutter.
+   No overlay tricks — the textarea is the only interactive element. */
+.code-editor {
+  display: flex;
   flex: 1;
   min-height: 0;
-}
-.syntax-editor-wrap {
-  position: absolute;
-  inset: 0;                  /* fills the outer — definite width+height */
   overflow: hidden;
 }
-.syntax-editor-wrap textarea {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+.code-editor-lines {
+  flex-shrink: 0;
+  width: 3rem;
+  padding: 0.75rem 0.5rem 0.75rem 0;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: #475569;            /* slate-600 */
+  border-right: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden;
+  user-select: none;
+}
+.code-editor textarea {
+  flex: 1;
+  min-width: 0;
   background: transparent;
-  color: transparent;
-  caret-color: #e2e8f0;     /* slate-200 — visible caret */
+  color: #cbd5e1;            /* slate-300 */
   font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
   font-size: 0.75rem;
   line-height: 1.5;
-  padding: 1rem;
+  padding: 0.75rem;
   border: 0;
   resize: none;
   outline: none;
   white-space: pre;
-  overflow-y: auto;
-  overflow-x: auto;
-  z-index: 2;
+  overflow: auto;
   tab-size: 2;
 }
-.syntax-overlay {
-  position: absolute;
-  inset: 0;
-  margin: 0;                 /* reset <pre> default margin */
-  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  padding: 1rem;
-  color: #cbd5e1;            /* slate-300 — base text colour */
-  white-space: pre;
-  overflow: auto;            /* must be scrollable for syncScroll */
-  pointer-events: none;
-  z-index: 1;
-  tab-size: 2;
-}
-/* Hide overlay's own scrollbar — textarea's scrollbar is the interactive one */
-.syntax-overlay::-webkit-scrollbar { display: none; }
-.syntax-overlay { scrollbar-width: none; }
 
 /* ── Sidebar Tooltip ────────────────────────────────────── */
 .sidebar-tooltip {
@@ -522,8 +506,8 @@ body {
 [data-theme="light"] header { background-color: rgba(255,255,255,0.90) !important; }
 
 /* ── Light theme: sequencer syntax highlighting ─────────── */
-[data-theme="light"] .syntax-overlay { color: #334155; }          /* slate-700 base text */
-[data-theme="light"] .syntax-editor-wrap textarea { caret-color: #1e293b; }
+[data-theme="light"] .code-editor textarea { color: #334155; }    /* slate-700 base text */
+[data-theme="light"] .code-editor-lines { color: #94a3b8; border-color: rgba(0,0,0,0.08); }
 [data-theme="light"] .sh-keyword  { color: #b45309; }             /* amber-700 */
 [data-theme="light"] .sh-model    { color: #0e7490; }             /* cyan-700 */
 [data-theme="light"] .sh-point    { color: #047857; }             /* emerald-700 */

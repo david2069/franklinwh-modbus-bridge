@@ -141,16 +141,14 @@
           </div>
         </div>
 
-        <!-- Editor body with syntax highlighting overlay -->
+        <!-- Editor body: plain textarea with line numbers -->
         <div x-show="selectedName" class="flex-1 flex flex-col overflow-hidden min-h-0">
-          <div class="syntax-editor-outer bg-slate-950">
-            <div class="syntax-editor-wrap">
-              <pre class="syntax-overlay" x-html="highlightedHtml"></pre>
-              <textarea x-model="editor"
-                        @input="onEditorInput()"
-                        @scroll="syncScroll($event)"
-                        spellcheck="false"></textarea>
-            </div>
+          <div class="code-editor bg-slate-950">
+            <div class="code-editor-lines" x-ref="lineNums" x-html="lineNumbers"></div>
+            <textarea x-model="editor"
+                      @input="onEditorInput()"
+                      @scroll="syncLineNumbers($event)"
+                      spellcheck="false"></textarea>
           </div>
           <!-- Validation bar -->
           <div class="flex-shrink-0 px-4 py-1.5 border-t border-white/[0.06] text-[10px] flex items-center gap-3"
