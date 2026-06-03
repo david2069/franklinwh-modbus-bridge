@@ -254,6 +254,23 @@ async def init_db(db_path: Path) -> aiosqlite.Connection:
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
     await run_migrations(db)
+
+    # Safety: ensure metrics_archive exists even if v7 was applied before
+    # the table was added to that migration's DDL.
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS metrics_archive (
+            ts           REAL NOT NULL,
+            battery_w    REAL,
+            grid_w       REAL,
+            solar_w      REAL,
+            home_w       REAL,
+            soc          REAL,
+            sample_count INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_metrics_archive_ts
+            ON metrics_archive(ts);
+    """)
+
     return db
 
 

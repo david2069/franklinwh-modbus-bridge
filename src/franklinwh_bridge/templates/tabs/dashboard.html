@@ -821,10 +821,10 @@
         <div class="flex flex-col">
           <label class="card-label !mb-2">Sequence Command</label>
           <textarea x-model="seqInput" x-ref="seqTextarea" rows="3"
-                    placeholder='{"704.WSetEna": 1, "704.WSetPct": 30}'
+                    placeholder="Paste a JSON sequence here..."
                     class="form-control !text-xs font-mono flex-shrink-0 mb-2"></textarea>
           <div class="flex items-center gap-2 mb-3">
-            <button @click="executeInline()" :disabled="seqRunning"
+            <button @click="executeInline()" :disabled="seqRunning || !seqInput.trim()"
                     class="btn btn-sm btn-primary">
               <span x-show="!seqRunning">Execute</span>
               <span x-show="seqRunning" class="flex items-center gap-1.5">
