@@ -370,12 +370,13 @@ body {
   padding: 0.75rem 0.5rem 0.75rem 0;
   text-align: right;
   font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
-  font-size: 0.7rem;
+  font-size: 0.75rem;         /* match textarea exactly */
   line-height: 1.5;
   color: #475569;            /* slate-600 */
   border-right: 1px solid rgba(255,255,255,0.06);
   overflow: hidden;
   user-select: none;
+  white-space: pre;           /* preserve newlines */
 }
 .code-editor textarea {
   flex: 1;
