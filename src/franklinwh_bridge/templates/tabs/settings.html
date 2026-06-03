@@ -460,29 +460,76 @@
   <div class="card mb-4">
     <div class="flex items-center justify-between mb-3">
       <div class="card-label !mb-0">Publishing Groups</div>
-      <span class="text-[10px] text-slate-500">Controls which entities are published via MQTT Discovery</span>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] text-slate-500 hidden sm:inline">Controls which entities are published via MQTT</span>
+        <button @click="showCreateGroup = !showCreateGroup"
+                class="btn btn-sm btn-secondary">
+          <span x-text="showCreateGroup ? 'Cancel' : '+ New Group'"></span>
+        </button>
+      </div>
     </div>
+
+    <!-- Create group form -->
+    <div x-show="showCreateGroup" x-cloak
+         class="mb-3 p-3 rounded-lg border border-cyan-500/20 bg-cyan-900/10">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Slug</label>
+          <input type="text" x-model="newGroup.slug" placeholder="my_group"
+                 class="form-control !py-1 !text-xs w-full font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Display Name</label>
+          <input type="text" x-model="newGroup.name" placeholder="My Group"
+                 class="form-control !py-1 !text-xs w-full">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
+          <input type="text" x-model="newGroup.description" placeholder="Optional description"
+                 class="form-control !py-1 !text-xs w-full">
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="createGroup()" :disabled="groupsBusy"
+                class="btn btn-sm btn-primary">Create</button>
+        <span class="text-[10px] text-slate-500">Slug: lowercase, 2-63 chars, letters/digits/underscores</span>
+      </div>
+    </div>
+
+    <!-- Groups table -->
     <div class="overflow-x-auto">
       <table class="data-table text-xs">
         <thead>
           <tr>
+            <th></th>
             <th>Group</th>
             <th>Description</th>
             <th class="text-right">Entities</th>
             <th class="text-center">Enabled</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           <template x-for="g in groups" :key="g.slug">
             <tr>
+              <td class="!px-1 w-6">
+                <button @click="expandGroup(g.slug)"
+                        class="text-slate-500 hover:text-cyan-400 transition text-xs leading-none">
+                  <span x-text="expandedGroup === g.slug ? '&#9660;' : '&#9654;'"></span>
+                </button>
+              </td>
               <td>
-                <span class="font-medium" x-text="g.name"></span>
+                <button @click="expandGroup(g.slug)"
+                        class="font-medium text-left hover:text-cyan-400 transition">
+                  <span x-text="g.name"></span>
+                </button>
                 <span class="text-[10px] text-slate-500 ml-1 font-mono" x-text="g.slug"></span>
+                <span x-show="g.is_default" class="text-[9px] text-slate-600 ml-1">(default)</span>
               </td>
               <td class="text-slate-400" x-text="g.description"></td>
               <td class="text-right font-mono" x-text="g.member_count"></td>
               <td class="text-center">
-                <button @click="toggleGroup(g.slug, !g.enabled)"
+                <button @click.stop="toggleGroup(g.slug, !g.enabled)"
                         :disabled="groupsBusy"
                         class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none"
                         :class="g.enabled ? 'bg-cyan-600' : 'bg-slate-600'">
@@ -490,14 +537,64 @@
                         :class="g.enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"></span>
                 </button>
               </td>
+              <td class="!px-1 w-8">
+                <button x-show="!g.is_default" @click.stop="deleteGroup(g.slug)"
+                        :disabled="groupsBusy"
+                        class="text-red-400/60 hover:text-red-400 text-xs transition"
+                        title="Delete group">&#10005;</button>
+              </td>
             </tr>
           </template>
         </tbody>
       </table>
     </div>
+
+    <!-- Expanded group detail panel -->
+    <div x-show="expandedGroup && groupDetail" x-cloak
+         class="mt-3 p-3 rounded-lg border border-white/[0.06] bg-slate-900/50">
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <span class="text-sm font-medium" x-text="groupDetail?.name"></span>
+          <span class="text-[10px] text-slate-500 ml-2"
+                x-text="(groupDetail?.members?.length ?? 0) + ' entities'"></span>
+        </div>
+        <input type="text" x-model="memberFilter" placeholder="Filter entities..."
+               class="form-control w-48 !py-1 !text-xs">
+      </div>
+      <div class="max-h-[300px] overflow-y-auto">
+        <table class="data-table text-xs">
+          <thead class="sticky top-0 bg-slate-900">
+            <tr>
+              <th class="w-8"></th>
+              <th>Entity</th>
+              <th>Name</th>
+              <th>Group</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="e in filteredCatalog" :key="e.slug">
+              <tr :class="isMember(e.slug) ? 'bg-cyan-900/10' : ''">
+                <td class="!px-1">
+                  <input type="checkbox" :checked="isMember(e.slug)"
+                         @change="toggleMember(e.slug)"
+                         class="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer">
+                </td>
+                <td class="font-mono text-slate-400" x-text="e.slug"></td>
+                <td x-text="e.name"></td>
+                <td><span class="text-[10px] px-1 py-0.5 rounded bg-slate-700/50 text-slate-500" x-text="e.state_group"></span></td>
+                <td><span class="text-[10px] px-1 py-0.5 rounded bg-slate-700/50 text-slate-400" x-text="e.ha_type"></span></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <p class="text-[10px] text-slate-600 mt-2">
       Disabling a group removes its entities from MQTT Discovery.
       Entities belonging to multiple groups remain published if any group is enabled.
+      Click a group row to manage its entity members.
     </p>
   </div>
 

@@ -31,6 +31,12 @@ function settingsTab() {
     restoring: false,
     groups: [],
     groupsBusy: false,
+    expandedGroup: null,
+    groupDetail: null,
+    entityCatalog: [],
+    memberFilter: '',
+    newGroup: { slug: '', name: '', description: '' },
+    showCreateGroup: false,
 
     async init() {
       await this.loadAll();
@@ -222,6 +228,8 @@ function settingsTab() {
         if (data && !data.error) {
           await this.loadGroups();
           await this.loadAll();
+          // Refresh detail if this group is expanded
+          if (this.expandedGroup === slug) this.groupDetail = data;
           Alpine.store('app').toast(
             `Group "${data.name}" ${enabled ? 'enabled' : 'disabled'}`,
             'info',
@@ -229,6 +237,115 @@ function settingsTab() {
         } else {
           Alpine.store('app').toast(
             'Toggle failed: ' + (data?.error || 'unknown'),
+            'error',
+          );
+        }
+      } finally {
+        this.groupsBusy = false;
+      }
+    },
+
+    async expandGroup(slug) {
+      if (this.expandedGroup === slug) {
+        this.expandedGroup = null;
+        this.groupDetail = null;
+        this.memberFilter = '';
+        return;
+      }
+      // Load entity catalog on first expand
+      if (this.entityCatalog.length === 0) {
+        const cat = await fetchJSON('api/groups/entities');
+        if (cat && cat.entities) this.entityCatalog = cat.entities;
+      }
+      const data = await fetchJSON(`api/groups/${slug}`);
+      if (data && !data.error) {
+        this.groupDetail = data;
+        this.expandedGroup = slug;
+        this.memberFilter = '';
+      }
+    },
+
+    isMember(entitySlug) {
+      return this.groupDetail?.members?.includes(entitySlug) ?? false;
+    },
+
+    get filteredCatalog() {
+      if (!this.memberFilter) return this.entityCatalog;
+      const q = this.memberFilter.toLowerCase();
+      return this.entityCatalog.filter(e =>
+        e.slug.includes(q) || e.name.toLowerCase().includes(q) ||
+        e.state_group.includes(q) || e.ha_type.includes(q)
+      );
+    },
+
+    async toggleMember(entitySlug) {
+      if (!this.expandedGroup) return;
+      const slug = this.expandedGroup;
+      if (this.isMember(entitySlug)) {
+        await fetchJSON(`api/groups/${slug}/members/${entitySlug}`, {
+          method: 'DELETE',
+        });
+      } else {
+        await fetchJSON(`api/groups/${slug}/members`, {
+          method: 'POST',
+          body: JSON.stringify({ entity_slug: entitySlug }),
+        });
+      }
+      // Refresh group detail and list
+      const data = await fetchJSON(`api/groups/${slug}`);
+      if (data && !data.error) this.groupDetail = data;
+      await this.loadGroups();
+    },
+
+    async createGroup() {
+      const s = this.newGroup;
+      if (!s.slug || !s.name) {
+        Alpine.store('app').toast('Slug and name are required', 'error');
+        return;
+      }
+      this.groupsBusy = true;
+      try {
+        const data = await fetchJSON('api/groups', {
+          method: 'POST',
+          body: JSON.stringify({
+            slug: s.slug,
+            name: s.name,
+            description: s.description,
+          }),
+        });
+        if (data && !data.error && data.slug) {
+          Alpine.store('app').toast(`Group "${data.name}" created`, 'info');
+          this.newGroup = { slug: '', name: '', description: '' };
+          this.showCreateGroup = false;
+          await this.loadGroups();
+        } else {
+          Alpine.store('app').toast(
+            'Create failed: ' + (data?.detail || data?.error || 'unknown'),
+            'error',
+          );
+        }
+      } finally {
+        this.groupsBusy = false;
+      }
+    },
+
+    async deleteGroup(slug) {
+      this.groupsBusy = true;
+      try {
+        const data = await fetchJSON(`api/groups/${slug}`, {
+          method: 'DELETE',
+        });
+        if (data && data.deleted) {
+          Alpine.store('app').toast('Group deleted', 'info');
+          if (this.expandedGroup === slug) {
+            this.expandedGroup = null;
+            this.groupDetail = null;
+          }
+          await this.loadGroups();
+          await this.loadAll();
+        } else {
+          Alpine.store('app').toast(
+            'Delete failed: ' + (data?.detail || data?.error || 'unknown'),
             'error',
           );
         }
