@@ -356,42 +356,55 @@ body {
 .sh-bool     { color: #f87171; }                          /* red-400: true/false/null */
 .sh-bracket  { color: #64748b; }                          /* slate-500: {} [] */
 
-/* Overlay editor: the <pre> and textarea overlap in a single grid cell.
-   Grid avoids the height-resolution issues of position:absolute inside
-   flex containers that prevented the textarea from scrolling. */
-.syntax-editor-wrap {
-  display: grid;             /* single-cell grid — children overlap */
+/* Overlay editor: the <pre> sits on top of a transparent textarea.
+   The wrapper's flex parent provides a definite height via
+   position:relative + the wrapper using position:absolute;inset:0
+   so the textarea can scroll within known bounds. */
+.syntax-editor-outer {
+  position: relative;        /* positioning context with definite height */
   flex: 1;
   min-height: 0;
 }
-.syntax-editor-wrap textarea,
-.syntax-editor-wrap .syntax-overlay {
-  grid-area: 1 / 1;         /* both occupy the same cell */
-  margin: 0;
+.syntax-editor-wrap {
+  position: absolute;
+  inset: 0;                  /* fills the outer — definite width+height */
+  overflow: hidden;
+}
+.syntax-editor-wrap textarea {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  color: transparent;
+  caret-color: #e2e8f0;     /* slate-200 — visible caret */
   font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
   font-size: 0.75rem;
   line-height: 1.5;
   padding: 1rem;
-  white-space: pre;
-  tab-size: 2;
-  min-height: 0;             /* allow shrinking in grid */
-}
-.syntax-editor-wrap textarea {
-  background: transparent;
-  color: transparent;
-  caret-color: #e2e8f0;     /* slate-200 — visible caret */
   border: 0;
   resize: none;
   outline: none;
+  white-space: pre;
   overflow-y: auto;
   overflow-x: auto;
   z-index: 2;
+  tab-size: 2;
 }
 .syntax-overlay {
+  position: absolute;
+  inset: 0;
+  margin: 0;                 /* reset <pre> default margin */
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 1rem;
   color: #cbd5e1;            /* slate-300 — base text colour */
+  white-space: pre;
   overflow: auto;            /* must be scrollable for syncScroll */
   pointer-events: none;
   z-index: 1;
+  tab-size: 2;
 }
 /* Hide overlay's own scrollbar — textarea's scrollbar is the interactive one */
 .syntax-overlay::-webkit-scrollbar { display: none; }
