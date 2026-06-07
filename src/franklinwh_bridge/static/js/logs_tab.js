@@ -12,6 +12,7 @@ function logsTab() {
     searchQuery: '',
     levelFilter: '',
     sourceFilter: '',
+    gatewayFilter: '',
 
     // Pagination
     page: 0,
@@ -85,6 +86,14 @@ function logsTab() {
 
       if (this.levelFilter) {
         result = result.filter(e => e.level === this.levelFilter);
+      }
+
+      if (this.gatewayFilter) {
+        const gf = this.gatewayFilter;
+        result = result.filter(e =>
+          (e.gateway_id || '') === gf ||
+          (e.message || '').includes(`Gateway ${gf}`)
+        );
       }
 
       if (this.searchQuery) {

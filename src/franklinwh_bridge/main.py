@@ -54,12 +54,22 @@ class LogBufferHandler(logging.Handler):
         self._buffer = buffer
 
     def emit(self, record: logging.LogRecord) -> None:
+        # Extract gateway_id from record extra dict (set by LoggerAdapter)
+        # or infer from message pattern "Gateway {id}:"
+        gw_id = getattr(record, "gateway_id", "")
+        if not gw_id:
+            msg = self.format(record)
+            if msg.startswith("Gateway ") and ":" in msg:
+                gw_id = msg.split(":")[0].replace("Gateway ", "").strip()
+        else:
+            msg = self.format(record)
         self._buffer.append(
             {
                 "ts": record.created,
                 "level": record.levelname,
                 "name": record.name,
-                "message": self.format(record),
+                "message": msg,
+                "gateway_id": gw_id,
             }
         )
 

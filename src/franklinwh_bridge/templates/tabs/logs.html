@@ -32,6 +32,14 @@
         <option value="ERROR">ERROR</option>
         <option value="CRITICAL">CRITICAL</option>
       </select>
+      <!-- Gateway filter -->
+      <select x-model="gatewayFilter" @change="page = 0" class="form-control !py-1.5 !text-xs w-28"
+              x-show="$store.app.multiGateway">
+        <option value="">All Gateways</option>
+        <template x-for="gw in $store.app.gatewayList" :key="'log-' + gw.id">
+          <option :value="gw.id" x-text="gw.name"></option>
+        </template>
+      </select>
       <!-- Source filter -->
       <input type="text" x-model="sourceFilter" placeholder="Source filter..."
              class="form-control !py-1.5 !text-xs w-40" @input.debounce.300ms="loadLogs()">
