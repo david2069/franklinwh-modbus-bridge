@@ -26,6 +26,7 @@ function sequencerTab() {
     validationError: null,
     showSyntaxRef: false,
     editing: false,
+    seqGateway: 'default',  // target gateway: 'default', gateway_id, or 'all'
 
     // Resizable panel dimensions
     listWidth: SEQUENCER_DEFAULTS.listWidth,
@@ -347,12 +348,17 @@ function sequencerTab() {
       }
 
       this.executing = true;
-      this.output = ['>>> Executing sequence' + (this.dryRun ? ' (DRY RUN)' : '') + '...'];
+      const gwLabel = this.seqGateway === 'all' ? 'ALL gateways' : this.seqGateway;
+      this.output = [`>>> Executing on ${gwLabel}` + (this.dryRun ? ' (DRY RUN)' : '') + '...'];
 
       const parsed = JSON.parse(this.editor);
       const data = await fetchJSON('api/sequence/execute', {
         method: 'POST',
-        body: JSON.stringify({ sequence: parsed, dry_run: this.dryRun }),
+        body: JSON.stringify({
+          sequence: parsed,
+          dry_run: this.dryRun,
+          gateway_id: this.seqGateway,
+        }),
       });
 
       this.executing = false;

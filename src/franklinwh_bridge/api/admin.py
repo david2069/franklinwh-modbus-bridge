@@ -449,16 +449,15 @@ class SequenceExecRequest(BaseModel):
     sequence: list[dict[str, Any]] | None = None
     inline: str | None = None
     dry_run: bool = False
+    gateway_id: str | None = None  # None = default, "all" = all active
 
 
 @router.post("/sequence/execute")
 async def execute_sequence(body: SequenceExecRequest, request: Request):
-    """Execute a SunSpec Modbus sequence against the connected device."""
-    controller = getattr(request.app.state, "controller", None)
-    if controller is None:
-        raise HTTPException(503, "No Modbus controller available")
+    """Execute a SunSpec Modbus sequence against one or all gateways."""
+    registry = getattr(request.app.state, "registry", None)
 
-    # Parse the sequence
+    # Parse the sequence steps
     if body.sequence:
         steps = body.sequence
     elif body.inline:
@@ -467,7 +466,6 @@ async def execute_sequence(body: SequenceExecRequest, request: Request):
         except json.JSONDecodeError as e:
             return {"ok": False, "output": [f"ERROR: Invalid JSON: {e}"]}
 
-        # Inline can be a dict (simple writes) or a list (full sequence)
         if isinstance(parsed, dict):
             steps = [{"step": "Inline writes", "writes": parsed, "verify": True}]
         elif isinstance(parsed, list):
@@ -477,56 +475,103 @@ async def execute_sequence(body: SequenceExecRequest, request: Request):
     else:
         return {"ok": False, "output": ["ERROR: No sequence provided"]}
 
-    # Capture log output from the sequencer
-    output_lines: list[str] = []
-
-    class SeqLogHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            msg = self.format(record)
-            output_lines.append(msg)
-
-    handler = SeqLogHandler()
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter("%(message)s"))
-
-    try:
-        from franklinwh_modbus.sequencer import SunSpecSequencer
-
-        seq_logger = logging.getLogger("franklinwh_modbus.sequencer")
-        seq_logger.addHandler(handler)
-        seq_logger.setLevel(logging.INFO)
-
-        def _run() -> bool:
-            dev = controller.dev
-            seq = SunSpecSequencer(dev)
-            seq.verbose = True
-            return seq.run_sequence(steps, dry_run=body.dry_run)
-
-        # Acquire Modbus lock to prevent interleaving with poller/commands
-        modbus_lock = getattr(request.app.state, "modbus_lock", None)
-        if modbus_lock:
-            async with modbus_lock:
-                success = await asyncio.to_thread(_run)
+    # Resolve target gateway(s)
+    gw_id = body.gateway_id or "default"
+    if gw_id == "all" and registry:
+        targets = [
+            (gid, registry.get(gid))
+            for gid in registry.list_active()
+        ]
+        if not targets:
+            return {"ok": False, "output": ["ERROR: No active gateways"]}
+    else:
+        # Single gateway
+        inst = registry.get(gw_id) if registry else None
+        if inst and inst.controller:
+            targets = [(gw_id, inst)]
         else:
-            success = await asyncio.to_thread(_run)
+            # Legacy fallback
+            ctrl = getattr(request.app.state, "controller", None)
+            if ctrl is None:
+                raise HTTPException(503, "No Modbus controller available")
+            targets = [(gw_id, None)]  # None = use legacy controller
 
-        seq_logger.removeHandler(handler)
+    all_output: list[str] = []
+    all_ok = True
 
-        if body.dry_run:
-            output_lines.insert(0, "DRY RUN — no registers written")
+    for target_id, inst in targets:
+        if len(targets) > 1:
+            all_output.append(f"═══ Gateway: {target_id} ═══")
 
-        output_lines.append(
-            "SUCCESS: Sequence complete" if success else "FAIL: Sequence aborted"
-        )
-        return {"ok": success, "output": output_lines}
-    except ImportError:
-        return {
-            "ok": False,
-            "output": ["ERROR: franklinwh_modbus.sequencer not available"],
-        }
-    except Exception as e:
-        output_lines.append(f"ERROR: {e}")
-        return {"ok": False, "output": output_lines}
+        # Resolve controller + lock for this gateway
+        if inst and inst.controller:
+            controller = inst.controller
+            modbus_lock = inst.modbus_lock
+        else:
+            controller = getattr(request.app.state, "controller", None)
+            modbus_lock = getattr(request.app.state, "modbus_lock", None)
+
+        if controller is None:
+            all_output.append(f"ERROR: No controller for {target_id}")
+            all_ok = False
+            continue
+
+        output_lines: list[str] = []
+
+        class SeqLogHandler(logging.Handler):
+            def __init__(self, buf: list[str]) -> None:
+                super().__init__()
+                self._buf = buf
+
+            def emit(self, record: logging.LogRecord) -> None:
+                self._buf.append(self.format(record))
+
+        handler = SeqLogHandler(output_lines)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+        try:
+            from franklinwh_modbus.sequencer import SunSpecSequencer
+
+            seq_logger = logging.getLogger("franklinwh_modbus.sequencer")
+            seq_logger.addHandler(handler)
+            seq_logger.setLevel(logging.INFO)
+
+            def _run(ctrl=controller) -> bool:
+                dev = ctrl.dev
+                seq = SunSpecSequencer(dev)
+                seq.verbose = True
+                return seq.run_sequence(steps, dry_run=body.dry_run)
+
+            if modbus_lock:
+                async with modbus_lock:
+                    success = await asyncio.to_thread(_run)
+            else:
+                success = await asyncio.to_thread(_run)
+
+            seq_logger.removeHandler(handler)
+
+            if body.dry_run and not all_output:
+                output_lines.insert(0, "DRY RUN — no registers written")
+
+            output_lines.append(
+                "SUCCESS: Sequence complete"
+                if success else "FAIL: Sequence aborted"
+            )
+            if not success:
+                all_ok = False
+        except ImportError:
+            output_lines.append(
+                "ERROR: franklinwh_modbus.sequencer not available"
+            )
+            all_ok = False
+        except Exception as e:
+            output_lines.append(f"ERROR: {e}")
+            all_ok = False
+
+        all_output.extend(output_lines)
+
+    return {"ok": all_ok, "output": all_output}
 
 
 @router.get("/sequences")
