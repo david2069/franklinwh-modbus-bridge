@@ -121,6 +121,10 @@ document.addEventListener('alpine:init', () => {
     version: '--',
     env: '',
 
+    // Multi-gateway
+    activeGateway: 'default',  // 'default', gateway_id, or 'site'
+    gatewayList: [],            // [{id, name, health, polling, ...}]
+
     // Data cache
     points: {},
     quality: null,
@@ -165,12 +169,32 @@ document.addEventListener('alpine:init', () => {
       window.dispatchEvent(new CustomEvent('tab:changed', { detail: { tab } }));
     },
 
+    setGateway(gwId) {
+      this.activeGateway = gwId;
+      this.refresh();
+    },
+
+    get multiGateway() {
+      return this.gatewayList.length > 1;
+    },
+
     async refresh() {
-      const data = await fetchJSON('api/points');
+      // Fetch points from the active gateway (or site aggregator)
+      const gw = this.activeGateway;
+      let pointsUrl;
+      if (gw === 'site') {
+        pointsUrl = 'api/site/status';
+      } else if (gw && gw !== 'default') {
+        pointsUrl = `api/gateways/${gw}/points`;
+      } else {
+        pointsUrl = 'api/points';
+      }
+
+      const data = await fetchJSON(pointsUrl);
       if (data && !data.error) {
         this.points = data.points || {};
-        this.quality = data.quality;
-        this.lastPollTs = data.ts;
+        this.quality = data.quality ?? null;
+        this.lastPollTs = data.ts ?? null;
         this.connected = true;
       } else {
         this.connected = false;
@@ -185,6 +209,12 @@ document.addEventListener('alpine:init', () => {
       const stats = await fetchJSON('api/stats');
       if (stats && !stats.error) {
         this.bridgeStats = stats;
+      }
+
+      // Refresh gateway list periodically
+      const gwData = await fetchJSON('api/gateways');
+      if (gwData && gwData.gateways) {
+        this.gatewayList = gwData.gateways;
       }
     },
 

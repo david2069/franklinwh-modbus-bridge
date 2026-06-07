@@ -4,6 +4,15 @@
   <!-- Device Info Bar -->
   <div class="card !p-3 mb-4">
     <div class="flex items-center gap-6 flex-wrap text-xs">
+      <!-- Gateway context indicator (multi-gateway only) -->
+      <div x-show="$store.app.multiGateway" class="flex items-center gap-1.5">
+        <span class="text-slate-500">Viewing</span>
+        <span class="font-semibold text-cyan-400"
+              x-text="$store.app.activeGateway === 'site' ? 'All Gateways (Site)' :
+                      ($store.app.gatewayList.find(g => g.id === $store.app.activeGateway)?.name || $store.app.activeGateway)">
+        </span>
+        <span class="w-px h-3 bg-slate-700 mx-1"></span>
+      </div>
       <div class="flex items-center gap-2">
         <span class="text-slate-500">Model</span>
         <span class="font-semibold text-slate-200" x-text="$store.app.points.model || '--'"></span>
