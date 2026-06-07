@@ -285,7 +285,7 @@ def test_per_phase_entity_slugs():
 
 def test_total_entity_count():
     """Verify total entity count including per-phase + target SoC."""
-    assert len(BRIDGE_ENTITIES) == 71
+    assert len(BRIDGE_ENTITIES) == 82
 
 
 # --- Phase filtering in MQTT publisher ---
@@ -324,12 +324,18 @@ def test_set_ac_type_three_phase():
     """Three-phase (ac_type=2): publishes all entities."""
     publisher = MqttPublisher()
     publisher.set_ac_type(2)
+    publisher.set_battery_port_count(3)
 
     phases_present = {e.phase for e in publisher.entities}
     assert None in phases_present
     assert 1 in phases_present
     assert 2 in phases_present
     assert 3 in phases_present
+
+    ports_present = {e.battery_port for e in publisher.entities}
+    assert 1 in ports_present
+    assert 2 in ports_present
+    assert 3 in ports_present
 
     assert len(publisher.entities) == len(BRIDGE_ENTITIES)
 
@@ -359,8 +365,8 @@ def test_set_ac_type_tracks_removed_entities():
     # Non-phase entities should NOT be in removed list
     assert "battery_soc" not in removed_slugs
 
-    # Total removed = 15 (7 L2 + 8 L3)
-    assert len(publisher._removed_entities) == 15
+    # Total removed = 21 (7 L2 + 8 L3 phase + 6 battery port 2+3)
+    assert len(publisher._removed_entities) == 21
 
 
 def test_set_ac_type_split_tracks_removed():
@@ -371,14 +377,14 @@ def test_set_ac_type_split_tracks_removed():
     removed_slugs = {e.slug for e in publisher._removed_entities}
     assert "grid_voltage_l2_v" not in removed_slugs  # L2 kept
     assert "grid_voltage_l3_v" in removed_slugs  # L3 removed
-    assert len(publisher._removed_entities) == 8  # 8 L3 entities
+    assert len(publisher._removed_entities) == 14  # 8 L3 + 6 battery port 2+3
 
 
 def test_set_ac_type_three_phase_no_removed():
-    """Three-phase should have no removed entities."""
+    """Three-phase should only remove battery port 2+3 (default NPrt=1)."""
     publisher = MqttPublisher()
     publisher.set_ac_type(2)
-    assert len(publisher._removed_entities) == 0
+    assert len(publisher._removed_entities) == 6  # battery port 2+3 only
 
 
 def test_entity_source_annotations():

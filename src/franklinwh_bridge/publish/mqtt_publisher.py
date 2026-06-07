@@ -36,6 +36,7 @@ class GatewayDevice:
     device_info: DeviceInfo | None = None
     command_handler: CommandHandler | None = None
     ac_type: int = 0
+    battery_port_count: int = 1
     disabled_slugs: set[str] | None = None
     entities: list[EntityDef] | None = None
     removed_entities: list[EntityDef] | None = None
@@ -43,12 +44,14 @@ class GatewayDevice:
     max_val_overrides: dict[str, float] | None = None
 
     def rebuild_entities(self) -> None:
-        """Rebuild active/removed entity lists from phase + group filters."""
+        """Rebuild entity lists from phase + battery port + group filters."""
         disabled = self.disabled_slugs or set()
         ac = self.ac_type
+        nport = self.battery_port_count
         self.entities = [
             e for e in BRIDGE_ENTITIES
             if (e.phase is None or e.phase <= ac + 1)
+            and (e.battery_port is None or e.battery_port <= nport)
             and e.slug not in disabled
         ]
         active = {e.slug for e in self.entities}
@@ -187,6 +190,7 @@ class MqttPublisher:
         self._ac_type: int = 0
         self._disabled_slugs: set[str] = set()
         self._command_handler: CommandHandler | None = None
+        self._battery_port_count: int = 1
         # Per-slug overrides for discovery max_val (set by power limit detection)
         self._max_val_overrides: dict[str, float] = {}
         # Multi-gateway device registry
@@ -209,16 +213,19 @@ class MqttPublisher:
         self._state.discovery_published = False
 
     def _rebuild_entity_lists(self) -> None:
-        """Rebuild active/removed entity lists from phase + group filters.
+        """Rebuild active/removed entity lists from phase + group + battery filters.
 
-        Call after any change to ``_ac_type`` or ``_disabled_slugs``.
+        Call after any change to ``_ac_type``, ``_disabled_slugs``, or
+        ``_battery_port_count``.
         """
         ac_type = self._ac_type
         disabled = self._disabled_slugs
+        nport = self._battery_port_count
 
         new_entities = [
             e for e in BRIDGE_ENTITIES
             if (e.phase is None or e.phase <= ac_type + 1)
+            and (e.battery_port is None or e.battery_port <= nport)
             and e.slug not in disabled
         ]
         active_slugs = {e.slug for e in new_entities}
@@ -248,6 +255,21 @@ class MqttPublisher:
             len(self._entities),
             phase_count,
             len(self._removed_entities),
+        )
+
+    def set_battery_port_count(self, count: int) -> None:
+        """Set the number of battery ports (from M714 NPrt).
+
+        Triggers entity list rebuild to include per-battery stack
+        entities for ports 1..count.
+        """
+        if count == self._battery_port_count:
+            return
+        self._battery_port_count = max(1, count)
+        self._rebuild_entity_lists()
+        logger.info(
+            "Battery port count set to %d — %d entities active",
+            self._battery_port_count, len(self._entities),
         )
 
     async def sync_groups(self, db: aiosqlite.Connection) -> None:

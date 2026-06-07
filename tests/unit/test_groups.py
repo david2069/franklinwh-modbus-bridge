@@ -53,10 +53,17 @@ async def test_default_groups_are_enabled(db):
 async def test_battery_group_members(db):
     grp = await get_publishing_group(db, "battery")
     assert grp is not None
-    assert sorted(grp["members"]) == [
-        "battery_current_a", "battery_health", "battery_power_kw",
-        "battery_soc", "battery_soh", "battery_state", "battery_temp_c",
-    ]
+    # 7 base + 9 per-port (3 ports × 3 metrics) = 16
+    assert len(grp["members"]) == 16
+    # Check base members present
+    for slug in ["battery_soc", "battery_soh", "battery_power_kw",
+                 "battery_current_a", "battery_temp_c", "battery_state",
+                 "battery_health"]:
+        assert slug in grp["members"]
+    # Check per-port members present
+    assert "battery_1_power_w" in grp["members"]
+    assert "battery_1_voltage_v" in grp["members"]
+    assert "battery_1_temp_c" in grp["members"]
 
 
 async def test_control_group_members(db):
@@ -208,8 +215,9 @@ async def test_publisher_sync_groups(db):
 
     pub = MqttPublisher(host="localhost")
     pub.set_ac_type(2)  # three-phase: include all per-phase entities
+    pub.set_battery_port_count(3)  # include all per-battery entities
 
-    # Initially all entities active
+    # Initially all entities active (all phases + all battery ports)
     await pub.sync_groups(db)
     assert len(pub.entities) == len(BRIDGE_ENTITIES)
 

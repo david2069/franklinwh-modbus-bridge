@@ -82,6 +82,7 @@ class ModbusPoller:
         self._stop_event = asyncio.Event()
         self._startup_points: dict[str, Any] = {}
         self._ac_type: int = 0  # 0=Single, 1=Split, 2=Three-Phase
+        self._battery_port_count: int = 1  # M714 NPrt (1 = single battery)
         self._vreg_client: Any | None = None  # cached pymodbus client
         self._last_good_ext: dict[str, int | float] = {}  # previous good extension values
         self._stats = stats  # OperationalStats (optional)
@@ -91,6 +92,11 @@ class ModbusPoller:
     def ac_type(self) -> int:
         """Detected AC wiring type: 0=Single, 1=Split, 2=Three-Phase."""
         return self._ac_type
+
+    @property
+    def battery_port_count(self) -> int:
+        """Number of battery ports detected from M714 NPrt (default 1)."""
+        return self._battery_port_count
 
     @property
     def state(self) -> PollerState:
@@ -439,6 +445,10 @@ class ModbusPoller:
             # silently).  Prevents dashboard/HA "--" on transient failures.
             self._derive_battery_from_model(points)
 
+            # Extract per-battery stack data from individual_batteries array
+            # (new in franklinwh-modbus multi-battery update)
+            self._extract_per_battery(points)
+
         if not points:
             quality = "error"
 
@@ -521,6 +531,38 @@ class ModbusPoller:
                 len(filled),
                 ", ".join(filled),
             )
+
+    def _extract_per_battery(self, points: dict[str, Any]) -> None:
+        """Extract per-battery stack telemetry from individual_batteries.
+
+        The library's ``read_battery_status()`` returns an
+        ``individual_batteries`` list when M714 has repeating blocks
+        (multi-battery NPrt > 1).  Each entry has port, power_w,
+        voltage_v, temp_c.  We flatten these into point keys like
+        ``battery_1_power_w``, ``battery_2_voltage_v`` etc.
+
+        Also updates ``_battery_port_count`` for entity filtering.
+        """
+        batteries = points.get("individual_batteries")
+        if not batteries or not isinstance(batteries, list):
+            return
+
+        self._battery_port_count = len(batteries)
+        points["battery_port_count"] = self._battery_port_count
+
+        for bat in batteries:
+            port = bat.get("port", 0)
+            if port < 1:
+                continue
+            pw = bat.get("power_w")
+            if pw is not None:
+                points[f"battery_{port}_power_w"] = pw
+            vv = bat.get("voltage_v")
+            if vv is not None:
+                points[f"battery_{port}_voltage_v"] = round(vv, 1)
+            tc = bat.get("temp_c")
+            if tc is not None:
+                points[f"battery_{port}_temp_c"] = round(tc, 1)
 
     def _read_extra_points(self) -> dict[str, Any]:
         """Read points not covered by the standard controller methods."""

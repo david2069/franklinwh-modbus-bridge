@@ -34,6 +34,10 @@ class EntityDef:
     # phase=1 → single/split/three, phase=2 → split/three, phase=3 → three only
     phase: int | None = None
 
+    # Battery port gating: None = always publish, 1/2/3 = only when NPrt >= port
+    # port=1 → any config, port=2 → dual+ battery, port=3 → triple+
+    battery_port: int | None = None
+
     # SunSpec source: model.point notation (e.g. "701.W", "ext.15506", "virtual")
     source: str = ""
 
@@ -215,6 +219,58 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         value_precision=1,
         source="702.WDisChaRteMaxRtg",
     ),
+
+    # === PER-BATTERY STACK (from individual_batteries array in M714) ===
+    # battery_port=1 → always published (single-battery has port 1)
+    # battery_port=2 → only when NPrt >= 2 (dual-battery systems)
+    # battery_port=3 → only when NPrt >= 3 (triple-battery systems)
+    *[
+        entity
+        for port in range(1, 4)
+        for entity in [
+            EntityDef(
+                slug=f"battery_{port}_power_w",
+                name=f"Battery {port} Power",
+                ha_type="sensor",
+                state_group="battery",
+                stat_key=f"battery_{port}_power_w",
+                unit="W",
+                device_class="power",
+                state_class="measurement",
+                icon="mdi:battery-charging",
+                source=f"714.DCW_{port}",
+                battery_port=port,
+            ),
+            EntityDef(
+                slug=f"battery_{port}_voltage_v",
+                name=f"Battery {port} Voltage",
+                ha_type="sensor",
+                state_group="battery",
+                stat_key=f"battery_{port}_voltage_v",
+                unit="V",
+                device_class="voltage",
+                state_class="measurement",
+                icon="mdi:flash",
+                value_precision=1,
+                source=f"714.DCV_{port}",
+                battery_port=port,
+            ),
+            EntityDef(
+                slug=f"battery_{port}_temp_c",
+                name=f"Battery {port} Temperature",
+                ha_type="sensor",
+                state_group="battery",
+                stat_key=f"battery_{port}_temp_c",
+                unit="°C",
+                device_class="temperature",
+                state_class="measurement",
+                icon="mdi:thermometer",
+                value_precision=1,
+                source=f"714.Tmp_{port}",
+                battery_port=port,
+            ),
+        ]
+    ],
 
     # === GRID / AC (from read_grid_status) ===
     EntityDef(
