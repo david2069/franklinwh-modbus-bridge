@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -208,6 +208,41 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX IF NOT EXISTS idx_pgm_entity
         ON publishing_group_members(entity_slug);
     """,
+    9: """
+    -- Multi-gateway: extend gateways table with device info + config
+    ALTER TABLE gateways ADD COLUMN description TEXT NOT NULL DEFAULT '';
+    ALTER TABLE gateways ADD COLUMN poll_interval INTEGER NOT NULL DEFAULT 10;
+    ALTER TABLE gateways ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE gateways ADD COLUMN serial TEXT;
+    ALTER TABLE gateways ADD COLUMN model TEXT;
+    ALTER TABLE gateways ADD COLUMN firmware TEXT;
+    ALTER TABLE gateways ADD COLUMN ac_type INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE gateways ADD COLUMN last_connected_at REAL;
+
+    -- Add gateway_id to control tables
+    ALTER TABLE control_log ADD COLUMN gateway_id TEXT NOT NULL DEFAULT 'default';
+    ALTER TABLE control_state ADD COLUMN gateway_id TEXT NOT NULL DEFAULT 'default';
+
+    -- Add gateway_id to metrics tables
+    ALTER TABLE metrics ADD COLUMN gateway_id TEXT NOT NULL DEFAULT 'default';
+    ALTER TABLE metrics_archive ADD COLUMN gateway_id TEXT NOT NULL DEFAULT 'default';
+
+    -- Per-gateway operational stats
+    ALTER TABLE operational_stats ADD COLUMN gateway_id TEXT NOT NULL DEFAULT 'default';
+
+    -- Site-level config
+    CREATE TABLE IF NOT EXISTS site_config (
+        id                INTEGER PRIMARY KEY CHECK (id = 1),
+        name              TEXT NOT NULL DEFAULT 'My Site',
+        description       TEXT NOT NULL DEFAULT '',
+        meter_number      TEXT NOT NULL DEFAULT '',
+        account_number    TEXT NOT NULL DEFAULT '',
+        ac_service_type   INTEGER NOT NULL DEFAULT 1,
+        aggregate_entities INTEGER NOT NULL DEFAULT 1,
+        updated_at        REAL NOT NULL DEFAULT 0
+    );
+    INSERT OR IGNORE INTO site_config (id, updated_at) VALUES (1, 0);
+    """,
 }
 
 
@@ -290,13 +325,14 @@ async def log_control_event(
     power_w: int = 0,
     detail: str = "",
     hw_state: dict | None = None,
+    gateway_id: str = "default",
 ) -> None:
     import json
     hw_json = json.dumps(hw_state) if hw_state else None
     await db.execute(
-        "INSERT INTO control_log (ts, event, action, power_w, detail, hw_state_json) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (time.time(), event, action, power_w, detail, hw_json),
+        "INSERT INTO control_log (ts, event, action, power_w, detail, hw_state_json, gateway_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (time.time(), event, action, power_w, detail, hw_json, gateway_id),
     )
     await db.commit()
 
@@ -308,19 +344,34 @@ async def save_control_state(
     power_w: int = 0,
     started_at: float = 0,
     watchdog_s: int = 3600,
+    gateway_id: str = "default",
 ) -> None:
+    # Upsert: update existing row for this gateway, or insert if missing
+    row_id = 1 if gateway_id == "default" else abs(hash(gateway_id)) % 2**31
     await db.execute(
-        "UPDATE control_state SET active=?, action=?, power_w=?, "
-        "started_at=?, watchdog_s=?, updated_at=? WHERE id=1",
-        (int(active), action, power_w, started_at, watchdog_s, time.time()),
+        "INSERT INTO control_state "
+        "(id, active, action, power_w, started_at, watchdog_s, "
+        " updated_at, gateway_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "active=excluded.active, action=excluded.action, "
+        "power_w=excluded.power_w, started_at=excluded.started_at, "
+        "watchdog_s=excluded.watchdog_s, updated_at=excluded.updated_at, "
+        "gateway_id=excluded.gateway_id",
+        (row_id, int(active), action, power_w, started_at,
+         watchdog_s, time.time(), gateway_id),
     )
     await db.commit()
 
 
-async def load_control_state(db: aiosqlite.Connection) -> dict:
+async def load_control_state(
+    db: aiosqlite.Connection, gateway_id: str = "default",
+) -> dict:
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute("SELECT * FROM control_state WHERE id=1") as cur:
+        async with db.execute(
+            "SELECT * FROM control_state WHERE gateway_id=?", (gateway_id,)
+        ) as cur:
             row = await cur.fetchone()
     finally:
         db.row_factory = None
@@ -334,6 +385,139 @@ async def load_control_state(db: aiosqlite.Connection) -> dict:
         "watchdog_s": row["watchdog_s"],
         "updated_at": row["updated_at"],
     }
+
+
+# ── Gateway CRUD ──────────────────────────────────────────────
+
+
+async def get_gateways(db: aiosqlite.Connection) -> list[dict]:
+    """List all gateways."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows = []
+        async with db.execute(
+            "SELECT * FROM gateways ORDER BY display_order, id"
+        ) as cursor:
+            async for row in cursor:
+                rows.append(dict(row))
+        return rows
+    finally:
+        db.row_factory = None
+
+
+async def get_gateway(db: aiosqlite.Connection, gateway_id: str) -> dict | None:
+    """Get a single gateway by ID."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT * FROM gateways WHERE id = ?", (gateway_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        db.row_factory = None
+
+
+async def create_gateway(
+    db: aiosqlite.Connection,
+    gateway_id: str,
+    name: str,
+    host: str,
+    port: int = 502,
+    unit_id: int = 1,
+    description: str = "",
+    poll_interval: int = 10,
+) -> dict:
+    """Create a new gateway."""
+    now = time.time()
+    # Find next display_order
+    async with db.execute(
+        "SELECT COALESCE(MAX(display_order), -1) + 1 FROM gateways"
+    ) as cur:
+        order = (await cur.fetchone())[0]
+
+    await db.execute(
+        "INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at, "
+        "description, poll_interval, display_order) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+        (gateway_id, name, host, port, unit_id, now, description, poll_interval, order),
+    )
+    await db.commit()
+    return await get_gateway(db, gateway_id)  # type: ignore[return-value]
+
+
+async def update_gateway(
+    db: aiosqlite.Connection,
+    gateway_id: str,
+    **kwargs: object,
+) -> dict | None:
+    """Update gateway fields. Accepts any column name as keyword arg."""
+    existing = await get_gateway(db, gateway_id)
+    if existing is None:
+        return None
+    if not kwargs:
+        return existing
+
+    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+    values = list(kwargs.values())
+    values.append(gateway_id)
+    await db.execute(
+        f"UPDATE gateways SET {set_clause} WHERE id = ?",  # noqa: S608
+        values,
+    )
+    await db.commit()
+    return await get_gateway(db, gateway_id)
+
+
+async def delete_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
+    """Delete a gateway. Returns True if deleted."""
+    if gateway_id == "default":
+        raise ValueError("Cannot delete the default gateway")
+    cur = await db.execute("DELETE FROM gateways WHERE id = ?", (gateway_id,))
+    await db.commit()
+    return cur.rowcount > 0
+
+
+# ── Site config ───────────────────────────────────────────────
+
+
+async def get_site_config(db: aiosqlite.Connection) -> dict:
+    """Get site configuration."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute("SELECT * FROM site_config WHERE id = 1") as cur:
+            row = await cur.fetchone()
+            if row is None:
+                return {
+                    "name": "My Site", "description": "", "meter_number": "",
+                    "account_number": "", "ac_service_type": 1,
+                    "aggregate_entities": True,
+                }
+            return {
+                "name": row["name"],
+                "description": row["description"],
+                "meter_number": row["meter_number"],
+                "account_number": row["account_number"],
+                "ac_service_type": row["ac_service_type"],
+                "aggregate_entities": bool(row["aggregate_entities"]),
+                "updated_at": row["updated_at"],
+            }
+    finally:
+        db.row_factory = None
+
+
+async def update_site_config(db: aiosqlite.Connection, **kwargs: object) -> dict:
+    """Update site configuration fields."""
+    if not kwargs:
+        return await get_site_config(db)
+    kwargs["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+    values = list(kwargs.values())
+    await db.execute(
+        f"UPDATE site_config SET {set_clause} WHERE id = 1",  # noqa: S608
+        values,
+    )
+    await db.commit()
+    return await get_site_config(db)
 
 
 # ── PICS compliance ──────────────────────────────────────────
