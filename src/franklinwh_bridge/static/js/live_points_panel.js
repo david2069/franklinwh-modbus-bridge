@@ -17,6 +17,7 @@ function livePointsPanel() {
     battery_power_w:    { label: 'Battery Power',        unit: 'W',   group: 'Battery',  default: true },
     battery_dc_power_w: { label: 'Battery DC Power',     unit: 'W',   group: 'Battery',  default: false },
     battery_current_a:  { label: 'Battery Current',      unit: 'A',   group: 'Battery',  default: false },
+    battery_temp_c:     { label: 'Battery Temperature',  unit: '°C',  group: 'Battery',  default: false },
     total_solar:        { label: 'Total Solar',          unit: 'W',   group: 'Solar',    default: true },
     pv_proximal:        { label: 'Solar Proximal',       unit: 'W',   group: 'Solar',    default: false },
     pv_remote1:         { label: 'Solar Remote 1',       unit: 'W',   group: 'Solar',    default: false },

@@ -54,7 +54,8 @@ async def test_battery_group_members(db):
     grp = await get_publishing_group(db, "battery")
     assert grp is not None
     assert sorted(grp["members"]) == [
-        "battery_health", "battery_power_kw", "battery_soc", "battery_soh", "battery_state",
+        "battery_current_a", "battery_health", "battery_power_kw",
+        "battery_soc", "battery_soh", "battery_state", "battery_temp_c",
     ]
 
 

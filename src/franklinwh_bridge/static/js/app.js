@@ -70,7 +70,7 @@ async function fetchJSON(url, options = {}) {
 const POINT_SOURCES = {
   soc: '713.SoC', soh: '713.SoH',
   battery_power_w: '714.DCW', battery_dc_power_w: '714.DCW', battery_state: '714.DCW',
-  battery_current_a: '714.DCA',
+  battery_current_a: '714.DCA', battery_temp_c: '714.Tmp',
   total_solar: 'ext.15502', pv_proximal: 'ext.15503', pv_remote1: 'ext.15504', pv_remote2: 'ext.15505',
   home_load_ext: 'ext.16000',
   grid_power_w: '701.W', voltage_v: '701.LNV', current_a: '701.A', frequency_hz: '701.Hz',
