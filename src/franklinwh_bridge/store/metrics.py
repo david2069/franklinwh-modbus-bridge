@@ -162,7 +162,11 @@ _METRICS_MAX_HOME_W = 50_000  # home can spike during mode transitions
 _METRICS_SENTINEL = 65535
 
 
-async def record_sample(db: aiosqlite.Connection, points: dict) -> bool:
+async def record_sample(
+    db: aiosqlite.Connection,
+    points: dict,
+    gateway_id: str = "default",
+) -> bool:
     """Insert a metrics row from poller sample points.
 
     Applies a final sanity check: rejects samples where any power metric
@@ -196,9 +200,11 @@ async def record_sample(db: aiosqlite.Connection, points: dict) -> bool:
             return False
 
     await db.execute(
-        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (time.time(), row["battery_w"], row["grid_w"], row["solar_w"], row["home_w"], row["soc"]),
+        "INSERT INTO metrics "
+        "(ts, battery_w, grid_w, solar_w, home_w, soc, gateway_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (time.time(), row["battery_w"], row["grid_w"], row["solar_w"],
+         row["home_w"], row["soc"], gateway_id),
     )
     await db.commit()
     return True

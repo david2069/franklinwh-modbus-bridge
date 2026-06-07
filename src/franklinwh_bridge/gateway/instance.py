@@ -16,6 +16,10 @@ from typing import Any
 
 import aiosqlite
 
+from franklinwh_bridge.modbus.catalog import (
+    capture_catalog,
+    extract_catalog_from_controller,
+)
 from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
@@ -88,6 +92,7 @@ class GatewayInstance:
         self.sample_bus = SampleBus()  # per-gateway bus
         self.device_info: DeviceInfo | None = None
         self.status = GatewayStatus()
+        self.reader_fn: Any | None = None  # for POST /api/models/refresh
 
         self._init_task: asyncio.Task | None = None
 
@@ -161,8 +166,42 @@ class GatewayInstance:
             try:
                 await asyncio.to_thread(self.poller._detect_ac_type)
                 self.status.ac_type = self.poller.ac_type
+                await update_gateway(
+                    self._db, self.gateway_id, ac_type=self.status.ac_type,
+                )
             except Exception as exc:
                 logger.warning("Gateway %s: AC type detection failed: %s", self.gateway_id, exc)
+
+            # Capture SunSpec catalog
+            try:
+                dev_info = await asyncio.to_thread(
+                    extract_catalog_from_controller, self.controller,
+                )
+                cat_hash, _ = await capture_catalog(
+                    dev_info, self._db, self.gateway_id,
+                )
+                logger.info(
+                    "Gateway %s: SunSpec catalog captured (%d models, hash=%s)",
+                    self.gateway_id,
+                    len(dev_info.get("models", {})),
+                    cat_hash,
+                )
+            except Exception as exc:
+                logger.warning("Gateway %s: catalog capture failed: %s", self.gateway_id, exc)
+
+            # Wire reader_fn for POST /api/models/refresh
+            ctrl = self.controller
+
+            async def _reader_fn():
+                try:
+                    info = await asyncio.to_thread(
+                        extract_catalog_from_controller, ctrl,
+                    )
+                    return info, None
+                except Exception as exc:
+                    return None, str(exc)
+
+            self.reader_fn = _reader_fn
 
             # Disconnect before poller takes over (poller reconnects with lock)
             await asyncio.to_thread(self.controller.disconnect)

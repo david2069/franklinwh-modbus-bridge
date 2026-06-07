@@ -39,6 +39,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["admin"])
 
 
+def _get_gateway(request: Request, gateway_id: str = "default"):
+    """Resolve a GatewayInstance from the registry (or None)."""
+    registry = getattr(request.app.state, "registry", None)
+    if registry is None:
+        return None
+    return registry.get(gateway_id)
+
+
+def _get_controller(request: Request, gateway_id: str = "default"):
+    """Get the controller for a gateway, falling back to app.state."""
+    inst = _get_gateway(request, gateway_id)
+    if inst and inst.controller:
+        return inst.controller
+    # Legacy fallback
+    return getattr(request.app.state, "controller", None)
+
+
+def _get_command_handler(request: Request, gateway_id: str = "default"):
+    """Get the command handler for a gateway, falling back to app.state."""
+    inst = _get_gateway(request, gateway_id)
+    if inst and inst.command_handler:
+        return inst.command_handler
+    # Legacy fallback
+    return getattr(request.app.state, "command_handler", None)
+
+
 class ConfigUpdate(BaseModel):
     value: Any
 
@@ -130,7 +156,7 @@ async def test_gateway(request: Request) -> dict:
 @router.get("/models")
 async def get_models(request: Request):
     db: aiosqlite.Connection = request.app.state.db
-    gateway_id = request.app.state.gateway_id
+    gateway_id = getattr(request.app.state, "gateway_id", "default")
     catalog = await load_catalog(db, gateway_id)
 
     models: dict[int, dict] = {}
@@ -216,7 +242,7 @@ async def read_model(model_id: int, request: Request):
 @router.post("/models/refresh")
 async def refresh_models(request: Request):
     db: aiosqlite.Connection = request.app.state.db
-    gateway_id = request.app.state.gateway_id
+    gateway_id = getattr(request.app.state, "gateway_id", "default")
     reader_fn = getattr(request.app.state, "reader_fn", None)
 
     if reader_fn is None:
@@ -244,7 +270,8 @@ async def get_points(request: Request):
     sample_bus = request.app.state.sample_bus
     last = sample_bus.last_sample
     if last is None:
-        return {"gateway_id": request.app.state.gateway_id, "points": {}, "ts": None}
+        gw_id = getattr(request.app.state, "gateway_id", "default")
+        return {"gateway_id": gw_id, "points": {}, "ts": None}
 
     # Merge command handler virtual points (software-tracked command state)
     points = dict(last.points)

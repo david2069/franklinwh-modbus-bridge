@@ -39,8 +39,20 @@ async def index(request: Request):
 
 @router.post("/api/command")
 async def send_command(body: CommandRequest, request: Request):
-    """Dispatch a control command (same path as MQTT commands)."""
-    command_handler = getattr(request.app.state, "command_handler", None)
+    """Dispatch a control command (same path as MQTT commands).
+
+    Defaults to the "default" gateway. Use POST /api/gateways/{gw_id}/command
+    for gateway-specific commands (added in MG-3).
+    """
+    # Resolve command handler from registry (or legacy fallback)
+    registry = getattr(request.app.state, "registry", None)
+    command_handler = None
+    if registry:
+        inst = registry.get("default")
+        if inst:
+            command_handler = inst.command_handler
+    if command_handler is None:
+        command_handler = getattr(request.app.state, "command_handler", None)
     if command_handler is None:
         return {"ok": False, "slug": body.slug, "result": "Command handler not available"}
 
