@@ -15,12 +15,14 @@ from fastapi.staticfiles import StaticFiles
 
 from franklinwh_bridge import __version__
 from franklinwh_bridge.api.admin import router as admin_router
+from franklinwh_bridge.api.gateways_api import router as gateways_router
 from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
+from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
@@ -219,6 +221,10 @@ async def lifespan(app: FastAPI):
 
     purge_task = asyncio.create_task(_metrics_purge_loop())
 
+    # ── Health Checker ─────────────────────────────────────────
+    health_checker = HealthChecker(registry)
+    app.state.health_checker = health_checker
+
     # ── Start All Gateways ────────────────────────────────────
 
     async def _start_gateways() -> None:
@@ -245,6 +251,9 @@ async def lifespan(app: FastAPI):
             # Wire reader_fn for POST /api/models/refresh
             if default.reader_fn:
                 app.state.reader_fn = default.reader_fn
+
+        # Start health checker after gateways are up
+        await health_checker.start()
 
     asyncio.create_task(_start_gateways())
 
@@ -278,7 +287,10 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ──────────────────────────────────────────────
     logger.info("Bridge shutting down — releasing control and logging state")
 
-    # 1. Stop all gateways (releases commands, stops pollers, disconnects)
+    # 1. Stop health checker
+    await health_checker.stop()
+
+    # 2. Stop all gateways (releases commands, stops pollers, disconnects)
     await registry.stop_all()
 
     # 2. Cancel metrics purge task
@@ -327,6 +339,7 @@ app.include_router(health_router)
 app.include_router(admin_router)
 app.include_router(mqtt_router)
 app.include_router(groups_router)
+app.include_router(gateways_router)
 
 # UI router (serves GET / and POST /api/command)
 app.include_router(ui_router)

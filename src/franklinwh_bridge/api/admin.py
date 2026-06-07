@@ -650,7 +650,7 @@ async def put_pics(body: PicsUpdateRequest, request: Request):
 @router.get("/battery/limits")
 async def get_battery_limits(request: Request):
     """Return current battery power limits (from M702 nameplate or defaults)."""
-    handler = getattr(request.app.state, "command_handler", None)
+    handler = _get_command_handler(request)
     if handler is None:
         return {
             "max_charge_w": DEFAULT_MAX_POWER_W,
