@@ -22,6 +22,7 @@ from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
+from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
@@ -139,6 +140,11 @@ async def lifespan(app: FastAPI):
 
     # Subscribe MQTT publisher to the global sample bus (receives all gateways)
     sample_bus.subscribe(mqtt_publisher.queue_sample)
+
+    # Site aggregator — computes virtual site-level metrics from all gateways
+    site_aggregator = SiteAggregator()
+    sample_bus.subscribe(site_aggregator.on_sample)
+    app.state.site_aggregator = site_aggregator
 
     # ── Gateway Registry ──────────────────────────────────────
     registry = GatewayRegistry(db=db, global_bus=sample_bus, stats=stats)

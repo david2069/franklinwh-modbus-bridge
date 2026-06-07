@@ -29,6 +29,36 @@ TOPIC_PREFIX = "franklinwh"
 
 
 @dataclass
+class GatewayDevice:
+    """Per-gateway MQTT device state."""
+
+    gateway_id: str
+    device_info: DeviceInfo | None = None
+    command_handler: CommandHandler | None = None
+    ac_type: int = 0
+    disabled_slugs: set[str] | None = None
+    entities: list[EntityDef] | None = None
+    removed_entities: list[EntityDef] | None = None
+    discovery_published: bool = False
+    max_val_overrides: dict[str, float] | None = None
+
+    def rebuild_entities(self) -> None:
+        """Rebuild active/removed entity lists from phase + group filters."""
+        disabled = self.disabled_slugs or set()
+        ac = self.ac_type
+        self.entities = [
+            e for e in BRIDGE_ENTITIES
+            if (e.phase is None or e.phase <= ac + 1)
+            and e.slug not in disabled
+        ]
+        active = {e.slug for e in self.entities}
+        self.removed_entities = [
+            e for e in BRIDGE_ENTITIES if e.slug not in active
+        ]
+        self.discovery_published = False
+
+
+@dataclass
 class MqttMessage:
     topic: str
     payload: str
@@ -159,6 +189,8 @@ class MqttPublisher:
         self._command_handler: CommandHandler | None = None
         # Per-slug overrides for discovery max_val (set by power limit detection)
         self._max_val_overrides: dict[str, float] = {}
+        # Multi-gateway device registry
+        self._devices: dict[str, GatewayDevice] = {}
 
     @property
     def state(self) -> MqttState:
@@ -255,58 +287,189 @@ class MqttPublisher:
         # Trigger re-discovery on next loop tick
         self._state.discovery_published = False
 
+    # ── Multi-gateway device management ───────────────────────
+
+    def register_device(
+        self,
+        gateway_id: str,
+        device_info: DeviceInfo,
+        command_handler: CommandHandler | None = None,
+        ac_type: int = 0,
+    ) -> GatewayDevice:
+        """Register a gateway device for MQTT publishing.
+
+        Creates a per-gateway device entry with its own entity list,
+        discovery state, and command handler binding.
+        """
+        dev = GatewayDevice(
+            gateway_id=gateway_id,
+            device_info=device_info,
+            command_handler=command_handler,
+            ac_type=ac_type,
+            disabled_slugs=set(self._disabled_slugs),
+            max_val_overrides=dict(self._max_val_overrides),
+        )
+        dev.rebuild_entities()
+        self._devices[gateway_id] = dev
+        # Trigger discovery on next loop tick
+        self._state.discovery_published = False
+        logger.info(
+            "Registered MQTT device: %s (serial=%s, %d entities)",
+            gateway_id, device_info.short_id, len(dev.entities or []),
+        )
+        return dev
+
+    async def unregister_device(
+        self, gateway_id: str, tombstone: bool = True,
+    ) -> None:
+        """Unregister a gateway device, optionally tombstoning its entities.
+
+        When ``tombstone=True``, queues empty retained payloads for all
+        the device's discovery topics so HA removes its entities.
+        """
+        dev = self._devices.pop(gateway_id, None)
+        if dev is None:
+            return
+
+        if tombstone and dev.device_info and dev.entities:
+            sid = dev.device_info.short_id
+            for entity in dev.entities:
+                topic = entity.discovery_topic(sid)
+                msg = MqttMessage(topic=topic, payload="", retain=True)
+                try:
+                    self._queue.put_nowait(msg)
+                except asyncio.QueueFull:
+                    break
+            # Also tombstone availability
+            avail_topic = f"{TOPIC_PREFIX}/{sid}/availability"
+            with contextlib.suppress(asyncio.QueueFull):
+                self._queue.put_nowait(
+                    MqttMessage(
+                        topic=avail_topic, payload="offline", retain=True,
+                    )
+                )
+            logger.info(
+                "Unregistered + tombstoned MQTT device: %s (%d entities)",
+                gateway_id, len(dev.entities),
+            )
+        else:
+            logger.info("Unregistered MQTT device: %s", gateway_id)
+
+    def get_device(self, gateway_id: str) -> GatewayDevice | None:
+        return self._devices.get(gateway_id)
+
+    @property
+    def registered_devices(self) -> list[str]:
+        return list(self._devices.keys())
+
     async def _publish_discovery(self, client: aiomqtt.Client) -> None:
         """Publish HA Discovery config for all registered entities.
 
-        Also tombstones (empty retained payload) any entities that were
-        removed by phase filtering, so HA removes stale entities.
+        Handles both the legacy single-device and multi-gateway devices.
+        Tombstones removed entities so HA deletes stale entries.
         """
-        if not self._device_info:
-            return
-
         from franklinwh_bridge import __version__
 
-        short_id = self._device_info.short_id
+        total_published = 0
 
-        # Tombstone removed entities first (empty retained = HA deletes them)
-        if self._removed_entities:
-            for entity in self._removed_entities:
-                topic = entity.discovery_topic(short_id)
-                await client.publish(topic, b"", retain=True)
+        # Publish for the legacy single-device (backward compatible)
+        if self._device_info:
+            total_published += await self._publish_device_discovery(
+                client, self._device_info, self._entities,
+                self._removed_entities, self._max_val_overrides,
+                __version__,
+            )
+
+        # Publish for each registered multi-gateway device
+        for dev in self._devices.values():
+            if not dev.device_info or not dev.entities:
+                continue
+            total_published += await self._publish_device_discovery(
+                client, dev.device_info, dev.entities,
+                dev.removed_entities, dev.max_val_overrides or {},
+                __version__,
+            )
+            dev.discovery_published = True
+
+        if total_published:
             logger.info(
-                "Tombstoned %d removed entities", len(self._removed_entities)
+                "Published HA Discovery for %d entities (%d devices)",
+                total_published,
+                1 + len(self._devices) if self._device_info else len(self._devices),
             )
-
-        for entity in self._entities:
-            topic = entity.discovery_topic(short_id)
-            payload = build_discovery_payload(
-                entity, self._device_info, app_version=__version__
-            )
-            # Apply runtime max_val overrides (e.g. from M702 nameplate)
-            if entity.slug in self._max_val_overrides:
-                payload["max"] = self._max_val_overrides[entity.slug]
-            await client.publish(topic, json.dumps(payload), retain=True)
-
-        logger.info("Published HA Discovery for %d entities", len(self._entities))
         self._state.discovery_published = True
 
-    async def _publish_availability(self, client: aiomqtt.Client, online: bool) -> None:
-        if not self._device_info:
-            return
-        topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/availability"
-        await client.publish(topic, "online" if online else "offline", retain=True)
+    async def _publish_device_discovery(
+        self,
+        client: aiomqtt.Client,
+        device_info: DeviceInfo,
+        entities: list[EntityDef],
+        removed: list[EntityDef] | None,
+        overrides: dict[str, float],
+        app_version: str,
+    ) -> int:
+        """Publish discovery for one device. Returns count published."""
+        short_id = device_info.short_id
+
+        # Tombstone removed entities
+        if removed:
+            for entity in removed:
+                topic = entity.discovery_topic(short_id)
+                await client.publish(topic, b"", retain=True)
+
+        for entity in entities:
+            topic = entity.discovery_topic(short_id)
+            payload = build_discovery_payload(
+                entity, device_info, app_version=app_version,
+            )
+            if entity.slug in overrides:
+                payload["max"] = overrides[entity.slug]
+            await client.publish(topic, json.dumps(payload), retain=True)
+
+        return len(entities)
+
+    async def _publish_availability(
+        self, client: aiomqtt.Client, online: bool,
+    ) -> None:
+        status = "online" if online else "offline"
+        # Legacy single device
+        if self._device_info:
+            topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/availability"
+            await client.publish(topic, status, retain=True)
+        # Multi-gateway devices
+        for dev in self._devices.values():
+            if dev.device_info:
+                topic = f"{TOPIC_PREFIX}/{dev.device_info.short_id}/availability"
+                await client.publish(topic, status, retain=True)
 
     async def queue_sample(self, sample: Sample) -> None:
-        """Queue per-entity state messages from a poller sample."""
-        if not self._device_info:
+        """Queue per-entity state messages from a poller sample.
+
+        If a per-gateway device is registered for the sample's gateway_id,
+        uses that device's entity list and short_id. Otherwise falls back
+        to the default single-device (backward compatible).
+        """
+        gw_id = getattr(sample, "gateway_id", "default")
+        dev = self._devices.get(gw_id)
+
+        if dev and dev.device_info and dev.entities:
+            # Multi-gateway path: use per-gateway device
+            points = dict(sample.points)
+            if dev.command_handler:
+                points.update(dev.command_handler.virtual_points)
+            short_id = dev.device_info.short_id
+            entities = dev.entities
+        elif self._device_info:
+            # Single-device fallback (backward compatible)
+            points = dict(sample.points)
+            if self._command_handler:
+                points.update(self._command_handler.virtual_points)
+            short_id = self._device_info.short_id
+            entities = self._entities
+        else:
             return
 
-        points = dict(sample.points)
-        if self._command_handler:
-            points.update(self._command_handler.virtual_points)
-
-        short_id = self._device_info.short_id
-        for entity in self._entities:
+        for entity in entities:
             if not entity.stat_key:
                 continue
             value = points.get(entity.stat_key)
@@ -314,11 +477,17 @@ class MqttPublisher:
                 continue
 
             topic = entity.state_topic(short_id)
-            msg = MqttMessage(topic=topic, payload=entity.format_value(value), retain=True)
+            msg = MqttMessage(
+                topic=topic,
+                payload=entity.format_value(value),
+                retain=True,
+            )
             try:
                 self._queue.put_nowait(msg)
             except asyncio.QueueFull:
-                logger.warning("MQTT queue full, dropping message for %s", entity.slug)
+                logger.warning(
+                    "MQTT queue full, dropping message for %s", entity.slug,
+                )
                 break
 
     async def publish_command_state(self) -> None:

@@ -58,6 +58,18 @@ async def get_site(request: Request):
     return await get_site_config(db)
 
 
+@router.get("/site/status")
+async def get_site_status(request: Request):
+    """Return aggregated site-level status from all gateways."""
+    aggregator = getattr(request.app.state, "site_aggregator", None)
+    if aggregator is None:
+        return {"gateway_count": 0, "points": {}}
+    return {
+        "gateway_count": aggregator.gateway_count,
+        "points": aggregator.site_points,
+    }
+
+
 @router.patch("/site")
 async def patch_site(body: SiteConfigUpdate, request: Request):
     """Update site configuration."""
