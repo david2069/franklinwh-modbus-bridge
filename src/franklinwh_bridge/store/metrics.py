@@ -525,60 +525,63 @@ async def archive_old_metrics(
 ) -> int:
     """Downsample raw metrics older than *raw_age_s* into 5-min buckets.
 
-    Inserts averaged rows into ``metrics_archive`` then deletes the
-    archived raw rows.  Returns the number of raw rows archived.
+    Inserts averaged rows into ``metrics_archive`` then deletes the archived
+    raw rows.  Returns the number of raw rows archived.
+
+    The cutoff is snapped *down* to a whole 5-minute bucket boundary so the
+    bucket straddling the cutoff is never split across runs.  Splitting it was
+    the source of two bugs: the same bucket got archived on two consecutive
+    runs (duplicate archive rows), and raw rows on the boundary were left
+    behind to pile up indefinitely.  The archive insert skips any bucket that
+    already exists (idempotent self-heal), and the delete clears *every* raw
+    row past the cutoff — including any orphaned by earlier buggy runs — so the
+    raw table stays bounded to the retention window.
     """
-    cutoff = time.time() - raw_age_s
+    # Snap the cutoff down to a complete 5-min bucket so we only ever archive
+    # fully-aged buckets (the straddling bucket waits until it is wholly past
+    # the cutoff on a later run).
+    raw_cutoff = time.time() - raw_age_s
+    cutoff = (int(raw_cutoff) // ARCHIVE_BUCKET_S) * ARCHIVE_BUCKET_S
 
-    # Find the newest already-archived timestamp to avoid re-archiving
-    try:
-        async with db.execute(
-            "SELECT MAX(ts) FROM metrics_archive"
-        ) as cur:
-            row = await cur.fetchone()
-            archive_fence = row[0] if row and row[0] else 0
-    except Exception:
-        archive_fence = 0
-
-    # Only archive rows older than cutoff AND newer than what's already archived
-    # (or all old rows if archive is empty)
-    lower_bound = max(archive_fence, 0)
-
-    # Count eligible rows
+    # Anything aged out yet?
     async with db.execute(
-        "SELECT COUNT(*) FROM metrics WHERE ts < ? AND ts > ?",
-        (cutoff, lower_bound),
+        "SELECT COUNT(*) FROM metrics WHERE ts < ?", (cutoff,)
     ) as cur:
         eligible = (await cur.fetchone())[0]
 
     if eligible == 0:
         return 0
 
-    # Aggregate into 5-min buckets and insert into archive
+    # Aggregate complete 5-min buckets and insert into the archive, skipping
+    # any bucket already present (guards against re-archiving rows orphaned by
+    # earlier runs, which would otherwise create duplicate archive rows).
     await db.execute(
         """
         INSERT INTO metrics_archive (ts, battery_w, grid_w, solar_w, home_w, soc, sample_count)
-        SELECT
-            (CAST(ts / ? AS INTEGER) * ?) + ? / 2.0 AS bucket_ts,
-            ROUND(AVG(battery_w), 1),
-            ROUND(AVG(grid_w), 1),
-            ROUND(AVG(solar_w), 1),
-            ROUND(AVG(home_w), 1),
-            ROUND(AVG(soc), 1),
-            COUNT(*)
-        FROM metrics
-        WHERE ts < ? AND ts > ?
-        GROUP BY CAST(ts / ? AS INTEGER)
+        SELECT bucket_ts, battery_w, grid_w, solar_w, home_w, soc, sample_count
+        FROM (
+            SELECT
+                (CAST(ts / ? AS INTEGER) * ?) + ? / 2.0 AS bucket_ts,
+                ROUND(AVG(battery_w), 1) AS battery_w,
+                ROUND(AVG(grid_w), 1) AS grid_w,
+                ROUND(AVG(solar_w), 1) AS solar_w,
+                ROUND(AVG(home_w), 1) AS home_w,
+                ROUND(AVG(soc), 1) AS soc,
+                COUNT(*) AS sample_count
+            FROM metrics
+            WHERE ts < ?
+            GROUP BY CAST(ts / ? AS INTEGER)
+        )
+        WHERE bucket_ts NOT IN (SELECT ts FROM metrics_archive)
         """,
         (ARCHIVE_BUCKET_S, ARCHIVE_BUCKET_S, ARCHIVE_BUCKET_S,
-         cutoff, lower_bound, ARCHIVE_BUCKET_S),
+         cutoff, ARCHIVE_BUCKET_S),
     )
 
-    # Delete the archived raw rows
-    cursor = await db.execute(
-        "DELETE FROM metrics WHERE ts < ? AND ts > ?",
-        (cutoff, lower_bound),
-    )
+    # Delete every raw row past the cutoff (whether just archived or orphaned
+    # by an earlier buggy run), keeping the raw table within the retention
+    # window with no leftovers.
+    cursor = await db.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
     await db.commit()
 
     archived = cursor.rowcount

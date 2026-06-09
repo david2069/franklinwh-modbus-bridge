@@ -401,6 +401,63 @@ async def test_archive_idempotent(db):
     assert second == 0
 
 
+async def test_archive_boundary_no_duplicates_or_orphans(db, monkeypatch):
+    """Regression: the 5-min bucket straddling the cutoff must not be split,
+    re-archived, or leave orphan raw rows across consecutive hourly runs.
+
+    The old logic snapped nothing and used a midpoint ``archive_fence`` as the
+    lower bound, so each run archived *part* of the boundary bucket and the next
+    run archived the rest into a bucket with the same timestamp — producing
+    duplicate archive rows and raw rows that were never deleted.
+    """
+    import types
+
+    from franklinwh_bridge.store import metrics as metrics_mod
+
+    raw_age = metrics_mod.ARCHIVE_RAW_AGE_S
+    # 90 minutes of dense raw data (one row every 30s), on a fixed epoch.
+    start = 1_700_000_000
+    span = 90 * 60
+    ts = start
+    while ts < start + span:
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, 100.0, 200.0, 300.0, 400.0, 50.0),
+        )
+        ts += 30
+    await db.commit()
+
+    clock = {"now": 0.0}
+    monkeypatch.setattr(
+        metrics_mod, "time", types.SimpleNamespace(time=lambda: clock["now"])
+    )
+
+    # Run 1: cutoff sweeps to 30 min into the data (lands mid-bucket).
+    clock["now"] = (start + 30 * 60) + raw_age
+    await archive_old_metrics(db)
+    # Run 2: an hour later, cutoff sweeps past the end of the data.
+    clock["now"] = (start + 90 * 60) + raw_age
+    await archive_old_metrics(db)
+
+    # No duplicate archive buckets.
+    async with db.execute(
+        "SELECT COUNT(*) - COUNT(DISTINCT ts) FROM metrics_archive"
+    ) as cur:
+        dups = (await cur.fetchone())[0]
+    assert dups == 0, "archive contains duplicate bucket timestamps"
+
+    # No raw rows left orphaned below the final (bucket-snapped) cutoff.
+    final_cutoff = (
+        int(start + 90 * 60) // metrics_mod.ARCHIVE_BUCKET_S
+    ) * metrics_mod.ARCHIVE_BUCKET_S
+    async with db.execute(
+        "SELECT COUNT(*) FROM metrics WHERE ts < ?", (final_cutoff,)
+    ) as cur:
+        orphans = (await cur.fetchone())[0]
+    assert orphans == 0, "raw rows left orphaned below the cutoff"
+
+
 # ---------------------------------------------------------------------------
 # Storage stats tests
 # ---------------------------------------------------------------------------

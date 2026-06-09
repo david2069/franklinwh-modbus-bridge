@@ -219,18 +219,16 @@ async def lifespan(app: FastAPI):
 
     async def _metrics_purge_loop() -> None:
         while True:
+            # archive_old_metrics / purge_old log their own one-line summary
+            # when they actually move rows; don't double-log it here.
             try:
-                archived = await archive_old_metrics(db)
-                if archived:
-                    logger.info("Metrics archive: rolled up %d rows", archived)
+                await archive_old_metrics(db)
             except Exception as exc:
                 logger.warning("Metrics archive failed: %s", exc)
 
             try:
                 retention = await get_retention_days(db)
-                deleted = await purge_old(db, retention)
-                if deleted:
-                    logger.info("Metrics purge: removed %d old rows", deleted)
+                await purge_old(db, retention)
             except Exception as exc:
                 logger.warning("Metrics purge failed: %s", exc)
             await asyncio.sleep(3600)
