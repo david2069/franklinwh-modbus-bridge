@@ -38,6 +38,9 @@ function settingsTab() {
     gwBusy: false,
     showAddGateway: false,
     newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '' },
+    gwTestResults: {},     // per-gateway TCP test result, keyed by gateway id
+    deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
+    editGw: null,          // gateway being edited (PATCH form fields)
     // Publishing groups
     groups: [],
     groupsBusy: false,
@@ -178,14 +181,14 @@ function settingsTab() {
 
     async testGw(gwId) {
       this.gwBusy = true;
-      this.gwTestResult = null;
+      // Mark this row as testing (new object ref so Alpine re-renders).
+      this.gwTestResults = { ...this.gwTestResults, [gwId]: { testing: true } };
       try {
         const data = await fetchJSON(`api/gateways/${gwId}/test`, { method: 'POST' });
-        if (data && data.ok) {
-          this.gwTestResult = { ok: true, msg: `TCP OK to ${data.host}:${data.port}`, latency: data.latency_ms };
-        } else {
-          this.gwTestResult = { ok: false, msg: data?.error || 'Failed', latency: null };
-        }
+        const result = (data && data.ok)
+          ? { ok: true, msg: `TCP OK to ${data.host}:${data.port}`, latency: data.latency_ms }
+          : { ok: false, msg: data?.error || 'Connection failed', latency: null };
+        this.gwTestResults = { ...this.gwTestResults, [gwId]: result };
       } finally {
         this.gwBusy = false;
       }
@@ -221,16 +224,64 @@ function settingsTab() {
       }
     },
 
-    async removeGw(gwId) {
-      if (!confirm(`Remove gateway "${gwId}"? Its MQTT entities will be unpublished.`)) return;
+    // Open the styled delete-confirmation modal for a gateway.
+    confirmRemoveGw(gw) {
+      this.deleteGwTarget = gw;
+    },
+
+    async doRemoveGw() {
+      const gw = this.deleteGwTarget;
+      if (!gw) return;
       this.gwBusy = true;
       try {
-        const data = await fetchJSON(`api/gateways/${gwId}`, { method: 'DELETE' });
+        const data = await fetchJSON(`api/gateways/${gw.id}`, { method: 'DELETE' });
         if (data && data.deleted) {
-          Alpine.store('app').toast('Gateway removed', 'info');
+          Alpine.store('app').toast(`Gateway "${gw.name}" removed`, 'info');
+          this.deleteGwTarget = null;
           await this.loadGateways();
         } else {
           Alpine.store('app').toast('Remove failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.gwBusy = false;
+      }
+    },
+
+    // ── Gateway edit (PATCH) ──────────────────────────────
+    startEditGw(gw) {
+      this.editGw = {
+        id: gw.id,
+        name: gw.name,
+        host: gw.host,
+        port: gw.port,
+        unit_id: gw.unit_id ?? 1,
+        poll_interval: gw.poll_interval ?? 10,
+        description: gw.description || '',
+      };
+    },
+
+    async saveEditGw() {
+      const g = this.editGw;
+      if (!g || !g.name || !g.host) {
+        Alpine.store('app').toast('Name and Host are required', 'error');
+        return;
+      }
+      this.gwBusy = true;
+      try {
+        const data = await fetchJSON(`api/gateways/${g.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: g.name, host: g.host, port: g.port,
+            unit_id: g.unit_id, poll_interval: g.poll_interval,
+            description: g.description,
+          }),
+        });
+        if (data && !data.error) {
+          Alpine.store('app').toast('Gateway updated', 'info');
+          this.editGw = null;
+          await this.loadGateways();
+        } else {
+          Alpine.store('app').toast('Update failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
         }
       } finally {
         this.gwBusy = false;
