@@ -166,6 +166,33 @@ def test_device_info_ha_block(device_info):
     assert "0.1.0" in block["sw_version"]
 
 
+def test_duplicate_serial_does_not_collide():
+    """Two gateways reporting the same serial must get distinct MQTT identity,
+    so Home Assistant Discovery does not merge them into one device."""
+    serial = "10060006A02F00000001"
+    default = DeviceInfo(serial=serial, gateway_id="default")
+    second = DeviceInfo(serial=serial, gateway_id="gateway_2")
+
+    # Default keeps the historic serial-only namespace (backward compatible).
+    assert default.short_id == "00000001"
+    assert default.ha_device_block()["identifiers"] == [f"franklinwh_{serial}"]
+
+    # The additional gateway is namespaced by gateway_id → no collision.
+    assert second.short_id == "gateway_2_00000001"
+    assert default.short_id != second.short_id
+    assert (
+        default.ha_device_block()["identifiers"]
+        != second.ha_device_block()["identifiers"]
+    )
+
+    # ... and the per-entity unique_id / discovery topic differ too.
+    ent = get_entity_by_slug("battery_soc")
+    assert (
+        build_discovery_payload(ent, default)["unique_id"]
+        != build_discovery_payload(ent, second)["unique_id"]
+    )
+
+
 # --- Queue and publish ---
 
 async def test_queue_sample_per_entity():

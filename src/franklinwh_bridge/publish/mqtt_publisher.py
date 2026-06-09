@@ -85,18 +85,39 @@ class DeviceInfo:
     model: str = "aGate"
     firmware: str = ""
     name: str = ""
+    gateway_id: str = "default"
+
+    @property
+    def _serial_tail(self) -> str:
+        return self.serial[-8:] if len(self.serial) >= 8 else self.serial
 
     @property
     def short_id(self) -> str:
-        return self.serial[-8:] if len(self.serial) >= 8 else self.serial
+        """Topic/unique_id namespace for this device.
+
+        The default gateway keeps the historic serial-only id so existing
+        Home Assistant entities are preserved.  Additional gateways are
+        prefixed with their gateway_id so two gateways that happen to report
+        the same serial (e.g. both pointed at one physical aGate) get distinct
+        MQTT topics and unique_ids instead of colliding in HA Discovery.
+        """
+        if self.gateway_id and self.gateway_id != "default":
+            return f"{self.gateway_id}_{self._serial_tail}"
+        return self._serial_tail
 
     def ha_device_block(self, app_version: str = "") -> dict:
         name = self.name or f"FranklinWH {self.short_id}"
         sw = self.firmware
         if app_version:
             sw = f"{self.firmware} (bridge: v{app_version})" if sw else f"bridge: v{app_version}"
+        # Device identifier mirrors short_id's namespacing so duplicate serials
+        # don't merge into one HA device.
+        if self.gateway_id and self.gateway_id != "default":
+            identifier = f"franklinwh_{self.gateway_id}_{self.serial}"
+        else:
+            identifier = f"franklinwh_{self.serial}"
         block: dict = {
-            "identifiers": [f"franklinwh_{self.serial}"],
+            "identifiers": [identifier],
             "name": name,
             "model": self.model,
             "manufacturer": self.manufacturer,

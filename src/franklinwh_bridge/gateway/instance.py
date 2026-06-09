@@ -231,6 +231,7 @@ class GatewayInstance:
                     manufacturer=nameplate.get("manufacturer", ""),
                     model=nameplate.get("model", ""),
                     firmware=nameplate.get("version", ""),
+                    gateway_id=self.gateway_id,
                 )
                 self.status.serial = nameplate["serial"]
                 self.status.model = nameplate.get("model")
