@@ -17,7 +17,33 @@ const fmt = {
     if (s < 3600) return `${Math.floor(s/60)}m ago`;
     return `${Math.floor(s/3600)}h ago`;
   },
+  // Wall-clock HH:MM of a unix timestamp (for the last-poll indicator).
+  clock: (ts) => {
+    if (ts == null) return 'never';
+    const d = new Date(ts * 1000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  },
+  // Full local timestamp, used as a tooltip on the HH:MM label.
+  at: (ts) => (ts == null ? 'never' : new Date(ts * 1000).toLocaleString()),
 };
+
+// Availability dot colour for a gateway's health state.
+function gwDotClass(health) {
+  return health === 'connected' ? 'bg-emerald-400'
+    : health === 'tcp_only' ? 'bg-amber-400'
+    : health === 'unreachable' ? 'bg-red-400'
+    : 'bg-slate-500';
+}
+
+// Short status label for a gateway row in the selector dropdown.
+function gwStatusText(gw) {
+  if (!gw) return '';
+  if (gw.polling) return 'Polling';
+  if (gw.connected) return 'Connected';
+  if (gw.health === 'unreachable') return 'Offline';
+  if (gw.health === 'disabled' || gw.enabled === false) return 'Disabled';
+  return 'Stopped';
+}
 
 function socRingOffset(soc) {
   // stroke-dasharray = 251.3 (2*pi*40)
@@ -176,6 +202,18 @@ document.addEventListener('alpine:init', () => {
 
     get multiGateway() {
       return this.gatewayList.length > 1;
+    },
+
+    get activeGatewayName() {
+      if (this.activeGateway === 'site') return 'Site (All Gateways)';
+      const gw = this.gatewayList.find(g => g.id === this.activeGateway);
+      return gw ? gw.name : 'Default Gateway';
+    },
+
+    get activeGatewayHealth() {
+      if (this.activeGateway === 'site') return 'connected';
+      const gw = this.gatewayList.find(g => g.id === this.activeGateway);
+      return gw ? gw.health : 'connected';
     },
 
     async refresh() {
