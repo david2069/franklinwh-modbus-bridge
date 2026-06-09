@@ -27,3 +27,6 @@ htmlcov/
 tests/results/
 
 .DS_Store
+
+# Claude Code local, machine-specific settings (permissions allowlist)
+.claude/settings.local.json

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bridge-proxy",
+      "runtimeExecutable": "/opt/homebrew/bin/python3",
+      "runtimeArgs": [".claude/proxy.py"],
+      "port": 8199
+    }
+  ]
+}
