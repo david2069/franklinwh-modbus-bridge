@@ -70,6 +70,11 @@ async def test_gateway_list_and_crud(client):
     assert resp.status_code == 200
     assert resp.json()["name"] == "Gateway 2"
 
+    # Onboarded on add: the gateway is registered + polling immediately, so its
+    # per-gateway points endpoint resolves (200) instead of 404 "not running".
+    resp = await client.get("/api/gateways/gw2/points")
+    assert resp.status_code == 200
+
     # Update
     resp = await client.patch("/api/gateways/gw2", json={
         "name": "Renamed GW2",

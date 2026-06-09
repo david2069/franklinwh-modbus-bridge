@@ -68,6 +68,45 @@ async def test_multi_gateway_aggregation(aggregator):
     assert pts["site_gateway_count"] == 2
 
 
+async def test_emits_canonical_dashboard_keys(aggregator):
+    """Site aggregate must expose the canonical point keys the dashboard binds
+    to, not only ``site_*`` aliases — otherwise the Site view renders all '--'.
+    """
+    s1 = Sample.now("gw1", {
+        "total_solar": 3000, "battery_power_w": -500,
+        "grid_power_w": 200, "home_load_ext": 2700, "soc": 80,
+    })
+    s2 = Sample.now("gw2", {
+        "total_solar": 2000, "battery_power_w": 1000,
+        "grid_power_w": -500, "home_load_ext": 2500, "soc": 60,
+    })
+    await aggregator.on_sample(s1)
+    await aggregator.on_sample(s2)
+
+    pts = aggregator.site_points
+    # Canonical keys the dashboard getters read.
+    assert pts["total_solar"] == 5000
+    assert pts["battery_power_w"] == 500
+    assert pts["battery_dc_power_w"] == 500
+    assert pts["grid_power_w"] == -300
+    assert pts["home_load_ext"] == 5200
+    assert pts["soc"] == 70
+    assert pts["connection_state"] == "Connected"
+    # Aliases remain for future site-level MQTT entities.
+    assert pts["site_total_solar_w"] == 5000
+
+
+@pytest.mark.parametrize(
+    "battery_w, expected",
+    [(600, "Discharging"), (-600, "Charging"), (0, "Standby"), (30, "Standby")],
+)
+async def test_battery_state_derivation(aggregator, battery_w, expected):
+    """Aggregate battery_state follows summed power sign (+=discharging) with a
+    50 W deadband."""
+    await aggregator.on_sample(Sample.now("gw1", {"battery_power_w": battery_w}))
+    assert aggregator.site_points["battery_state"] == expected
+
+
 async def test_off_grid_detection(aggregator):
     s1 = Sample.now("gw1", {"soc": 50, "connection_state": "Connected"})
     await aggregator.on_sample(s1)

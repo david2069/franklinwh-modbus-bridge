@@ -67,6 +67,7 @@ async def get_site_status(request: Request):
     return {
         "gateway_count": aggregator.gateway_count,
         "points": aggregator.site_points,
+        "ts": aggregator.last_update or None,
     }
 
 
@@ -161,6 +162,19 @@ async def add_gateway(body: GatewayCreate, request: Request):
         description=body.description,
         poll_interval=body.poll_interval,
     )
+
+    # Onboard immediately so the gateway starts polling without an app restart.
+    # start_gateway is non-blocking (connect/discover runs in a background
+    # task); a failed connection just surfaces the gateway as offline rather
+    # than failing the create.
+    registry = getattr(request.app.state, "registry", None)
+    if registry is not None:
+        try:
+            await registry.start_gateway(body.gateway_id)
+        except Exception as exc:
+            logger.warning(
+                "Gateway %s created but failed to start: %s", body.gateway_id, exc
+            )
     return gw
 
 
@@ -209,6 +223,12 @@ async def remove_gateway(gw_id: str, request: Request):
     # Stop instance if running
     if registry.get(gw_id):
         await registry.stop_gateway(gw_id)
+
+    # Offboard: drop the gateway's cached samples so it no longer skews the
+    # site aggregate after removal.
+    aggregator = getattr(request.app.state, "site_aggregator", None)
+    if aggregator is not None:
+        aggregator.clear_gateway(gw_id)
 
     try:
         ok = await delete_gateway(db, gw_id)
