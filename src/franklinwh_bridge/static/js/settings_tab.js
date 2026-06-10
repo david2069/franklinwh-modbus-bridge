@@ -37,7 +37,7 @@ function settingsTab() {
     gwList: [],
     gwBusy: false,
     showAddGateway: false,
-    newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '' },
+    newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '', mock: false },
     gwTestResults: {},     // per-gateway TCP test result, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
     editGw: null,          // gateway being edited (PATCH form fields)
@@ -156,8 +156,8 @@ function settingsTab() {
 
     async addGateway() {
       const g = this.newGw;
-      if (!g.gateway_id || !g.name || !g.host) {
-        Alpine.store('app').toast('ID, Name, and Host are required', 'error');
+      if (!g.gateway_id || !g.name || (!g.mock && !g.host)) {
+        Alpine.store('app').toast('ID and Name are required (Host required for real gateways)', 'error');
         return;
       }
       this.gwBusy = true;
@@ -168,7 +168,7 @@ function settingsTab() {
         });
         if (data && !data.error && data.id) {
           Alpine.store('app').toast(`Gateway "${data.name}" added`, 'info');
-          this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '' };
+          this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '', mock: false };
           this.showAddGateway = false;
           await this.loadGateways();
         } else {

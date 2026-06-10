@@ -115,3 +115,41 @@ async def test_site_status(client):
     data = resp.json()
     assert "gateway_count" in data
     assert "points" in data
+
+
+async def test_mock_gateway_and_conflict_guard(client):
+    """Mock gateways need no host and skip conflict checks; real gateways
+    can't duplicate another real gateway's host:port:unit."""
+    # Mock: no host required, persisted with mock=1.
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "mockx", "name": "Mock X", "mock": True,
+    })
+    assert resp.status_code == 201
+    assert resp.json()["mock"] == 1
+
+    # A real gateway at a unique endpoint.
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "realA", "name": "Real A", "host": "10.99.99.99", "port": 502,
+    })
+    assert resp.status_code == 201
+
+    # Another real gateway at the SAME endpoint → rejected.
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "realB", "name": "Real B", "host": "10.99.99.99", "port": 502,
+    })
+    assert resp.status_code == 409
+
+    # A mock at that endpoint is fine — mocks are exempt from the guard.
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "mockB", "name": "Mock B", "host": "10.99.99.99", "mock": True,
+    })
+    assert resp.status_code == 201
+
+    # A real gateway with no host → 400.
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "realC", "name": "Real C",
+    })
+    assert resp.status_code == 400
+
+    for gid in ("mockx", "realA", "mockB"):
+        await client.delete(f"/api/gateways/{gid}")

@@ -87,11 +87,12 @@ async def patch_site(body: SiteConfigUpdate, request: Request):
 class GatewayCreate(BaseModel):
     gateway_id: str = Field(..., min_length=1, max_length=63)
     name: str = Field(..., min_length=1, max_length=120)
-    host: str = Field(..., min_length=1)
+    host: str = Field(default="", max_length=255)
     port: int = Field(default=502, ge=1, le=65535)
     unit_id: int = Field(default=1, ge=1, le=247)
     description: str = ""
     poll_interval: int = Field(default=10, ge=1, le=300)
+    mock: bool = False
 
 
 class GatewayUpdate(BaseModel):
@@ -152,15 +153,37 @@ async def add_gateway(body: GatewayCreate, request: Request):
     if existing:
         raise HTTPException(409, f"Gateway '{body.gateway_id}' already exists")
 
+    # Conflict guards apply to REAL gateways only (mocks never open a Modbus
+    # connection, so they can't contend or clash).
+    if not body.mock:
+        if not body.host:
+            raise HTTPException(400, "Host is required for a real gateway")
+        for row in await get_gateways(db):
+            if row.get("mock"):
+                continue
+            if (
+                row["host"] == body.host
+                and row["port"] == body.port
+                and row.get("unit_id", 1) == body.unit_id
+            ):
+                raise HTTPException(
+                    409,
+                    f"Gateway '{row['id']}' already polls {body.host}:{body.port} "
+                    f"unit {body.unit_id}. Two real gateways can't share one "
+                    f"aGate's Modbus session — point this one at a different "
+                    f"device, or mark it as a mock.",
+                )
+
     gw = await create_gateway(
         db,
         gateway_id=body.gateway_id,
         name=body.name,
-        host=body.host,
+        host=body.host or ("mock" if body.mock else ""),
         port=body.port,
         unit_id=body.unit_id,
         description=body.description,
         poll_interval=body.poll_interval,
+        mock=body.mock,
     )
 
     # Onboard immediately so the gateway starts polling without an app restart.

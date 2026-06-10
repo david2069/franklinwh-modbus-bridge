@@ -533,8 +533,14 @@
                  class="form-control !py-1 !text-xs w-full">
         </div>
       </div>
+      <label class="flex items-center gap-2 mb-2 text-xs text-slate-300 cursor-pointer">
+        <input type="checkbox" x-model="newGw.mock" class="rounded">
+        <span>Mock gateway
+          <span class="text-slate-500">— simulated data, no hardware (host/port ignored; safe to run alongside real gateways)</span></span>
+      </label>
       <button @click="addGateway()" :disabled="gwBusy"
-              class="btn btn-sm btn-primary">Add Gateway</button>
+              class="btn btn-sm btn-primary"
+              x-text="newGw.mock ? 'Add Mock Gateway' : 'Add Gateway'">Add Gateway</button>
     </div>
 
     <!-- Gateway table -->
@@ -565,6 +571,7 @@
               <td>
                 <span class="font-medium" x-text="gw.name"></span>
                 <span class="text-[10px] text-slate-500 ml-1 font-mono" x-text="gw.id"></span>
+                <span x-show="gw.mock" class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">mock</span>
                 <span x-show="gw.description" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
               </td>
               <td class="font-mono text-slate-400" x-text="gw.host + ':' + gw.port"></td>

@@ -10,7 +10,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -243,6 +243,10 @@ MIGRATIONS: dict[int, str] = {
     );
     INSERT OR IGNORE INTO site_config (id, updated_at) VALUES (1, 0);
     """,
+    10: """
+    -- Mock gateways: synthetic data source, no Modbus connection
+    ALTER TABLE gateways ADD COLUMN mock INTEGER NOT NULL DEFAULT 0;
+    """,
 }
 
 
@@ -427,6 +431,7 @@ async def create_gateway(
     unit_id: int = 1,
     description: str = "",
     poll_interval: int = 10,
+    mock: bool = False,
 ) -> dict:
     """Create a new gateway."""
     now = time.time()
@@ -438,8 +443,10 @@ async def create_gateway(
 
     await db.execute(
         "INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at, "
-        "description, poll_interval, display_order) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
-        (gateway_id, name, host, port, unit_id, now, description, poll_interval, order),
+        "description, poll_interval, display_order, mock) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
+        (gateway_id, name, host, port, unit_id, now, description,
+         poll_interval, order, int(mock)),
     )
     await db.commit()
     return await get_gateway(db, gateway_id)  # type: ignore[return-value]

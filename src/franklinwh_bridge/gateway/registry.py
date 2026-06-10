@@ -81,6 +81,7 @@ class GatewayRegistry:
             poll_interval=gw_row.get("poll_interval", 10),
             description=gw_row.get("description", ""),
             enabled=bool(gw_row.get("enabled", True)),
+            mock=bool(gw_row.get("mock", 0)),
         )
 
         instance = GatewayInstance(

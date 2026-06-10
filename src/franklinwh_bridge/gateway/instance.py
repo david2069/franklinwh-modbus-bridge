@@ -46,6 +46,7 @@ class GatewayConfig:
     poll_interval: int = 10
     description: str = ""
     enabled: bool = True
+    mock: bool = False  # synthetic gateway — no Modbus connection
 
 
 @dataclass
@@ -102,6 +103,10 @@ class GatewayInstance:
 
     async def start(self) -> None:
         """Create controller, connect, discover device, start poller."""
+        if self.config.mock:
+            await self._start_mock()
+            return
+
         try:
             from franklinwh_modbus import FranklinWHController
         except ImportError:
@@ -136,6 +141,51 @@ class GatewayInstance:
 
         # Run the connect + discover sequence in background
         self._init_task = asyncio.create_task(self._init_and_poll())
+
+    async def _start_mock(self) -> None:
+        """Start a synthetic gateway: emit simulated samples, no Modbus.
+
+        No connection is opened, so a mock never contends for a real aGate's
+        session, and it gets a synthetic ``MOCK-<id>`` serial that can't clash
+        in HA Discovery.  Control is not wired (you can't command a mock).
+        """
+        from franklinwh_bridge.gateway.mock_gateway import MockController, MockPoller
+
+        self.controller = MockController(self.gateway_id)
+        serial = self.controller.serial
+        self.device_info = DeviceInfo(
+            serial=serial,
+            manufacturer="FranklinWH (mock)",
+            model="aGate (mock)",
+            firmware="MOCK",
+            gateway_id=self.gateway_id,
+        )
+        self.status.connected = True
+        self.status.health = "connected"
+        self.status.serial = serial
+        self.status.model = "aGate (mock)"
+        self.status.firmware = "MOCK"
+
+        self.poller = MockPoller(
+            self.sample_bus, self.gateway_id, self.config.poll_interval
+        )
+        # Fan-in to the global bus so the Site aggregator picks up the mock.
+        self.sample_bus.subscribe(self._forward_to_global)
+        await self.poller.start()
+        self.status.polling = True
+
+        await update_gateway(
+            self._db,
+            self.gateway_id,
+            serial=serial,
+            model="aGate (mock)",
+            firmware="MOCK",
+            last_connected_at=time.time(),
+        )
+        logger.info(
+            "Gateway %s started (MOCK): %s — synthetic data, no hardware",
+            self.gateway_id, self.config.name,
+        )
 
     async def _init_and_poll(self) -> None:
         """Connect, discover device info, release stale commands, start polling."""
