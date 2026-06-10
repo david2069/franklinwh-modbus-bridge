@@ -2,6 +2,13 @@
 
 **Status:** Backlog / requirements capture — **not scheduled.** Logged so the
 detail isn't lost; do not start until Publishing Groups and current work close.
+
+**Primary purpose: coordinated control.** The service / amperage / phase
+association is mainly a **logical grouping for coordinating battery control** —
+running **charge / discharge / standby / release** across the grouped gateways
+together (e.g. all aGates on one 3-phase service, or per phase). Per-phase data
+mapping and reporting are secondary benefits of the same grouping.
+
 **Context:** AU/NZ commonly run **3-phase** services; a site may have multiple
 electricity services, and an aGate can be wired to **all phases** or a
 **specific phase** (L1/L2/L3). The Explorer screenshots show SunSpec **701
@@ -57,6 +64,20 @@ services                          gateways (new columns)
 
 ## 4. Behaviour
 
+### 4.0 Coordinated control (the main driver)
+- A **service (or phase) group** is a set of gateways controlled **together**.
+- Control commands — **charge / discharge / standby / release** — can target a
+  **group** and fan out to every member gateway's command handler, instead of
+  driving each aGate one at a time.
+- Coordination rules use the group's metadata: e.g. respect each service's
+  **rated amperage** when charging/discharging the group, balance across phases,
+  and release the whole group together (one watchdog/timeout per group).
+- Builds on the existing per-gateway `CommandHandler` (charge/discharge/release
+  + watchdog) — the group layer dispatches to N handlers and aggregates results.
+- Open question: group-level command UI + how partial failures (one gateway
+  rejects) are surfaced.
+
+### 4.1 Per-phase data
 - A gateway with `phase='L2'` maps its primary power/energy points to the **L2**
   variants from 701 (`WL2`, `VAL2`, `VarL2`, `AL2`, `VL2`, `TotWhInjL2`,
   `TotWhAbsL2`, …). EntityDef gains a phase-substitution so `701.WLn` resolves
