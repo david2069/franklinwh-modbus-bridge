@@ -200,12 +200,13 @@ function settingsTab() {
         const data = await fetchJSON(`api/gateways/${gwId}/start`, { method: 'POST' });
         if (data && data.started) {
           Alpine.store('app').toast(`Gateway ${gwId} started`, 'info');
-          await this.loadGateways();
         } else {
-          Alpine.store('app').toast('Start failed: ' + (data?.detail || 'unknown'), 'error');
+          Alpine.store('app').toast('Start failed: ' + (data?.error || data?.detail || 'unknown'), 'error');
         }
       } finally {
         this.gwBusy = false;
+        // Always resync — the row may have been stale (e.g. already running/stopped).
+        await this.loadGateways();
       }
     },
 
@@ -215,12 +216,13 @@ function settingsTab() {
         const data = await fetchJSON(`api/gateways/${gwId}/stop`, { method: 'POST' });
         if (data && data.stopped) {
           Alpine.store('app').toast(`Gateway ${gwId} stopped`, 'info');
-          await this.loadGateways();
         } else {
-          Alpine.store('app').toast('Stop failed: ' + (data?.detail || 'unknown'), 'error');
+          Alpine.store('app').toast('Stop failed: ' + (data?.error || data?.detail || 'unknown'), 'error');
         }
       } finally {
         this.gwBusy = false;
+        // Always resync — the row may have been stale (e.g. already stopped).
+        await this.loadGateways();
       }
     },
 
