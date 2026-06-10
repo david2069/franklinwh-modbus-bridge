@@ -818,6 +818,24 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         source="ext.15510",
     ),
     EntityDef(
+        # Proximal (local-inverter) solar energy from the standard SunSpec
+        # Solar Module (502.OutWh) — library-read, no raw-pymodbus bypass.
+        # Equals "total" on single-array systems; on systems with remote aPbox
+        # solar, total (ext.15510) is larger.
+        slug="pv_energy_proximal_kwh",
+        name="Solar Energy Proximal",
+        ha_type="sensor",
+        state_group="energy",
+        stat_key="502.OutWh",
+        unit="kWh",
+        device_class="energy",
+        state_class="total_increasing",
+        icon="mdi:solar-power",
+        value_scale=0.001,
+        value_precision=2,
+        source="502.OutWh",
+    ),
+    EntityDef(
         slug="battery_energy_discharged_kwh",
         name="Battery Energy Discharged",
         ha_type="sensor",

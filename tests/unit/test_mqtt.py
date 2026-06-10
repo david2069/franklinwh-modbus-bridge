@@ -312,7 +312,7 @@ def test_per_phase_entity_slugs():
 
 def test_total_entity_count():
     """Verify total entity count including per-phase + target SoC."""
-    assert len(BRIDGE_ENTITIES) == 82
+    assert len(BRIDGE_ENTITIES) == 83  # +1: Solar Energy Proximal (502.OutWh)
 
 
 # --- Phase filtering in MQTT publisher ---
@@ -430,3 +430,15 @@ def test_entity_source_format():
         assert valid_pattern.match(entity.source), (
             f"Entity {entity.slug} has invalid source format: {entity.source!r}"
         )
+
+
+def test_pv_energy_proximal_entity_uses_502_outwh():
+    """Proximal solar energy comes from the standard SunSpec 502.OutWh
+    (library-read), not the raw-pymodbus 15512 derivation."""
+    ent = get_entity_by_slug("pv_energy_proximal_kwh")
+    assert ent is not None
+    assert ent.stat_key == "502.OutWh"
+    assert ent.source == "502.OutWh"
+    assert ent.unit == "kWh"
+    assert ent.device_class == "energy"
+    assert ent.value_scale == 0.001
