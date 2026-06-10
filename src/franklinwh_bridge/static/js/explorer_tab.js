@@ -61,6 +61,10 @@ function explorerTab() {
     accessFilter: '',  // '' | 'R' | 'RW'
     picsFilter: '',    // '' | 'U' | 'S' | 'T' | 'F' | 'X'
 
+    // View toggles (persisted with layout)
+    hideEmptyModels: false,  // hide models not actively polled (no live values)
+    showExtCard: true,       // show the FranklinWH Extension Registers panel
+
     // PICS compliance state: { "model_id:point_name": "S"|"T"|"F"|"U"|"X" }
     picsData: {},
 
@@ -130,6 +134,8 @@ function explorerTab() {
         if (saved) {
           if (saved.treeWidth) this.treeWidth = saved.treeWidth;
           if (saved.extHeight) this.extHeight = saved.extHeight;
+          if (typeof saved.hideEmptyModels === 'boolean') this.hideEmptyModels = saved.hideEmptyModels;
+          if (typeof saved.showExtCard === 'boolean') this.showExtCard = saved.showExtCard;
         }
       } catch (_) {}
     },
@@ -138,6 +144,8 @@ function explorerTab() {
       localStorage.setItem(EXPLORER_LAYOUT_KEY, JSON.stringify({
         treeWidth: this.treeWidth,
         extHeight: this.extHeight,
+        hideEmptyModels: this.hideEmptyModels,
+        showExtCard: this.showExtCard,
       }));
     },
 
@@ -226,10 +234,16 @@ function explorerTab() {
     },
 
     get filteredModels() {
-      const q = this.filter.toLowerCase().trim();
-      if (!q) return this.models;
+      let models = this.models;
+      // Hide models that aren't actively polled (no live values).
+      if (this.hideEmptyModels) {
+        models = models.filter(m => this.modelHasValues(m));
+      }
 
-      return this.models.filter(m => {
+      const q = this.filter.toLowerCase().trim();
+      if (!q) return models;
+
+      return models.filter(m => {
         const modelMatch =
           ('m' + m.model_id).includes(q) ||
           String(m.model_id).includes(q) ||
