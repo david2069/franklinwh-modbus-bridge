@@ -267,15 +267,25 @@ async def refresh_models(request: Request):
 
 @router.get("/points")
 async def get_points(request: Request):
-    sample_bus = request.app.state.sample_bus
-    last = sample_bus.last_sample
+    # Scope to the DEFAULT gateway's own sample bus — never the global bus.
+    # The global bus carries every gateway's samples (including mocks and any
+    # second gateway on the same aGate), so reading it makes the default
+    # dashboard flicker between gateways' data — partial samples blank out the
+    # real fields. Reading the default instance's per-gateway bus keeps the
+    # default view consistent regardless of how many other gateways exist.
+    registry = getattr(request.app.state, "registry", None)
+    inst = registry.get("default") if registry else None
+    bus = inst.sample_bus if inst is not None else request.app.state.sample_bus
+    last = bus.last_sample
     if last is None:
-        gw_id = getattr(request.app.state, "gateway_id", "default")
-        return {"gateway_id": gw_id, "points": {}, "ts": None}
+        return {"gateway_id": "default", "points": {}, "ts": None}
 
     # Merge command handler virtual points (software-tracked command state)
     points = dict(last.points)
-    command_handler = getattr(request.app.state, "command_handler", None)
+    command_handler = (
+        inst.command_handler if inst is not None
+        else getattr(request.app.state, "command_handler", None)
+    )
     if command_handler is not None:
         points.update(command_handler.virtual_points)
 
