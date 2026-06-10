@@ -477,18 +477,32 @@ async def update_gateway(
 
 
 async def delete_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
-    """Delete a gateway and purge its recorded metrics. Returns True if deleted."""
+    """Delete a gateway, its catalog, and its metrics. Returns True if deleted.
+
+    The FK children (``device_points`` → ``device_models`` → ``gateways``, and
+    ``gateway_state``) have no ON DELETE CASCADE, so a gateway that captured a
+    SunSpec catalog would otherwise fail with a FOREIGN KEY constraint error.
+    Delete them in dependency order first, then purge metrics, then the row.
+    """
     if gateway_id == "default":
         raise ValueError("Cannot delete the default gateway")
-    cur = await db.execute("DELETE FROM gateways WHERE id = ?", (gateway_id,))
-    # Purge the gateway's metrics so a removed (e.g. mock) gateway leaves no
-    # data polluting Power History or storage.
-    for table in ("metrics", "metrics_archive"):
+
+    # device_points references device_models — delete points before models.
+    with contextlib.suppress(aiosqlite.OperationalError):
+        await db.execute(
+            "DELETE FROM device_points WHERE model_db_id IN "
+            "(SELECT id FROM device_models WHERE gateway_id = ?)",
+            (gateway_id,),
+        )
+    # Remaining FK children + metrics (no FK, but clean them up too).
+    for table in ("device_models", "gateway_state", "metrics", "metrics_archive"):
         with contextlib.suppress(aiosqlite.OperationalError):
             await db.execute(
                 f"DELETE FROM {table} WHERE gateway_id = ?",  # noqa: S608
                 (gateway_id,),
             )
+
+    cur = await db.execute("DELETE FROM gateways WHERE id = ?", (gateway_id,))
     await db.commit()
     return cur.rowcount > 0
 

@@ -79,6 +79,31 @@ async def test_delete_gateway_purges_its_metrics(db):
         assert (await cur.fetchone())[0] == 0
 
 
+async def test_delete_gateway_with_catalog(db):
+    """A gateway that captured a SunSpec catalog (device_models/device_points,
+    FK to gateways with no cascade) must still delete without a FOREIGN KEY
+    constraint error."""
+    await create_gateway(db, gateway_id="m3", name="Mock 3", host="1.2.3.4")
+    cur = await db.execute(
+        "INSERT INTO device_models (gateway_id, model_id, label, captured_at, hash) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("m3", 1, "Common", 0.0, "h"),
+    )
+    model_db_id = cur.lastrowid
+    await db.execute(
+        "INSERT INTO device_points (model_db_id, point_name, addr) VALUES (?, ?, ?)",
+        (model_db_id, "ID", 40003),
+    )
+    await db.commit()
+
+    assert await delete_gateway(db, "m3") is True
+    assert await get_gateway(db, "m3") is None
+    async with db.execute(
+        "SELECT COUNT(*) FROM device_models WHERE gateway_id = 'm3'"
+    ) as cur:
+        assert (await cur.fetchone())[0] == 0
+
+
 async def test_mock_instance_emits_without_hardware(db):
     await create_gateway(db, gateway_id="mock1", name="Mock 1", host="", mock=True)
     bus = SampleBus()
