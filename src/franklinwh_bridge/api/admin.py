@@ -189,7 +189,11 @@ async def read_model(model_id: int, request: Request):
     values, then returns the point name→value map.  Also injects the values
     into the sample bus so the Explorer sees them immediately.
     """
-    controller = getattr(request.app.state, "controller", None)
+    # Resolve the default gateway's controller from the registry. The legacy
+    # app.state.controller is unset under the multi-gateway architecture, so
+    # reading it directly always failed with "No Modbus controller available".
+    inst = _get_gateway(request, "default")
+    controller = inst.controller if inst else getattr(request.app.state, "controller", None)
     if controller is None:
         raise HTTPException(503, "No Modbus controller available")
 
@@ -214,8 +218,8 @@ async def read_model(model_id: int, request: Request):
             if not was_connected:
                 controller.disconnect()
 
-    # Acquire Modbus lock to prevent interleaving with poller/commands
-    modbus_lock = getattr(request.app.state, "modbus_lock", None)
+    # Acquire the gateway's Modbus lock to prevent interleaving with poller/commands
+    modbus_lock = inst.modbus_lock if inst else getattr(request.app.state, "modbus_lock", None)
     if modbus_lock:
         async with modbus_lock:
             result = await asyncio.to_thread(_do_read)
@@ -224,8 +228,9 @@ async def read_model(model_id: int, request: Request):
     if "error" in result:
         raise HTTPException(404, result["error"])
 
-    # Inject as sticky points so they survive poll cycles (5-min TTL)
-    sample_bus = request.app.state.sample_bus
+    # Inject as sticky points so they survive poll cycles (5-min TTL).
+    # Use the default gateway's own bus — that's what /api/points reads now.
+    sample_bus = inst.sample_bus if inst else request.app.state.sample_bus
     sample_bus.inject_sticky(result["values"])
     # Also update current sample for immediate visibility
     last = sample_bus.last_sample
