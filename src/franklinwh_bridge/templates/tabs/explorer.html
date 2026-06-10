@@ -111,13 +111,35 @@
                       class="px-1.5 py-0.5 rounded transition"
                       :class="addrMode === 'base0' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-0</button>
             </div>
+            <!-- Access + PICS filters -->
+            <div class="flex items-center gap-1.5 text-[10px]">
+              <span class="text-slate-600">Access:</span>
+              <select x-model="accessFilter"
+                      class="bg-slate-800 border border-slate-600/40 rounded px-1 py-0.5 text-[10px] text-slate-300 cursor-pointer">
+                <option value="">All</option>
+                <option value="R">R</option>
+                <option value="RW">RW</option>
+              </select>
+              <span class="text-slate-600 ml-1">PICS:</span>
+              <select x-model="picsFilter"
+                      class="bg-slate-800 border border-slate-600/40 rounded px-1 py-0.5 text-[10px] text-slate-300 cursor-pointer">
+                <option value="">All</option>
+                <option value="U">U (Unimplemented)</option>
+                <option value="S">S (Supported)</option>
+                <option value="T">T (Tested)</option>
+                <option value="F">F (Failed)</option>
+                <option value="X">X (N/A)</option>
+              </select>
+            </div>
             <!-- Export buttons -->
             <div class="flex items-center gap-1 text-[10px]">
               <button @click="exportSunSpecJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export JSON">JSON</button>
               <button @click="exportSunSpecCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export CSV">CSV</button>
             </div>
             <span class="text-xs text-slate-500"
-                  x-text="selectedModelValueCount + '/' + (selectedModel?.points?.length || 0) + ' points'"></span>
+                  x-text="(accessFilter || picsFilter)
+                    ? selectedModelPoints.length + ' / ' + (selectedModel?.points?.length || 0) + ' shown'
+                    : selectedModelValueCount + '/' + (selectedModel?.points?.length || 0) + ' points'"></span>
             <button @click="readModel()"
                     class="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-cyan-400 transition text-xs font-bold"
                     :disabled="readingModel"

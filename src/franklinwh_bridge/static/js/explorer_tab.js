@@ -57,6 +57,10 @@ function explorerTab() {
     extFilter: '',
     extSuppressZeros: true,
 
+    // Point filters (model points table): '' = all
+    accessFilter: '',  // '' | 'R' | 'RW'
+    picsFilter: '',    // '' | 'U' | 'S' | 'T' | 'F' | 'X'
+
     // PICS compliance state: { "model_id:point_name": "S"|"T"|"F"|"U"|"X" }
     picsData: {},
 
@@ -269,23 +273,35 @@ function explorerTab() {
     get selectedModelPoints() {
       if (!this.selectedModel) return [];
       const sortByAddr = (pts) => [...pts].sort((a, b) => (a.address ?? 0) - (b.address ?? 0));
-      const q = this.filter.toLowerCase().trim();
-      if (!q) return sortByAddr(this.selectedModel.points);
-
-      // If filter is active and matches model-level, show all points
       const m = this.selectedModel;
-      const modelMatch =
-        ('m' + m.model_id).includes(q) || String(m.model_id).includes(q) ||
-        (m.label || '').toLowerCase().includes(q);
-      if (modelMatch) return sortByAddr(m.points);
+      let pts = m.points;
 
-      // Otherwise filter points
-      return sortByAddr(m.points.filter(
-        p =>
-          p.name.toLowerCase().includes(q) ||
-          (p.label || '').toLowerCase().includes(q) ||
-          (p.unit || '').toLowerCase().includes(q)
-      ));
+      // Access filter (R / RW)
+      if (this.accessFilter) {
+        pts = pts.filter(p => (p.access || 'R') === this.accessFilter);
+      }
+      // PICS filter (U / S / T / F / X)
+      if (this.picsFilter) {
+        pts = pts.filter(p => this.getPicsStatus(p.name) === this.picsFilter);
+      }
+
+      // Text filter — unless it matches the model itself (then keep all points
+      // that passed the access/PICS filters).
+      const q = this.filter.toLowerCase().trim();
+      if (q) {
+        const modelMatch =
+          ('m' + m.model_id).includes(q) || String(m.model_id).includes(q) ||
+          (m.label || '').toLowerCase().includes(q);
+        if (!modelMatch) {
+          pts = pts.filter(
+            p =>
+              p.name.toLowerCase().includes(q) ||
+              (p.label || '').toLowerCase().includes(q) ||
+              (p.unit || '').toLowerCase().includes(q)
+          );
+        }
+      }
+      return sortByAddr(pts);
     },
 
     // ── Value helpers ──────────────────────────────────────
