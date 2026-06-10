@@ -11,7 +11,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -247,6 +247,13 @@ MIGRATIONS: dict[int, str] = {
     10: """
     -- Mock gateways: synthetic data source, no Modbus connection
     ALTER TABLE gateways ADD COLUMN mock INTEGER NOT NULL DEFAULT 0;
+    """,
+    11: """
+    -- Publishing groups: support promoted catalog points as members.
+    -- entity_slug doubles as the ref: an entity slug, or "model.point".
+    ALTER TABLE publishing_group_members ADD COLUMN member_type TEXT NOT NULL DEFAULT 'entity';
+    ALTER TABLE publishing_group_members ADD COLUMN disp_name TEXT;
+    ALTER TABLE publishing_group_members ADD COLUMN disp_unit TEXT;
     """,
 }
 
@@ -884,11 +891,11 @@ async def delete_publishing_group(db: aiosqlite.Connection, slug: str) -> bool:
 
 
 async def get_group_members(db: aiosqlite.Connection, slug: str) -> list[str]:
-    """Return entity slugs belonging to a group."""
+    """Return curated-entity slugs belonging to a group (excludes promoted points)."""
     members: list[str] = []
     async with db.execute(
         "SELECT entity_slug FROM publishing_group_members "
-        "WHERE group_slug = ? ORDER BY entity_slug",
+        "WHERE group_slug = ? AND member_type = 'entity' ORDER BY entity_slug",
         (slug,),
     ) as cursor:
         async for row in cursor:
@@ -899,14 +906,16 @@ async def get_group_members(db: aiosqlite.Connection, slug: str) -> list[str]:
 async def set_group_members(
     db: aiosqlite.Connection, slug: str, entity_slugs: list[str]
 ) -> list[str]:
-    """Replace all members of a group. Returns the new member list."""
+    """Replace a group's curated-entity members (promoted points untouched)."""
     await db.execute(
-        "DELETE FROM publishing_group_members WHERE group_slug = ?", (slug,)
+        "DELETE FROM publishing_group_members "
+        "WHERE group_slug = ? AND member_type = 'entity'",
+        (slug,),
     )
     if entity_slugs:
         await db.executemany(
-            "INSERT INTO publishing_group_members (group_slug, entity_slug) "
-            "VALUES (?, ?)",
+            "INSERT INTO publishing_group_members "
+            "(group_slug, entity_slug, member_type) VALUES (?, ?, 'entity')",
             [(slug, s) for s in entity_slugs],
         )
     await db.execute(
@@ -915,6 +924,59 @@ async def set_group_members(
     )
     await db.commit()
     return await get_group_members(db, slug)
+
+
+async def add_group_point_member(
+    db: aiosqlite.Connection,
+    slug: str,
+    ref: str,
+    disp_name: str | None = None,
+    disp_unit: str | None = None,
+) -> None:
+    """Promote a catalog point (``ref`` = "model.point") into a group."""
+    await db.execute(
+        "INSERT OR REPLACE INTO publishing_group_members "
+        "(group_slug, entity_slug, member_type, disp_name, disp_unit) "
+        "VALUES (?, ?, 'point', ?, ?)",
+        (slug, ref, disp_name, disp_unit),
+    )
+    await db.execute(
+        "UPDATE publishing_groups SET updated_at = ? WHERE slug = ?",
+        (time.time(), slug),
+    )
+    await db.commit()
+
+
+async def remove_group_point_member(
+    db: aiosqlite.Connection, slug: str, ref: str
+) -> None:
+    """Remove a promoted point from a group."""
+    await db.execute(
+        "DELETE FROM publishing_group_members "
+        "WHERE group_slug = ? AND entity_slug = ? AND member_type = 'point'",
+        (slug, ref),
+    )
+    await db.commit()
+
+
+async def get_group_point_members(
+    db: aiosqlite.Connection, slug: str
+) -> list[dict]:
+    """Return a group's promoted-point members with optional display overrides."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows: list[dict] = []
+        async with db.execute(
+            "SELECT entity_slug AS ref, disp_name, disp_unit "
+            "FROM publishing_group_members "
+            "WHERE group_slug = ? AND member_type = 'point' ORDER BY entity_slug",
+            (slug,),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(dict(row))
+        return rows
+    finally:
+        db.row_factory = None
 
 
 async def add_group_member(
