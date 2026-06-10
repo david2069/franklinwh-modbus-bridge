@@ -367,7 +367,7 @@ async def send_gateway_command(
 
     await inst.command_handler.handle_command(body.slug, body.value)
     return {
-        "ok": True,
+        "ok": inst.command_handler.state.last_success,
         "slug": body.slug,
         "gateway_id": gw_id,
         "result": inst.command_handler.state.last_result or "Sent",

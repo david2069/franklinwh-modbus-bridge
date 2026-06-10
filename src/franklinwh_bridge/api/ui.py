@@ -58,7 +58,7 @@ async def send_command(body: CommandRequest, request: Request):
 
     await command_handler.handle_command(body.slug, body.value)
     return {
-        "ok": True,
+        "ok": command_handler.state.last_success,
         "slug": body.slug,
         "result": command_handler.state.last_result or "Sent",
     }

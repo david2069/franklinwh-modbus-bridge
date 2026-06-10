@@ -50,6 +50,11 @@ class CommandState:
     started_at: float = 0.0
     watchdog_s: int = DEFAULT_WATCHDOG_S
     last_result: str = ""
+    # Whether the most recent command actually succeeded (hardware write
+    # verified / library call returned success). False when a write was
+    # rejected, the library lacks the setter, or an error occurred — so the
+    # UI can show ✗ instead of a misleading ✓.
+    last_success: bool = True
 
 
 class CommandHandler:
@@ -171,6 +176,8 @@ class CommandHandler:
         payload = payload.strip()
         logger.info("Command received: %s = %s", slug, payload)
 
+        # Optimistic default; handlers that can fail flip this to False.
+        self._state.last_success = True
         try:
             if slug == "battery_command":
                 await self._handle_battery_command(payload)
@@ -207,6 +214,7 @@ class CommandHandler:
                 logger.warning("Unknown command slug: %s", slug)
         except Exception as exc:
             self._state.last_result = f"Error: {exc}"
+            self._state.last_success = False
             logger.error("Command %s failed: %s", slug, exc)
 
     async def _handle_battery_command(self, action: str) -> None:
@@ -285,6 +293,7 @@ class CommandHandler:
         self._state.power_w = abs(watts)
         self._state.started_at = time.time()
         self._state.last_result = msg
+        self._state.last_success = success
 
         self._start_watchdog()
         await self._persist_state()
@@ -318,6 +327,7 @@ class CommandHandler:
         self._state.action = ""
         self._state.power_w = 0
         self._state.last_result = "Released" if success else "Release failed"
+        self._state.last_success = success
 
         # Clear target SoC so it doesn't poison the next command.
         # Without this, a target set for Charge (e.g. 75%) would cause
@@ -391,6 +401,7 @@ class CommandHandler:
         mode_val = OPERATING_MODES.get(mode_name)
         if mode_val is None:
             self._state.last_result = f"Unknown mode: {mode_name}"
+            self._state.last_success = False
             logger.warning("Unknown operating mode: %s", mode_name)
             return
 
@@ -400,18 +411,21 @@ class CommandHandler:
                 "Mode control not available (library does not support "
                 "set_native_mode — upgrade franklinwh-modbus)"
             )
+            self._state.last_success = False
             logger.warning("%s", self._state.last_result)
         else:
             try:
                 async with self._modbus_lock:
                     success, msg = await asyncio.to_thread(method, mode_val)
                 self._state.last_result = msg
+                self._state.last_success = success
                 if success:
                     logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
                 else:
                     logger.error("Operating mode failed: %s", msg)
             except Exception as exc:
                 self._state.last_result = f"Mode change error: {exc}"
+                self._state.last_success = False
                 logger.error("Operating mode failed: %s", exc)
 
         await self._log_event(
@@ -431,18 +445,21 @@ class CommandHandler:
                 f"Reserve control not available (library does not support "
                 f"set_{reserve_type}_reserve — upgrade franklinwh-modbus)"
             )
+            self._state.last_success = False
             logger.warning("%s", self._state.last_result)
         else:
             try:
                 async with self._modbus_lock:
                     success, msg = await asyncio.to_thread(method, pct)
                 self._state.last_result = msg
+                self._state.last_success = success
                 if success:
                     logger.info("%s reserve set to %d%%", reserve_type, pct)
                 else:
                     logger.error("Reserve write failed: %s", msg)
             except Exception as exc:
                 self._state.last_result = f"Reserve write error: {exc}"
+                self._state.last_success = False
                 logger.error("Reserve write failed: %s", exc)
 
         await self._log_event(
