@@ -34,6 +34,15 @@ const PICS_LABELS = { U: 'Unimplemented', S: 'Supported', T: 'Tested', F: 'Faile
 const EXPLORER_DEFAULTS = { treeWidth: 256, extHeight: 280 };
 const EXPLORER_LAYOUT_KEY = 'fwh-layout-explorer';
 
+// Last-known extension register values, keyed by address. Non-reactive on
+// purpose: the vendorExtensions getter records values here without triggering
+// re-render. Extension registers (raw 15000-range + 15510/16000) aren't in
+// every poll, so a poll that omits one would otherwise read null and make the
+// row flicker out under "Hide zeros". Falling back to the last value keeps it
+// stable. A genuine 0 is still recorded (and hidden by Hide zeros); only an
+// absent (null) reading falls back.
+const EXT_VALUE_CACHE = {};
+
 function explorerTab() {
   return {
     models: [],
@@ -436,27 +445,39 @@ function explorerTab() {
       return null;
     },
 
+    // Stabilise a register value: cache any live (non-null) reading and fall
+    // back to the last cached value when this poll omitted the register, so
+    // "Hide zeros" doesn't flicker rows in and out.
+    _stableExt(addr, live) {
+      if (live !== undefined && live !== null) {
+        EXT_VALUE_CACHE[addr] = live;
+        return live;
+      }
+      return EXT_VALUE_CACHE[addr] ?? null;
+    },
+
     get vendorExtensions() {
       const pts = Alpine.store('app').points;
       const regs = [];
 
       // 15000-15039: Undocumented vendor range
       for (let a = 15000; a <= 15039; a++) {
+        const value = this._stableExt(a, pts['vreg_' + a]);
         regs.push({
           addr: a,
           name: 'Reg' + a,
           desc: 'Unknown',
-          value: pts['vreg_' + a] ?? null,
+          value: value,
           type: 'uint16',
           access: 'R',
           unit: '',
-          hex: pts['vreg_' + a] != null ? ('0000' + pts['vreg_' + a].toString(16).toUpperCase()).slice(-4) : null,
+          hex: value != null ? ('0000' + value.toString(16).toUpperCase()).slice(-4) : null,
         });
       }
 
       // 15500-15513: Documented FranklinWH extensions
       for (const def of VENDOR_EXT_15500) {
-        const value = this._resolveExtValue(def.keys);
+        const value = this._stableExt(def.addr, this._resolveExtValue(def.keys));
         let hex = null;
         if (value != null) {
           hex = def.type === 'uint32'
@@ -479,7 +500,7 @@ function explorerTab() {
 
       // 16000-16002: High-resolution extension registers
       for (const def of VENDOR_EXT_16000) {
-        const value = this._resolveExtValue(def.keys);
+        const value = this._stableExt(def.addr, this._resolveExtValue(def.keys));
         let hex = null;
         if (value != null) {
           hex = ('0000' + (value & 0xFFFF).toString(16).toUpperCase()).slice(-4);
