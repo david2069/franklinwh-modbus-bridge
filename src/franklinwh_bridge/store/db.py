@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from pathlib import Path
@@ -476,10 +477,18 @@ async def update_gateway(
 
 
 async def delete_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
-    """Delete a gateway. Returns True if deleted."""
+    """Delete a gateway and purge its recorded metrics. Returns True if deleted."""
     if gateway_id == "default":
         raise ValueError("Cannot delete the default gateway")
     cur = await db.execute("DELETE FROM gateways WHERE id = ?", (gateway_id,))
+    # Purge the gateway's metrics so a removed (e.g. mock) gateway leaves no
+    # data polluting Power History or storage.
+    for table in ("metrics", "metrics_archive"):
+        with contextlib.suppress(aiosqlite.OperationalError):
+            await db.execute(
+                f"DELETE FROM {table} WHERE gateway_id = ?",  # noqa: S608
+                (gateway_id,),
+            )
     await db.commit()
     return cur.rowcount > 0
 

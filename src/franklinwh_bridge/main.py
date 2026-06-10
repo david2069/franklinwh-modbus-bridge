@@ -168,6 +168,11 @@ async def lifespan(app: FastAPI):
 
     # Metrics recorder — writes power readings to the metrics table
     async def _record_metrics(sample: Sample) -> None:
+        # Mock gateways emit synthetic data — never persist it, so it can't
+        # pollute real gateways' Power History or storage.
+        inst = registry.get(sample.gateway_id)
+        if inst is not None and getattr(inst.config, "mock", False):
+            return
         try:
             written = await record_sample(
                 db, sample.points, gateway_id=sample.gateway_id,

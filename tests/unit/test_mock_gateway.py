@@ -1,6 +1,7 @@
 """Mock gateway: synthetic data, no Modbus connection, no contention."""
 
 import asyncio
+import time
 
 import pytest
 
@@ -11,7 +12,12 @@ from franklinwh_bridge.gateway.mock_gateway import (
     synthetic_points,
 )
 from franklinwh_bridge.modbus.sample import SampleBus
-from franklinwh_bridge.store.db import create_gateway, get_gateway, init_db
+from franklinwh_bridge.store.db import (
+    create_gateway,
+    delete_gateway,
+    get_gateway,
+    init_db,
+)
 
 
 @pytest.fixture
@@ -49,6 +55,28 @@ async def test_migration_persists_mock_flag(db):
     gw = await create_gateway(db, gateway_id="m1", name="Mock 1", host="", mock=True)
     assert gw["mock"] == 1
     assert (await get_gateway(db, "m1"))["mock"] == 1
+
+
+async def test_delete_gateway_purges_its_metrics(db):
+    await create_gateway(db, gateway_id="m2", name="Mock 2", host="", mock=True)
+    for i in range(3):
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, gateway_id) VALUES (?, ?, ?)",
+            (time.time() + i, 100, "m2"),
+        )
+    await db.commit()
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM metrics WHERE gateway_id = 'm2'"
+    ) as cur:
+        assert (await cur.fetchone())[0] == 3
+
+    assert await delete_gateway(db, "m2") is True
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM metrics WHERE gateway_id = 'm2'"
+    ) as cur:
+        assert (await cur.fetchone())[0] == 0
 
 
 async def test_mock_instance_emits_without_hardware(db):
