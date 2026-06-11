@@ -93,3 +93,53 @@ async def test_point_members_persist_and_stay_segregated(db):
     await set_group_members(db, "extra", ["battery_soc"])
     assert await get_group_members(db, "extra") == ["battery_soc"]
     assert len(await get_group_point_members(db, "extra")) == 2
+
+
+async def _seed_point(db, gateway_id, model_id, point_name, dtype, unit, label):
+    from franklinwh_bridge.store.db import create_gateway, get_gateway
+
+    if await get_gateway(db, gateway_id) is None:
+        await create_gateway(db, gateway_id, f"GW {gateway_id}", host="1.2.3.4")
+    cur = await db.execute(
+        "INSERT INTO device_models (gateway_id, model_id, label, captured_at, hash) "
+        "VALUES (?, ?, ?, 0, 'h')",
+        (gateway_id, model_id, f"Model {model_id}"),
+    )
+    mdbid = cur.lastrowid
+    await db.execute(
+        "INSERT INTO device_points (model_db_id, point_name, type, unit, label, addr, access) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'R')",
+        (mdbid, point_name, dtype, unit, label, 40000),
+    )
+    await db.commit()
+
+
+async def test_build_promoted_entities_from_enabled_group(db):
+    from franklinwh_bridge.publish.promoted_points import build_promoted_entities
+    from franklinwh_bridge.store.db import get_catalog_points
+
+    await _seed_point(db, "default", 705, "VRef", "uint16", "V", "Voltage Reference")
+    await create_publishing_group(db, slug="g1", name="G1", enabled=True)
+    await add_group_point_member(db, "g1", "705.VRef")
+
+    ents = await build_promoted_entities(db, "default")
+    assert len(ents) == 1
+    ed = ents[0]
+    assert ed.slug == "m705_vref"
+    assert ed.stat_key == "705.VRef"
+    assert ed.unit == "V"
+    assert ed.device_class == "voltage"
+
+    pts = await get_catalog_points(db, "default")
+    vref = next(p for p in pts if p["ref"] == "705.VRef")
+    assert vref["published"] is True
+
+
+async def test_promoted_excluded_when_group_disabled(db):
+    from franklinwh_bridge.publish.promoted_points import build_promoted_entities
+
+    await _seed_point(db, "default", 705, "VRef", "uint16", "V", "Voltage Reference")
+    await create_publishing_group(db, slug="g2", name="G2", enabled=False)
+    await add_group_point_member(db, "g2", "705.VRef")
+
+    assert await build_promoted_entities(db, "default") == []

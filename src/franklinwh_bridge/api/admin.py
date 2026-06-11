@@ -18,7 +18,11 @@ from pydantic import BaseModel
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.backup import BackupManager
-from franklinwh_bridge.store.db import get_pics_compliance, set_pics_status
+from franklinwh_bridge.store.db import (
+    get_catalog_points,
+    get_pics_compliance,
+    set_pics_status,
+)
 from franklinwh_bridge.store.metrics import (
     BUCKET_MAP,
     RANGE_MAP,
@@ -179,6 +183,14 @@ async def get_models(request: Request):
         })
 
     return {"gateway_id": gateway_id, "models": list(models.values())}
+
+
+@router.get("/catalog/points")
+async def list_catalog_points(request: Request, gateway_id: str = "default"):
+    """Flat list of catalog points with metadata + whether each is published
+    (promoted into an enabled group). Powers the Explorer → group picker."""
+    db: aiosqlite.Connection = request.app.state.db
+    return {"gateway_id": gateway_id, "points": await get_catalog_points(db, gateway_id)}
 
 
 @router.post("/models/{model_id}/read")

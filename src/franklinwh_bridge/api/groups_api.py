@@ -15,13 +15,16 @@ from pydantic import BaseModel, Field
 from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES
 from franklinwh_bridge.store.db import (
     add_group_member,
+    add_group_point_member,
     create_publishing_group,
     delete_publishing_group,
     get_disabled_entity_slugs,
     get_group_members,
+    get_group_point_members,
     get_publishing_group,
     get_publishing_groups,
     remove_group_member,
+    remove_group_point_member,
     set_group_members,
     update_publishing_group,
 )
@@ -59,6 +62,12 @@ class MemberUpdate(BaseModel):
 
 class SingleMember(BaseModel):
     entity_slug: str
+
+
+class PointMember(BaseModel):
+    ref: str = Field(..., pattern=r"^\d+\.[A-Za-z0-9_]+$")  # "model.point"
+    disp_name: str | None = Field(default=None, max_length=120)
+    disp_unit: str | None = Field(default=None, max_length=24)
 
 
 @router.get("")
@@ -215,3 +224,34 @@ async def delete_member(slug: str, entity_slug: str, request: Request):
     members = await get_group_members(db, slug)
     await _sync_publisher(request)
     return {"members": members}
+
+
+# ── Promoted catalog points (Publishing Groups P1b) ──────────────
+
+@router.get("/{slug}/points")
+async def list_group_points(slug: str, request: Request):
+    """List the catalog points promoted into a group."""
+    db: aiosqlite.Connection = request.app.state.db
+    if await get_publishing_group(db, slug) is None:
+        raise HTTPException(404, f"Group '{slug}' not found")
+    return {"points": await get_group_point_members(db, slug)}
+
+
+@router.post("/{slug}/points", status_code=201)
+async def add_group_point(slug: str, body: PointMember, request: Request):
+    """Promote a catalog point ("model.point") into a group."""
+    db: aiosqlite.Connection = request.app.state.db
+    if await get_publishing_group(db, slug) is None:
+        raise HTTPException(404, f"Group '{slug}' not found")
+    await add_group_point_member(db, slug, body.ref, body.disp_name, body.disp_unit)
+    await _sync_publisher(request)
+    return {"added": body.ref}
+
+
+@router.delete("/{slug}/points")
+async def remove_group_point(slug: str, request: Request, ref: str):
+    """Remove a promoted point from a group (ref as ?ref=model.point)."""
+    db: aiosqlite.Connection = request.app.state.db
+    await remove_group_point_member(db, slug, ref)
+    await _sync_publisher(request)
+    return {"removed": ref}

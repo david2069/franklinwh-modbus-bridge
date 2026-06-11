@@ -208,6 +208,7 @@ class MqttPublisher:
         self._device_info: DeviceInfo | None = None
         self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
         self._removed_entities: list[EntityDef] = []
+        self._promoted_entities: list[EntityDef] = []  # catalog points promoted via groups
         self._ac_type: int = 0
         self._disabled_slugs: set[str] = set()
         self._command_handler: CommandHandler | None = None
@@ -249,6 +250,8 @@ class MqttPublisher:
             and (e.battery_port is None or e.battery_port <= nport)
             and e.slug not in disabled
         ]
+        # Promoted catalog points (already filtered to enabled groups).
+        new_entities += self._promoted_entities
         active_slugs = {e.slug for e in new_entities}
         self._removed_entities = [
             e for e in BRIDGE_ENTITIES if e.slug not in active_slugs
@@ -299,19 +302,30 @@ class MqttPublisher:
         Reads the DB, rebuilds entity lists, and triggers re-discovery
         if the set changed.
         """
+        from franklinwh_bridge.publish.promoted_points import build_promoted_entities
         from franklinwh_bridge.store.db import get_disabled_entity_slugs
 
         new_disabled = await get_disabled_entity_slugs(db)
-        if new_disabled == self._disabled_slugs:
+        new_promoted = await build_promoted_entities(db, self._gateway_id)
+        new_slugs = {e.slug for e in new_promoted}
+        old_slugs = {e.slug for e in self._promoted_entities}
+        if new_disabled == self._disabled_slugs and new_slugs == old_slugs:
             return  # no change
+
+        # Tombstone promoted points that were un-promoted (removed from groups).
+        removed_promoted = [e for e in self._promoted_entities if e.slug not in new_slugs]
         old_count = len(self._entities)
         self._disabled_slugs = new_disabled
+        self._promoted_entities = new_promoted
         self._rebuild_entity_lists()
+        if removed_promoted:
+            self._removed_entities = self._removed_entities + removed_promoted
         logger.info(
-            "Publishing groups synced: %d entities active (%d disabled by groups, was %d)",
+            "Publishing groups synced: %d entities active (%d promoted, %d disabled, was %d)",
             len(self._entities),
+            len(new_promoted),
             len(new_disabled),
-            old_count - len(self._entities) if old_count > len(self._entities) else 0,
+            old_count,
         )
 
     def set_command_handler(self, handler: CommandHandler) -> None:

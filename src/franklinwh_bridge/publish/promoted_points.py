@@ -11,7 +11,12 @@ to a later phase — see docs/publishing-groups-design.md.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from franklinwh_bridge.publish.entities import EntityDef
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 # HA device_class inferred from a point's unit.
 _UNIT_DEVICE_CLASS: dict[str, str] = {
@@ -75,3 +80,44 @@ def point_entity_def(
         entity_category="diagnostic",
         source=f"{model_id}.{point_name}",
     )
+
+
+async def build_promoted_entities(
+    db: aiosqlite.Connection, gateway_id: str = "default"
+) -> list[EntityDef]:
+    """Build EntityDefs for all catalog points promoted into an ENABLED group.
+
+    Joins each enabled point ref ("model.point") to its catalog metadata and
+    produces a read-only sensor EntityDef. Deduplicated by slug.
+    """
+    from franklinwh_bridge.store.db import (
+        get_enabled_promoted_points,
+        get_point_catalog_meta,
+    )
+
+    out: list[EntityDef] = []
+    seen: set[str] = set()
+    for p in await get_enabled_promoted_points(db):
+        ref = p["ref"]
+        if "." not in ref:
+            continue
+        model_str, point_name = ref.split(".", 1)
+        try:
+            model_id = int(model_str)
+        except ValueError:
+            continue
+        meta = await get_point_catalog_meta(db, gateway_id, model_id, point_name) or {}
+        ed = point_entity_def(
+            model_id,
+            point_name,
+            dtype=meta.get("type") or "",
+            unit=meta.get("unit") or "",
+            label=meta.get("label") or "",
+            disp_name=p.get("disp_name"),
+            disp_unit=p.get("disp_unit"),
+        )
+        if ed.slug in seen:
+            continue
+        seen.add(ed.slug)
+        out.append(ed)
+    return out

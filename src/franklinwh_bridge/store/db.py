@@ -1012,19 +1012,85 @@ async def remove_group_member(
 
 
 async def get_disabled_entity_slugs(db: aiosqlite.Connection) -> set[str]:
-    """Return the set of entity slugs that belong to at least one disabled group
-    and do NOT belong to any enabled group.
+    """Return curated-entity slugs whose every group is disabled.
 
-    An entity is considered disabled if every group it belongs to is disabled.
+    An entity is disabled if every group it belongs to is disabled. Point
+    members are excluded (they use the inverse rule — see
+    ``get_enabled_promoted_points``).
     """
     slugs: set[str] = set()
     async with db.execute(
         "SELECT m.entity_slug "
         "FROM publishing_group_members m "
         "JOIN publishing_groups g ON g.slug = m.group_slug "
+        "WHERE m.member_type = 'entity' "
         "GROUP BY m.entity_slug "
         "HAVING SUM(g.enabled) = 0"
     ) as cursor:
         async for row in cursor:
             slugs.add(row[0])
     return slugs
+
+
+async def get_enabled_promoted_points(db: aiosqlite.Connection) -> list[dict]:
+    """Promoted point refs (model.point) in >=1 ENABLED group, with overrides."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows: list[dict] = []
+        async with db.execute(
+            "SELECT m.entity_slug AS ref, "
+            "MAX(m.disp_name) AS disp_name, MAX(m.disp_unit) AS disp_unit "
+            "FROM publishing_group_members m "
+            "JOIN publishing_groups g ON g.slug = m.group_slug "
+            "WHERE m.member_type = 'point' "
+            "GROUP BY m.entity_slug "
+            "HAVING SUM(g.enabled) > 0"
+        ) as cursor:
+            async for row in cursor:
+                rows.append(dict(row))
+        return rows
+    finally:
+        db.row_factory = None
+
+
+async def get_point_catalog_meta(
+    db: aiosqlite.Connection, gateway_id: str, model_id: int, point_name: str
+) -> dict | None:
+    """Catalog metadata (type/unit/label/access) for one model.point, or None."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT dp.type, dp.unit, dp.label, dp.access "
+            "FROM device_points dp JOIN device_models dm ON dm.id = dp.model_db_id "
+            "WHERE dm.gateway_id = ? AND dm.model_id = ? AND dp.point_name = ? LIMIT 1",
+            (gateway_id, model_id, point_name),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        db.row_factory = None
+
+
+async def get_catalog_points(
+    db: aiosqlite.Connection, gateway_id: str = "default"
+) -> list[dict]:
+    """All catalog points for a gateway with metadata + a ``published`` flag."""
+    enabled = {p["ref"] for p in await get_enabled_promoted_points(db)}
+    db.row_factory = aiosqlite.Row
+    try:
+        rows: list[dict] = []
+        async with db.execute(
+            "SELECT dm.model_id, dp.point_name, dp.label, dp.type, dp.unit, "
+            "dp.access, dp.addr "
+            "FROM device_points dp JOIN device_models dm ON dm.id = dp.model_db_id "
+            "WHERE dm.gateway_id = ? ORDER BY dm.model_id, dp.addr",
+            (gateway_id,),
+        ) as cursor:
+            async for row in cursor:
+                d = dict(row)
+                d["ref"] = f"{d['model_id']}.{d['point_name']}"
+                d["published"] = d["ref"] in enabled
+                rows.append(d)
+        return rows
+    finally:
+        db.row_factory = None
