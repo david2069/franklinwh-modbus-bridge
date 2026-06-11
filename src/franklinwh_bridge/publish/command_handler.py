@@ -37,8 +37,9 @@ SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
 
 OPERATING_MODES = {
     "Emergency Backup": 1,
-    "Time of Use": 3,
     "Self-Consumption": 2,
+    "TOU": 3,             # matches the library's read vocabulary (NATIVE_MODES)
+    "Time of Use": 3,     # accepted alias (legacy HA/dashboard payloads)
 }
 
 

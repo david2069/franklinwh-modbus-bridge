@@ -1003,7 +1003,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="mode_name",
         icon="mdi:cog",
         is_control=True,
-        options=["Emergency Backup", "Self-Consumption", "Time of Use"],
+        options=["Emergency Backup", "Self-Consumption", "TOU"],
         source="ext.15507",
     ),
     EntityDef(
