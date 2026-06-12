@@ -14,6 +14,15 @@ overriding VPP mode while a dispatch is active.
 All control actions are logged to the control_log table with hardware state
 snapshots. Active command state is persisted to control_state so it survives
 restarts.
+
+ORPHAN SAFETY:  On graceful shutdown, ``stop()`` releases any active dispatch
+(zeroing WSetEna + WSetRvrtTms, exiting VPP mode).  On a *crash* the registers
+stay set, but the next startup's ``_release_stale_commands`` (gateway/instance)
+clears them.  The one window we CANNOT cover in software is crash-and-never-
+restart: because the aGate's WSetRvrtRem is cosmetic (no hardware auto-revert,
+PICS Issue 4), a dispatch left by a bridge that never comes back stays live in
+VPP mode until the bridge restarts or the mobile app intervenes.  The running
+bridge is the only thing that releases dispatches.
 """
 
 from __future__ import annotations
@@ -227,13 +236,20 @@ class CommandHandler:
             await self._release_command(reason=action)
             return
 
-        if action in ("Standby", "Idle"):  # "Idle" kept for backwards compat
+        # Canonical UI/state labels are "Force"-prefixed ("Force Charge",
+        # "Force Discharge", "Force Standby") so a user-commanded dispatch is
+        # visibly distinct from the device's normal charge/discharge.  Accept
+        # the prefixed form and the legacy bare verbs (and "Idle").
+        base = action[6:].strip() if action.lower().startswith("force ") else action
+        if base == "Idle":  # legacy alias
+            base = "Standby"
+
+        if base == "Standby":
             watts = 0
-            action = "Standby"  # normalise to canonical name
-        elif action in ("Charge", "Discharge"):
+        elif base in ("Charge", "Discharge"):
             # Pick directional limit
             max_w = (
-                self._max_charge_w if action == "Charge"
+                self._max_charge_w if base == "Charge"
                 else self._max_discharge_w
             )
             if self._command_power_pct > 0:
@@ -241,11 +257,19 @@ class CommandHandler:
                 watts = int(max_w * self._command_power_pct / 100)
             else:
                 watts = min(self._command_power_w or max_w, max_w)
-            if action == "Discharge":
+            if base == "Discharge":
                 watts = -watts
         else:
             logger.warning("Unknown battery command: %s", action)
             return
+
+        display_action = f"Force {base}"  # canonical, prefixed label
+
+        # Capture the prior dispatch so we can log a "superseded" event when a
+        # new command replaces a *different* active one (not just a power tweak).
+        prev_active = self._state.active
+        prev_action = self._state.action
+        prev_power = self._state.power_w
 
         # Validate target SoC against the command direction.  A stale
         # target from a previous Charge (e.g. 75%) would cause an
@@ -254,7 +278,7 @@ class CommandHandler:
         if self._target_soc > 0:
             soc = self._read_soc()
             if soc is not None:
-                is_charge = action == "Charge"
+                is_charge = base == "Charge"
                 if is_charge and soc >= self._target_soc:
                     logger.warning(
                         "Target SoC %d%% already reached (SoC=%.1f%%) — clearing target",
@@ -264,7 +288,7 @@ class CommandHandler:
                 elif not is_charge and soc <= self._target_soc:
                     logger.warning(
                         "Target SoC %d%% already reached for %s (SoC=%.1f%%) — clearing target",
-                        self._target_soc, action, soc,
+                        self._target_soc, display_action, soc,
                     )
                     self._target_soc = 0
 
@@ -290,22 +314,35 @@ class CommandHandler:
                 await asyncio.to_thread(self._write_revert_timer, rvrt_s)
 
         self._state.active = True
-        self._state.action = action
+        self._state.action = display_action
         self._state.power_w = abs(watts)
         self._state.started_at = time.time()
         self._state.last_result = msg
         self._state.last_success = success
 
+        # Audit a superseded dispatch — a new command replacing a *different*
+        # active one means the previous dispatch was stopped by this one.
+        if prev_active and prev_action and prev_action != display_action:
+            await self._log_event(
+                "command_superseded",
+                action=prev_action,
+                power_w=prev_power,
+                detail=f"superseded by {display_action} {abs(watts)}W",
+            )
+            logger.info(
+                "Battery dispatch superseded: %s → %s", prev_action, display_action
+            )
+
         self._start_watchdog()
         await self._persist_state()
         await self._log_event(
-            "command_sent", action=action, power_w=abs(watts), detail=msg,
+            "command_sent", action=display_action, power_w=abs(watts), detail=msg,
         )
 
         if self._on_state_changed:
             await self._on_state_changed()
 
-        logger.info("Battery command: %s %dW — %s", action, abs(watts), msg)
+        logger.info("Battery command: %s %dW — %s", display_action, abs(watts), msg)
 
     async def _release_command(self, reason: str = "release") -> None:
         was_active = self._state.active
@@ -531,7 +568,7 @@ class CommandHandler:
                 if target > 0:
                     soc = self._read_soc()
                     if soc is not None:
-                        is_charge = self._state.action == "Charge"
+                        is_charge = self._state.action in ("Charge", "Force Charge")
                         if is_charge and soc >= target:
                             logger.info(
                                 "Target SoC reached: %.1f%% >= %d%% — releasing",

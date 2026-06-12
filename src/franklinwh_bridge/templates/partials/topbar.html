@@ -84,6 +84,13 @@
       <span class="w-1.5 h-1.5 rounded-full"
             :class="$store.app.points.battery_state === 'Charging' ? 'bg-emerald-400' :
                     $store.app.points.battery_state === 'Discharging' ? 'bg-orange-400' : 'bg-slate-600'"></span>
+      <!-- Forced-dispatch badge: a user-commanded override is active, layered
+           on top of the physical battery state so the two are distinguishable. -->
+      <span x-show="$store.app.forcedDispatch"
+            x-cloak
+            class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
+                   bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse"
+            :title="$store.app.forcedDispatch + ' — user-commanded dispatch active'">Forced</span>
     </div>
   </div>
 

@@ -11,7 +11,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -254,6 +254,14 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE publishing_group_members ADD COLUMN member_type TEXT NOT NULL DEFAULT 'entity';
     ALTER TABLE publishing_group_members ADD COLUMN disp_name TEXT;
     ALTER TABLE publishing_group_members ADD COLUMN disp_unit TEXT;
+    """,
+    12: """
+    -- Persist user "Stop" as a transient pause, distinct from admin disable.
+    -- autostart=0 means: don't auto-start on app boot (but enabled stays 1,
+    -- so it's still a valid, configured gateway the user can start again).
+    -- Without this, a stopped gateway (esp. a mock) self-restarts on reboot
+    -- because start_all() restarted every enabled row.
+    ALTER TABLE gateways ADD COLUMN autostart INTEGER NOT NULL DEFAULT 1;
     """,
 }
 

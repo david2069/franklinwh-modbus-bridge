@@ -204,6 +204,32 @@ async def test_registry_add_second_gateway(db, global_bus):
     await registry.stop_all()
 
 
+async def test_start_all_skips_user_stopped_gateway(db, global_bus):
+    """A gateway with autostart=0 (user-stopped) must NOT come back on boot.
+
+    Regression for the mock gateway that self-restarted after Stop because the
+    DB row stayed enabled=1 and start_all() restarted every enabled row.
+    """
+    from franklinwh_bridge.store.db import update_gateway
+
+    # A stopped mock: still enabled (configured), but autostart cleared.
+    await create_gateway(db, gateway_id="mock1", name="Mock 1", host="", mock=True)
+    await update_gateway(db, "mock1", autostart=0)
+
+    registry = GatewayRegistry(db=db, global_bus=global_bus)
+    with patch("franklinwh_modbus.FranklinWHController") as MockCtrl:
+        ctrl = MagicMock()
+        ctrl.connect.return_value = False
+        MockCtrl.return_value = ctrl
+        await registry.start_all()
+
+    # default starts; the user-stopped mock does not.
+    assert "default" in registry.list_all()
+    assert "mock1" not in registry.list_all()
+
+    await registry.stop_all()
+
+
 async def test_registry_status_all(db, global_bus):
     """status_all returns a dict per registered gateway."""
     registry = GatewayRegistry(db=db, global_bus=global_bus)

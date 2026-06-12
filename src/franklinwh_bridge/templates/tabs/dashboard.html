@@ -495,9 +495,9 @@
         <select x-model="command" @change="sendCommand('battery_command', command)"
                 class="form-control !py-1.5 !text-sm">
           <option value="Not Active">Not Active</option>
-          <option value="Charge">Charge</option>
-          <option value="Discharge">Discharge</option>
-          <option value="Standby">Standby</option>
+          <option value="Force Charge">Force Charge</option>
+          <option value="Force Discharge">Force Discharge</option>
+          <option value="Force Standby">Force Standby</option>
           <option value="Release">Release</option>
         </select>
       </div>
@@ -618,7 +618,7 @@
 
       <!-- Operating Mode -->
       <div class="mb-3">
-        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Operating Mode</label>
+        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Operating Mode <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('mode_name')"></span></label>
         <select x-model="operatingMode" @change="sendCommand('operating_mode', operatingMode)"
                 class="form-control !py-1.5 !text-sm">
           <option value="Emergency Backup">Emergency Backup</option>
@@ -630,7 +630,7 @@
       <!-- Reserve SOC -->
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Self Reserve %</label>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Self Reserve % <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('self_reserve_pct')"></span></label>
           <div class="flex items-center gap-1">
             <input type="range" min="0" max="100" step="5" x-model="selfReserve"
                    class="flex-1 accent-emerald-500 h-1.5 cursor-pointer" style="min-width:0"
@@ -641,7 +641,7 @@
           </div>
         </div>
         <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">TOU Reserve %</label>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">TOU Reserve % <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('tou_reserve_pct')"></span></label>
           <div class="flex items-center gap-1">
             <input type="range" min="0" max="100" step="5" x-model="touReserve"
                    class="flex-1 accent-emerald-500 h-1.5 cursor-pointer" style="min-width:0"

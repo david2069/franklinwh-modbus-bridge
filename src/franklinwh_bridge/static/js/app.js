@@ -270,6 +270,13 @@ document.addEventListener('alpine:init', () => {
       return state && state !== 'Not Active' && state !== 'Released';
     },
 
+    get forcedDispatch() {
+      // The active user-commanded dispatch label ("Force Charge"/…), or null.
+      // Distinct from battery_state, which is the device's *physical*
+      // charge/discharge (which also happens during normal operation).
+      return this.hasActiveCommand ? this.points.battery_command_state : null;
+    },
+
     get wsetEnabled() {
       return this.points.wset_enabled ?? null;
     },

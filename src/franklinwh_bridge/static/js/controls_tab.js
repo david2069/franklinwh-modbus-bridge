@@ -47,6 +47,13 @@ function controlsTab() {
       if (pts.mode_name) {
         this.operatingMode = pts.mode_name;
       }
+      // Sync reserve sliders from the live registers (15508 / 15509)
+      if (pts.self_reserve_pct != null) {
+        this.selfReserve = pts.self_reserve_pct;
+      }
+      if (pts.tou_reserve_pct != null) {
+        this.touReserve = pts.tou_reserve_pct;
+      }
     },
 
     _logEntry(slug, value, ok, message) {

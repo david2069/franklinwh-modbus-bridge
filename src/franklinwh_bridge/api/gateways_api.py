@@ -275,9 +275,8 @@ async def start_gateway_endpoint(gw_id: str, request: Request):
     if row is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
 
-    # Enable in DB if disabled
-    if not row.get("enabled"):
-        await update_gateway(db, gw_id, enabled=1)
+    # Enable + clear any prior "user stopped" pause so it auto-starts on boot.
+    await update_gateway(db, gw_id, enabled=1, autostart=1)
 
     inst = await registry.start_gateway(gw_id)
     if inst is None:
@@ -287,12 +286,22 @@ async def start_gateway_endpoint(gw_id: str, request: Request):
 
 @router.post("/gateways/{gw_id}/stop")
 async def stop_gateway_endpoint(gw_id: str, request: Request):
-    """Stop polling a gateway (does not disable in DB)."""
+    """Stop polling a gateway and remember the stop across restarts.
+
+    Sets ``autostart=0`` so the gateway is not re-started on the next app
+    boot.  ``enabled`` stays 1 — this is a user pause, not an admin disable,
+    so the gateway remains configured and can be started again.  This is what
+    keeps a stopped (esp. mock) gateway from self-restarting on reboot.
+    """
+    db: aiosqlite.Connection = request.app.state.db
     registry = _registry(request)
-    inst = registry.get(gw_id)
-    if inst is None:
-        raise HTTPException(404, f"Gateway '{gw_id}' not running")
-    await registry.stop_gateway(gw_id)
+    row = await get_gateway(db, gw_id)
+    if row is None:
+        raise HTTPException(404, f"Gateway '{gw_id}' not found")
+
+    await update_gateway(db, gw_id, autostart=0)
+    if registry.get(gw_id):
+        await registry.stop_gateway(gw_id)
     return {"stopped": True, "gateway_id": gw_id}
 
 

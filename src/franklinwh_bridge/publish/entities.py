@@ -1044,9 +1044,12 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         stat_key="battery_command_state",
         icon="mdi:battery-sync",
         is_control=True,
+        # "Force"-prefixed labels distinguish a user-commanded dispatch from
+        # the device's normal charge/discharge.  "Not Active" / "Release"
+        # return to native mode, so they stay unprefixed.
         options=[
-            "Not Active", "Charge", "Discharge",
-            "Standby", "Release",
+            "Not Active", "Force Charge", "Force Discharge",
+            "Force Standby", "Release",
         ],
         source="virtual",
     ),

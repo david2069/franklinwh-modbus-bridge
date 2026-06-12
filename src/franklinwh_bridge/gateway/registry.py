@@ -108,6 +108,15 @@ class GatewayRegistry:
         for gw_row in gateways:
             if not gw_row.get("enabled", True):
                 continue
+            # Honour a user "Stop": autostart=0 means the user paused this
+            # gateway, so it should NOT come back on app boot.  (enabled is
+            # still 1 — it's a valid gateway, just not auto-started.)
+            if not gw_row.get("autostart", 1):
+                logger.info(
+                    "Gateway %s autostart disabled (user-stopped), skipping",
+                    gw_row["id"],
+                )
+                continue
             inst = await self.start_gateway(gw_row["id"])
             if inst:
                 started += 1
