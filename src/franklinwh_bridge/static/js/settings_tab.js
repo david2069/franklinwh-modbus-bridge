@@ -328,6 +328,7 @@ function settingsTab() {
         description: gw.description || '',
         service_id: gw.service_id || '',
         phase: gw.phase || 'all',
+        phase_view: gw.phase_view || 'both',
         ac_type: gw.ac_type ?? 0,
       };
       this.phaseDetect = null;
@@ -367,7 +368,7 @@ function settingsTab() {
             name: g.name, host: g.host, port: g.port,
             unit_id: g.unit_id, poll_interval: g.poll_interval,
             description: g.description,
-            service_id: g.service_id, phase: g.phase,
+            service_id: g.service_id, phase: g.phase, phase_view: g.phase_view,
           }),
         });
         if (data && !data.error) {

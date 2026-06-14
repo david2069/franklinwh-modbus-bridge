@@ -11,7 +11,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 14
+CURRENT_SCHEMA_VERSION = 15
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -289,6 +289,14 @@ MIGRATIONS: dict[int, str] = {
     -- 'L1+L2'), constrained by the gateway's detected ACType.
     ALTER TABLE gateways ADD COLUMN service_id TEXT;
     ALTER TABLE gateways ADD COLUMN phase TEXT NOT NULL DEFAULT 'all';
+    """,
+    15: """
+    -- Per-gateway phase-view preference for a multi-phase aGate (Topology B).
+    -- 'both' (default) = today's behaviour: publish aggregate + per-leg entities.
+    -- 'aggregate' = suppress the per-leg L1/L2/L3 entities (only on split/three-
+    -- phase units; single-phase keeps its L1 set). 'per_phase' = per-leg shown,
+    -- aggregate de-emphasised on the dashboard.
+    ALTER TABLE gateways ADD COLUMN phase_view TEXT NOT NULL DEFAULT 'both';
     """,
 }
 

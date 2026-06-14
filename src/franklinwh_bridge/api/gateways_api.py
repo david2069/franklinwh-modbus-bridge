@@ -171,6 +171,7 @@ class GatewayUpdate(BaseModel):
     # Layer-2 linkage. service_id='' clears the link; phase in all|L1|L2|L3|combo.
     service_id: str | None = Field(default=None, max_length=63)
     phase: str | None = Field(default=None, pattern=r"^(all|L[123](\+L[123])*)$")
+    phase_view: str | None = Field(default=None, pattern=r"^(both|aggregate|per_phase)$")
 
 
 @router.get("/gateways")
@@ -302,6 +303,14 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
     result = await update_gateway(db, gw_id, **updates)
     if result is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
+
+    # Apply a phase-view change to the live publisher (default gateway only —
+    # that's the one wired to the MQTT publisher today). Re-publishes discovery.
+    if "phase_view" in updates and gw_id == "default":
+        publisher = getattr(request.app.state, "mqtt_publisher", None)
+        if publisher is not None:
+            publisher.set_phase_view(updates["phase_view"])
+
     return result
 
 

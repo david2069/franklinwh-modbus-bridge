@@ -75,7 +75,7 @@ services (Layer 1, customer-declared)   gateways (new columns, Layer 2)
   id            TEXT PK                    service_id  TEXT  → services.id
   name          TEXT  -- Service ID        phase       TEXT  'all'|'L1'|'L2'|'L3'
   meter_number  TEXT                                         | 'L1+L2' | …
-  account       TEXT                       phase_view  TEXT  'aggregate'
+  account       TEXT                       phase_view  TEXT  'both'
   ac_service    INTEGER -- declared type                     | 'per_phase' | 'both'
   rated_amps    INTEGER
   -- site_config keeps site-wide fields; services is the per-service list
@@ -89,7 +89,7 @@ services (Layer 1, customer-declared)   gateways (new columns, Layer 2)
 - `phase` accepts a combo (`'L1+L2'`) for split/three-phase units; validate the
   choice against the gateway's detected `701.ACType`.
 - `phase_view` controls which entities a *multi-phase* gateway publishes
-  (Topology B, §4.1). Default `'aggregate'` = today's behaviour.
+  (Topology B, §4.1). Default `'both'` = today's behaviour (no suppression).
 
 ---
 
@@ -128,10 +128,13 @@ all legs from a single 701; `ac_type=2|3`).
   "*N per-phase, M removed*" publisher log). No entity resolution needed.
 - What's added is a **per-gateway display/publish preference**,
   `gateways.phase_view`:
-  - `aggregate` (default) — publish only the totals (today's behaviour).
-  - `per_phase` — publish only the L1/L2/L3 breakdown.
-  - `both` — publish totals **and** the per-leg set; the dashboard offers an
-    aggregate ⇄ per-phase toggle for that gateway.
+  - `both` (default) — publish totals **and** the per-leg set (today's
+    behaviour, no suppression); the dashboard offers an aggregate ⇄ per-phase
+    toggle for that gateway.
+  - `aggregate` — suppress the per-leg L1/L2/L3 entities (totals only). Only
+    affects split/three-phase units; a single-phase unit keeps its L1 set.
+  - `per_phase` — publish the L1/L2/L3 breakdown (dashboard de-emphasises the
+    aggregate).
 - This is the answer to "show individual phases *or* aggregated": it's a
   publishing/view choice on a single multi-phase gateway, **not** the
   cross-gateway resolution of Topology A.
@@ -191,7 +194,8 @@ Per-phase `ALn` vs the service's **rated amperage** then gives utilisation %.
 | MP1 | `services` table + `gateways.service_id`/`phase` (migration) + site/gateway API | ✅ done |
 | MP3 | Services editor + gateway service/phase selectors + auto-detect (UI) | ✅ done |
 | MP2 | Phase-substituted entity resolution — Topology A (gateway phase → 701 Ln) | ⬜ |
-| MP4 | `phase_view` preference + dashboard aggregate ⇄ per-phase toggle — Topology B | ⬜ |
+| MP4 | `phase_view` preference (column + publish filter + edit-form selector) — Topology B | ✅ done |
+| MP4b | Dashboard aggregate ⇄ per-phase toggle for a `both`/`per_phase` gateway | ⬜ |
 | MP5 | Coordinated control executor (§4.0) — fan-out to a service/phase group | ⬜ |
 | MP6 | Per-service amperage utilisation in Reporting | ⬜ |
 

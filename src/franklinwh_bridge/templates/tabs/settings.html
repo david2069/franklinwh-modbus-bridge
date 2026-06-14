@@ -730,6 +730,15 @@
               <button @click="detectPhases()" type="button"
                       class="btn btn-sm btn-secondary !py-1 !text-xs">Auto-detect</button>
             </div>
+            <!-- Phase view: only meaningful for a multi-phase unit (split/three) -->
+            <div class="sm:col-span-2" x-show="(editGw.ac_type ?? 0) >= 1">
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Phase View</label>
+              <select x-model="editGw.phase_view" class="form-control !py-1 !text-xs w-full">
+                <option value="both">Both (aggregate + per-phase)</option>
+                <option value="aggregate">Aggregate only</option>
+                <option value="per_phase">Per-phase</option>
+              </select>
+            </div>
           </div>
           <!-- Detection result / mismatch warning -->
           <template x-if="phaseDetect">

@@ -29,6 +29,7 @@ from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
+    get_gateway,
     get_mqtt_config,
     init_db,
     log_startup_event,
@@ -264,6 +265,9 @@ async def lifespan(app: FastAPI):
                 if default.device_info:
                     mqtt_publisher.set_device_info(default.device_info)
                     mqtt_publisher.set_ac_type(default.status.ac_type)
+                    gw_row = await get_gateway(db, "default")
+                    if gw_row:
+                        mqtt_publisher.set_phase_view(gw_row.get("phase_view", "both"))
                     break
                 await asyncio.sleep(0.5)
 

@@ -210,6 +210,7 @@ class MqttPublisher:
         self._removed_entities: list[EntityDef] = []
         self._promoted_entities: list[EntityDef] = []  # catalog points promoted via groups
         self._ac_type: int = 0
+        self._phase_view: str = "both"  # both | aggregate | per_phase (Topology B)
         self._disabled_slugs: set[str] = set()
         self._command_handler: CommandHandler | None = None
         self._battery_port_count: int = 1
@@ -250,6 +251,11 @@ class MqttPublisher:
             and (e.battery_port is None or e.battery_port <= nport)
             and e.slug not in disabled
         ]
+        # phase_view (Topology B): 'aggregate' suppresses the per-leg L1/L2/L3
+        # entities — but only on a multi-phase unit. A single-phase aGate
+        # (ac_type 0) keeps its L1 set, since that IS its real data.
+        if self._phase_view == "aggregate" and ac_type >= 1:
+            new_entities = [e for e in new_entities if e.phase is None]
         # Promoted catalog points (already filtered to enabled groups).
         new_entities += self._promoted_entities
         active_slugs = {e.slug for e in new_entities}
@@ -279,6 +285,23 @@ class MqttPublisher:
             len(self._entities),
             phase_count,
             len(self._removed_entities),
+        )
+
+    def set_phase_view(self, view: str) -> None:
+        """Set the per-gateway phase-view preference (Topology B).
+
+        'both' (default) publishes aggregate + per-leg entities. 'aggregate'
+        suppresses the per-leg L1/L2/L3 entities on a multi-phase unit.
+        'per_phase' publishes the per-leg set (dashboard de-emphasises the
+        aggregate). Triggers an entity-list rebuild + discovery re-publish.
+        """
+        view = view if view in ("both", "aggregate", "per_phase") else "both"
+        if view == self._phase_view:
+            return
+        self._phase_view = view
+        self._rebuild_entity_lists()
+        logger.info(
+            "Phase view set to '%s' — %d entities active", view, len(self._entities)
         )
 
     def set_battery_port_count(self, count: int) -> None:
