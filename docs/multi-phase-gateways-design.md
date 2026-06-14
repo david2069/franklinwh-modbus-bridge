@@ -75,8 +75,8 @@ services (Layer 1, customer-declared)   gateways (new columns, Layer 2)
   id            TEXT PK                    service_id  TEXT  → services.id
   name          TEXT  -- Service ID        phase       TEXT  'all'|'L1'|'L2'|'L3'
   meter_number  TEXT                                         | 'L1+L2' | …
-  account       TEXT
-  ac_service    INTEGER -- declared type
+  account       TEXT                       phase_view  TEXT  'aggregate'
+  ac_service    INTEGER -- declared type                     | 'per_phase' | 'both'
   rated_amps    INTEGER
   -- site_config keeps site-wide fields; services is the per-service list
 ```
@@ -84,9 +84,12 @@ services (Layer 1, customer-declared)   gateways (new columns, Layer 2)
   (one row per service) carrying `meter_number`, `account`, `ac_service`
   (declared), and `rated_amps`. Keep `site_config` for site-wide metadata
   (Site Name).
-- `gateways` gains `service_id` + `phase`. `phase='all'` = today's behaviour.
+- `gateways` gains `service_id` + `phase` (✅ done, migration v14) and
+  `phase_view` (new — see §4.1). `phase='all'` = today's behaviour.
 - `phase` accepts a combo (`'L1+L2'`) for split/three-phase units; validate the
   choice against the gateway's detected `701.ACType`.
+- `phase_view` controls which entities a *multi-phase* gateway publishes
+  (Topology B, §4.1). Default `'aggregate'` = today's behaviour.
 
 ---
 
@@ -105,16 +108,40 @@ services (Layer 1, customer-declared)   gateways (new columns, Layer 2)
 - Open question: group-level command UI + how partial failures (one gateway
   rejects) are surfaced.
 
-### 4.1 Per-phase data
-- A gateway with `phase='L2'` maps its primary power/energy points to the **L2**
-  variants from 701 (`WL2`, `VAL2`, `VarL2`, `AL2`, `VL2`, `TotWhInjL2`,
+### 4.1 Per-phase data — two topologies
+
+Per-phase handling splits into two distinct topologies. **`ac_type` (detected)
++ `phase` (assigned) disambiguate them**, so the model never conflates the two:
+
+**Topology A — one aGate per phase** (single-phase units, each on a different
+leg; `ac_type=0`, `phase` = one of `L1`/`L2`/`L3`).
+- The gateway maps its *primary* power/energy points to the **assigned leg's**
+  701 variants (`WL2`, `VAL2`, `VarL2`, `AL2`, `VL2`, `TotWhInjL2`,
   `TotWhAbsL2`, …). EntityDef gains a phase-substitution so `701.WLn` resolves
-  to the gateway's assigned phase.
-- The **Site aggregate** sums across services/phases as configured.
+  to the gateway's assigned phase. *(This is the unbuilt "entity resolution".)*
+- The **Site aggregate** sums the legs across gateways.
+
+**Topology B — one true multi-phase aGate** (split/three-phase unit reporting
+all legs from a single 701; `ac_type=2|3`).
+- The data is **already published both ways today**: the aggregate entities
+  *and* the per-leg entities (`WL1/WL2/WL3`…), gated by `ac_type` (the
+  "*N per-phase, M removed*" publisher log). No entity resolution needed.
+- What's added is a **per-gateway display/publish preference**,
+  `gateways.phase_view`:
+  - `aggregate` (default) — publish only the totals (today's behaviour).
+  - `per_phase` — publish only the L1/L2/L3 breakdown.
+  - `both` — publish totals **and** the per-leg set; the dashboard offers an
+    aggregate ⇄ per-phase toggle for that gateway.
+- This is the answer to "show individual phases *or* aggregated": it's a
+  publishing/view choice on a single multi-phase gateway, **not** the
+  cross-gateway resolution of Topology A.
+
+**Common to both**
 - Per-service **rated amperage** enables overload/utilisation reporting
-  (current vs rating) — and pairs naturally with the Reporting/Sankey backlog.
-- Constrain phase choices to the gateway's detected `ac_type` (can't pick L3 on
-  a single-phase unit).
+  (current vs rating) — pairs with the Reporting/Sankey backlog.
+- Constrain `phase` choices to the gateway's detected `ac_type` (can't pick L3
+  on a single-phase unit); `phase_view` only applies when `ac_type` is split/
+  three-phase (a single-phase unit has nothing to break out).
 
 ### 4.2 Declared vs detected, and phase auto-detection
 Two independent notions of "AC type" coexist — keep them distinct:
@@ -142,33 +169,42 @@ Per-phase `ALn` vs the service's **rated amperage** then gives utilisation %.
 
 ## 5. UI
 
-- **"Site Configuration" card → "Electricity Utility Service(s)"** — a
+- **"Site Configuration" card → "Electricity Utility Service(s)"** ✅ — a
   **Services** list editor (add/remove service; Service ID, Meter Number,
   Account, declared AC Service, rated amps) replacing the single AC-service
   dropdown. Site Name stays as a site-wide field.
-- **Gateways** table/edit form → **Service/Meter** selector + **Phase** selector
-  (All / L1 / L2 / L3 / combo, gated by detected ACType), with an
+- **Gateways** edit form → **Service/Meter** selector + **Phase** selector
+  (All / L1 / L2 / L3 / combo, gated by detected ACType) ✅, with an
   **auto-detect** affordance (§4.2) that pre-fills the wired phase from 701 and
-  warns on a declared-vs-detected mismatch.
+  warns on a declared-vs-detected mismatch ✅.
+- **Gateways** edit form → **Phase view** selector (`aggregate` / `per_phase` /
+  `both`), shown only when the detected ACType is split/three-phase (§4.1
+  Topology B). On the dashboard, a `both`-mode gateway gets an aggregate ⇄
+  per-phase toggle.
 
 ---
 
 ## 6. Phasing
 
-| Phase | What |
-|---|---|
-| MP1 | `services` table + `gateways.service_id`/`phase` (migration) + site/gateway API |
-| MP2 | Phase-substituted entity resolution (gateway phase → 701 Ln points) |
-| MP3 | Services editor + gateway service/phase selectors (UI) |
-| MP4 | Per-service amperage utilisation in Reporting |
+| Phase | What | Status |
+|---|---|---|
+| MP1 | `services` table + `gateways.service_id`/`phase` (migration) + site/gateway API | ✅ done |
+| MP3 | Services editor + gateway service/phase selectors + auto-detect (UI) | ✅ done |
+| MP2 | Phase-substituted entity resolution — Topology A (gateway phase → 701 Ln) | ⬜ |
+| MP4 | `phase_view` preference + dashboard aggregate ⇄ per-phase toggle — Topology B | ⬜ |
+| MP5 | Coordinated control executor (§4.0) — fan-out to a service/phase group | ⬜ |
+| MP6 | Per-service amperage utilisation in Reporting | ⬜ |
 
 ## 7. Open questions
 
 1. Migrate `ac_service_type` → `services`, or keep both (site-type + services)?
-2. Does a single physical aGate ever report *all* phases of a 3-phase service,
-   or is it one aGate per phase? (Drives whether `phase` is per-gateway or
-   per-entity.)
+2. ~~Does one aGate report all phases, or is it one aGate per phase?~~ **Resolved
+   (§4.1): both exist — Topology A (one per phase) vs B (one multi-phase unit) —
+   disambiguated by `ac_type` + `phase`; each has its own consumer (MP2 vs MP4).**
 3. ~~Phase association manual, or inferred from 701 Ln registers?~~ **Resolved
    (§4.2): auto-detect from `VLn` + `TotWhInj/AbsLn`, user confirms/overrides.**
 4. Can a customer have multiple meters on one service, or is meter 1:1 with
    service? (Affects whether `meter_number` lives on `services` or its own table.)
+5. For a `both`-mode gateway, is the aggregate ⇄ per-phase toggle a dashboard-
+   only view, or does it also change which entities publish to HA? (Default:
+   publish per `phase_view`; toggle is display-only on top of what's published.)
