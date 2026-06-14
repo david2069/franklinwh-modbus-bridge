@@ -6,9 +6,9 @@ library lacked the setter. last_success now tracks the true result.
 """
 
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
 
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.store.db import init_db
