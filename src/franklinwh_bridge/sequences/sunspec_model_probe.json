@@ -1,0 +1,30 @@
+[
+  {
+    "step": "Read SunSpec model points (scale factor applied automatically)",
+    "reads": ["701.W", "701.Hz", "701.PF", "705.VRef", "713.SoC", "714.DCW"],
+    "note": "Model.Point reads apply the SunSpec scale factor (value x 10^SF) transparently. Compare against the raw 701.* values in the Explorer to confirm scaling."
+  },
+  {
+    "step": "Read per-battery repeating blocks (multi-stack suffix)",
+    "reads": ["714.DCW_1", "714.DCW_2"],
+    "note": "Suffix _N targets repeating block N for multi-battery stacks (library >= 0.9.0). _1 = first stack. On a single-stack unit, _2 may be absent."
+  },
+  {
+    "step": "Enable remote control + set charge power (scaled write)",
+    "writes": { "704.WSetEna": 1, "704.WSetPct": 30 },
+    "verify": true,
+    "verify_timeout_ms": 2000,
+    "note": "WSetPct is scale-factor converted on write (human % -> raw). Enables VPP remote control and requests ~30% charge. SPAN must be unlocked to take."
+  },
+  {
+    "step": "Hold briefly",
+    "sleep_ms": 3000,
+    "note": "Maintain the dispatch long enough to observe it before release."
+  },
+  {
+    "step": "Release control (return to native mode)",
+    "writes": { "704.WSetEna": 0, "704.WSetPct": 0 },
+    "verify": true,
+    "note": "Sequencer-level release. NOTE: the library's reset_control_state() now performs a standby handshake (force 0W, settle, then WSetEna=0); this manual WSetEna=0 is the raw sequencer equivalent without the ramp-down delay."
+  }
+]

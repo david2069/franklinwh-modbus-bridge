@@ -1,0 +1,33 @@
+[
+  {
+    "step": "Read extension registers (auto-resolved via EXTENSION_REGISTRY)",
+    "reads": ["15506", "15507", "15508", "15509", "15510", "15512", "16000"],
+    "note": "Requires library >= 0.9.0 (EXTENSION_REGISTRY). 15507 OnGridMode resolves to an enum label (e.g. '3 (TOU)'); 15510/15512 PV energy are uint32 read across 2 registers; the rest are uint16. No manual scaling/typing needed."
+  },
+  {
+    "step": "Inline override read of a 32-bit register (explicit type/sf)",
+    "reads": [
+      { "addr": 15510, "name": "PVOutputWh_explicit", "type": "uint32", "sf": 0 }
+    ],
+    "note": "Inline dict read for unmapped/custom registers. The engine resolves the address from the 'addr' (or 'point') key — NOT 'address' (the migration-guide example is wrong on this)."
+  },
+  {
+    "step": "Read Self-Consumption reserve (raw uint16)",
+    "reads": ["15508"],
+    "note": "Baseline read of 15508 SelfReserve before the write below, for comparison."
+  },
+  {
+    "step": "Write Self-Consumption reserve (raw uint16, RW)",
+    "writes": { "15508": 20 },
+    "verify": true,
+    "verify_timeout_ms": 2000,
+    "note": "Raw write to 15508 SelfReserve (%). SPAN Modbus must be UNLOCKED for the write to take; otherwise verify reports the unchanged value."
+  },
+  {
+    "step": "Write TOU reserve via inline override (value + type + sf)",
+    "writes": { "15509": { "value": 20, "type": "uint16", "sf": 0 } },
+    "verify": true,
+    "verify_timeout_ms": 2000,
+    "note": "Inline write-override form {value,type,sf} on 15509 TouReserve (RW). Demonstrates the dict-as-value schema; the value form (here uint16) also supports uint32/int32 with sf."
+  }
+]
