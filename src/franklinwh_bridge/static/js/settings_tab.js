@@ -33,6 +33,11 @@ function settingsTab() {
     siteConfig: {},
     siteEditing: false,
     siteEdit: {},
+
+    // Electricity Utility Services (Layer 1)
+    services: [],
+    serviceEditId: null,   // service id being edited, or 'new', or null
+    serviceEdit: {},
     // Gateway management
     gwList: [],
     gwBusy: false,
@@ -60,6 +65,7 @@ function settingsTab() {
       await this.loadGroups();
       await this.loadGateway();
       await this.loadSiteConfig();
+      await this.loadServices();
       await this.loadGateways();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
@@ -144,6 +150,67 @@ function settingsTab() {
         Alpine.store('app').toast('Site config saved', 'info');
       } else {
         Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    // ── Electricity Utility Services ───────────────────────
+
+    AC_SERVICE_LABELS: { 1: 'Single Phase', 2: 'Split Phase', 3: 'Three Phase' },
+
+    acServiceLabel(v) {
+      return this.AC_SERVICE_LABELS[v] || 'Single Phase';
+    },
+
+    async loadServices() {
+      const data = await fetchJSON('api/services');
+      if (data && data.services) this.services = data.services;
+    },
+
+    addService() {
+      this.serviceEdit = {
+        name: 'Service ' + (this.services.length + 1),
+        meter_number: '', account: '', ac_service: 1, rated_amps: 0,
+      };
+      this.serviceEditId = 'new';
+    },
+
+    editService(svc) {
+      this.serviceEdit = {
+        name: svc.name, meter_number: svc.meter_number, account: svc.account,
+        ac_service: svc.ac_service, rated_amps: svc.rated_amps,
+      };
+      this.serviceEditId = svc.id;
+    },
+
+    cancelServiceEdit() {
+      this.serviceEditId = null;
+      this.serviceEdit = {};
+    },
+
+    async saveService() {
+      const isNew = this.serviceEditId === 'new';
+      const url = isNew ? 'api/services' : `api/services/${this.serviceEditId}`;
+      const data = await fetchJSON(url, {
+        method: isNew ? 'POST' : 'PATCH',
+        body: JSON.stringify(this.serviceEdit),
+      });
+      if (data && !data.error) {
+        await this.loadServices();
+        this.cancelServiceEdit();
+        Alpine.store('app').toast(isNew ? 'Service added' : 'Service saved', 'info');
+      } else {
+        Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    async deleteService(svc) {
+      if (!confirm(`Delete service "${svc.name}"?`)) return;
+      const data = await fetchJSON(`api/services/${svc.id}`, { method: 'DELETE' });
+      if (data && !data.error) {
+        await this.loadServices();
+        Alpine.store('app').toast('Service deleted', 'info');
+      } else {
+        Alpine.store('app').toast('Delete failed: ' + (data?.error || 'unknown'), 'error');
       }
     },
 
@@ -259,7 +326,31 @@ function settingsTab() {
         unit_id: gw.unit_id ?? 1,
         poll_interval: gw.poll_interval ?? 10,
         description: gw.description || '',
+        service_id: gw.service_id || '',
+        phase: gw.phase || 'all',
+        ac_type: gw.ac_type ?? 0,
       };
+      this.phaseDetect = null;
+    },
+
+    // Detection result for the gateway being edited: {detected, matches_declared, ...}
+    phaseDetect: null,
+
+    async detectPhases() {
+      const g = this.editGw;
+      if (!g) return;
+      const data = await fetchJSON(`api/gateways/${g.id}/detect-phases`);
+      if (data && !data.error) {
+        this.phaseDetect = data;
+        if (data.detected) {
+          g.phase = data.detected;   // pre-fill the selector with what was detected
+          Alpine.store('app').toast(`Detected phase: ${data.detected}`, 'info');
+        } else {
+          Alpine.store('app').toast('No phase data yet — let the gateway poll first', 'error');
+        }
+      } else {
+        Alpine.store('app').toast('Detect failed: ' + (data?.error || 'unknown'), 'error');
+      }
     },
 
     async saveEditGw() {
@@ -276,6 +367,7 @@ function settingsTab() {
             name: g.name, host: g.host, port: g.port,
             unit_id: g.unit_id, poll_interval: g.poll_interval,
             description: g.description,
+            service_id: g.service_id, phase: g.phase,
           }),
         });
         if (data && !data.error) {

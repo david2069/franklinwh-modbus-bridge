@@ -16,14 +16,19 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.db import (
     create_gateway,
+    create_service,
     delete_gateway,
+    delete_service,
     get_gateway,
     get_gateways,
+    get_services,
     get_site_config,
     update_gateway,
+    update_service,
     update_site_config,
 )
 
@@ -81,6 +86,66 @@ async def patch_site(body: SiteConfigUpdate, request: Request):
     return await update_site_config(db, **updates)
 
 
+# ── Electricity Utility Services ──────────────────────────────
+
+
+class ServiceCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    meter_number: str = Field(default="", max_length=120)
+    account: str = Field(default="", max_length=120)
+    ac_service: int = Field(default=1, ge=1, le=3)
+    rated_amps: int = Field(default=0, ge=0, le=10000)
+
+
+class ServiceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    meter_number: str | None = Field(default=None, max_length=120)
+    account: str | None = Field(default=None, max_length=120)
+    ac_service: int | None = Field(default=None, ge=1, le=3)
+    rated_amps: int | None = Field(default=None, ge=0, le=10000)
+
+
+@router.get("/services")
+async def list_services(request: Request):
+    """List all electricity utility services."""
+    db: aiosqlite.Connection = request.app.state.db
+    return {"services": await get_services(db)}
+
+
+@router.post("/services", status_code=201)
+async def add_service(body: ServiceCreate, request: Request):
+    """Create a new utility service."""
+    db: aiosqlite.Connection = request.app.state.db
+    return await create_service(
+        db,
+        name=body.name,
+        meter_number=body.meter_number,
+        account=body.account,
+        ac_service=body.ac_service,
+        rated_amps=body.rated_amps,
+    )
+
+
+@router.patch("/services/{service_id}")
+async def patch_service(service_id: str, body: ServiceUpdate, request: Request):
+    """Update a utility service."""
+    db: aiosqlite.Connection = request.app.state.db
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    result = await update_service(db, service_id, **updates)
+    if result is None:
+        raise HTTPException(404, f"Service '{service_id}' not found")
+    return result
+
+
+@router.delete("/services/{service_id}")
+async def remove_service(service_id: str, request: Request):
+    """Delete a utility service."""
+    db: aiosqlite.Connection = request.app.state.db
+    if not await delete_service(db, service_id):
+        raise HTTPException(404, f"Service '{service_id}' not found")
+    return {"deleted": True}
+
+
 # ── Gateway CRUD ──────────────────────────────────────────────
 
 
@@ -103,6 +168,9 @@ class GatewayUpdate(BaseModel):
     description: str | None = None
     poll_interval: int | None = Field(default=None, ge=1, le=300)
     enabled: bool | None = None
+    # Layer-2 linkage. service_id='' clears the link; phase in all|L1|L2|L3|combo.
+    service_id: str | None = Field(default=None, max_length=63)
+    phase: str | None = Field(default=None, pattern=r"^(all|L[123](\+L[123])*)$")
 
 
 @router.get("/gateways")
@@ -303,6 +371,37 @@ async def stop_gateway_endpoint(gw_id: str, request: Request):
     if registry.get(gw_id):
         await registry.stop_gateway(gw_id)
     return {"stopped": True, "gateway_id": gw_id}
+
+
+@router.get("/gateways/{gw_id}/detect-phases")
+async def detect_gateway_phases(gw_id: str, request: Request):
+    """Auto-detect the gateway's wired phase(s) from its 701 registers.
+
+    Reads the gateway's latest cached points (no extra Modbus traffic) and
+    infers connected/utilised phases. Also reports whether the result matches
+    the gateway's currently declared ``phase``.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    row = await get_gateway(db, gw_id)
+    if row is None:
+        raise HTTPException(404, f"Gateway '{gw_id}' not found")
+
+    # Prefer the gateway's own sample bus (carries the full 701.* per-phase set,
+    # same source as /api/points); fall back to the site aggregator's cache.
+    points: dict = {}
+    registry = getattr(request.app.state, "registry", None)
+    inst = registry.get(gw_id) if registry else None
+    if inst is not None and inst.sample_bus.last_sample is not None:
+        points = dict(inst.sample_bus.last_sample.points)
+    else:
+        aggregator = getattr(request.app.state, "site_aggregator", None)
+        if aggregator is not None:
+            points = aggregator.get_gateway_points(gw_id)
+    result = detect_phases(points)
+    declared = row.get("phase", "all")
+    result["declared"] = declared
+    result["matches_declared"] = phase_matches(declared, result["detected"])
+    return result
 
 
 # ── TCP connectivity test ─────────────────────────────────────

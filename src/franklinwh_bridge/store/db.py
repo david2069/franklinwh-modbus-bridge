@@ -11,7 +11,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 14
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -262,6 +262,33 @@ MIGRATIONS: dict[int, str] = {
     -- Without this, a stopped gateway (esp. a mock) self-restarts on reboot
     -- because start_all() restarted every enabled row.
     ALTER TABLE gateways ADD COLUMN autostart INTEGER NOT NULL DEFAULT 1;
+    """,
+    13: """
+    -- Electricity Utility Services (Layer 1, customer-declared). A site can
+    -- have multiple services / meters, each with its own declared AC type and
+    -- rated amperage. Replaces the single site_config.ac_service_type.
+    CREATE TABLE IF NOT EXISTS services (
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL DEFAULT 'Service 1',
+        meter_number  TEXT NOT NULL DEFAULT '',
+        account       TEXT NOT NULL DEFAULT '',
+        ac_service    INTEGER NOT NULL DEFAULT 1,   -- 1 single / 2 split / 3 three
+        rated_amps    INTEGER NOT NULL DEFAULT 0,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        created_at    REAL NOT NULL DEFAULT 0
+    );
+    -- Seed one service from the existing single site_config so nothing is lost.
+    INSERT OR IGNORE INTO services
+        (id, name, meter_number, account, ac_service, rated_amps, display_order, created_at)
+    SELECT 'service1', 'Service 1', meter_number, account_number, ac_service_type, 0, 0, 0
+    FROM site_config WHERE id = 1;
+    """,
+    14: """
+    -- Gateway → service / phase linkage (Layer 2). 'all' = today's behaviour
+    -- (no specific phase). A specific value is 'L1'|'L2'|'L3' (or a combo like
+    -- 'L1+L2'), constrained by the gateway's detected ACType.
+    ALTER TABLE gateways ADD COLUMN service_id TEXT;
+    ALTER TABLE gateways ADD COLUMN phase TEXT NOT NULL DEFAULT 'all';
     """,
 }
 
@@ -563,6 +590,95 @@ async def update_site_config(db: aiosqlite.Connection, **kwargs: object) -> dict
     )
     await db.commit()
     return await get_site_config(db)
+
+
+# ── Electricity Utility Services (Layer 1) ────────────────────────
+
+_SERVICE_FIELDS = ("name", "meter_number", "account", "ac_service", "rated_amps")
+
+
+async def get_services(db: aiosqlite.Connection) -> list[dict]:
+    """List all electricity utility services, in display order."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows = []
+        async with db.execute(
+            "SELECT * FROM services ORDER BY display_order, created_at, id"
+        ) as cur:
+            async for row in cur:
+                rows.append(dict(row))
+        return rows
+    finally:
+        db.row_factory = None
+
+
+async def get_service(db: aiosqlite.Connection, service_id: str) -> dict | None:
+    """Get a single service by ID."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT * FROM services WHERE id = ?", (service_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        db.row_factory = None
+
+
+async def create_service(
+    db: aiosqlite.Connection,
+    name: str,
+    meter_number: str = "",
+    account: str = "",
+    ac_service: int = 1,
+    rated_amps: int = 0,
+) -> dict:
+    """Create a new utility service. Returns the created row."""
+    import uuid
+
+    service_id = f"svc_{uuid.uuid4().hex[:8]}"
+    now = time.time()
+    async with db.execute(
+        "SELECT COALESCE(MAX(display_order), -1) + 1 FROM services"
+    ) as cur:
+        order = (await cur.fetchone())[0]
+    await db.execute(
+        "INSERT INTO services "
+        "(id, name, meter_number, account, ac_service, rated_amps, display_order, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (service_id, name, meter_number, account, int(ac_service),
+         int(rated_amps), order, now),
+    )
+    await db.commit()
+    return await get_service(db, service_id)  # type: ignore[return-value]
+
+
+async def update_service(
+    db: aiosqlite.Connection, service_id: str, **kwargs: object
+) -> dict | None:
+    """Update a service. Only known columns are applied."""
+    existing = await get_service(db, service_id)
+    if existing is None:
+        return None
+    updates = {k: v for k, v in kwargs.items() if k in _SERVICE_FIELDS}
+    if not updates:
+        return existing
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values())
+    values.append(service_id)
+    await db.execute(
+        f"UPDATE services SET {set_clause} WHERE id = ?",  # noqa: S608
+        values,
+    )
+    await db.commit()
+    return await get_service(db, service_id)
+
+
+async def delete_service(db: aiosqlite.Connection, service_id: str) -> bool:
+    """Delete a service. Returns True if a row was removed."""
+    cur = await db.execute("DELETE FROM services WHERE id = ?", (service_id,))
+    await db.commit()
+    return cur.rowcount > 0
 
 
 # ── PICS compliance ──────────────────────────────────────────

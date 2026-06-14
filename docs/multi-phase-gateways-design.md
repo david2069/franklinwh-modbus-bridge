@@ -33,32 +33,60 @@ explicit **gateway → service → phase** association.
 
 ## 2. Requirements (from review)
 
-### A. Site Configuration
-1. **Number of electricity services** + a **Service ID** per service.
-2. **Rated service amperage** per service (e.g. 63 A, 100 A).
+There are **two layers**, and keeping them separate is the key design idea:
 
-### B. Gateways
-1. **Associate a gateway to a service.**
-2. **Associate a gateway to a phase**, constrained by its detected AC type.
-3. **Link a gateway to all phases, or a specific phase** (L1 / L2 / L3) when
-   it's wired that way — so its "Grid/Home/Solar power" reflects that phase's
-   701 registers (`WL2`, `VL2`, `TotWhInjL2`, …) rather than the aggregate.
+- **Layer 1 — Electricity Utility Service(s): customer-declared, informational.**
+  What the *customer understands* about their supply. A site can have **more
+  than one** utility service / meter / AC type. None of this is derived from
+  the device — it's reference data the customer enters.
+- **Layer 2 — Gateways: the physical link.** Each gateway is linked *back* to a
+  declared service/meter and tagged with the phase(s) it's actually wired to.
+  This is where the informational layer becomes actionable (per-phase mapping,
+  coordinated control, utilisation vs rated amps).
+
+### A. Electricity Utility Service card  *(today's "Site Configuration")*
+Rename/expand the card to reflect that it describes the customer's **utility
+service(s)**, not the device. Per **service** (repeatable — a customer may have
+several):
+1. **Service ID** (label) + **Meter Number** + **Account** (informational).
+2. **AC Service** — the customer's understanding of the service type
+   (single / split / three-phase). *Customer-declared*, distinct from any
+   device-detected `ACType` (see §4.2).
+3. **Rated service amperage** (e.g. 63 A, 100 A) — needed for utilisation.
+
+Site-wide fields (Site Name) stay at the site level; everything above moves to
+a per-service list.
+
+### B. Gateways (the linkage)
+1. **Link a gateway to a declared service / meter** (Meter Number / AC Service
+   / Amperage from Layer 1).
+2. **Tag the gateway's wired phase(s)** — `L1`, `L2`, `L3`, or a combo —
+   **constrained by its detected `701.ACType`**: single-phase (ACType 0) → one
+   of L1/L2/L3; split → a two-leg combo; three-phase → all three.
+3. The gateway's "Grid/Home/Solar power" then resolves to that phase's 701
+   registers (`WL2`, `VL2`, `TotWhInjL2`, …) rather than the aggregate.
 
 ---
 
 ## 3. Proposed data model
 
 ```
-services                          gateways (new columns)
-  id           TEXT PK              service_id  TEXT  → services.id
-  name         TEXT                 phase       TEXT  'all' | 'L1' | 'L2' | 'L3'
-  rated_amps   INTEGER
+services (Layer 1, customer-declared)   gateways (new columns, Layer 2)
+  id            TEXT PK                    service_id  TEXT  → services.id
+  name          TEXT  -- Service ID        phase       TEXT  'all'|'L1'|'L2'|'L3'
+  meter_number  TEXT                                         | 'L1+L2' | …
+  account       TEXT
+  ac_service    INTEGER -- declared type
+  rated_amps    INTEGER
   -- site_config keeps site-wide fields; services is the per-service list
 ```
 - Migrate the single `site_config.ac_service_type` into a **`services`** table
-  (one row per service), with `rated_amps`. Keep `site_config` for site-wide
-  metadata.
+  (one row per service) carrying `meter_number`, `account`, `ac_service`
+  (declared), and `rated_amps`. Keep `site_config` for site-wide metadata
+  (Site Name).
 - `gateways` gains `service_id` + `phase`. `phase='all'` = today's behaviour.
+- `phase` accepts a combo (`'L1+L2'`) for split/three-phase units; validate the
+  choice against the gateway's detected `701.ACType`.
 
 ---
 
@@ -88,14 +116,40 @@ services                          gateways (new columns)
 - Constrain phase choices to the gateway's detected `ac_type` (can't pick L3 on
   a single-phase unit).
 
+### 4.2 Declared vs detected, and phase auto-detection
+Two independent notions of "AC type" coexist — keep them distinct:
+- **Declared** (`services.ac_service`) — the customer's understanding of the
+  *service* (Layer 1). Informational.
+- **Detected** (`gateways.ac_type` from `701.ACType`) — what the *aGate* reports
+  about its own wiring (e.g. ACType 0 = Single Phase).
+
+The gateway's **wired phase(s)** can be **auto-detected from 701 per-phase
+registers**, then offered to the user to confirm/override (and used to flag
+mismatches against what they declared):
+
+| Signal | Tells you | Strength |
+|---|---|---|
+| `VL1`/`VL2`/`VL3` (phase-N voltage) | phase is **connected/energised** (~230–240 V vs 0) | **Best presence signal** — present even at zero power, no flicker |
+| `TotWhInjLn` + `TotWhAbsLn` (lifetime energy) | phase has **carried energy** | **Best utilisation signal** — monotonic, immune to transient nulls |
+| `WLn` / `ALn` (instantaneous) | live power now | weak alone — legitimately 0 on a live phase between loads |
+
+Heuristic: **connected** if `VLn > 0`; **utilised** if `TotWhInjLn + TotWhAbsLn
+> 0` (or growing). Example (real unit): `VL1`/`AL1`/`TotWhInjL1` non-zero while
+all L2/L3 = 0 ⇒ single-phase on **L1**, consistent with detected `ACType=0`.
+Per-phase `ALn` vs the service's **rated amperage** then gives utilisation %.
+
 ---
 
 ## 5. UI
 
-- **Site Configuration** card → a **Services** list editor (add/remove service,
-  name, Service ID, rated amps) replacing the single AC-service dropdown.
-- **Gateways** table/edit form → **Service** selector + **Phase** selector
-  (All / L1 / L2 / L3, gated by AC type).
+- **"Site Configuration" card → "Electricity Utility Service(s)"** — a
+  **Services** list editor (add/remove service; Service ID, Meter Number,
+  Account, declared AC Service, rated amps) replacing the single AC-service
+  dropdown. Site Name stays as a site-wide field.
+- **Gateways** table/edit form → **Service/Meter** selector + **Phase** selector
+  (All / L1 / L2 / L3 / combo, gated by detected ACType), with an
+  **auto-detect** affordance (§4.2) that pre-fills the wired phase from 701 and
+  warns on a declared-vs-detected mismatch.
 
 ---
 
@@ -114,4 +168,7 @@ services                          gateways (new columns)
 2. Does a single physical aGate ever report *all* phases of a 3-phase service,
    or is it one aGate per phase? (Drives whether `phase` is per-gateway or
    per-entity.)
-3. Phase association manual, or inferred from which 701 Ln registers are non-zero?
+3. ~~Phase association manual, or inferred from 701 Ln registers?~~ **Resolved
+   (§4.2): auto-detect from `VLn` + `TotWhInj/AbsLn`, user confirms/overrides.**
+4. Can a customer have multiple meters on one service, or is meter 1:1 with
+   service? (Affects whether `meter_number` lives on `services` or its own table.)

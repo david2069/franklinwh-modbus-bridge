@@ -91,6 +91,14 @@ function explorerTab() {
       await Promise.all([this.loadGateway(), this.loadModels(), this.loadPicsData()]);
       // Force-refresh point values so they're populated immediately
       Alpine.store('app').refresh();
+
+      // When a filter (search or hide-unpolled) narrows the model list and the
+      // currently selected model drops out, jump to the first match so its
+      // matching points show immediately. Without this the right pane keeps
+      // the stale selection — e.g. searching "L1" while "Common" is selected
+      // filters Common's points to none, looking like "nothing found".
+      this.$watch('filter', () => this._reselectIfStale());
+      this.$watch('hideEmptyModels', () => this._reselectIfStale());
     },
 
     destroy() {
@@ -196,6 +204,15 @@ function explorerTab() {
 
     selectModel(modelId) {
       this.selectedModelId = modelId;
+    },
+
+    _reselectIfStale() {
+      // If the selected model is no longer in the filtered list, select the
+      // first one that is (keeps the current selection when it still matches).
+      const matches = this.filteredModels;
+      if (matches.length && !matches.some(m => m.model_id === this.selectedModelId)) {
+        this.selectedModelId = matches[0].model_id;
+      }
     },
 
     async readModel() {
