@@ -311,6 +311,12 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
         if publisher is not None:
             publisher.set_phase_view(updates["phase_view"])
 
+    # Keep the site aggregator's per-phase bucketing in sync with the tag.
+    if "phase" in updates:
+        aggregator = getattr(request.app.state, "site_aggregator", None)
+        if aggregator is not None:
+            aggregator.set_gateway_phase(gw_id, updates["phase"])
+
     return result
 
 

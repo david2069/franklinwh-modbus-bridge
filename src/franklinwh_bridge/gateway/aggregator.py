@@ -21,10 +21,25 @@ logger = logging.getLogger(__name__)
 class SiteAggregator:
     """Computes aggregated site-level metrics from per-gateway samples."""
 
+    # Power keys bucketed into per-phase site totals (canonical → site alias).
+    _PHASE_SUM_KEYS = {
+        "total_solar": "site_solar",
+        "battery_power_w": "site_battery_power",
+        "grid_power_w": "site_grid_power",
+        "home_load_ext": "site_home_load",
+    }
+    _PHASES = ("L1", "L2", "L3")
+
     def __init__(self) -> None:
         # Latest points per gateway: {gateway_id: {key: value, ...}}
         self._latest: dict[str, dict] = {}
+        # Gateway → assigned phase tag ('all' | 'L1' | 'L2' | 'L3' | combo).
+        self._phases: dict[str, str] = {}
         self._last_update: float = 0
+
+    def set_gateway_phase(self, gateway_id: str, phase: str | None) -> None:
+        """Record a gateway's assigned phase for per-phase site aggregation."""
+        self._phases[gateway_id] = phase or "all"
 
     async def on_sample(self, sample: Sample) -> None:
         """SampleBus subscriber callback — stores latest per-gateway points."""
@@ -116,6 +131,27 @@ class SiteAggregator:
         # Canonical grid indicator for the topbar dot.
         result["connection_state"] = "Disconnected" if off_grid else "Connected"
 
+        # ── Per-phase site totals (Topology A) ────────────────────
+        # Each gateway's *canonical* aggregate power is bucketed into the leg
+        # it's tagged with. Only gateways pinned to a single phase (L1/L2/L3)
+        # contribute; an 'all'/combo unit spans legs and stays in the grand
+        # total only. (A single-phase aGate reports its data in its own L1
+        # slot regardless of the service leg, so we bucket the canonical
+        # aggregate by the user's tag — not by reading 701.WLn.)
+        for ph in self._PHASES:
+            for src_key, alias in self._PHASE_SUM_KEYS.items():
+                total = 0.0
+                has_value = False
+                for gw_id, pts in self._latest.items():
+                    if self._phases.get(gw_id, "all") != ph:
+                        continue
+                    val = pts.get(src_key)
+                    if val is not None:
+                        total += val
+                        has_value = True
+                if has_value:
+                    result[f"{alias}_{ph}"] = round(total, 1)
+
         result["site_gateway_count"] = len(self._latest)
         result["site_last_update"] = self._last_update
         return result
@@ -127,3 +163,4 @@ class SiteAggregator:
     def clear_gateway(self, gateway_id: str) -> None:
         """Remove cached data for a gateway (called on offboard)."""
         self._latest.pop(gateway_id, None)
+        self._phases.pop(gateway_id, None)

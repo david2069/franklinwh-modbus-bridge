@@ -164,3 +164,53 @@ async def test_partial_data(aggregator):
     pts = aggregator.site_points
     assert pts["site_total_solar_w"] == 3000  # only gw1's solar
     assert pts["site_soc_avg"] == 70  # both contribute to SoC
+
+
+# ── Per-phase site aggregation (MP2 / Topology A) ───────────────
+
+async def test_per_phase_buckets_by_tag(aggregator):
+    """Each gateway's canonical power is bucketed into its tagged phase."""
+    await aggregator.on_sample(Sample.now("a", {"grid_power_w": 100, "home_load_ext": 1000}))
+    await aggregator.on_sample(Sample.now("b", {"grid_power_w": 200, "home_load_ext": 2000}))
+    aggregator.set_gateway_phase("a", "L1")
+    aggregator.set_gateway_phase("b", "L2")
+
+    pts = aggregator.site_points
+    # grand totals still sum everything
+    assert pts["site_grid_power_w"] == 300
+    # per-phase buckets split by tag
+    assert pts["site_grid_power_L1"] == 100
+    assert pts["site_grid_power_L2"] == 200
+    assert pts["site_home_load_L1"] == 1000
+    assert pts["site_home_load_L2"] == 2000
+    # L3 has no gateway → no key emitted
+    assert "site_grid_power_L3" not in pts
+
+
+async def test_untagged_gateway_only_in_grand_total(aggregator):
+    """A gateway with no tag (defaults 'all') contributes to the total but
+    not to any per-phase bucket."""
+    await aggregator.on_sample(Sample.now("a", {"grid_power_w": 150}))
+    # no set_gateway_phase → defaults to 'all'
+    pts = aggregator.site_points
+    assert pts["site_grid_power_w"] == 150
+    assert "site_grid_power_L1" not in pts
+    assert "site_grid_power_L2" not in pts
+    assert "site_grid_power_L3" not in pts
+
+
+async def test_two_gateways_same_phase_sum(aggregator):
+    await aggregator.on_sample(Sample.now("a", {"grid_power_w": 100}))
+    await aggregator.on_sample(Sample.now("b", {"grid_power_w": 250}))
+    aggregator.set_gateway_phase("a", "L1")
+    aggregator.set_gateway_phase("b", "L1")
+    assert aggregator.site_points["site_grid_power_L1"] == 350
+
+
+async def test_clear_gateway_drops_phase(aggregator):
+    await aggregator.on_sample(Sample.now("a", {"grid_power_w": 100}))
+    aggregator.set_gateway_phase("a", "L1")
+    assert aggregator.site_points["site_grid_power_L1"] == 100
+    aggregator.clear_gateway("a")
+    assert "a" not in aggregator._phases
+    assert aggregator.site_points == {}

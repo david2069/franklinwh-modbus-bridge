@@ -30,6 +30,7 @@ from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_gateway,
+    get_gateways,
     get_mqtt_config,
     init_db,
     log_startup_event,
@@ -250,6 +251,11 @@ async def lifespan(app: FastAPI):
     async def _start_gateways() -> None:
         """Start all enabled gateways, wire MQTT for the default."""
         await registry.start_all()
+
+        # Feed each gateway's assigned phase to the site aggregator so it can
+        # bucket per-phase site totals (Topology A).
+        for gw in await get_gateways(db):
+            site_aggregator.set_gateway_phase(gw["id"], gw.get("phase", "all"))
 
         # Wire the default gateway's command handler + device info to MQTT
         default = registry.get("default")

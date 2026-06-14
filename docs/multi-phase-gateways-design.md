@@ -114,12 +114,18 @@ Per-phase handling splits into two distinct topologies. **`ac_type` (detected)
 + `phase` (assigned) disambiguate them**, so the model never conflates the two:
 
 **Topology A — one aGate per phase** (single-phase units, each on a different
-leg; `ac_type=0`, `phase` = one of `L1`/`L2`/`L3`).
-- The gateway maps its *primary* power/energy points to the **assigned leg's**
-  701 variants (`WL2`, `VAL2`, `VarL2`, `AL2`, `VL2`, `TotWhInjL2`,
-  `TotWhAbsL2`, …). EntityDef gains a phase-substitution so `701.WLn` resolves
-  to the gateway's assigned phase. *(This is the unbuilt "entity resolution".)*
-- The **Site aggregate** sums the legs across gateways.
+leg; `ac_type=0`, `phase` = one of `L1`/`L2`/`L3`). ✅ implemented (MP2).
+- **Correction from hardware:** a single-phase aGate reports its measurement
+  in its *own* `L1` slot regardless of which service leg it's physically on
+  (confirmed: a real single-phase unit shows `VL1`/`AL1`/`TotWhInjL1` populated,
+  L2/L3 = 0). So reading `701.WL2` for a unit "on L2" would read **zero** — the
+  earlier "701 phase-substitution" idea doesn't hold for single-phase units.
+- **Actual mechanism:** the gateway's *canonical aggregate* power **is** its
+  phase's data. The `phase` tag tells the **site aggregator** which leg to
+  bucket that gateway's contribution into — it sums each gateway's canonical
+  `grid_power_w`/`total_solar`/`battery_power_w`/`home_load_ext` into per-phase
+  site totals (`site_grid_power_L1`, `site_home_load_L2`, …). Gateways tagged
+  `all`/combo stay in the grand total only. No `701.WLn` read involved.
 
 **Topology B — one true multi-phase aGate** (split/three-phase unit reporting
 all legs from a single 701; `ac_type=2|3`).
@@ -193,7 +199,7 @@ Per-phase `ALn` vs the service's **rated amperage** then gives utilisation %.
 |---|---|---|
 | MP1 | `services` table + `gateways.service_id`/`phase` (migration) + site/gateway API | ✅ done |
 | MP3 | Services editor + gateway service/phase selectors + auto-detect (UI) | ✅ done |
-| MP2 | Phase-substituted entity resolution — Topology A (gateway phase → 701 Ln) | ⬜ |
+| MP2 | Per-phase **site aggregation** — Topology A (bucket canonical power by tag) | ✅ done |
 | MP4 | `phase_view` preference (column + publish filter + edit-form selector) — Topology B | ✅ done |
 | MP4b | Dashboard aggregate ⇄ per-phase toggle for a `both`/`per_phase` gateway | ⬜ |
 | MP5 | Coordinated control executor (§4.0) — fan-out to a service/phase group | ⬜ |
