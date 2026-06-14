@@ -110,3 +110,55 @@ async def test_power_tweak_does_not_log_supersede(handler, db):
 
     events = await _control_events(db)
     assert not [e for (e, _a) in events if e == "command_superseded"]
+
+
+# ── Standby-handshake fast release (library upgrade compat) ──────
+
+class _RecordingCtrl:
+    """Controller whose reset_control_state accepts the new handshake param."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get_model(self, model_id):
+        return None  # no M704 → revert-timer clear is skipped
+
+    def reset_control_state(self, handshake_wait_s=1.0):
+        self.calls.append(handshake_wait_s)
+        return True
+
+
+class _OldCtrl:
+    """Pre-upgrade controller: reset_control_state takes no parameters."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get_model(self, model_id):
+        return None
+
+    def reset_control_state(self):
+        self.calls.append("no-arg")
+        return True
+
+
+def test_fast_release_passes_zero_handshake():
+    ctrl = _RecordingCtrl()
+    h = CommandHandler(ctrl, MagicMock())
+    h._full_release(fast=True)
+    assert ctrl.calls == [0]  # shutdown path skips the ramp-down
+
+
+def test_default_release_keeps_handshake():
+    ctrl = _RecordingCtrl()
+    h = CommandHandler(ctrl, MagicMock())
+    h._full_release(fast=False)
+    assert ctrl.calls == [1.0]  # in-session release keeps the clean ramp-down
+
+
+def test_fast_release_back_compat_with_old_library():
+    """A library without handshake_wait_s must not error on a fast release."""
+    ctrl = _OldCtrl()
+    h = CommandHandler(ctrl, MagicMock())
+    h._full_release(fast=True)  # must not raise
+    assert ctrl.calls == ["no-arg"]

@@ -28,6 +28,7 @@ bridge is the only thing that releases dispatches.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from collections.abc import Callable, Coroutine
@@ -358,8 +359,13 @@ class CommandHandler:
         else:
             self._cancel_watchdog()
 
+        # Shutdown releases skip the library's standby-handshake ramp-down so a
+        # multi-gateway shutdown doesn't block past the container's stop grace
+        # period. In-session releases (user/watchdog/target-SoC) keep the clean
+        # ramp-down (safer for an actively-dispatching battery).
+        fast = reason == "shutdown"
         async with self._modbus_lock:
-            success = await asyncio.to_thread(self._full_release)
+            success = await asyncio.to_thread(self._full_release, fast)
 
         self._state.active = False
         self._state.action = ""
@@ -386,7 +392,25 @@ class CommandHandler:
 
         logger.info("Battery command released: %s (reason=%s)", self._state.last_result, reason)
 
-    def _full_release(self) -> bool:
+    def _reset_control_state(self, fast: bool) -> bool:
+        """Call the controller's release, requesting a fast (no-handshake)
+        release when ``fast`` and the installed library supports it.
+
+        Newer franklinwh-modbus performs a standby handshake (force 0W, settle,
+        then WSetEna=0) via a ``handshake_wait_s`` parameter. We pass 0 only on
+        fast paths, and only when the parameter exists — older versions (and
+        mocks) are called with no argument, so this stays back-compatible.
+        """
+        fn = self._controller.reset_control_state
+        if fast:
+            try:
+                if "handshake_wait_s" in inspect.signature(fn).parameters:
+                    return fn(handshake_wait_s=0)
+            except (TypeError, ValueError):
+                pass  # un-introspectable (e.g. a bare Mock) → fall back
+        return fn()
+
+    def _full_release(self, fast: bool = False) -> bool:
         """Full release: clear setpoints, disable WSetEna, AND zero revert timer.
 
         The library's reset_control_state() only clears WSetEna/WSetPct/WSet.
@@ -394,7 +418,7 @@ class CommandHandler:
         remote-control (VPP) mode as long as WSetRvrtTms > 0, blocking mode
         changes from the FranklinWH mobile app.
         """
-        success = self._controller.reset_control_state()
+        success = self._reset_control_state(fast)
 
         # Clear the hardware revert timer so the aGate exits VPP mode
         try:

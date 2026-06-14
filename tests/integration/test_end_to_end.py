@@ -376,7 +376,14 @@ def test_phase_filter_single_reduces_entities():
     pub_three.set_ac_type(2)
 
     assert len(pub_single.entities) < len(pub_three.entities)
-    assert len(pub_three.entities) == len(BRIDGE_ENTITIES)
+    # Three-phase un-gates all phase entities, but per-battery-port entities are
+    # still gated by battery_port_count (default 1) — so the full set is
+    # BRIDGE_ENTITIES minus those needing a higher port count, not all 83.
+    expected = [
+        e for e in BRIDGE_ENTITIES
+        if e.battery_port is None or e.battery_port <= 1
+    ]
+    assert len(pub_three.entities) == len(expected)
 
 
 def test_phase_filter_preserves_non_phase_entities():

@@ -214,3 +214,27 @@ async def test_clear_gateway_drops_phase(aggregator):
     aggregator.clear_gateway("a")
     assert "a" not in aggregator._phases
     assert aggregator.site_points == {}
+
+
+# ── Sign-convention guard (library upgrade verification) ────────
+
+async def test_battery_state_sign_convention_negative_is_charge(aggregator):
+    """Pin the bridge's sign convention: NEGATIVE battery power = Charging,
+    matching the library's corrected telemetry (Negative = Charge/Import).
+
+    Guards against a franklinwh-modbus upgrade flipping the derived label —
+    if a future lib returns the opposite sign, the live dashboard would mislabel
+    and this convention (which the aggregator + dashboard both rely on) is the
+    contract to re-verify on hardware.
+    """
+    await aggregator.on_sample(Sample.now("a", {"battery_power_w": -800}))
+    pts = aggregator.site_points
+    assert pts["battery_state"] == "Charging"
+    assert pts["battery_dc_power_w"] == -800
+
+    await aggregator.on_sample(Sample.now("a", {"battery_power_w": 800}))
+    assert aggregator.site_points["battery_state"] == "Discharging"
+
+    # Deadband: small magnitudes read as Standby (±50 W).
+    await aggregator.on_sample(Sample.now("a", {"battery_power_w": 10}))
+    assert aggregator.site_points["battery_state"] == "Standby"
