@@ -68,16 +68,15 @@ def test_example_is_valid_sequence(path):
             assert isinstance(step["writes"], dict)
 
 
-def test_inline_reads_use_addr_not_address():
-    """The engine resolves a dict read's address from 'addr'/'point' — NOT
-    'address' (the migration-guide example is wrong). Guard against copying it."""
+def test_inline_reads_use_a_valid_address_key():
+    """An inline dict read must carry the address under a key the engine
+    resolves: 'point', 'addr', or 'address' (resolution order point -> addr ->
+    address, since franklinwh-modbus eb69825). Our examples use 'addr'."""
+    valid = {"point", "addr", "address"}
     for tag in _read_tags(_load(RAW_EXAMPLE)):
         if isinstance(tag, dict):
-            assert "addr" in tag or "point" in tag, (
-                f"inline read {tag} must use 'addr' or 'point' (not 'address')"
-            )
-            assert "address" not in tag, (
-                "use 'addr', not 'address' — the library ignores 'address'"
+            assert valid & tag.keys(), (
+                f"inline read {tag} must carry the address under one of {valid}"
             )
 
 

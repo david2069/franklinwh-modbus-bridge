@@ -9,7 +9,7 @@
     "reads": [
       { "addr": 15510, "name": "PVOutputWh_explicit", "type": "uint32", "sf": 0 }
     ],
-    "note": "Inline dict read for unmapped/custom registers. The engine resolves the address from the 'addr' (or 'point') key — NOT 'address' (the migration-guide example is wrong on this)."
+    "note": "Inline dict read for unmapped/custom registers. The engine resolves the address from 'point', 'addr', or 'address' (in that order); this example uses 'addr'. ('address' is accepted since franklinwh-modbus eb69825 — earlier versions only honoured 'addr'/'point'.)"
   },
   {
     "step": "Read Self-Consumption reserve (raw uint16)",
