@@ -1,13 +1,13 @@
 [
   {
     "step": "Read SunSpec model points (scale factor applied automatically)",
-    "reads": ["701.W", "701.Hz", "701.PF", "705.VRef", "713.SoC", "714.DCW"],
-    "note": "Model.Point reads apply the SunSpec scale factor (value x 10^SF) transparently. Compare against the raw 701.* values in the Explorer to confirm scaling."
+    "reads": ["701.W", "701.Hz", "701.PF", "705.Ena", "713.SoC", "714.DCW"],
+    "note": "Model.Point reads apply the SunSpec scale factor (e.g. 701.Hz, 714.DCW) transparently. Compare against the raw 701.* values in the Explorer to confirm scaling."
   },
   {
-    "step": "Read per-battery repeating blocks (multi-stack suffix)",
-    "reads": ["714.DCW_1", "714.DCW_2"],
-    "note": "Suffix _N targets repeating block N for multi-battery stacks (library >= 0.9.0). _1 = first stack. On a single-stack unit, _2 may be absent."
+    "step": "Read battery DC energy + port count (scaled)",
+    "reads": ["714.NPrt", "714.DCWhInj", "714.DCWhAbs"],
+    "note": "714.NPrt is the battery port (stack) count. On a MULTI-stack unit the repeating-block suffix '714.DCW_1' / '714.DCW_2' targets each port's block (library >= 0.9.x); a single-stack unit only exposes the base 714.DCW."
   },
   {
     "step": "Enable remote control + set charge power (scaled write)",
