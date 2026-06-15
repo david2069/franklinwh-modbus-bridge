@@ -47,6 +47,32 @@ RUN pip install --no-cache-dir pyserial \
 
 ---
 
+## 2b. All other dependencies — `constraints.txt`
+
+`FWM_REF` only pins `franklinwh-modbus`. **Every other dependency — direct and
+transitive — was unpinned `>=`**, so a `--no-cache` build pulled "latest of
+everything" and the whole tree was non-reproducible. The standout risk is
+**`pymodbus`** (`>=3.0.0`), which makes breaking API changes *within* 3.x.
+
+Fix: a committed **`constraints.txt`** holds the known-good resolved versions
+(captured from a working container). The Dockerfile applies it to every install:
+
+```dockerfile
+COPY constraints.txt .
+RUN pip install --no-cache-dir -c constraints.txt pyserial "franklinwh-modbus @ …@${FWM_REF}"
+RUN pip install --no-cache-dir -c constraints.txt .
+```
+
+- The flexible `>=` ranges stay in `pyproject.toml`/`requirements.txt`;
+  `constraints.txt` only **caps** what actually gets installed → reproducible.
+- `franklinwh-modbus` is deliberately **excluded** (it's pinned by `FWM_REF`).
+- **Refresh deliberately**, not automatically: rebuild without constraints in a
+  scratch container, `pip freeze`, re-capture, smoke-test on 3.12, review the
+  diff (watch `pymodbus`, `fastapi`/`starlette`, `pydantic`). Treat it like a
+  code change.
+
+---
+
 ## 3. Python version constraint
 
 **The deployment target is Python 3.12** (the container base, and CI's matrix).
