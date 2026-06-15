@@ -21,7 +21,7 @@ COPY constraints.txt .
 # FWM_REF to a new tag or commit SHA (prefer a release tag once cut) — because
 # the ref is part of this RUN command, changing it busts the layer cache, so a
 # plain `docker compose build` picks it up WITHOUT needing --no-cache.
-ARG FWM_REF=eb698258361ad2fbd30bf3d48767975f73f48d9d
+ARG FWM_REF=v0.9.3
 RUN pip install --no-cache-dir -c constraints.txt pyserial \
     "franklinwh-modbus @ git+https://github.com/david2069/franklinwh-modbus.git@${FWM_REF}"
 
