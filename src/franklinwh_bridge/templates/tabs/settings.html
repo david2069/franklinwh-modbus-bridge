@@ -337,13 +337,23 @@
           <div class="flex items-center gap-2">
             <input type="number" x-model.number="metricsRetention" min="1" max="365" step="1"
                    class="form-control !py-1 !text-xs w-20 text-center">
-            <button @click="saveMetricsRetention()"
+            <button @click="saveMetricsSettings()"
+                    class="btn btn-sm btn-primary">Save</button>
+          </div>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-500">Raw full-resolution (days)</span>
+          <div class="flex items-center gap-2">
+            <input type="number" x-model.number="metricsRawAge" min="1" :max="metricsRetention" step="1"
+                   class="form-control !py-1 !text-xs w-20 text-center">
+            <button @click="saveMetricsSettings()"
                     class="btn btn-sm btn-primary">Save</button>
           </div>
         </div>
         <p class="text-[10px] text-slate-600">
-          Raw data kept 7 days, then archived to 5-min averages.
-          Auto-purge runs hourly.
+          Raw data kept full-resolution for <span x-text="metricsRawAge"></span> days, then
+          downsampled to 5-min averages, then purged after <span x-text="metricsRetention"></span> days.
+          Maintenance runs hourly. (Raw window must be ≤ retention.)
         </p>
         <div class="flex gap-2 mt-2">
           <button @click="runArchive()" :disabled="archiving"

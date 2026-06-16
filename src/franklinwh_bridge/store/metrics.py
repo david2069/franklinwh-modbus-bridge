@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_DAYS = 14
 DEFAULT_RETENTION_DAYS = 30
+# How long raw, full-resolution samples are kept before being downsampled into
+# 5-min buckets. Configurable; must be <= retention. Older raw → archive table.
+DEFAULT_RAW_AGE_DAYS = 7
 
 # Power metric point names to extract from poller samples
 POWER_METRIC_KEYS: dict[str, str] = {
@@ -430,6 +433,30 @@ async def set_retention_days(db: aiosqlite.Connection, days: int) -> None:
     await db.commit()
 
 
+async def get_raw_age_days(db: aiosqlite.Connection) -> int:
+    """Days of raw full-resolution samples kept before 5-min downsampling."""
+    async with db.execute(
+        "SELECT value FROM app_config WHERE key = ?", ("metrics_raw_age_days",)
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return DEFAULT_RAW_AGE_DAYS
+    try:
+        return int(row[0])
+    except (ValueError, TypeError):
+        return DEFAULT_RAW_AGE_DAYS
+
+
+async def set_raw_age_days(db: aiosqlite.Connection, days: int) -> None:
+    """Persist the raw full-resolution window (days)."""
+    await db.execute(
+        "INSERT INTO app_config (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        ("metrics_raw_age_days", str(days)),
+    )
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # DB Storage stats
 # ---------------------------------------------------------------------------
@@ -586,9 +613,13 @@ async def archive_old_metrics(
 
     archived = cursor.rowcount
     if archived:
+        from datetime import datetime
+        days = raw_age_s // 86400
+        cutoff_str = datetime.fromtimestamp(cutoff).strftime("%Y-%m-%d %H:%M")
         logger.info(
-            "Archived %d raw metric rows into 5-min buckets (cutoff=%.0f)",
-            archived, cutoff,
+            "Downsampled %d raw rows older than %dd (before %s) into 5-min "
+            "buckets; full-resolution raw retained for the last %dd",
+            archived, days, cutoff_str, days,
         )
     return archived
 

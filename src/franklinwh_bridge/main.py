@@ -37,6 +37,7 @@ from franklinwh_bridge.store.db import (
 )
 from franklinwh_bridge.store.metrics import (
     archive_old_metrics,
+    get_raw_age_days,
     get_retention_days,
     purge_old,
     record_sample,
@@ -229,7 +230,8 @@ async def lifespan(app: FastAPI):
             # archive_old_metrics / purge_old log their own one-line summary
             # when they actually move rows; don't double-log it here.
             try:
-                await archive_old_metrics(db)
+                raw_age_days = await get_raw_age_days(db)
+                await archive_old_metrics(db, raw_age_s=raw_age_days * 86400)
             except Exception as exc:
                 logger.warning("Metrics archive failed: %s", exc)
 

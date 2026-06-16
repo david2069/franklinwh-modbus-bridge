@@ -19,6 +19,7 @@ function settingsTab() {
     entities: [],
     entityFilter: '',
     metricsRetention: 30,
+    metricsRawAge: 7,
     republishing: false,
     unpublishing: false,
     showTopics: false,
@@ -387,6 +388,7 @@ function settingsTab() {
       const data = await fetchJSON('api/settings/metrics');
       if (data && !data.error) {
         this.metricsRetention = data.retention_days;
+        if (data.raw_age_days != null) this.metricsRawAge = data.raw_age_days;
       }
     },
 
@@ -420,15 +422,25 @@ function settingsTab() {
       }
     },
 
-    async saveMetricsRetention() {
+    async saveMetricsSettings() {
+      if (this.metricsRawAge > this.metricsRetention) {
+        Alpine.store('app').toast('Raw window must be ≤ retention', 'error');
+        return;
+      }
       const data = await fetchJSON('api/settings/metrics', {
         method: 'PUT',
-        body: JSON.stringify({ retention_days: this.metricsRetention }),
+        body: JSON.stringify({
+          retention_days: this.metricsRetention,
+          raw_age_days: this.metricsRawAge,
+        }),
       });
       if (data && !data.error) {
-        Alpine.store('app').toast(`Retention set to ${this.metricsRetention} days`, 'info');
+        this.metricsRetention = data.retention_days;
+        this.metricsRawAge = data.raw_age_days;
+        Alpine.store('app').toast(
+          `Raw ${this.metricsRawAge}d · retention ${this.metricsRetention}d`, 'info');
       } else {
-        Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+        Alpine.store('app').toast('Save failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
       }
     },
 

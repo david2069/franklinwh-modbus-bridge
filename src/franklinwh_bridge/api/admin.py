@@ -29,12 +29,14 @@ from franklinwh_bridge.store.metrics import (
     archive_old_metrics,
     export_metrics,
     format_metrics_csv,
+    get_raw_age_days,
     get_retention_days,
     get_storage_stats,
     import_metrics_csv,
     query_metrics,
     query_metrics_daterange,
     query_metrics_with_archive,
+    set_raw_age_days,
     set_retention_days,
 )
 
@@ -406,24 +408,48 @@ async def run_archive(request: Request):
 
 @router.get("/settings/metrics")
 async def get_metrics_settings(request: Request):
-    """Read metrics retention config."""
+    """Read metrics retention + raw-resolution config."""
     db: aiosqlite.Connection = request.app.state.db
-    retention = await get_retention_days(db)
-    return {"retention_days": retention}
+    return {
+        "retention_days": await get_retention_days(db),
+        "raw_age_days": await get_raw_age_days(db),
+    }
 
 
 class MetricsSettingsUpdate(BaseModel):
-    retention_days: int
+    retention_days: int | None = None
+    raw_age_days: int | None = None
 
 
 @router.put("/settings/metrics")
 async def put_metrics_settings(body: MetricsSettingsUpdate, request: Request):
-    """Update metrics retention config."""
-    if body.retention_days < 1:
-        raise HTTPException(400, "retention_days must be >= 1")
+    """Update metrics retention and/or the raw full-resolution window.
+
+    raw_age_days is how long full-resolution samples are kept before being
+    downsampled to 5-min buckets; it must be >= 1 and <= retention_days
+    (keeping raw longer than total retention is meaningless).
+    """
     db: aiosqlite.Connection = request.app.state.db
-    await set_retention_days(db, body.retention_days)
-    return {"retention_days": body.retention_days}
+    retention = (
+        body.retention_days if body.retention_days is not None
+        else await get_retention_days(db)
+    )
+    if retention < 1:
+        raise HTTPException(400, "retention_days must be >= 1")
+    if body.raw_age_days is not None and not (1 <= body.raw_age_days <= retention):
+        raise HTTPException(
+            400, f"raw_age_days must be between 1 and retention_days ({retention})"
+        )
+
+    if body.retention_days is not None:
+        await set_retention_days(db, body.retention_days)
+    if body.raw_age_days is not None:
+        await set_raw_age_days(db, body.raw_age_days)
+
+    return {
+        "retention_days": await get_retention_days(db),
+        "raw_age_days": await get_raw_age_days(db),
+    }
 
 
 @router.get("/stats")

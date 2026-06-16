@@ -514,3 +514,45 @@ async def test_storage_stats_time_range(db):
     assert "oldest_ts" in metrics_info
     assert "newest_ts" in metrics_info
     assert metrics_info["span_days"] == 1.0
+
+
+# ── Configurable raw-resolution window ──────────────────────────
+
+async def test_raw_age_days_default_and_persist(tmp_path):
+    from franklinwh_bridge.store.db import init_db
+    from franklinwh_bridge.store.metrics import (
+        DEFAULT_RAW_AGE_DAYS,
+        get_raw_age_days,
+        set_raw_age_days,
+    )
+    db = await init_db(tmp_path / "ra.db")
+    try:
+        assert await get_raw_age_days(db) == DEFAULT_RAW_AGE_DAYS  # 7
+        await set_raw_age_days(db, 14)
+        assert await get_raw_age_days(db) == 14
+    finally:
+        await db.close()
+
+
+async def test_archive_honours_configured_raw_age(tmp_path):
+    """Raw rows are kept for the configured window; only older ones archive."""
+    import time as _t
+
+    from franklinwh_bridge.store.db import init_db
+    from franklinwh_bridge.store.metrics import archive_old_metrics
+    db = await init_db(tmp_path / "ra2.db")
+    try:
+        now = _t.time()
+        for age_days, v in ((10, 1), (1, 2)):  # one old, one recent
+            await db.execute(
+                "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (now - age_days * 86400, v, v, v, v, 50),
+            )
+        await db.commit()
+        # With a 7-day raw window, only the 10-day-old row archives.
+        assert await archive_old_metrics(db, raw_age_s=7 * 86400) == 1
+        remaining = (await (await db.execute("SELECT COUNT(*) FROM metrics")).fetchone())[0]
+        assert remaining == 1  # the 1-day-old row stays raw
+    finally:
+        await db.close()
