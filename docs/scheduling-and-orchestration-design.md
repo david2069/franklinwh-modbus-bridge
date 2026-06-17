@@ -23,9 +23,10 @@ This is **not** a HEMS. Keep it a thin, declarative time→action scheduler.
   or the **site**.
 - A scheduler loop that evaluates active entries each tick and dispatches via
   the existing `CommandHandler` (and the MP5 group executor for multi-aGate).
-- A **pre-flight eligibility gate** that refuses to run on a target it can't
-  cleanly control — e.g. stuck in native **TOU** (which schedules itself) when
-  the mode can't be switched (SPAN lock). See §4a — this is the safety crux.
+- **Native-mode coexistence (§4a):** VPP dispatch overrides native **TOU**
+  directly (owner-confirmed) and works without a SPAN unlock — but **releasing
+  hands back to native TOU**, so the **release/gap behaviour** (release vs hold)
+  is the key lever, not a mode-switch.
 
 **Out of scope (this is FWHAI's domain — see §5)**
 - Condition rule-engine (`IF live_data … THEN …`), live-data templating.
@@ -112,33 +113,38 @@ schedule_log (audit: fired_at, entry_id, action, target, result)
   controls or another entry — resolve to a single winner per tick.
 - SPAN-locked writes fail gracefully (logged, ✗), same as manual.
 
-### 4a. Pre-flight eligibility & native-mode (TOU) interaction — critical
+### 4a. Native-mode (TOU) interaction — RESOLVED (owner-confirmed on hardware)
 
-**The aGate's native modes are themselves schedulers.** Native **TOU** runs its
-own internal time-of-use charge/discharge schedule; **Manual** is user-direct.
-Our scheduler issuing VPP dispatch *on top of* one of these means two
-schedulers fighting one battery. **Rule: our scheduler must own the operating
-mode** before it controls a target — establish a cooperative baseline
-(Self-Consumption or Emergency Backup) where our VPP dispatch is the sole
-controller.
+Writing **`WSetEna=1` + `WSetPct` (M704)** forces the aGate into **VPP Mode,
+which overrides whatever it is doing — including native TOU's internal
+schedule.** Two consequences:
 
-**Pre-flight eligibility gate (the "TOU ban").** When the scheduler is enabled,
-and before each control action, *per target*:
-1. Read the current operating mode (`15507`).
-2. If it's a **self-scheduling native mode (TOU)** and an entry needs control,
-   attempt to switch to the baseline mode (write `15507`) and **verify the
-   read-back**.
-3. If the switch **isn't honoured** (SPAN-locked / value unchanged), mark the
-   gateway **scheduler-ineligible**, skip control, and surface a clear reason:
-   *"Scheduler off for <gw>: cannot leave TOU (15507 write not honoured — SPAN
-   lock)."* Re-check on the next tick / when SPAN unlocks.
+- ✅ **Taking control needs no mode-switch.** We do *not* have to leave TOU
+  first — the VPP setpoint simply wins. And M704 power control is **unrestricted
+  by the SPAN lock** (only the `15xxx` mode/reserve writes need SPAN), so the
+  scheduler's core dispatch works for **all** users, with or without a SPAN
+  unlock. The earlier "switch-out-of-TOU-or-ban" gate is **dropped** — it isn't
+  needed.
+- ⚠️ **Release hands back to the native schedule.** Setting `WSetEna=0`
+  (Release) returns the aGate to whatever it was doing — i.e. **native TOU
+  resumes its own schedule.** A schedule therefore can't "release to neutral";
+  on a window boundary it must choose (**configurable**):
+  - **`release`** → native TOU/mode runs the gap (co-existence: our windows take
+    priority, native fills the rest); or
+  - **`hold`** → keep VPP active at a neutral setpoint (e.g. `WSetPct=0`
+    standby) to keep native suppressed across the gap.
 
-> **⚠️ Hardware unknown that sets how strict this must be:** does an active VPP
-> dispatch (`WSetEna=1` + `WSetPct`) **fully override** native TOU, or does TOU
-> **still act**? If VPP wins outright, the mode-switch is belt-and-suspenders;
-> if TOU still fights, the switch is **mandatory** and the ban is essential.
-> **Unverified** — design for the strict case until proven (good candidate for
-> the SPAN tester, issue #5).
+**Control-state detection — do NOT trust `715.LocRemCtl`.** It's a
+non-functional vendor point: it stays **"Local"** (`loc_rem_ctl_name='Local'`)
+and **never shows "Remote"** even while VPP dispatch is active. So we can't read
+a clean "we have control" signal — infer it from **`704.WSetEna`** (1 = our
+setpoint is live) plus behavioural confirmation (does battery power track the
+commanded setpoint). Logged in the vendor-issue catalog alongside
+`ControllerHb`/`DERHb`.
+
+**Net:** the pre-flight gate is no longer a TOU-ban; it's just "can we write the
+M704 setpoint" (which always works). The real design lever is the **release/gap
+behaviour** above.
 
 ### 4b. Conflict policy when a dispatch is already active
 When an entry fires and the target already has an active dispatch (a manual
@@ -149,11 +155,12 @@ Force, or a prior entry) — configurable per-entry, global default:
 - **`wait`** — retry within the window until the conflicting control clears.
 
 ### 4c. Context preconditions (FWH extensions) — kept minimal
-A *small, fixed* guard set — **not** a rule-engine:
-- **Operating mode (`15507`)** — the mandatory eligibility gate (§4a).
-- *Optional, opt-in:* skip charge-from-grid when **solar** (`15502` total /
-  `15503` proximal / `15504`–`15505` remote) already covers **home load**
-  (`15506` / `16000`); skip discharge below reserve.
+A *small, fixed*, opt-in guard set — **not** a rule-engine:
+- Skip charge-from-grid when **solar** (`15502` total / `15503` proximal /
+  `15504`–`15505` remote) already covers **home load** (`15506` / `16000`).
+- Skip discharge below reserve / below a floor SoC.
+- (Operating-mode no longer gates control — §4a — but the schedule may still
+  *report* the live mode for context.)
 - **Boundary:** anything richer (load/solar/forecast-aware optimization) is
   where this becomes FWHAI's `AutomationEngine` — don't build it here (§5).
 
@@ -193,27 +200,22 @@ Keep the door open without paying for it now:
 ## 7. Phasing
 | Phase | What |
 |---|---|
-| SCH0 | **Hardware verification:** does an active VPP dispatch override native TOU, or does TOU still fight it? (§4a) — decides how strict the gate must be |
-| SCH1 | `schedules` table + REST CRUD + scheduler loop driving **one gateway** via the command handler, **including the pre-flight eligibility gate (§4a) + conflict policy (§4b)** |
-| SCH2 | Schedule tab UI (list/add/edit, next-fire preview, override + ineligible-reason surfacing) |
+| SCH0 | ~~Hardware verification (VPP vs TOU)~~ **✅ resolved (owner): VPP overrides native TOU; release resumes it** |
+| SCH1 | `schedules` table + REST CRUD + scheduler loop driving **one gateway** via the command handler, **including the configurable release/gap behaviour (§4a) + conflict policy (§4b)** |
+| SCH2 | Schedule tab UI (list/add/edit, next-fire preview, override surfacing) |
 | SCH3 | **Service/site targets** — fan-out via MP5 (depends on MP5) |
 | SCH4 | TOU-window labels + simple per-window reserve/mode presets; optional context guards (§4c) |
 | SCH5 | *(future)* commonality with FWHAI — shared schedule/preset schema; let FWHAI's HEMS drive the bridge schedule API |
 
-> Note: the pre-flight gate (§4a) ships **with SCH1**, not later — without it a
-> schedule could silently fight native TOU.
-
 ## 8. Open questions
-- **Does VPP dispatch override native TOU?** (the §4a unknown) — until verified,
-  assume it doesn't and require the mode-switch + ban.
-- Which **baseline mode** do we switch *to* when leaving TOU —
-  Self-Consumption or Emergency Backup? (Affects what the battery does between
-  scheduled dispatches.)
-- Pre-flight: switch mode **per action**, or **once** on scheduler-enable and
-  hold the baseline for the whole active window?
+- **Default release/gap behaviour** (§4a): `release` (let native TOU fill the
+  gaps) or `hold` (keep a 0 W VPP standby to suppress native)? Per-entry,
+  per-schedule, or global?
+- If `hold`, is a continuous `WSetPct=0` standby safe to leave indefinitely, and
+  does it count against any (cosmetic) revert timer / keepalive?
 - Entry conflict resolution: last-writer, explicit priority, or first-match?
-- On window **exit** with no successor: auto-Release to native (restoring the
-  user's prior mode?), or hold?
+- Without a trustworthy `LocRemCtl`, is `704.WSetEna` + setpoint-tracking
+  enough to confirm control, or do we need an explicit verify-by-behaviour step?
 - Does a `service` target need an all-or-nothing semantic (fail if any member
   rejects), or best-effort with per-gateway result reporting?
 - Reuse the library `TOUSchedule` for TOU resolution, or keep time logic local?
