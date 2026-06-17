@@ -205,12 +205,69 @@ Keep the door open without paying for it now:
 
 ---
 
-## 6. UI
-- A **Schedule** tab/card: list of entries (name, when, action, target,
-  enabled), add/edit form reusing the command + service/phase selectors, an
-  enable toggle, and a **"next fire"** preview per entry.
-- Dashboard: a small "scheduled: <action> until <time>" indicator when a
-  schedule is actively controlling a target (distinct from FORCED/manual).
+## 6. UI — Schedule tab (modelled on FWHAI's TOU editor)
+
+A dedicated **Schedule** sidebar item + tab, visually in the family of FWHAI's
+TOU editor (sidebar nav → header → visual timeline → block table), but with the
+bridge's **own, simpler vocabulary**: it dispatches *command-handler actions*,
+not tariff/price strategies. No tariff plan, no pricing, no forecast preview
+(those are FWHAI's domain — §1/§5).
+
+### 6.1 Sidebar
+- New **Schedule** nav item (calendar-clock icon) under PRIMARY, after Controls.
+- A small badge when a schedule is **actively controlling** a target (e.g. a
+  green dot / "1").
+
+### 6.2 Header strip (reuses the existing tab header pattern)
+- **Target selector** — Gateway ▸ Service ▸ Site (same selector the Controls/
+  gateways UI already uses). The timeline + table below are scoped to it.
+- Live status pills: target's run-status (**VPP Mode** when a schedule is live,
+  distinct from the operating-mode pill), **Active now** when inside a window,
+  and **N entries**.
+- Buttons: **Add Entry**, **Validate**, **Enable/Disable all**.
+
+### 6.3 Visual timeline (the centrepiece — like FWHAI's "Time-of-Use Visual Timeline")
+- A 24 h horizontal bar for the selected day, segmented by the active entries'
+  windows and **coloured by action** (not by tariff):
+  - Force Charge → green · Force Discharge → orange · Force Standby → grey ·
+    Self-Consumption → teal · Reserve change → blue.
+  - **Gaps** render as a hatched **"native (TOU/mode)"** band so the user sees
+    exactly when the aGate runs itself vs. when the schedule holds control —
+    this is the visual expression of the §4a `release`-vs-`hold` decision.
+- Hour ticks `00:00 … 24:00`, a live **"now" marker** line, and a legend keyed
+  to the action colours.
+- A **day-of-week** chip row (Mon–Sun) to preview a different day's windows
+  (entries carry weekday masks).
+- *(Stretch, SCH4)* a per-window hover card: action, target, power, release
+  behaviour, next fire.
+
+### 6.4 Entry table (like FWHAI's block table, bridge columns)
+Columns: **START · END · DAYS · ACTION · TARGET · POWER · RELEASE · CONFLICT ·
+ENABLED · NEXT FIRE · ⌫**.
+- ACTION is a dropdown of the command vocabulary (Force Charge/Discharge/Standby,
+  Self/TOU reserve, mode, Release) — the same list the Controls tab uses, so
+  there is one source of truth for "what can we command".
+- TARGET reuses the gateway/service/site selector; POWER reuses the W/% control.
+- RELEASE = `release` | `hold` (per-entry override of the global default, §4a).
+- CONFLICT = `defer` | `override` | `wait` (§4b).
+- Inline enable toggle; **NEXT FIRE** computed server-side from the when-spec.
+- A **Quick-Add row** at the bottom (Start / End / Action / Target / Add),
+  mirroring FWHAI's "Quick Add Block".
+
+### 6.5 Dashboard hook
+- A small **"Scheduled: <action> until <time>"** indicator on the dashboard when
+  a schedule is actively controlling a target — visually distinct from the
+  FORCED (manual) badge so the user can tell *scheduled* from *forced* from
+  *VPP-from-elsewhere*.
+
+### 6.6 What we deliberately DON'T build (vs the FWHAI screenshot)
+- No **Tariff Plan / Change Tariff / Pricing / $ prices** column — we dispatch
+  actions, not price strategies.
+- No **Energy Forecast Preview / Live Simulation** — no forecasting (§1).
+- No **seasons / Manage seasons** in SCH2 (weekday masks only; seasons are a
+  possible SCH4+ add if asked).
+- **Presets** (Save/Load Preset) deferred to SCH4, and when added will mirror
+  FWHAI's `SchedulePresets` JSON shape for future portability (§5).
 
 ---
 
@@ -223,6 +280,12 @@ Keep the door open without paying for it now:
 | SCH3 | **Service/site targets** — fan-out via MP5 (depends on MP5) |
 | SCH4 | TOU-window labels + simple per-window reserve/mode presets; optional context guards (§4c) |
 | SCH5 | *(future)* commonality with FWHAI — shared schedule/preset schema; let FWHAI's HEMS drive the bridge schedule API |
+
+**Live verification:** SCH1's logic ships behind unit tests (mocked controller),
+but the *hardware* behaviour (VPP-overrides-TOU, release-resumes-TOU,
+control-state-from-`WSetEna`) is verified against a real aGate per
+[`scheduling-live-test-plan.md`](scheduling-live-test-plan.md). Ship gate for
+SCH1 = LT-1, LT-2, LT-5, LT-7, LT-10, LT-11 pass on hardware.
 
 ## 8. Open questions
 - **Default release/gap behaviour** (§4a): `release` (let native TOU fill the
