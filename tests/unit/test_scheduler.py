@@ -258,6 +258,18 @@ async def test_power_change_redispatches():
     assert ("battery_command_power", "2000") in h.calls
 
 
+async def test_concurrent_ticks_dispatch_once():
+    """reload()'s immediate tick + the loop tick must not double-command the
+    battery (regression from live LT-1: two identical Force Charge dispatches)."""
+    import asyncio
+
+    h = FakeHandler()
+    eng = _engine([_entry()], h)
+    await asyncio.gather(eng.tick(MON), eng.tick(MON))  # race two ticks
+    cmds = [c for c in h.calls if c[0] == "battery_command"]
+    assert cmds == [("battery_command", "Force Charge")]  # exactly one dispatch
+
+
 async def test_deleted_entry_releases_owned_target():
     h = FakeHandler()
     eng = _engine([_entry()], h)

@@ -191,6 +191,10 @@ class ScheduleEngine:
         self._on_audit = on_audit
         self._entries: list[dict] = []
         self._task: asyncio.Task | None = None
+        # serialise tick() so reload()'s immediate eval can't race the periodic
+        # loop tick (both would dispatch before ownership is recorded — observed
+        # as a double command on hardware during live LT-1 testing).
+        self._tick_lock = asyncio.Lock()
         # per-target ownership of the dispatch we placed:
         #   target_key -> {entry_id, signature, action, display, release, mode}
         self._owned: dict[str, dict] = {}
@@ -247,7 +251,10 @@ class ScheduleEngine:
 
     async def tick(self, now: datetime | None = None) -> None:
         """Evaluate every target once and reconcile dispatch to the winner."""
-        now = now or self._now()
+        async with self._tick_lock:
+            await self._tick_locked(now or self._now())
+
+    async def _tick_locked(self, now: datetime) -> None:
         # Keep ownership for targets that still have entries; targets dropped
         # entirely (entry deleted) are reconciled to "no desired" below.
         seen: set[str] = set()
