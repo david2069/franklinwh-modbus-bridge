@@ -20,11 +20,13 @@ from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
+from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
+from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.store.backup import BackupManager
@@ -33,6 +35,7 @@ from franklinwh_bridge.store.db import (
     get_gateways,
     get_mqtt_config,
     init_db,
+    log_schedule_event,
     log_startup_event,
 )
 from franklinwh_bridge.store.metrics import (
@@ -244,6 +247,34 @@ async def lifespan(app: FastAPI):
 
     purge_task = asyncio.create_task(_metrics_purge_loop())
 
+    # ── Schedule Engine (SCH1) ────────────────────────────────
+    # Resolver maps a schedule target to live command handlers. SCH1 supports
+    # a single gateway; 'site' fans out to all running gateways (single-aGate
+    # sites resolve to their one handler). 'service' fan-out is SCH3 (MP5).
+    def _schedule_resolver(target_type: str, target_id: str | None) -> list:
+        handlers: list = []
+        if target_type == "gateway":
+            inst = registry.get(target_id or "default")
+            if inst and inst.command_handler:
+                handlers.append(inst.command_handler)
+        elif target_type == "site":
+            for gw_id in registry.list_active():
+                inst = registry.get(gw_id)
+                if inst and inst.command_handler:
+                    handlers.append(inst.command_handler)
+        return handlers
+
+    async def _schedule_audit(
+        schedule_id: str | None, action: str, target: str,
+        result: str, detail: str,
+    ) -> None:
+        await log_schedule_event(db, schedule_id, action, target, result, detail)
+
+    schedule_engine = ScheduleEngine(
+        db, _schedule_resolver, on_audit=_schedule_audit,
+    )
+    app.state.schedule_engine = schedule_engine
+
     # ── Health Checker ─────────────────────────────────────────
     health_checker = HealthChecker(registry)
     app.state.health_checker = health_checker
@@ -286,6 +317,10 @@ async def lifespan(app: FastAPI):
         # Start health checker after gateways are up
         await health_checker.start()
 
+        # Start the schedule engine once handlers exist (it no-ops on targets
+        # with no running handler, so a late-arriving gateway is fine).
+        await schedule_engine.start()
+
     asyncio.create_task(_start_gateways())
 
     # ── Health Components ─────────────────────────────────────
@@ -318,7 +353,9 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ──────────────────────────────────────────────
     logger.info("Bridge shutting down — releasing control and logging state")
 
-    # 1. Stop health checker
+    # 1. Stop the schedule engine (so it can't re-dispatch during teardown),
+    #    then the health checker.
+    await schedule_engine.stop()
     await health_checker.stop()
 
     # 2. Stop all gateways (releases commands, stops pollers, disconnects)
@@ -371,6 +408,7 @@ app.include_router(admin_router)
 app.include_router(mqtt_router)
 app.include_router(groups_router)
 app.include_router(gateways_router)
+app.include_router(schedules_router)
 
 # UI router (serves GET / and POST /api/command)
 app.include_router(ui_router)

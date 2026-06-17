@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 15
+CURRENT_SCHEMA_VERSION = 16
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -297,6 +298,40 @@ MIGRATIONS: dict[int, str] = {
     -- phase units; single-phase keeps its L1 set). 'per_phase' = per-leg shown,
     -- aggregate de-emphasised on the dashboard.
     ALTER TABLE gateways ADD COLUMN phase_view TEXT NOT NULL DEFAULT 'both';
+    """,
+    16: """
+    -- Scheduler (SCH1): declarative time -> command-handler action entries.
+    -- when_spec/params are JSON; action draws from the command vocabulary.
+    -- release governs window-exit behaviour (§4a): 'release' hands back to
+    -- native TOU/mode, 'hold' keeps a 0W VPP standby to suppress native.
+    -- conflict governs what happens when the target is already under control
+    -- (§4b): 'defer' (skip), 'override' (preempt), 'wait' (retry in-window).
+    CREATE TABLE IF NOT EXISTS schedules (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL DEFAULT 'Schedule',
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        when_spec   TEXT NOT NULL DEFAULT '{}',   -- {days:[0..6], windows:[{start,end}]}
+        action      TEXT NOT NULL DEFAULT 'force_standby',
+        params      TEXT NOT NULL DEFAULT '{}',   -- {power_w, power_pct, pct, mode, ...}
+        target_type TEXT NOT NULL DEFAULT 'gateway',  -- gateway | service | site
+        target_id   TEXT,                          -- nullable for site
+        release     TEXT NOT NULL DEFAULT 'release',  -- release | hold
+        conflict    TEXT NOT NULL DEFAULT 'defer',    -- defer | override | wait
+        priority    INTEGER NOT NULL DEFAULT 0,
+        created_at  REAL NOT NULL DEFAULT 0,
+        updated_at  REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS schedule_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts          REAL NOT NULL,
+        schedule_id TEXT,
+        action      TEXT,
+        target      TEXT,
+        result      TEXT,
+        detail      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_schedule_log_ts ON schedule_log(ts);
     """,
 }
 
@@ -687,6 +722,160 @@ async def delete_service(db: aiosqlite.Connection, service_id: str) -> bool:
     cur = await db.execute("DELETE FROM services WHERE id = ?", (service_id,))
     await db.commit()
     return cur.rowcount > 0
+
+
+# ── Scheduler (SCH1) ──────────────────────────────────────────
+
+# Mutable columns a PATCH may touch. id/created_at are immutable.
+_SCHEDULE_FIELDS = (
+    "name", "enabled", "when_spec", "action", "params",
+    "target_type", "target_id", "release", "conflict", "priority",
+)
+# Columns stored as JSON text but surfaced as dicts.
+_SCHEDULE_JSON_FIELDS = ("when_spec", "params")
+
+
+def _decode_schedule(row: dict) -> dict:
+    """Turn a raw DB row into an API-shaped dict (JSON fields → objects)."""
+    d = dict(row)
+    d["enabled"] = bool(d.get("enabled", 1))
+    for f in _SCHEDULE_JSON_FIELDS:
+        raw = d.get(f) or "{}"
+        try:
+            d[f] = json.loads(raw)
+        except (ValueError, TypeError):
+            d[f] = {}
+    return d
+
+
+async def get_schedules(db: aiosqlite.Connection) -> list[dict]:
+    """List all schedule entries, highest priority first then newest."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows = []
+        async with db.execute(
+            "SELECT * FROM schedules ORDER BY priority DESC, created_at DESC, id"
+        ) as cur:
+            async for row in cur:
+                rows.append(_decode_schedule(dict(row)))
+        return rows
+    finally:
+        db.row_factory = None
+
+
+async def get_schedule(db: aiosqlite.Connection, schedule_id: str) -> dict | None:
+    """Get a single schedule by ID."""
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT * FROM schedules WHERE id = ?", (schedule_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return _decode_schedule(dict(row)) if row else None
+    finally:
+        db.row_factory = None
+
+
+async def create_schedule(
+    db: aiosqlite.Connection,
+    name: str,
+    when_spec: dict,
+    action: str,
+    params: dict | None = None,
+    target_type: str = "gateway",
+    target_id: str | None = None,
+    enabled: bool = True,
+    release: str = "release",
+    conflict: str = "defer",
+    priority: int = 0,
+) -> dict:
+    """Create a schedule entry. Returns the created (decoded) row."""
+    import uuid
+
+    schedule_id = f"sch_{uuid.uuid4().hex[:8]}"
+    now = time.time()
+    await db.execute(
+        "INSERT INTO schedules "
+        "(id, name, enabled, when_spec, action, params, target_type, target_id, "
+        " release, conflict, priority, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            schedule_id, name, int(enabled), json.dumps(when_spec), action,
+            json.dumps(params or {}), target_type, target_id,
+            release, conflict, int(priority), now, now,
+        ),
+    )
+    await db.commit()
+    return await get_schedule(db, schedule_id)  # type: ignore[return-value]
+
+
+async def update_schedule(
+    db: aiosqlite.Connection, schedule_id: str, **kwargs: object
+) -> dict | None:
+    """Update a schedule. Only known columns are applied; dict fields JSON-encoded."""
+    existing = await get_schedule(db, schedule_id)
+    if existing is None:
+        return None
+    updates = {k: v for k, v in kwargs.items() if k in _SCHEDULE_FIELDS}
+    if not updates:
+        return existing
+    for f in _SCHEDULE_JSON_FIELDS:
+        if f in updates and not isinstance(updates[f], str):
+            updates[f] = json.dumps(updates[f])
+    if "enabled" in updates:
+        updates["enabled"] = int(bool(updates["enabled"]))
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values())
+    values.append(schedule_id)
+    await db.execute(
+        f"UPDATE schedules SET {set_clause} WHERE id = ?",  # noqa: S608
+        values,
+    )
+    await db.commit()
+    return await get_schedule(db, schedule_id)
+
+
+async def delete_schedule(db: aiosqlite.Connection, schedule_id: str) -> bool:
+    """Delete a schedule entry. Returns True if a row was removed."""
+    cur = await db.execute("DELETE FROM schedules WHERE id = ?", (schedule_id,))
+    await db.commit()
+    return cur.rowcount > 0
+
+
+async def log_schedule_event(
+    db: aiosqlite.Connection,
+    schedule_id: str | None,
+    action: str,
+    target: str,
+    result: str,
+    detail: str = "",
+) -> None:
+    """Append an audit row to schedule_log."""
+    await db.execute(
+        "INSERT INTO schedule_log (ts, schedule_id, action, target, result, detail) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (time.time(), schedule_id, action, target, result, detail),
+    )
+    await db.commit()
+
+
+async def get_schedule_log(
+    db: aiosqlite.Connection, limit: int = 100
+) -> list[dict]:
+    """Return the most recent schedule_log rows, newest first."""
+    db.row_factory = aiosqlite.Row
+    try:
+        rows = []
+        async with db.execute(
+            "SELECT * FROM schedule_log ORDER BY ts DESC, id DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            async for row in cur:
+                rows.append(dict(row))
+        return rows
+    finally:
+        db.row_factory = None
 
 
 # ── PICS compliance ──────────────────────────────────────────
