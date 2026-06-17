@@ -7,6 +7,18 @@ thing that actually matters on an aGate: **that a scheduled VPP dispatch
 overrides native TOU and that releasing hands control back cleanly.** That is
 what this plan verifies.
 
+## Run log
+
+**2026-06-17 — aGate X (`10060006A02F00000001`, V10R01B04D00), no SPAN unlock.**
+Core ship gate **PASSED**: LT-1 ✓ (battery flipped +1500 W discharge → −1000 W
+charge while `mode` stayed TOU), LT-2 ✓ (release resumed TOU in ~8 s), LT-5 ✓
+(`LocRemCtl` read "Local" throughout dispatch), LT-7 ✓ (manual Force Standby
+superseded the schedule; engine logged `deferred`), LT-10 ✓ (watchdog released
+at 60 s, no re-fire), LT-11 ✓ (graceful restart released the dispatch + schedule
+persisted). Three bugs found & fixed: tick race (double-dispatch),
+watchdog-expiry re-fire within window, and a flaky-gateway-start aborting the
+engine/health-checker on restart. Battery stayed on TOU safely throughout.
+
 ## Status & prerequisites
 
 - **Gated.** Runs only against a real aGate. CI never runs these
