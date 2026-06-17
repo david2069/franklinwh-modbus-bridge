@@ -47,6 +47,7 @@ class GatewayConfig:
     description: str = ""
     enabled: bool = True
     mock: bool = False  # synthetic gateway — no Modbus connection
+    service_id: str | None = None  # utility-service link (SCH3 fan-out target)
 
 
 @dataclass

@@ -317,6 +317,14 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
         if aggregator is not None:
             aggregator.set_gateway_phase(gw_id, updates["phase"])
 
+    # Keep the running instance's service link in sync so the schedule engine's
+    # 'service' fan-out (SCH3) sees the change without a restart.
+    if "service_id" in updates:
+        registry = getattr(request.app.state, "registry", None)
+        inst = registry.get(gw_id) if registry else None
+        if inst is not None:
+            inst.config.service_id = updates["service_id"] or None
+
     return result
 
 

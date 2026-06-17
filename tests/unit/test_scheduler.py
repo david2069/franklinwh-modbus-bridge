@@ -184,7 +184,7 @@ def _entry(**kw):
 
 
 def _engine(entries, handler):
-    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [handler])
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("default", handler)])
     eng._entries = entries
     return eng
 
@@ -306,6 +306,58 @@ async def test_deleted_entry_releases_owned_target():
     eng._entries = []  # entry removed
     await eng.tick(MON)
     assert h.calls[-1] == ("battery_command", "Release")
+
+
+# ── service / site fan-out (SCH3) ─────────────────────────────
+
+
+def _fanout_engine(entries, members):
+    """members: dict gw_id -> FakeHandler. Resolver fans a service/site target
+    out to all of them; a gateway target resolves just that one."""
+    def resolver(ttype, tid):
+        if ttype == "gateway":
+            h = members.get(tid)
+            return [(tid, h)] if h else []
+        return [(gid, h) for gid, h in members.items()]
+    eng = ScheduleEngine(db=None, resolver=resolver)
+    eng._entries = entries
+    return eng
+
+
+async def test_service_target_fans_out_to_all_members():
+    a, b = FakeHandler(), FakeHandler()
+    e = _entry(target_type="service", target_id="svc_x")
+    eng = _fanout_engine([e], {"gwA": a, "gwB": b})
+    await eng.tick(MON)
+    assert a.state.action == "Force Charge"
+    assert b.state.action == "Force Charge"
+
+
+async def test_fanout_releases_all_on_window_exit():
+    a, b = FakeHandler(), FakeHandler()
+    e = _entry(target_type="site", target_id=None)
+    eng = _fanout_engine([e], {"gwA": a, "gwB": b})
+    await eng.tick(MON)
+    await eng.tick(datetime(2026, 6, 15, 12, 0))  # window exit
+    assert a.calls[-1] == ("battery_command", "Release")
+    assert b.calls[-1] == ("battery_command", "Release")
+
+
+async def test_fanout_ownership_is_per_gateway():
+    """A member leaving the group must not shift another member's ownership
+    (the bug index-based keys would cause)."""
+    a, b = FakeHandler(), FakeHandler()
+    members = {"gwA": a, "gwB": b}
+    e = _entry(target_type="site", target_id=None)
+    eng = _fanout_engine([e], members)
+    await eng.tick(MON)                      # both owned + charging
+    members.pop("gwA")                        # gwA leaves the group
+    await eng.tick(MON)
+    # gwB stays charging on its own key; gwA untouched after leaving
+    assert b.state.action == "Force Charge"
+    nb = len(b.calls)
+    await eng.tick(MON)
+    assert len(b.calls) == nb                 # idempotent for the survivor
 
 
 # ── store CRUD round-trip ─────────────────────────────────────

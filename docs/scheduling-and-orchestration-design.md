@@ -288,9 +288,11 @@ control-state-from-`WSetEna`) is verified against a real aGate per
 SCH1 = LT-1, LT-2, LT-5, LT-7, LT-10, LT-11 pass on hardware.
 
 ## 8. Open questions
-- **Default release/gap behaviour** (§4a): `release` (let native TOU fill the
-  gaps) or `hold` (keep a 0 W VPP standby to suppress native)? Per-entry,
-  per-schedule, or global?
+- ~~**Default release/gap behaviour** (§4a)~~ **RESOLVED: default `release`,
+  per-entry overridable.** A schedule that ends should hand control back to the
+  aGate's own TOU/mode rather than silently keep suppressing it — least-surprise,
+  and it's what LT-2 verified on hardware. `hold` stays available per-entry for
+  the explicit "keep native suppressed across this gap" case.
 - If `hold`, is a continuous `WSetPct=0` standby safe to leave indefinitely, and
   does it count against any (cosmetic) revert timer / keepalive?
 - Entry conflict resolution: last-writer, explicit priority, or first-match?

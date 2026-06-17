@@ -30,11 +30,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Resolver: (target_type, target_id) -> list of command-handler-likes. Each must
-# expose ``handle_command(slug, value)`` (awaitable) and ``state`` with
-# ``.active`` / ``.action``. For SCH1 this resolves a single gateway; service/
-# site fan-out (multiple handlers) is SCH3/MP5 and already fits this shape.
-Resolver = Callable[[str, str | None], list[Any]]
+# Resolver: (target_type, target_id) -> list of (gateway_id, handler) pairs.
+# Each handler exposes ``handle_command(slug, value)`` (awaitable) and ``state``
+# with ``.active`` / ``.action``. A ``gateway`` target yields one pair; a
+# ``service``/``site`` target fans out to every member gateway (SCH3). The
+# gateway_id makes ownership stable across a changing member set.
+Resolver = Callable[[str, str | None], list[tuple[str, Any]]]
 
 DEFAULT_TICK_S = 15  # window resolution is per-minute; 15s keeps latency low
 
@@ -195,16 +196,18 @@ class ScheduleEngine:
         # loop tick (both would dispatch before ownership is recorded — observed
         # as a double command on hardware during live LT-1 testing).
         self._tick_lock = asyncio.Lock()
-        # per-target ownership of the dispatch we placed:
-        #   target_key -> {entry_id, signature, action, display, release, mode}
-        self._owned: dict[str, dict] = {}
+        # Ownership is keyed per *physical gateway* so a fan-out target
+        # (service/site) tracks each member independently and a changing member
+        # set can't shift ownership between gateways. Key = (ttype, tid, gw_id).
+        #   tkey -> {entry_id, signature, action, display, release, mode}
+        self._owned: dict[tuple, dict] = {}
         # targets we're currently deferring on (so we audit the defer once, not
         # every tick while a manual command stays active)
-        self._deferred: set[str] = set()
-        # target_key -> entry_id whose CURRENT window we've already completed
-        # (its sustained dispatch ended in-window via the watchdog or an
-        # external release). Suppresses re-firing until the window is re-entered.
-        self._expired: dict[str, str] = {}
+        self._deferred: set[tuple] = set()
+        # tkey -> entry_id whose CURRENT window we've already completed (its
+        # sustained dispatch ended in-window via the watchdog or an external
+        # release). Suppresses re-firing until the window is re-entered.
+        self._expired: dict[tuple, str] = {}
 
     # ---- lifecycle ----
 
@@ -261,26 +264,32 @@ class ScheduleEngine:
     async def _tick_locked(self, now: datetime) -> None:
         # Keep ownership for targets that still have entries; targets dropped
         # entirely (entry deleted) are reconciled to "no desired" below.
-        seen: set[str] = set()
+        seen: set[tuple] = set()
         for (ttype, tid), entries in self._targets().items():
             win = winner(entries, now)
-            handlers = self._resolver(ttype, tid)
-            for idx, h in enumerate(handlers):
-                tkey = f"{ttype}:{tid}:{idx}"
+            for gw_id, h in self._resolver(ttype, tid):
+                tkey = (ttype, tid, gw_id)
                 seen.add(tkey)
                 await self._reconcile(tkey, h, win)
 
-        # A target we used to own but whose entries are now gone → release it.
+        # A target/gateway we used to own but whose entries are now gone (or that
+        # left a fan-out group) → release it. Re-resolve the handler by gw_id.
         for tkey in list(self._owned):
-            if tkey not in seen:
-                ttype, tid, idx = tkey.split(":", 2)
-                handlers = self._resolver(ttype, tid or None)
-                if int(idx) < len(handlers):
-                    await self._reconcile(tkey, handlers[int(idx)], None)
-                else:
-                    self._owned.pop(tkey, None)
+            if tkey in seen:
+                continue
+            ttype, tid, gw_id = tkey
+            handler = next(
+                (h for g, h in self._resolver(ttype, tid) if g == gw_id), None
+            )
+            if handler is not None:
+                await self._reconcile(tkey, handler, None)
+            else:
+                # gateway is gone — drop our records (nothing to release)
+                self._owned.pop(tkey, None)
+                self._deferred.discard(tkey)
+                self._expired.pop(tkey, None)
 
-    async def _reconcile(self, tkey: str, handler: Any, win: dict | None) -> None:
+    async def _reconcile(self, tkey: tuple, handler: Any, win: dict | None) -> None:
         own = self._owned.get(tkey)
 
         # ── no winning entry: release/hold if we hold a sustained dispatch ──

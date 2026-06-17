@@ -82,6 +82,7 @@ class GatewayRegistry:
             description=gw_row.get("description", ""),
             enabled=bool(gw_row.get("enabled", True)),
             mock=bool(gw_row.get("mock", 0)),
+            service_id=gw_row.get("service_id"),
         )
 
         instance = GatewayInstance(

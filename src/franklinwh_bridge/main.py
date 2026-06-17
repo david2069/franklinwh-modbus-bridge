@@ -248,21 +248,34 @@ async def lifespan(app: FastAPI):
     purge_task = asyncio.create_task(_metrics_purge_loop())
 
     # ── Schedule Engine (SCH1) ────────────────────────────────
-    # Resolver maps a schedule target to live command handlers. SCH1 supports
-    # a single gateway; 'site' fans out to all running gateways (single-aGate
-    # sites resolve to their one handler). 'service' fan-out is SCH3 (MP5).
-    def _schedule_resolver(target_type: str, target_id: str | None) -> list:
-        handlers: list = []
+    # Resolver maps a schedule target to live (gateway_id, command-handler)
+    # pairs. 'gateway' → one gateway; 'site' → every running gateway; 'service'
+    # → every running gateway linked to that service (SCH3 fan-out). Member
+    # gateways are read from each running instance's config.service_id, kept in
+    # sync by the gateways PATCH endpoint.
+    def _schedule_resolver(
+        target_type: str, target_id: str | None,
+    ) -> list[tuple[str, object]]:
+        pairs: list[tuple[str, object]] = []
         if target_type == "gateway":
-            inst = registry.get(target_id or "default")
+            gw_id = target_id or "default"
+            inst = registry.get(gw_id)
             if inst and inst.command_handler:
-                handlers.append(inst.command_handler)
+                pairs.append((gw_id, inst.command_handler))
         elif target_type == "site":
             for gw_id in registry.list_active():
                 inst = registry.get(gw_id)
                 if inst and inst.command_handler:
-                    handlers.append(inst.command_handler)
-        return handlers
+                    pairs.append((gw_id, inst.command_handler))
+        elif target_type == "service" and target_id:
+            for gw_id in registry.list_active():
+                inst = registry.get(gw_id)
+                if (
+                    inst and inst.command_handler
+                    and getattr(inst.config, "service_id", None) == target_id
+                ):
+                    pairs.append((gw_id, inst.command_handler))
+        return pairs
 
     async def _schedule_audit(
         schedule_id: str | None, action: str, target: str,
