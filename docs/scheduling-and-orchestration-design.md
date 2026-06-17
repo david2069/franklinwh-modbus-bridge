@@ -142,6 +142,16 @@ setpoint is live) plus behavioural confirmation (does battery power track the
 commanded setpoint). Logged in the vendor-issue catalog alongside
 `ControllerHb`/`DERHb`.
 
+**This is documented from the cloud side in FWHAI** —
+`FHAI_AGENT_HANDOFF_operating_mode_run_status.md` separates **`run_status`**
+(physical battery action) from **`workMode`** (operating mode), with
+**`run_status=9 = "VPP mode"`** = VPP dispatch active and overriding the mode.
+That `run_status=9` is the cloud mirror of our Modbus `704.WSetEna=1`. The bridge
+should expose an equivalent **"VPP Mode" run-status** (derived from `WSetEna`)
+distinct from the operating mode, matching FWHAI / the mobile app's two-line
+status (Line 1 = physical action incl. "VPP mode"; Line 2 = controlling
+programme / TOU).
+
 **Net:** the pre-flight gate is no longer a TOU-ban; it's just "can we write the
 M704 setpoint" (which always works). The real design lever is the **release/gap
 behaviour** above.
@@ -185,6 +195,13 @@ Keep the door open without paying for it now:
   schedule-following). Optionally reuse it for TOU-window resolution; otherwise
   the bridge owns its own (simpler) time logic. Recommend: bridge owns it;
   treat the library scheduler as optional.
+- **Status vocabulary parity.** Align the bridge's status model with FWHAI's
+  documented one (`FHAI_AGENT_HANDOFF_operating_mode_run_status.md`): a
+  **`run_status`** line (physical action — Standby/Charging/Discharging/**VPP
+  mode**, derived from DC power + `WSetEna`) distinct from the **operating
+  mode**/programme line. Same vocabulary across Modbus (bridge) and Cloud
+  (FWHAI) keeps the scheduler's "scheduled / forced / VPP" states consistent and
+  eases a future merge.
 
 ---
 
