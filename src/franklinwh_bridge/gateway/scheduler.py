@@ -201,6 +201,10 @@ class ScheduleEngine:
         # targets we're currently deferring on (so we audit the defer once, not
         # every tick while a manual command stays active)
         self._deferred: set[str] = set()
+        # target_key -> entry_id whose CURRENT window we've already completed
+        # (its sustained dispatch ended in-window via the watchdog or an
+        # external release). Suppresses re-firing until the window is re-entered.
+        self._expired: dict[str, str] = {}
 
     # ---- lifecycle ----
 
@@ -281,6 +285,7 @@ class ScheduleEngine:
 
         # ── no winning entry: release/hold if we hold a sustained dispatch ──
         if win is None:
+            self._expired.pop(tkey, None)  # window over — next entry may re-fire
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
                     await self._dispatch(handler, "force_standby", {}, label="hold")
@@ -301,6 +306,29 @@ class ScheduleEngine:
         params = win.get("params", {})
         sig = action_signature(action, params)
         display = _DISPLAY.get(action)
+
+        # ── our sustained dispatch ended in-window (watchdog or external
+        #    release)? Mark the window completed and don't re-fire until it's
+        #    re-entered. The window — not a per-command watchdog — is the
+        #    schedule's bound; without this the engine would re-charge ~1 tick
+        #    after a safety release. (hold-mode standby is still active, so it
+        #    doesn't trip this.)
+        if (
+            own and own["action"] in _SUSTAINED
+            and own.get("mode") != "hold" and not handler.state.active
+        ):
+            self._expired[tkey] = win["id"]
+            self._owned.pop(tkey, None)
+            await self._audit(
+                win["id"], own["action"], tkey, "expired",
+                "dispatch ended in-window (watchdog/release) — not re-firing "
+                "until next window",
+            )
+            return
+
+        # Already completed this entry's current window — hold off.
+        if self._expired.get(tkey) == win["id"]:
+            return
 
         # ── foreign (manual) control present? ──
         we_own_current = bool(
@@ -327,6 +355,7 @@ class ScheduleEngine:
         ):
             return
 
+        self._expired.pop(tkey, None)  # fresh dispatch supersedes any old mark
         await self._dispatch(handler, action, params, label=win.get("name", action))
         self._owned[tkey] = {
             "entry_id": win["id"], "signature": sig, "action": action,

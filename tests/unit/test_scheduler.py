@@ -270,6 +270,35 @@ async def test_concurrent_ticks_dispatch_once():
     assert cmds == [("battery_command", "Force Charge")]  # exactly one dispatch
 
 
+async def test_watchdog_release_does_not_refire_within_window():
+    """If a sustained dispatch ends in-window (watchdog/external release), the
+    engine must NOT re-fire until the window is re-entered (LT-10)."""
+    h = FakeHandler()
+    eng = _engine([_entry()], h)
+    await eng.tick(MON)                       # dispatch Force Charge
+    assert h.state.action == "Force Charge"
+    h.state.active = False                    # simulate watchdog release
+    h.state.action = ""
+    await eng.tick(MON)                        # still in-window…
+    n = len(h.calls)
+    await eng.tick(MON)                        # …and again
+    assert len(h.calls) == n                   # no re-dispatch
+    assert h.state.active is False
+
+
+async def test_refires_after_window_re_enter():
+    """An expired window clears once the window exits, so the next entry into
+    the window dispatches again."""
+    h = FakeHandler()
+    eng = _engine([_entry()], h)
+    await eng.tick(MON)
+    h.state.active = False; h.state.action = ""   # watchdog release
+    await eng.tick(MON)                            # marks window expired
+    await eng.tick(datetime(2026, 6, 15, 12, 0))  # window exit clears it
+    await eng.tick(MON)                            # re-enter → dispatch again
+    assert h.state.action == "Force Charge"
+
+
 async def test_deleted_entry_releases_owned_target():
     h = FakeHandler()
     eng = _engine([_entry()], h)
