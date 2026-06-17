@@ -267,3 +267,23 @@ async def test_registry_get_default(db, global_bus):
     assert registry.get("nonexistent") is None
 
     await registry.stop_all()
+
+
+async def test_start_all_tolerates_one_gateway_failure(db, global_bus):
+    """A single gateway's start failure (e.g. the aGate's single Modbus session
+    not yet freed after a fast restart) must NOT abort start_all — otherwise the
+    health checker and schedule engine downstream never start (LT-11 finding)."""
+    await create_gateway(db, gateway_id="gw2", name="GW2", host="10.0.0.2")
+    registry = GatewayRegistry(db=db, global_bus=global_bus)
+
+    started: list[str] = []
+
+    async def fake_start(gid):
+        if gid == "default":
+            raise RuntimeError("aGate Modbus session busy")
+        started.append(gid)
+        return object()
+
+    registry.start_gateway = fake_start  # type: ignore[assignment]
+    await registry.start_all()  # must not raise despite 'default' failing
+    assert "gw2" in started  # the other gateway still started

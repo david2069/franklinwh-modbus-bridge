@@ -281,8 +281,14 @@ async def lifespan(app: FastAPI):
 
     # ── Start All Gateways ────────────────────────────────────
 
-    async def _start_gateways() -> None:
-        """Start all enabled gateways, wire MQTT for the default."""
+    async def _bring_up_gateways() -> None:
+        """Start enabled gateways + wire the default's MQTT/command handler.
+
+        Isolated from the health-checker/engine start so a flaky gateway
+        connection (e.g. the aGate's single Modbus session not yet freed after
+        a fast restart) can't abort the whole startup. Errors are logged; the
+        gateway's own reconnect loop recovers it.
+        """
         await registry.start_all()
 
         # Feed each gateway's assigned phase to the site aggregator so it can
@@ -314,12 +320,26 @@ async def lifespan(app: FastAPI):
             if default.reader_fn:
                 app.state.reader_fn = default.reader_fn
 
-        # Start health checker after gateways are up
-        await health_checker.start()
+    async def _start_gateways() -> None:
+        """Bring up gateways, then ALWAYS start the health checker + schedule
+        engine — even if gateway bring-up failed (they no-op until a gateway is
+        available, and must survive a flaky/contended start)."""
+        try:
+            await _bring_up_gateways()
+        except Exception as exc:
+            logger.error("Gateway bring-up failed: %s", exc, exc_info=True)
 
-        # Start the schedule engine once handlers exist (it no-ops on targets
-        # with no running handler, so a late-arriving gateway is fine).
-        await schedule_engine.start()
+        try:
+            await health_checker.start()
+        except Exception as exc:
+            logger.error("Health checker start failed: %s", exc)
+
+        try:
+            # The schedule engine no-ops on targets with no running handler, so
+            # a late-arriving or failed gateway is fine.
+            await schedule_engine.start()
+        except Exception as exc:
+            logger.error("Schedule engine start failed: %s", exc)
 
     asyncio.create_task(_start_gateways())
 

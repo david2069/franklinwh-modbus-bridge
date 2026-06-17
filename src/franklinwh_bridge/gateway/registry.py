@@ -117,7 +117,15 @@ class GatewayRegistry:
                     gw_row["id"],
                 )
                 continue
-            inst = await self.start_gateway(gw_row["id"])
+            try:
+                inst = await self.start_gateway(gw_row["id"])
+            except Exception as exc:
+                # One gateway's connection failure must not abort starting the
+                # rest (or the health checker / schedule engine downstream).
+                logger.error(
+                    "Gateway %s failed to start: %s", gw_row["id"], exc,
+                )
+                continue
             if inst:
                 started += 1
         logger.info(
