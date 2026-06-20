@@ -574,6 +574,19 @@ class ModbusPoller:
         # model objects (no additional Modbus traffic).
         points.update(self._extract_raw_model_values())
 
+        # M701 MnAlrmInfo — manufacturer alarm string (FranklinWH vendor field,
+        # format unknown; exposed for observation only, no alarm tracking yet)
+        m701 = self._controller.get_model(701)
+        if m701:
+            mn_pt = getattr(m701, "MnAlrmInfo", None)
+            if mn_pt is not None:
+                val = getattr(mn_pt, "value", None)
+                # Only surface non-empty strings; empty/None means no active info
+                if val and str(val).strip():
+                    points["mfr_alarm_info"] = str(val).strip()
+                else:
+                    points["mfr_alarm_info"] = ""
+
         # ── Per-phase grid measurements (scaled from M701) ─────
         points.update(self._read_grid_phases())
 

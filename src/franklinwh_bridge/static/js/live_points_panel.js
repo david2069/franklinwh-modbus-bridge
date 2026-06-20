@@ -51,6 +51,7 @@ function livePointsPanel() {
     soh:                  { label: 'State of Health',      unit: '%',   group: 'Battery',  default: false },
     ambient_temp_c:       { label: 'Ambient Temp',         unit: '°C',  group: 'Health',   default: false },
     cabinet_temp_c:       { label: 'Cabinet Temp',         unit: '°C',  group: 'Health',   default: false },
+    mfr_alarm_info:       { label: 'Mfr Alarm Info',       unit: '',    group: 'Health',   default: false },
     wh_available:         { label: 'Energy Available',     unit: 'Wh',  group: 'Battery',  default: false },
     wh_rating:            { label: 'Total Capacity',       unit: 'Wh',  group: 'Battery',  default: false },
     max_charge_rate_w:    { label: 'Max Charge Rate',      unit: 'W',   group: 'Battery',  default: false },
