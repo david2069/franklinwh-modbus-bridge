@@ -574,6 +574,19 @@ class ModbusPoller:
         # model objects (no additional Modbus traffic).
         points.update(self._extract_raw_model_values())
 
+        # M715 DERCtl points not covered by read_control_status()
+        m715 = self._controller.get_model(715)
+        if m715:
+            for attr, key in (
+                ("DERHb",        "der_heartbeat"),
+                ("ControllerHb", "controller_heartbeat"),
+                ("AlarmReset",   "alarm_reset"),
+                ("OpCtl",        "op_ctl"),
+            ):
+                pt = getattr(m715, attr, None)
+                if pt is not None and getattr(pt, "value", None) is not None:
+                    points[key] = pt.value
+
         # M701 MnAlrmInfo — manufacturer alarm string (FranklinWH vendor field,
         # format unknown; exposed for observation only, no alarm tracking yet)
         m701 = self._controller.get_model(701)
