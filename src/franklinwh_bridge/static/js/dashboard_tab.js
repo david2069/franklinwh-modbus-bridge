@@ -261,6 +261,10 @@ function dashboardTab() {
     // Chart popup modal
     showChartModal: false,
 
+    // Multi-gateway compare modal
+    showCompareModal: false,
+    _compareCharts: [],
+
     // Chart range selector
     chartRange: '30m',
     chartRanges: [
@@ -320,6 +324,22 @@ function dashboardTab() {
         });
       });
       this._startPolling();
+
+      // Reload chart data whenever the active gateway changes
+      this.$watch(
+        () => Alpine.store('app').activeGateway,
+        () => {
+          // Live mode: live buffer is per-session, reset it so old gateway
+          // data doesn't bleed through; then fall back to 30m for the new gw
+          if (this.chartRange === 'live') {
+            _liveHistory.labels = []; _liveHistory.battery = []; _liveHistory.grid = [];
+            _liveHistory.solar = []; _liveHistory.home = []; _liveHistory.soc = [];
+            _liveHistory.ambient = []; _liveHistory.cabinet = []; _liveHistory.mode = [];
+            _liveHistory.selfReserve = []; _liveHistory.touReserve = []; _liveHistory.gridMode = [];
+          }
+          this._loadMetrics();
+        },
+      );
     },
 
     toggleCard(key) {
@@ -917,6 +937,109 @@ function dashboardTab() {
       if (_modalChart) {
         _modalChart.destroy();
         _modalChart = null;
+      }
+    },
+
+    // ── Multi-gateway Compare Modal ──────────────────────────
+    openCompareModal() {
+      this.showCompareModal = true;
+      this.$nextTick(() => requestAnimationFrame(() => this._loadCompareCharts()));
+    },
+
+    closeCompareModal() {
+      this.showCompareModal = false;
+      for (const c of this._compareCharts) { try { c.destroy(); } catch (_) {} }
+      this._compareCharts = [];
+    },
+
+    async _loadCompareCharts() {
+      const gateways = Alpine.store('app').gatewayList.filter(g => g.enabled);
+      if (!gateways.length) return;
+
+      // Parallel fetch for all gateways
+      const range = this.chartRange === 'live' ? '30m' : this.chartRange;
+      const results = await Promise.all(gateways.map(async gw => {
+        let url = `api/metrics?range=${range}`;
+        if (this.chartBucket) url += `&bucket=${this.chartBucket}`;
+        url += `&gateway_id=${encodeURIComponent(gw.id)}`;
+        const data = await fetchJSON(url).catch(() => null);
+        return { gw, data };
+      }));
+
+      // Compute shared Y-axis range across all gateways
+      let maxW = 5000;
+      for (const { data } of results) {
+        if (!data?.points?.length) continue;
+        for (const p of data.points) {
+          const vals = [Math.abs(p.battery_w||0), Math.abs(p.grid_w||0), p.solar_w||0, p.home_w||0];
+          const m = Math.max(...vals);
+          if (m > maxW) maxW = m;
+      }}
+      maxW = Math.ceil(maxW / 1000) * 1000;
+
+      // Destroy any prior charts
+      for (const c of this._compareCharts) { try { c.destroy(); } catch (_) {} }
+      this._compareCharts = [];
+
+      // Create one chart per gateway
+      for (const { gw, data } of results) {
+        const canvasId = `compare-chart-${gw.id.replace(/[^a-z0-9]/gi, '_')}`;
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) continue;
+        const pts = data?.points || [];
+        const labels  = pts.map(p => this._formatChartLabel(p.ts));
+        const battery = pts.map(p => p.battery_w);
+        const grid    = pts.map(p => p.grid_w);
+        const solar   = pts.map(p => p.solar_w);
+        const soc     = pts.map(p => p.soc ?? null);
+        const gridMode= pts.map(p => p.grid_mode ?? null);
+        const modeArr = pts.map(p => p.mode_name ?? null);
+
+        const chart = new Chart(ctx, {
+          type: 'line',
+          plugins: [modeBackgroundPlugin],
+          data: {
+            labels,
+            datasets: [
+              { label: 'Battery', data: battery, borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.08)', borderWidth: 1.5, tension: 0.3, pointRadius: 0, fill: true },
+              { label: 'Grid',    data: grid,    borderColor: '#ef4444', backgroundColor: 'transparent', borderWidth: 1.5, tension: 0.3, pointRadius: 0, fill: false },
+              { label: 'Solar',   data: solar,   borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 1.5, tension: 0.3, pointRadius: 0, fill: true },
+              { label: 'SoC',     data: soc,     borderColor: '#84cc16', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [5,3], tension: 0.3, pointRadius: 0, fill: false, yAxisID: 'y2' },
+              { label: 'Mode',    data: modeArr.map(m => (m && MODE_ABBR[m]) ? 0 : null), borderColor: 'transparent', backgroundColor: 'transparent', borderWidth: 0, pointRadius: 0, fill: false, yAxisID: 'yMode' },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                titleColor: '#f8fafc', bodyColor: '#cbd5e1',
+                filter: item => item.datasetIndex !== 4,
+                callbacks: {
+                  label: item => {
+                    if (item.datasetIndex === 3) return `SoC: ${item.parsed.y?.toFixed(1)}%`;
+                    return `${item.dataset.label}: ${(item.parsed.y/1000).toFixed(2)} kW`;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: { ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.03)' } },
+              y: { suggestedMin: -maxW, suggestedMax: maxW, ticks: { color: '#64748b', font: { size: 9 }, callback: v => (v/1000).toFixed(1)+'k' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+              y2: { position: 'right', display: soc.some(v => v != null), suggestedMin: 0, suggestedMax: 100, ticks: { color: '#64748b', font: { size: 8 }, callback: v => v+'%' }, grid: { drawOnChartArea: false } },
+              yMode: { display: false, min: -1, max: 1 },
+            },
+          },
+        });
+
+        chart._modeData = modeArr;
+        chart._gridModeData = gridMode;
+        chart._tsRaw = pts.map(p => p.ts);
+        chart._alarmData = [];
+        this._compareCharts.push(chart);
       }
     },
 
