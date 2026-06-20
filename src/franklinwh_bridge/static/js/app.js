@@ -104,7 +104,7 @@ const POINT_SOURCES = {
   connection_state: '701.ConnSt', inverter_state: '701.InvSt', grid_mode: '701.ConnSt',
   ambient_temp_c: '701.TmpAmb', cabinet_temp_c: '701.TmpCab',
   mode_name: 'ext.15507', wset_enabled: '704.WSetEna', wset_pct: '704.WSetPct',
-  wset_watts: '704.WSet', wset_mode: '704.WSetMod',
+  wset_watts: '704.WSet', wset_mode: '704.WSetMod', wset_mode_name: '704.WSetMod',
   wset_revert_time_s: '704.WSetRvrtTms', wset_revert_remain_s: '704.WSetRvrtRem',
   loc_rem_ctl_name: '715.LocRemCtl',
   sw_watchdog_remain_s: 'virtual', command_elapsed_s: 'virtual', last_command_result: 'virtual',
@@ -140,6 +140,71 @@ document.addEventListener('alpine:init', () => {
 
     // Model point source annotations
     showSources: localStorage.getItem('fwh-showSources') === 'true',
+
+    // Topbar preferences — which items are visible and in what order
+    topbarPrefs: (() => {
+      const DEFAULTS = {
+        center: [
+          { key: 'grid',    label: 'Grid',    visible: true },
+          { key: 'solar',   label: 'Solar',   visible: true },
+          { key: 'load',    label: 'Load',    visible: true },
+          { key: 'battery', label: 'Battery', visible: true },
+        ],
+        right: [
+          { key: 'release', label: 'Release',   visible: true },
+          { key: 'sunspec', label: 'SunSpec',   visible: true },
+          { key: 'theme',   label: 'Theme',     visible: true },
+          { key: 'refresh', label: 'Refresh',   visible: true },
+        ],
+      };
+      try {
+        const saved = localStorage.getItem('fwh-topbar-prefs');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Merge: keep saved order/visibility, add any new defaults
+          const merge = (saved, defaults) => {
+            const keys = new Set(saved.map(i => i.key));
+            const merged = [...saved];
+            for (const d of defaults) { if (!keys.has(d.key)) merged.push({ ...d }); }
+            return merged;
+          };
+          return { center: merge(parsed.center || [], DEFAULTS.center), right: merge(parsed.right || [], DEFAULTS.right) };
+        }
+      } catch (_) {}
+      return { center: DEFAULTS.center.map(i => ({...i})), right: DEFAULTS.right.map(i => ({...i})) };
+    })(),
+
+    showTopbarPrefs: false,
+
+    saveTopbarPrefs() {
+      localStorage.setItem('fwh-topbar-prefs', JSON.stringify(this.topbarPrefs));
+    },
+
+    resetTopbarPrefs() {
+      localStorage.removeItem('fwh-topbar-prefs');
+      this.topbarPrefs = {
+        center: [
+          { key: 'grid',    label: 'Grid',    visible: true },
+          { key: 'solar',   label: 'Solar',   visible: true },
+          { key: 'load',    label: 'Load',    visible: true },
+          { key: 'battery', label: 'Battery', visible: true },
+        ],
+        right: [
+          { key: 'release', label: 'Release',   visible: true },
+          { key: 'sunspec', label: 'SunSpec',   visible: true },
+          { key: 'theme',   label: 'Theme',     visible: true },
+          { key: 'refresh', label: 'Refresh',   visible: true },
+        ],
+      };
+    },
+
+    moveTopbarItem(section, idx, dir) {
+      const arr = this.topbarPrefs[section];
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= arr.length) return;
+      const tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+      this.saveTopbarPrefs();
+    },
 
     // Connection state
     connected: false,

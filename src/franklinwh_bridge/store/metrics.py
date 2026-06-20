@@ -28,6 +28,12 @@ POWER_METRIC_KEYS: dict[str, str] = {
     "total_solar": "solar_w",
     "home_load_ext": "home_w",
     "soc": "soc",
+    "ambient_temp_c": "ambient_temp_c",
+    "cabinet_temp_c": "cabinet_temp_c",
+    "mode_name": "mode_name",
+    "self_reserve_pct": "self_reserve_pct",
+    "tou_reserve_pct": "tou_reserve_pct",
+    "grid_mode": "grid_mode",
 }
 
 # Range string -> seconds
@@ -204,16 +210,19 @@ async def record_sample(
 
     await db.execute(
         "INSERT INTO metrics "
-        "(ts, battery_w, grid_w, solar_w, home_w, soc, gateway_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(ts, battery_w, grid_w, solar_w, home_w, soc, gateway_id, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (time.time(), row["battery_w"], row["grid_w"], row["solar_w"],
-         row["home_w"], row["soc"], gateway_id),
+         row["home_w"], row["soc"], gateway_id,
+         row.get("ambient_temp_c"), row.get("cabinet_temp_c"),
+         row.get("mode_name"), row.get("self_reserve_pct"), row.get("tou_reserve_pct"),
+         row.get("grid_mode")),
     )
     await db.commit()
     return True
 
 
-async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> list[dict]:
+async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800, gateway_id: str | None = None) -> list[dict]:
     """Query metrics for given time range, downsampling if needed.
 
     For ranges <= 6h return raw rows.  For longer ranges, bucket-average
@@ -221,14 +230,16 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> 
     """
     cutoff = time.time() - range_seconds
     six_hours = 6 * 60 * 60
+    gw_filter = " AND gateway_id = ?" if gateway_id else ""
+    gw_params: tuple = (gateway_id,) if gateway_id else ()
 
     if range_seconds <= six_hours:
         # Raw data
         rows: list[dict] = []
         async with db.execute(
-            "SELECT ts, battery_w, grid_w, solar_w, home_w, soc "
-            "FROM metrics WHERE ts >= ? ORDER BY ts",
-            (cutoff,),
+            "SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode "
+            f"FROM metrics WHERE ts >= ?{gw_filter} ORDER BY ts",
+            (cutoff,) + gw_params,
         ) as cursor:
             async for row in cursor:
                 rows.append(
@@ -239,27 +250,39 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> 
                         "solar_w": row[3],
                         "home_w": row[4],
                         "soc": row[5],
+                        "ambient_temp_c": row[6],
+                        "cabinet_temp_c": row[7],
+                        "mode_name": row[8],
+                        "self_reserve_pct": row[9],
+                        "tou_reserve_pct": row[10],
+                        "grid_mode": row[11],
                     }
                 )
         return rows
 
     # Downsample: divide the range into MAX_POINTS buckets
     bucket_size = range_seconds / MAX_POINTS
-    query = """
+    query = f"""
         SELECT
             CAST((ts - ?) / ? AS INTEGER) AS bucket,
             AVG(battery_w),
             AVG(grid_w),
             AVG(solar_w),
             AVG(home_w),
-            AVG(soc)
+            AVG(soc),
+            AVG(ambient_temp_c),
+            AVG(cabinet_temp_c),
+            MAX(mode_name),
+            MAX(self_reserve_pct),
+            MAX(tou_reserve_pct),
+            MAX(grid_mode)
         FROM metrics
-        WHERE ts >= ?
+        WHERE ts >= ?{gw_filter}
         GROUP BY bucket
         ORDER BY bucket
     """
     rows = []
-    async with db.execute(query, (cutoff, bucket_size, cutoff)) as cursor:
+    async with db.execute(query, (cutoff, bucket_size, cutoff) + gw_params) as cursor:
         async for row in cursor:
             # Reconstruct approximate timestamp from bucket midpoint
             bucket_ts = cutoff + (row[0] + 0.5) * bucket_size
@@ -271,6 +294,12 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800) -> 
                     "solar_w": round(row[3], 1) if row[3] is not None else None,
                     "home_w": round(row[4], 1) if row[4] is not None else None,
                     "soc": round(row[5], 1) if row[5] is not None else None,
+                    "ambient_temp_c": round(row[6], 1) if row[6] is not None else None,
+                    "cabinet_temp_c": round(row[7], 1) if row[7] is not None else None,
+                    "mode_name": row[8],
+                    "self_reserve_pct": row[9],
+                    "tou_reserve_pct": row[10],
+                    "grid_mode": row[11],
                 }
             )
     return rows
@@ -281,6 +310,7 @@ async def query_metrics_daterange(
     start_ts: float,
     end_ts: float,
     bucket_seconds: int | None = None,
+    gateway_id: str | None = None,
 ) -> list[dict]:
     """Query metrics between absolute timestamps with optional bucket averaging.
 
@@ -311,25 +341,28 @@ async def query_metrics_daterange(
     except Exception:
         pass
 
+    gw_filter = " AND gateway_id = ?" if gateway_id else ""
+    gw_p: list = [gateway_id] if gateway_id else []
+
     if not do_bucket:
         # Raw data query
         if has_archive:
-            query = """
-                SELECT ts, battery_w, grid_w, solar_w, home_w, soc FROM (
-                    SELECT ts, battery_w, grid_w, solar_w, home_w, soc
-                    FROM metrics WHERE ts >= ? AND ts <= ?
+            query = f"""
+                SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode FROM (
+                    SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
+                    FROM metrics WHERE ts >= ? AND ts <= ?{gw_filter}
                     UNION ALL
-                    SELECT ts, battery_w, grid_w, solar_w, home_w, soc
-                    FROM metrics_archive WHERE ts >= ? AND ts <= ?
+                    SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
+                    FROM metrics_archive WHERE ts >= ? AND ts <= ?{gw_filter}
                 ) ORDER BY ts
             """
-            params: list = [start_ts, end_ts, start_ts, end_ts]
+            params: list = [start_ts, end_ts] + gw_p + [start_ts, end_ts] + gw_p
         else:
-            query = """
-                SELECT ts, battery_w, grid_w, solar_w, home_w, soc
-                FROM metrics WHERE ts >= ? AND ts <= ? ORDER BY ts
+            query = f"""
+                SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
+                FROM metrics WHERE ts >= ? AND ts <= ?{gw_filter} ORDER BY ts
             """
-            params = [start_ts, end_ts]
+            params = [start_ts, end_ts] + gw_p
 
         rows: list[dict] = []
         async with db.execute(query, params) as cursor:
@@ -341,36 +374,40 @@ async def query_metrics_daterange(
                     "solar_w": row[3],
                     "home_w": row[4],
                     "soc": row[5],
+                    "ambient_temp_c": row[6],
+                    "cabinet_temp_c": row[7],
+                    "mode_name": row[8],
+                    "self_reserve_pct": row[9],
+                    "tou_reserve_pct": row[10],
+                    "grid_mode": row[11],
                 })
         return rows
 
     # Bucketed query
     if has_archive:
-        source = """(
-            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
-            FROM metrics WHERE ts >= ? AND ts <= ?
+        source = f"""(
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
+            FROM metrics WHERE ts >= ? AND ts <= ?{gw_filter}
             UNION ALL
-            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
-            FROM metrics_archive WHERE ts >= ? AND ts <= ?
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
+            FROM metrics_archive WHERE ts >= ? AND ts <= ?{gw_filter}
         )"""
-        base_params: list = [start_ts, end_ts, start_ts, end_ts]
+        base_params: list = [start_ts, end_ts] + gw_p + [start_ts, end_ts] + gw_p
     else:
-        source = "metrics"
-        base_params = []
-
-    where_clause = "WHERE ts >= ? AND ts <= ?" if not has_archive else ""
-    extra_params = [start_ts, end_ts] if not has_archive else []
+        source = f"metrics WHERE ts >= ? AND ts <= ?{gw_filter}"
+        base_params = [start_ts, end_ts] + gw_p
 
     query = f"""
         SELECT
             CAST((ts - ?) / ? AS INTEGER) AS bucket,
-            AVG(battery_w), AVG(grid_w), AVG(solar_w), AVG(home_w), AVG(soc)
+            AVG(battery_w), AVG(grid_w), AVG(solar_w), AVG(home_w), AVG(soc),
+            AVG(ambient_temp_c), AVG(cabinet_temp_c), MAX(mode_name),
+            MAX(self_reserve_pct), MAX(tou_reserve_pct)
         FROM {source}
-        {where_clause}
         GROUP BY bucket
         ORDER BY bucket
     """
-    all_params = [start_ts, bsize] + base_params + extra_params
+    all_params = [start_ts, bsize] + base_params
 
     rows = []
     async with db.execute(query, all_params) as cursor:
@@ -383,6 +420,12 @@ async def query_metrics_daterange(
                 "solar_w": round(row[3], 1) if row[3] is not None else None,
                 "home_w": round(row[4], 1) if row[4] is not None else None,
                 "soc": round(row[5], 1) if row[5] is not None else None,
+                "ambient_temp_c": round(row[6], 1) if row[6] is not None else None,
+                "cabinet_temp_c": round(row[7], 1) if row[7] is not None else None,
+                "mode_name": row[8],
+                "self_reserve_pct": row[9],
+                "tou_reserve_pct": row[10],
+                "grid_mode": row[11],
             })
     return rows
 
@@ -584,8 +627,8 @@ async def archive_old_metrics(
     # earlier runs, which would otherwise create duplicate archive rows).
     await db.execute(
         """
-        INSERT INTO metrics_archive (ts, battery_w, grid_w, solar_w, home_w, soc, sample_count)
-        SELECT bucket_ts, battery_w, grid_w, solar_w, home_w, soc, sample_count
+        INSERT INTO metrics_archive (ts, battery_w, grid_w, solar_w, home_w, soc, sample_count, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode, gateway_id)
+        SELECT bucket_ts, battery_w, grid_w, solar_w, home_w, soc, sample_count, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode, gateway_id
         FROM (
             SELECT
                 (CAST(ts / ? AS INTEGER) * ?) + ? / 2.0 AS bucket_ts,
@@ -594,12 +637,22 @@ async def archive_old_metrics(
                 ROUND(AVG(solar_w), 1) AS solar_w,
                 ROUND(AVG(home_w), 1) AS home_w,
                 ROUND(AVG(soc), 1) AS soc,
-                COUNT(*) AS sample_count
+                COUNT(*) AS sample_count,
+                ROUND(AVG(ambient_temp_c), 1) AS ambient_temp_c,
+                ROUND(AVG(cabinet_temp_c), 1) AS cabinet_temp_c,
+                MAX(mode_name) AS mode_name,
+                MAX(self_reserve_pct) AS self_reserve_pct,
+                MAX(tou_reserve_pct) AS tou_reserve_pct,
+                MAX(grid_mode) AS grid_mode,
+                gateway_id
             FROM metrics
             WHERE ts < ?
-            GROUP BY CAST(ts / ? AS INTEGER)
+            GROUP BY CAST(ts / ? AS INTEGER), gateway_id
         )
-        WHERE bucket_ts NOT IN (SELECT ts FROM metrics_archive)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM metrics_archive ma
+            WHERE ma.ts = bucket_ts AND ma.gateway_id = gateway_id
+        )
         """,
         (ARCHIVE_BUCKET_S, ARCHIVE_BUCKET_S, ARCHIVE_BUCKET_S,
          cutoff, ARCHIVE_BUCKET_S),
@@ -627,6 +680,7 @@ async def archive_old_metrics(
 async def query_metrics_with_archive(
     db: aiosqlite.Connection,
     range_seconds: int = 1800,
+    gateway_id: str | None = None,
 ) -> list[dict]:
     """Query metrics, transparently using archive for older ranges.
 
@@ -649,7 +703,7 @@ async def query_metrics_with_archive(
 
     if range_seconds <= six_hours or not has_archive:
         # Use original query_metrics for short ranges
-        return await query_metrics(db, range_seconds)
+        return await query_metrics(db, range_seconds, gateway_id=gateway_id)
 
     # For longer ranges, union raw recent + archived older data
     bucket_size = range_seconds / MAX_POINTS
@@ -657,24 +711,33 @@ async def query_metrics_with_archive(
     # Raw recent data (last 7 days)
     raw_cutoff = now - ARCHIVE_RAW_AGE_S
 
-    query = """
+    gw_filter = " AND gateway_id = ?" if gateway_id else ""
+    gw_p: tuple = (gateway_id,) if gateway_id else ()
+
+    query = f"""
         SELECT
             CAST((ts - ?) / ? AS INTEGER) AS bucket,
             AVG(battery_w),
             AVG(grid_w),
             AVG(solar_w),
             AVG(home_w),
-            AVG(soc)
+            AVG(soc),
+            AVG(ambient_temp_c),
+            AVG(cabinet_temp_c),
+            MAX(mode_name),
+            MAX(self_reserve_pct),
+            MAX(tou_reserve_pct),
+            MAX(grid_mode)
         FROM (
-            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
             FROM metrics
-            WHERE ts >= ?
+            WHERE ts >= ?{gw_filter}
 
             UNION ALL
 
-            SELECT ts, battery_w, grid_w, solar_w, home_w, soc
+            SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode
             FROM metrics_archive
-            WHERE ts >= ? AND ts < ?
+            WHERE ts >= ? AND ts < ?{gw_filter}
         )
         WHERE ts >= ?
         GROUP BY bucket
@@ -683,8 +746,7 @@ async def query_metrics_with_archive(
     rows: list[dict] = []
     async with db.execute(
         query,
-        (cutoff, bucket_size, max(cutoff, raw_cutoff),
-         cutoff, raw_cutoff, cutoff),
+        (cutoff, bucket_size, max(cutoff, raw_cutoff)) + gw_p + (cutoff, raw_cutoff) + gw_p + (cutoff,),
     ) as cursor:
         async for row in cursor:
             bucket_ts = cutoff + (row[0] + 0.5) * bucket_size
@@ -695,6 +757,12 @@ async def query_metrics_with_archive(
                 "solar_w": round(row[3], 1) if row[3] else None,
                 "home_w": round(row[4], 1) if row[4] else None,
                 "soc": round(row[5], 1) if row[5] else None,
+                "ambient_temp_c": round(row[6], 1) if row[6] else None,
+                "cabinet_temp_c": round(row[7], 1) if row[7] else None,
+                "mode_name": row[8],
+                "self_reserve_pct": row[9],
+                "tou_reserve_pct": row[10],
+                "grid_mode": row[11],
             })
     return rows
 
@@ -704,7 +772,7 @@ async def query_metrics_with_archive(
 # ---------------------------------------------------------------------------
 
 #: CSV column headers for export
-_EXPORT_COLUMNS = ("timestamp", "battery_w", "grid_w", "solar_w", "home_w", "soc")
+_EXPORT_COLUMNS = ("timestamp", "battery_w", "grid_w", "solar_w", "home_w", "soc", "ambient_temp_c", "cabinet_temp_c", "mode_name", "self_reserve_pct", "tou_reserve_pct", "grid_mode")
 
 
 async def export_metrics(
@@ -724,7 +792,7 @@ async def export_metrics(
 
     # Raw metrics
     async with db.execute(
-        "SELECT ts, battery_w, grid_w, solar_w, home_w, soc "
+        "SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode "
         "FROM metrics WHERE ts >= ? ORDER BY ts",
         (cutoff,),
     ) as cursor:
@@ -734,7 +802,7 @@ async def export_metrics(
     # Archive metrics (older data in 5-min buckets)
     try:
         async with db.execute(
-            "SELECT ts, battery_w, grid_w, solar_w, home_w, soc "
+            "SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode "
             "FROM metrics_archive WHERE ts >= ? AND ts < ? ORDER BY ts",
             (cutoff, now - ARCHIVE_RAW_AGE_S),
         ) as cursor:
@@ -757,6 +825,12 @@ def _export_row(row: tuple) -> dict:
         "solar_w": row[3],
         "home_w": row[4],
         "soc": row[5],
+        "ambient_temp_c": row[6],
+        "cabinet_temp_c": row[7],
+        "mode_name": row[8],
+        "self_reserve_pct": row[9],
+        "tou_reserve_pct": row[10],
+        "grid_mode": row[11],
     }
 
 
@@ -835,3 +909,88 @@ def _to_float(value: str | None) -> float | None:
     if value is None or value.strip() == "":
         return None
     return float(value)
+
+
+async def log_metrics_snapshot(
+    db: aiosqlite.Connection,
+    event: str = "metrics_snapshot",
+) -> None:
+    """Write a metrics-state snapshot to the startup_log.
+
+    Captures row counts, time spans, and largest gap for both the raw
+    metrics and archive tables.  Called at startup and graceful shutdown
+    so operators can confirm data continuity across restarts.
+    """
+    now = time.time()
+    lines: list[str] = []
+
+    # ── Raw metrics ──────────────────────────────────────────────
+    async with db.execute(
+        "SELECT COUNT(*), MIN(ts), MAX(ts) FROM metrics"
+    ) as cur:
+        row = await cur.fetchone()
+    raw_count = row[0] or 0
+    raw_min, raw_max = row[1], row[2]
+
+    if raw_count:
+        oldest = datetime.fromtimestamp(raw_min, tz=UTC).strftime("%Y-%m-%d %H:%M")
+        newest = datetime.fromtimestamp(raw_max, tz=UTC).strftime("%Y-%m-%d %H:%M")
+        span_h = (raw_max - raw_min) / 3600
+        lines.append(
+            f"metrics: {raw_count:,} rows | {oldest} → {newest} ({span_h:.1f}h)"
+        )
+    else:
+        lines.append("metrics: 0 rows")
+
+    # ── Archive ──────────────────────────────────────────────────
+    try:
+        async with db.execute(
+            "SELECT COUNT(*), MIN(ts), MAX(ts) FROM metrics_archive"
+        ) as cur:
+            row = await cur.fetchone()
+        arc_count = row[0] or 0
+        arc_min, arc_max = row[1], row[2]
+
+        if arc_count:
+            oldest = datetime.fromtimestamp(arc_min, tz=UTC).strftime("%Y-%m-%d %H:%M")
+            newest = datetime.fromtimestamp(arc_max, tz=UTC).strftime("%Y-%m-%d %H:%M")
+            span_d = (arc_max - arc_min) / 86400
+            lines.append(
+                f"archive: {arc_count:,} rows | {oldest} → {newest} ({span_d:.1f}d)"
+            )
+        else:
+            lines.append("archive: 0 rows")
+    except Exception:
+        lines.append("archive: unavailable")
+
+    # ── Largest gap in raw metrics (last 7 days) ─────────────────
+    if raw_count >= 2:
+        try:
+            week_ago = now - 7 * 86400
+            async with db.execute(
+                """
+                SELECT MAX(gap) FROM (
+                    SELECT ts - LAG(ts) OVER (ORDER BY ts) AS gap
+                    FROM metrics WHERE ts >= ?
+                )
+                """,
+                (week_ago,),
+            ) as cur:
+                gap_row = await cur.fetchone()
+            max_gap_s = gap_row[0] if gap_row and gap_row[0] else 0
+            if max_gap_s > 120:
+                gap_m = max_gap_s / 60
+                lines.append(f"largest gap (7d): {gap_m:.0f}m")
+            else:
+                lines.append("largest gap (7d): <2m (clean)")
+        except Exception:
+            pass
+
+    detail = " | ".join(lines)
+    logger.info("Metrics snapshot [%s]: %s", event, detail)
+
+    await db.execute(
+        "INSERT INTO startup_log (ts, event, detail) VALUES (?, ?, ?)",
+        (now, event, detail),
+    )
+    await db.commit()

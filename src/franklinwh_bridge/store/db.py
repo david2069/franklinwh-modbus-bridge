@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 16
+CURRENT_SCHEMA_VERSION = 22
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -299,6 +299,54 @@ MIGRATIONS: dict[int, str] = {
     -- aggregate de-emphasised on the dashboard.
     ALTER TABLE gateways ADD COLUMN phase_view TEXT NOT NULL DEFAULT 'both';
     """,
+    17: """
+    -- Add temperature columns to metrics tables for chart overlays.
+    ALTER TABLE metrics ADD COLUMN ambient_temp_c REAL;
+    ALTER TABLE metrics ADD COLUMN cabinet_temp_c REAL;
+    ALTER TABLE metrics_archive ADD COLUMN ambient_temp_c REAL;
+    ALTER TABLE metrics_archive ADD COLUMN cabinet_temp_c REAL;
+    """,
+    18: """
+    -- Add operating mode to metrics for per-segment chart shading and tooltip.
+    ALTER TABLE metrics ADD COLUMN mode_name TEXT;
+    ALTER TABLE metrics_archive ADD COLUMN mode_name TEXT;
+    """,
+    19: """
+    -- Add reserve percentage columns for historical charting and export.
+    ALTER TABLE metrics ADD COLUMN self_reserve_pct INTEGER;
+    ALTER TABLE metrics ADD COLUMN tou_reserve_pct INTEGER;
+    ALTER TABLE metrics_archive ADD COLUMN self_reserve_pct INTEGER;
+    ALTER TABLE metrics_archive ADD COLUMN tou_reserve_pct INTEGER;
+    """,
+    20: """
+    -- gateway_id was already added to metrics_archive in migration 9 (NOT NULL DEFAULT 'default').
+    -- This migration is intentionally a no-op; version bump ensures archive INSERT uses it correctly.
+    SELECT 1;
+    """,
+    21: """
+    -- Add grid_mode (701.ConnSt decoded: Grid Following/Grid Forming/PV Clipped) for
+    -- event-marker rendering on the power history chart.
+    ALTER TABLE metrics ADD COLUMN grid_mode TEXT;
+    ALTER TABLE metrics_archive ADD COLUMN grid_mode TEXT;
+    """,
+    22: """
+    -- Alarm events: sparse records written only when alarm state changes.
+    -- source: 'M701_Alrm' | 'M714_PrtAlrms' | 'M713_Sta'
+    -- alarms_set / alarms_cleared: comma-separated human-readable bit names.
+    -- severity: 'info' | 'warning' | 'fault'
+    CREATE TABLE IF NOT EXISTS alarm_events (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts          REAL NOT NULL,
+        gateway_id  TEXT NOT NULL DEFAULT 'default',
+        source      TEXT NOT NULL,
+        value_raw   INTEGER NOT NULL,
+        alarms_set  TEXT NOT NULL DEFAULT '',
+        alarms_cleared TEXT NOT NULL DEFAULT '',
+        severity    TEXT NOT NULL DEFAULT 'info'
+    );
+    CREATE INDEX IF NOT EXISTS idx_alarm_events_ts ON alarm_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_alarm_events_gw ON alarm_events(gateway_id, ts);
+    """,
     16: """
     -- Scheduler (SCH1): declarative time -> command-handler action entries.
     -- when_spec/params are JSON; action draws from the command vocabulary.
@@ -376,6 +424,13 @@ async def init_db(db_path: Path) -> aiosqlite.Connection:
     """Open the database, enable WAL + foreign keys, and run migrations."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = await aiosqlite.connect(str(db_path))
+    # Set row_factory globally so all cursors return sqlite3.Row objects.
+    # sqlite3.Row supports both integer index (row[0]) and string key (row["col"])
+    # access, so all existing code works unchanged.  Setting it once here avoids
+    # a race condition: the per-function set/finally-reset pattern was racy
+    # because another coroutine could reset db.row_factory to None between
+    # execute() and fetchone(), causing fetchone() to return a plain tuple.
+    db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
     await run_migrations(db)
@@ -464,7 +519,7 @@ async def load_control_state(
         ) as cur:
             row = await cur.fetchone()
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
     if row is None:
         return {"active": False, "action": "", "power_w": 0, "started_at": 0, "watchdog_s": 3600}
     return {
@@ -492,7 +547,7 @@ async def get_gateways(db: aiosqlite.Connection) -> list[dict]:
                 rows.append(dict(row))
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def get_gateway(db: aiosqlite.Connection, gateway_id: str) -> dict | None:
@@ -505,7 +560,7 @@ async def get_gateway(db: aiosqlite.Connection, gateway_id: str) -> dict | None:
             row = await cur.fetchone()
             return dict(row) if row else None
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def create_gateway(
@@ -617,7 +672,7 @@ async def get_site_config(db: aiosqlite.Connection) -> dict:
                 "updated_at": row["updated_at"],
             }
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def update_site_config(db: aiosqlite.Connection, **kwargs: object) -> dict:
@@ -652,7 +707,7 @@ async def get_services(db: aiosqlite.Connection) -> list[dict]:
                 rows.append(dict(row))
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def get_service(db: aiosqlite.Connection, service_id: str) -> dict | None:
@@ -665,7 +720,7 @@ async def get_service(db: aiosqlite.Connection, service_id: str) -> dict | None:
             row = await cur.fetchone()
             return dict(row) if row else None
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def create_service(
@@ -760,7 +815,7 @@ async def get_schedules(db: aiosqlite.Connection) -> list[dict]:
                 rows.append(_decode_schedule(dict(row)))
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def get_schedule(db: aiosqlite.Connection, schedule_id: str) -> dict | None:
@@ -773,7 +828,7 @@ async def get_schedule(db: aiosqlite.Connection, schedule_id: str) -> dict | Non
             row = await cur.fetchone()
             return _decode_schedule(dict(row)) if row else None
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def create_schedule(
@@ -875,7 +930,7 @@ async def get_schedule_log(
                 rows.append(dict(row))
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 # ── PICS compliance ──────────────────────────────────────────
@@ -902,7 +957,7 @@ async def get_pics_compliance(db: aiosqlite.Connection) -> list[dict]:
                 })
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def set_pics_status(
@@ -954,7 +1009,7 @@ async def get_mqtt_config(db: aiosqlite.Connection) -> dict:
         async with db.execute("SELECT * FROM mqtt_config WHERE id = 1") as cursor:
             row = await cursor.fetchone()
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
     if row is None:
         return dict(MQTT_CONFIG_DEFAULTS)
@@ -1092,7 +1147,7 @@ async def get_publishing_groups(db: aiosqlite.Connection) -> list[dict]:
                 })
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def get_publishing_group(db: aiosqlite.Connection, slug: str) -> dict | None:
@@ -1104,7 +1159,7 @@ async def get_publishing_group(db: aiosqlite.Connection, slug: str) -> dict | No
         ) as cursor:
             row = await cursor.fetchone()
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
     if row is None:
         return None
@@ -1297,7 +1352,7 @@ async def get_group_point_members(
                 rows.append(dict(row))
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def add_group_member(
@@ -1371,7 +1426,7 @@ async def get_enabled_promoted_points(db: aiosqlite.Connection) -> list[dict]:
                 rows.append(dict(row))
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def get_point_catalog_meta(
@@ -1389,7 +1444,7 @@ async def get_point_catalog_meta(
             row = await cur.fetchone()
             return dict(row) if row else None
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row
 
 
 async def get_catalog_points(
@@ -1414,4 +1469,4 @@ async def get_catalog_points(
                 rows.append(d)
         return rows
     finally:
-        db.row_factory = None
+        db.row_factory = aiosqlite.Row

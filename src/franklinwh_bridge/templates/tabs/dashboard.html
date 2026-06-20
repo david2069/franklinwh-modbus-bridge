@@ -65,7 +65,10 @@
   <div x-show="showCardConfig" x-transition.duration.200ms class="card !p-3 mb-4">
     <div class="flex items-center justify-between mb-2">
       <span class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider">Visible Cards</span>
-      <button @click="resetCardDefaults()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition">Reset Defaults</button>
+      <div class="flex items-center gap-3">
+        <button @click="resetCardOrder()" class="text-[10px] text-slate-500 hover:text-amber-400 transition" title="Reset card order to default">Reset Order</button>
+        <button @click="resetCardDefaults()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition" title="Reset card visibility to defaults">Reset Defaults</button>
+      </div>
     </div>
     <div class="flex flex-wrap gap-3">
       <template x-for="[key, label] in [
@@ -117,13 +120,58 @@
     </div>
   </div>
 
+  <!-- Gateway Health Alert Banner — shown when any enabled gateway is not polling -->
+  <template x-if="$store.app.gatewayList.some(g => g.enabled && !g.polling)">
+    <div class="mb-4 rounded-xl border px-4 py-3 flex items-start gap-3"
+         :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+                   ? 'bg-red-950/60 border-red-500/40' : 'bg-amber-950/60 border-amber-500/40'">
+      <!-- Icon -->
+      <svg class="w-5 h-5 mt-0.5 shrink-0"
+           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+                     ? 'text-red-400' : 'text-amber-400'"
+           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+      </svg>
+      <!-- Message -->
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold"
+           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+                     ? 'text-red-300' : 'text-amber-300'">
+          <template x-if="$store.app.gatewayList.filter(g => g.enabled && !g.polling).length === 1">
+            <span x-text="'Gateway not running: ' + ($store.app.gatewayList.find(g => g.enabled && !g.polling)?.name || 'unknown')"></span>
+          </template>
+          <template x-if="$store.app.gatewayList.filter(g => g.enabled && !g.polling).length > 1">
+            <span x-text="$store.app.gatewayList.filter(g => g.enabled && !g.polling).length + ' gateways not running: ' + $store.app.gatewayList.filter(g => g.enabled && !g.polling).map(g => g.name).join(', ')"></span>
+          </template>
+        </p>
+        <p class="text-xs mt-0.5"
+           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+                     ? 'text-red-400/80' : 'text-amber-400/80'"
+           x-text="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+                     ? 'Device unreachable — check network and aGate power.'
+                     : 'Gateway stopped — go to Settings → Gateways to start it.'">
+        </p>
+      </div>
+      <!-- Direct link to settings -->
+      <a href="#" @click.prevent="Alpine.store('app').setTab('settings')"
+         class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition"
+         :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+                   ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30' : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'">
+        Fix →
+      </a>
+    </div>
+  </template>
+
   <!-- Two-column TUI layout -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
     <!-- ══ LEFT COLUMN ═══════════════════════════════════ -->
 
     <!-- Bridge Status -->
-    <div class="card" x-show="cardVisible.bridgeStatus && $store.app.bridgeStats">
+    <div class="card" x-show="cardVisible.bridgeStatus && $store.app.bridgeStats"
+         draggable="true" :style="`order:${cardOrder.indexOf('bridgeStatus')}`"
+         @dragstart="dragStart('bridgeStatus')" @dragover.prevent="dragOver($event,'bridgeStatus')" @dragend="dragEnd()">
       <div class="card-label mb-3">Bridge Status</div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div class="flex justify-between">
@@ -190,7 +238,9 @@
     </div>
 
     <!-- Power Flow Summary -->
-    <div class="card" x-show="cardVisible.powerFlow">
+    <div class="card" x-show="cardVisible.powerFlow"
+         draggable="true" :style="`order:${cardOrder.indexOf('powerFlow')}`"
+         @dragstart="dragStart('powerFlow')" @dragover.prevent="dragOver($event,'powerFlow')" @dragend="dragEnd()">
       <div class="card-label mb-3">Power Flow Summary</div>
       <div class="space-y-2">
         <div class="flex justify-between items-center">
@@ -226,7 +276,9 @@
     </div>
 
     <!-- AC Power (with expandable per-phase detail for split/three-phase) -->
-    <div class="card" x-show="cardVisible.acPower" x-data="{ phaseExpanded: false }">
+    <div class="card" x-show="cardVisible.acPower" x-data="{ phaseExpanded: false }"
+         draggable="true" :style="`order:${cardOrder.indexOf('acPower')}`"
+         @dragstart="dragStart('acPower')" @dragover.prevent="dragOver($event,'acPower')" @dragend="dragEnd()">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
         <!-- Phase expand button — only for split/three-phase -->
@@ -346,7 +398,9 @@
     </div>
 
     <!-- Battery State of Charge -->
-    <div class="card" x-show="cardVisible.batterySoc">
+    <div class="card" x-show="cardVisible.batterySoc"
+         draggable="true" :style="`order:${cardOrder.indexOf('batterySoc')}`"
+         @dragstart="dragStart('batterySoc')" @dragover.prevent="dragOver($event,'batterySoc')" @dragend="dragEnd()">
       <div class="card-label mb-3">Battery State of Charge</div>
       <div class="flex items-center gap-5">
         <div class="soc-ring">
@@ -379,7 +433,9 @@
     </div>
 
     <!-- Solar AC Inputs -->
-    <div class="card" x-show="cardVisible.solarInputs">
+    <div class="card" x-show="cardVisible.solarInputs"
+         draggable="true" :style="`order:${cardOrder.indexOf('solarInputs')}`"
+         @dragstart="dragStart('solarInputs')" @dragover.prevent="dragOver($event,'solarInputs')" @dragend="dragEnd()">
       <div class="card-label mb-3">Solar AC Inputs</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between font-semibold">
@@ -403,7 +459,9 @@
     </div>
 
     <!-- Battery -->
-    <div class="card" x-show="cardVisible.battery">
+    <div class="card" x-show="cardVisible.battery"
+         draggable="true" :style="`order:${cardOrder.indexOf('battery')}`"
+         @dragstart="dragStart('battery')" @dragover.prevent="dragOver($event,'battery')" @dragend="dragEnd()">
       <div class="card-label mb-3">Battery</div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <!-- Power + Status -->
@@ -459,7 +517,9 @@
     </div>
 
     <!-- Lifetime Energy -->
-    <div class="card" x-show="cardVisible.lifetimeEnergy">
+    <div class="card" x-show="cardVisible.lifetimeEnergy"
+         draggable="true" :style="`order:${cardOrder.indexOf('lifetimeEnergy')}`"
+         @dragstart="dragStart('lifetimeEnergy')" @dragover.prevent="dragOver($event,'lifetimeEnergy')" @dragend="dragEnd()">
       <div class="card-label mb-3">Lifetime Energy</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
@@ -486,7 +546,9 @@
     </div>
 
     <!-- Battery Control -->
-    <div class="card" x-show="cardVisible.batteryControl" x-data="controlsTab()">
+    <div class="card" x-show="cardVisible.batteryControl" x-data="controlsTab()"
+         draggable="true" :style="`order:${cardOrder.indexOf('batteryControl')}`"
+         @dragstart="dragStart('batteryControl')" @dragover.prevent="dragOver($event,'batteryControl')" @dragend="dragEnd()">
       <div class="card-label mb-3">Battery Control</div>
 
       <!-- Battery Command -->
@@ -613,7 +675,9 @@
     </div>
 
     <!-- Operating Mode & Reserve -->
-    <div class="card" x-show="cardVisible.operatingMode" x-data="controlsTab()">
+    <div class="card" x-show="cardVisible.operatingMode" x-data="controlsTab()"
+         draggable="true" :style="`order:${cardOrder.indexOf('operatingMode')}`"
+         @dragstart="dragStart('operatingMode')" @dragover.prevent="dragOver($event,'operatingMode')" @dragend="dragEnd()">
       <div class="card-label mb-3">Operating Mode & Reserve</div>
 
       <!-- Operating Mode -->
@@ -753,47 +817,122 @@
 
     <!-- Power History tab -->
     <div x-show="bottomTab === 'chart'">
-      <!-- Row 1: Title + Range buttons + actions -->
-      <div class="flex items-center justify-between mb-2">
-        <div class="card-label !mb-0">Power History</div>
+      <!-- Chart toolbar: all controls on one row -->
+      <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div class="flex items-center gap-2">
+          <div class="card-label !mb-0">Power History</div>
+          <span x-show="$store.app.activeGateway && $store.app.activeGateway !== 'site'"
+                class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300"
+                x-text="$store.app.gatewayList.find(g => g.id === $store.app.activeGateway)?.name || $store.app.activeGateway"></span>
+          <span x-show="!$store.app.activeGateway || $store.app.activeGateway === 'site'"
+                class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-600/30 text-slate-400">Combined</span>
+        </div>
         <div class="flex items-center gap-1.5 flex-wrap">
-          <template x-for="r in chartRanges" :key="r.value">
-            <button @click="setChartRange(r.value)"
-                    class="px-2 py-0.5 text-[10px] font-medium rounded transition"
-                    :class="chartRange === r.value ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'"
-                    x-text="r.label"></button>
-          </template>
-          <div class="w-px h-4 bg-white/[0.08] mx-0.5"></div>
-          <button @click="showDateRange = !showDateRange"
-                  class="px-2 py-0.5 text-[10px] font-medium rounded transition"
-                  :class="showDateRange || chartRange === 'custom' ? 'bg-purple-500/20 text-purple-400' : 'text-slate-500 hover:text-slate-300'"
-                  title="Custom date range">Range</button>
-          <div class="w-px h-4 bg-white/[0.08] mx-0.5"></div>
-          <button @click="exportChartData('csv')"
-                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition"
-                  title="Export CSV">CSV</button>
-          <button @click="exportChartData('json')"
-                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition"
-                  title="Export JSON">JSON</button>
-          <div class="w-px h-4 bg-white/[0.08] mx-0.5"></div>
+
+          <!-- Time span dropdown -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border transition"
+                    :class="chartRange !== 'custom' ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400' : 'border-purple-500/40 bg-purple-500/10 text-purple-400'">
+              <span x-text="chartRange === 'custom' ? 'Custom' : (chartRanges.find(r => r.value === chartRange)?.label ?? chartRange)"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute left-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[100px]">
+              <template x-for="r in chartRanges" :key="'dd-' + r.value">
+                <button @click="setChartRange(r.value); open = false"
+                        class="w-full text-left px-3 py-1 text-[11px] hover:bg-slate-700 transition"
+                        :class="chartRange === r.value ? 'text-cyan-400 font-semibold' : 'text-slate-300'"
+                        x-text="r.label"></button>
+              </template>
+              <div class="my-1 border-t border-white/[0.06]"></div>
+              <button @click="showDateRange = !showDateRange; open = false"
+                      class="w-full text-left px-3 py-1 text-[11px] hover:bg-slate-700 transition"
+                      :class="showDateRange || chartRange === 'custom' ? 'text-purple-400 font-semibold' : 'text-slate-300'">
+                Range…
+              </button>
+            </div>
+          </div>
+
+          <!-- Scale (bucket) dropdown -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false" x-show="chartRange !== 'live'">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border border-amber-500/30 bg-amber-500/10 text-amber-400 transition hover:bg-amber-500/20">
+              <span x-text="chartBuckets.find(b => b.value === chartBucket)?.label ?? 'Auto'"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute left-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[80px]">
+              <template x-for="b in chartBuckets" :key="'sc-' + b.value">
+                <button @click="setChartBucket(b.value); open = false"
+                        class="w-full text-left px-3 py-1 text-[11px] hover:bg-slate-700 transition"
+                        :class="chartBucket === b.value ? 'text-amber-400 font-semibold' : 'text-slate-300'"
+                        x-text="b.label"></button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Export dropdown -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border border-slate-600/40 bg-slate-700/40 text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition">
+              Export
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute right-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[80px]">
+              <button @click="exportChartData('csv'); open = false"
+                      class="w-full text-left px-3 py-1 text-[11px] text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition">CSV</button>
+              <button @click="exportChartData('json'); open = false"
+                      class="w-full text-left px-3 py-1 text-[11px] text-slate-300 hover:bg-slate-700 hover:text-amber-400 transition">JSON</button>
+            </div>
+          </div>
+
+          <!-- Overlays dropdown (SoC + Ambient + Cabinet — all independent) -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border transition"
+                    :class="(showSocOverlay || showAmbientOverlay || showCabinetOverlay)
+                              ? 'border-lime-500/50 bg-lime-500/10 text-lime-400'
+                              : 'border-slate-600/40 bg-slate-700/30 text-slate-500 hover:text-slate-300'"
+                    title="Overlay options">
+              <span x-text="(!showSocOverlay && !showAmbientOverlay && !showCabinetOverlay)
+                              ? 'Overlays'
+                              : [showSocOverlay ? 'SoC' : '', showAmbientOverlay ? 'Amb' : '', showCabinetOverlay ? 'Cab' : ''].filter(Boolean).join('+')"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute right-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1.5 min-w-[130px]">
+              <div class="px-3 pt-0.5 pb-1.5 text-[9px] uppercase text-slate-500 font-semibold tracking-wider border-b border-white/[0.06]">Overlays</div>
+              <label class="flex items-center gap-2 px-3 py-1.5 text-[11px] cursor-pointer hover:bg-slate-700 transition"
+                     :class="showSocOverlay ? 'text-lime-400' : 'text-slate-300'">
+                <input type="checkbox" :checked="showSocOverlay" @change="toggleSocOverlay()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-lime-500">
+                SoC %
+              </label>
+              <label class="flex items-center gap-2 px-3 py-1.5 text-[11px] cursor-pointer hover:bg-slate-700 transition"
+                     :class="showAmbientOverlay ? 'text-fuchsia-400' : 'text-slate-300'">
+                <input type="checkbox" :checked="showAmbientOverlay" @change="toggleAmbientOverlay()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-fuchsia-500">
+                Ambient °C
+              </label>
+              <label class="flex items-center gap-2 px-3 py-1.5 text-[11px] cursor-pointer hover:bg-slate-700 transition"
+                     :class="showCabinetOverlay ? 'text-yellow-400' : 'text-slate-300'">
+                <input type="checkbox" :checked="showCabinetOverlay" @change="toggleCabinetOverlay()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-yellow-500">
+                Cabinet °C
+              </label>
+            </div>
+          </div>
+
+          <!-- Expand -->
           <button @click="openChartModal()"
-                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition"
+                  class="px-2 py-1 text-[10px] font-medium rounded border border-slate-600/40 bg-slate-700/30 text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition"
                   title="Expand chart">Expand</button>
         </div>
       </div>
 
-      <!-- Row 2: Time scale (bucket) selector -->
-      <div class="flex items-center gap-2 mb-2" x-show="chartRange !== 'live'">
-        <span class="text-[10px] text-slate-600 font-semibold uppercase">Scale</span>
-        <template x-for="b in chartBuckets" :key="'bucket-' + b.value">
-          <button @click="setChartBucket(b.value)"
-                  class="px-1.5 py-0.5 text-[10px] font-medium rounded transition"
-                  :class="chartBucket === b.value ? 'bg-amber-500/20 text-amber-400' : 'text-slate-600 hover:text-slate-400'"
-                  x-text="b.label"></button>
-        </template>
-      </div>
-
-      <!-- Row 3: Date range picker (collapsible) -->
+      <!-- Date range picker (collapsible) -->
       <div x-show="showDateRange"
            x-transition:enter="transition ease-out duration-200"
            x-transition:enter-start="opacity-0 -translate-y-1"
@@ -898,32 +1037,97 @@
          x-transition:leave-end="opacity-0 scale-95">
       <!-- Modal header -->
       <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.08]">
-        <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
           <h3 class="text-sm font-semibold text-slate-200">Power History</h3>
-          <div class="flex items-center gap-1 flex-wrap">
-            <template x-for="r in chartRanges" :key="'modal-' + r.value">
-              <button @click="setChartRange(r.value)"
-                      class="px-2 py-0.5 text-[10px] font-medium rounded transition"
-                      :class="chartRange === r.value ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'"
-                      x-text="r.label"></button>
-            </template>
+
+          <!-- Time span dropdown (modal) -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border transition"
+                    :class="chartRange !== 'custom' ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400' : 'border-purple-500/40 bg-purple-500/10 text-purple-400'">
+              <span x-text="chartRange === 'custom' ? 'Custom' : (chartRanges.find(r => r.value === chartRange)?.label ?? chartRange)"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute left-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[100px]">
+              <template x-for="r in chartRanges" :key="'mdd-' + r.value">
+                <button @click="setChartRange(r.value); open = false"
+                        class="w-full text-left px-3 py-1 text-[11px] hover:bg-slate-700 transition"
+                        :class="chartRange === r.value ? 'text-cyan-400 font-semibold' : 'text-slate-300'"
+                        x-text="r.label"></button>
+              </template>
+            </div>
           </div>
-          <div class="w-px h-4 bg-white/[0.08]"></div>
-          <!-- Bucket selector in modal -->
-          <div class="flex items-center gap-1" x-show="chartRange !== 'live'">
-            <span class="text-[10px] text-slate-600 font-semibold">Scale:</span>
-            <template x-for="b in chartBuckets" :key="'modal-bucket-' + b.value">
-              <button @click="setChartBucket(b.value)"
-                      class="px-1.5 py-0.5 text-[10px] font-medium rounded transition"
-                      :class="chartBucket === b.value ? 'bg-amber-500/20 text-amber-400' : 'text-slate-600 hover:text-slate-400'"
-                      x-text="b.label"></button>
-            </template>
+
+          <!-- Scale dropdown (modal) -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false" x-show="chartRange !== 'live'">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border border-amber-500/30 bg-amber-500/10 text-amber-400 transition hover:bg-amber-500/20">
+              <span x-text="chartBuckets.find(b => b.value === chartBucket)?.label ?? 'Auto'"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute left-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[80px]">
+              <template x-for="b in chartBuckets" :key="'msc-' + b.value">
+                <button @click="setChartBucket(b.value); open = false"
+                        class="w-full text-left px-3 py-1 text-[11px] hover:bg-slate-700 transition"
+                        :class="chartBucket === b.value ? 'text-amber-400 font-semibold' : 'text-slate-300'"
+                        x-text="b.label"></button>
+              </template>
+            </div>
           </div>
-          <div class="w-px h-4 bg-white/[0.08]"></div>
-          <button @click="exportChartData('csv')"
-                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition">CSV</button>
-          <button @click="exportChartData('json')"
-                  class="px-2 py-0.5 text-[10px] font-medium rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">JSON</button>
+
+          <!-- Export dropdown (modal) -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border border-slate-600/40 bg-slate-700/40 text-slate-400 hover:text-slate-200 transition">
+              Export
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute right-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[80px]">
+              <button @click="exportChartData('csv'); open = false"
+                      class="w-full text-left px-3 py-1 text-[11px] text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition">CSV</button>
+              <button @click="exportChartData('json'); open = false"
+                      class="w-full text-left px-3 py-1 text-[11px] text-slate-300 hover:bg-slate-700 hover:text-amber-400 transition">JSON</button>
+            </div>
+          </div>
+
+          <!-- Overlays dropdown (modal) -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border transition"
+                    :class="(showSocOverlay || showAmbientOverlay || showCabinetOverlay)
+                              ? 'border-lime-500/50 bg-lime-500/10 text-lime-400'
+                              : 'border-slate-600/40 bg-slate-700/30 text-slate-500 hover:text-slate-300'">
+              <span x-text="(!showSocOverlay && !showAmbientOverlay && !showCabinetOverlay)
+                              ? 'Overlays'
+                              : [showSocOverlay ? 'SoC' : '', showAmbientOverlay ? 'Amb' : '', showCabinetOverlay ? 'Cab' : ''].filter(Boolean).join('+')"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute right-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1.5 min-w-[130px]">
+              <div class="px-3 pt-0.5 pb-1.5 text-[9px] uppercase text-slate-500 font-semibold tracking-wider border-b border-white/[0.06]">Overlays</div>
+              <label class="flex items-center gap-2 px-3 py-1.5 text-[11px] cursor-pointer hover:bg-slate-700 transition"
+                     :class="showSocOverlay ? 'text-lime-400' : 'text-slate-300'">
+                <input type="checkbox" :checked="showSocOverlay" @change="toggleSocOverlay()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-lime-500">
+                SoC %
+              </label>
+              <label class="flex items-center gap-2 px-3 py-1.5 text-[11px] cursor-pointer hover:bg-slate-700 transition"
+                     :class="showAmbientOverlay ? 'text-fuchsia-400' : 'text-slate-300'">
+                <input type="checkbox" :checked="showAmbientOverlay" @change="toggleAmbientOverlay()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-fuchsia-500">
+                Ambient °C
+              </label>
+              <label class="flex items-center gap-2 px-3 py-1.5 text-[11px] cursor-pointer hover:bg-slate-700 transition"
+                     :class="showCabinetOverlay ? 'text-yellow-400' : 'text-slate-300'">
+                <input type="checkbox" :checked="showCabinetOverlay" @change="toggleCabinetOverlay()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-yellow-500">
+                Cabinet °C
+              </label>
+            </div>
+          </div>
         </div>
         <button @click="closeChartModal()" class="text-sm text-slate-400 hover:text-slate-200 font-bold transition px-2">✕</button>
       </div>

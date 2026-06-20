@@ -138,7 +138,8 @@ def test_format_csv_headers():
     csv_text = format_metrics_csv(rows)
     reader = csv.DictReader(io.StringIO(csv_text))
     assert reader.fieldnames == [
-        "timestamp", "battery_w", "grid_w", "solar_w", "home_w", "soc"
+        "timestamp", "battery_w", "grid_w", "solar_w", "home_w", "soc",
+        "ambient_temp_c", "cabinet_temp_c", "mode_name", "self_reserve_pct", "tou_reserve_pct", "grid_mode",
     ]
     parsed = list(reader)
     assert len(parsed) == 1
@@ -266,8 +267,8 @@ async def test_export_import_round_trip(db):
         "SELECT battery_w, soc FROM metrics ORDER BY ts"
     ) as cur:
         result = await cur.fetchall()
-    assert result[0] == (100.0, 50.0)
-    assert result[-1] == (109.0, 59.0)
+    assert (result[0]["battery_w"], result[0]["soc"]) == (100.0, 50.0)
+    assert (result[-1]["battery_w"], result[-1]["soc"]) == (109.0, 59.0)
 
 
 # ---------------------------------------------------------------------------

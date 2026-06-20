@@ -118,14 +118,10 @@ class OperationalStats:
     async def load(cls, db: aiosqlite.Connection) -> OperationalStats:
         """Load persisted stats or initialise a fresh row."""
         now = time.time()
-        db.row_factory = aiosqlite.Row
-        try:
-            async with db.execute(
-                "SELECT * FROM operational_stats WHERE id = 1"
-            ) as cur:
-                row = await cur.fetchone()
-        finally:
-            db.row_factory = None
+        async with db.execute(
+            "SELECT * FROM operational_stats WHERE id = 1"
+        ) as cur:
+            row = await cur.fetchone()
 
         stats = cls(db, started_at=now)
 

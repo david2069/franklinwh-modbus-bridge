@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
+from franklinwh_bridge.store.alarms import query_alarm_events
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_catalog_points,
@@ -337,6 +338,7 @@ async def get_metrics(
     start: float | None = None,
     end: float | None = None,
     bucket: str | None = None,
+    gateway_id: str | None = None,
 ):
     """Return power time-series for the dashboard chart.
 
@@ -366,8 +368,8 @@ async def get_metrics(
         # Safety: cap range to 90 days
         if (end - start) > 90 * 86400:
             raise HTTPException(400, "Date range cannot exceed 90 days")
-        points = await query_metrics_daterange(db, start, end, bucket_seconds)
-        return {"range": "custom", "start": start, "end": end, "bucket": bucket, "points": points}
+        points = await query_metrics_daterange(db, start, end, bucket_seconds, gateway_id=gateway_id)
+        return {"range": "custom", "start": start, "end": end, "bucket": bucket, "points": points, "gateway_id": gateway_id}
 
     # Relative range mode (default to 30m)
     range_key = range or "30m"
@@ -382,13 +384,13 @@ async def get_metrics(
     if bucket_seconds is not None:
         now = time.time()
         points = await query_metrics_daterange(
-            db, now - range_s, now, bucket_seconds
+            db, now - range_s, now, bucket_seconds, gateway_id=gateway_id
         )
     elif range_s > 6 * 3600:
-        points = await query_metrics_with_archive(db, range_s)
+        points = await query_metrics_with_archive(db, range_s, gateway_id=gateway_id)
     else:
-        points = await query_metrics(db, range_s)
-    return {"range": range_key, "bucket": bucket, "points": points}
+        points = await query_metrics(db, range_s, gateway_id=gateway_id)
+    return {"range": range_key, "bucket": bucket, "points": points, "gateway_id": gateway_id}
 
 
 @router.get("/stats/storage")
@@ -404,6 +406,39 @@ async def run_archive(request: Request):
     db: aiosqlite.Connection = request.app.state.db
     archived = await archive_old_metrics(db)
     return {"archived_rows": archived}
+
+
+@router.get("/alarm-events")
+async def get_alarm_events(
+    request: Request,
+    start: float | None = None,
+    end: float | None = None,
+    range: str | None = None,
+    gateway_id: str | None = None,
+):
+    """Return alarm events in a time window.
+
+    Provide either ``start``+``end`` (Unix timestamps) or ``range``
+    (e.g. ``30m``, ``1h``, ``24h``).  Events are sparse — only rows
+    written on register state changes are returned.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    now = time.time()
+
+    if start is not None and end is not None:
+        start_ts, end_ts = start, end
+    elif range is not None:
+        range_s = RANGE_MAP.get(range)
+        if range_s is None:
+            raise HTTPException(400, f"Unknown range '{range}'")
+        start_ts, end_ts = now - range_s, now
+    else:
+        start_ts, end_ts = now - 1800, now  # default 30m
+
+    events = await query_alarm_events(
+        db, start_ts, end_ts, gateway_id=gateway_id
+    )
+    return {"events": events, "count": len(events)}
 
 
 @router.get("/settings/metrics")

@@ -38,10 +38,12 @@ from franklinwh_bridge.store.db import (
     log_schedule_event,
     log_startup_event,
 )
+from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.metrics import (
     archive_old_metrics,
     get_raw_age_days,
     get_retention_days,
+    log_metrics_snapshot,
     purge_old,
     record_sample,
 )
@@ -172,6 +174,12 @@ async def lifespan(app: FastAPI):
 
     # ── Global Sample Bus Subscribers ─────────────────────────
 
+    # Per-gateway grid_mode tracking for change-event logging
+    _last_grid_mode: dict[str, str | None] = {}
+
+    # Alarm tracker — writes alarm_events rows on state changes
+    alarm_tracker = AlarmTracker(db)
+
     # Metrics recorder — writes power readings to the metrics table
     async def _record_metrics(sample: Sample) -> None:
         # Mock gateways emit synthetic data — never persist it, so it can't
@@ -196,6 +204,24 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.debug("Metrics record failed: %s", exc)
             stats.record_sample_rejected()
+
+        # Log grid_mode state changes as discrete events
+        gw_id = sample.gateway_id
+        new_mode = sample.points.get("grid_mode")
+        prev_mode = _last_grid_mode.get(gw_id, "UNSET")
+        if new_mode is not None and new_mode != prev_mode:
+            _last_grid_mode[gw_id] = new_mode
+            if prev_mode != "UNSET":
+                detail = f"{prev_mode} → {new_mode} (gateway={gw_id})"
+                logger.info("Grid mode changed: %s", detail)
+                with contextlib.suppress(Exception):
+                    await log_startup_event(db, "grid_mode_change", detail)
+
+        # Alarm change detection — writes alarm_events rows on register transitions
+        inst = registry.get(sample.gateway_id)
+        if inst is None or not getattr(inst.config, "mock", False):
+            with contextlib.suppress(Exception):
+                await alarm_tracker.process_sample(sample.points, sample.gateway_id)
 
     sample_bus.subscribe(_record_metrics)
 
@@ -354,6 +380,11 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error("Schedule engine start failed: %s", exc)
 
+        try:
+            await log_metrics_snapshot(db, "metrics_snapshot_startup")
+        except Exception as exc:
+            logger.warning("Metrics snapshot (startup) failed: %s", exc)
+
     asyncio.create_task(_start_gateways())
 
     # ── Health Components ─────────────────────────────────────
@@ -405,6 +436,11 @@ async def lifespan(app: FastAPI):
 
     # 4. Flush operational stats
     await stats.flush()
+
+    try:
+        await log_metrics_snapshot(db, "metrics_snapshot_shutdown")
+    except Exception as exc:
+        logger.warning("Metrics snapshot (shutdown) failed: %s", exc)
 
     await log_startup_event(db, "shutdown", f"v{__version__}")
     await db.close()
