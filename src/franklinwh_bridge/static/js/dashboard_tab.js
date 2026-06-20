@@ -37,6 +37,37 @@ function dashboardTab() {
     'Emergency Backup': 'Backup',
   };
 
+  // Mirrors mock_gateway.py synthetic_points() — used to build fake historical
+  // time-series for mock gateways in the compare chart (they are never stored
+  // to the DB, so we generate them client-side using the same deterministic formula).
+  function mockSyntheticSeries(gatewayId, nowTs, rangeSeconds, nPoints) {
+    const seed = gatewayId.split('').reduce((s, c) => s + c.charCodeAt(0), 0) || 1;
+    const phase = (seed % 360) * Math.PI / 180;
+    const ampSolar   = 0.6 + 0.4 * ((seed * 7)  % 100) / 100;
+    const ampBattery = 0.6 + 0.4 * ((seed * 13) % 100) / 100;
+    const ampHome    = 0.7 + 0.3 * ((seed * 17) % 100) / 100;
+    const socBase    = 30  + 40  * ((seed * 3)  % 100) / 100;
+    const MODES = ['Self-Consumption', 'TOU', 'Emergency Backup'];
+    const step = rangeSeconds / nPoints;
+    const points = [];
+    for (let i = 0; i < nPoints; i++) {
+      const ts   = nowTs - rangeSeconds + i * step;
+      const tick = i;
+      const wave  = Math.sin(tick / 6.0  + phase);
+      const wave2 = Math.sin(tick / 11.0 + phase);
+      const wave3 = Math.sin(tick / 20.0 + phase + 1.0);
+      const soc       = Math.max(0, Math.min(100, Math.round((socBase + 25 * wave * ampBattery) * 10) / 10));
+      const battery_w = Math.round(2500 * wave * ampBattery * 10) / 10;
+      const solar_w   = Math.max(0, Math.round(4000 * Math.max(0, wave2) * ampSolar * 10) / 10);
+      const home_w    = Math.round((600 + 500 * Math.abs(wave)) * ampHome * 10) / 10;
+      const grid_w    = Math.round((home_w - solar_w - battery_w) * 10) / 10;
+      const mode_name = MODES[(Math.floor(tick / 30) + seed) % 3];
+      const grid_mode = wave3 > 0.7 ? 'Grid Forming' : 'Grid Following';
+      points.push({ ts, battery_w, grid_w, solar_w, home_w, soc, mode_name, grid_mode });
+    }
+    return points;
+  }
+
   const modeBackgroundPlugin = {
     id: 'modeBackground',
     beforeDraw(chart) {
@@ -956,9 +987,20 @@ function dashboardTab() {
       const gateways = Alpine.store('app').gatewayList.filter(g => g.enabled);
       if (!gateways.length) return;
 
-      // Parallel fetch for all gateways
+      // Parallel fetch for real gateways; synthetic generation for mock gateways
       const range = this.chartRange === 'live' ? '30m' : this.chartRange;
+      const RANGE_SECS = {
+        '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600,
+        '8h': 28800, '12h': 43200, '18h': 64800, '24h': 86400,
+        '3d': 259200, '5d': 432000, '7d': 604800, '30d': 2592000,
+      };
+      const nowTs = Date.now() / 1000;
+      const rangeSecs = RANGE_SECS[range] || 1800;
       const results = await Promise.all(gateways.map(async gw => {
+        if (gw.mock) {
+          const pts = mockSyntheticSeries(gw.id, nowTs, rangeSecs, Math.min(180, Math.floor(rangeSecs / 10)));
+          return { gw, data: { points: pts } };
+        }
         let url = `api/metrics?range=${range}`;
         if (this.chartBucket) url += `&bucket=${this.chartBucket}`;
         url += `&gateway_id=${encodeURIComponent(gw.id)}`;
