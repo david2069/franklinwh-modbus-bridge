@@ -53,20 +53,28 @@ class MockController:
 def synthetic_points(gateway_id: str, tick: int) -> dict:
     """Build one synthetic sample for *gateway_id* at *tick*.
 
-    A per-gateway phase offset makes multiple mocks produce distinct but
-    realistic, smoothly varying curves.  Emits the canonical point keys the
-    dashboard and Site aggregator read (so a mock renders the standard cards).
+    Each gateway gets a distinct seed that shifts phase, scales amplitudes,
+    and picks a different operating-mode profile — so multiple mocks produce
+    visually distinct but realistic curves on the same chart.
     """
     seed = sum(ord(c) for c in gateway_id) or 1
     phase = (seed % 360) * math.pi / 180.0
-    wave = math.sin(tick / 6.0 + phase)
-    wave2 = math.sin(tick / 11.0 + phase)
 
-    soc = max(0.0, min(100.0, round(55 + 30 * wave, 1)))
-    battery_w = round(2200 * wave, 1)  # positive = discharging
-    solar_w = max(0.0, round(3500 * max(0.0, wave2), 1))
-    home_w = round(700 + 400 * abs(wave), 1)
-    grid_w = round(home_w - solar_w - battery_w, 1)  # balances the rest
+    # Per-gateway amplitude multipliers (0.6 – 1.0 range) so charts differ
+    amp_solar   = 0.6 + 0.4 * ((seed * 7)  % 100) / 100.0
+    amp_battery = 0.6 + 0.4 * ((seed * 13) % 100) / 100.0
+    amp_home    = 0.7 + 0.3 * ((seed * 17) % 100) / 100.0
+    soc_base    = 30  + 40  * ((seed * 3)  % 100) / 100.0  # 30–70 %
+
+    wave  = math.sin(tick / 6.0  + phase)
+    wave2 = math.sin(tick / 11.0 + phase)
+    wave3 = math.sin(tick / 20.0 + phase + 1.0)  # slow drift for temp/mode
+
+    soc       = max(0.0,  min(100.0, round(soc_base + 25 * wave * amp_battery, 1)))
+    battery_w = round(2500 * wave * amp_battery, 1)
+    solar_w   = max(0.0,  round(4000 * max(0.0, wave2) * amp_solar, 1))
+    home_w    = round((600 + 500 * abs(wave)) * amp_home, 1)
+    grid_w    = round(home_w - solar_w - battery_w, 1)
 
     if battery_w > 50:
         bstate = "Discharging"
@@ -75,15 +83,34 @@ def synthetic_points(gateway_id: str, tick: int) -> dict:
     else:
         bstate = "Standby"
 
+    # Temperature: each gateway runs at a different base, varies slowly
+    temp_base_amb = 18 + (seed % 8)          # 18–25 °C base ambient
+    temp_base_cab = 28 + (seed % 12)         # 28–39 °C base cabinet
+    ambient_temp  = round(temp_base_amb + 3 * wave3, 1)
+    cabinet_temp  = round(temp_base_cab + 5 * wave3 + abs(battery_w) / 800, 1)
+
+    # Operating mode: rotate through modes on a slow per-gateway cycle
+    _MODES = ["Self-Consumption", "TOU", "Emergency Backup"]
+    mode_idx  = (tick // 30 + seed) % len(_MODES)
+    mode_name = _MODES[mode_idx]
+
+    # Grid mode: mostly Grid Following, occasionally Grid Forming on slow wave
+    grid_mode = "Grid Forming" if wave3 > 0.7 else "Grid Following"
+
     return {
-        "soc": soc,
-        "battery_power_w": battery_w,
+        "soc":                soc,
+        "battery_power_w":    battery_w,
         "battery_dc_power_w": battery_w,
-        "grid_power_w": grid_w,
-        "total_solar": solar_w,
-        "home_load_ext": home_w,
-        "battery_state": bstate,
-        "connection_state": "Connected",
+        "grid_power_w":       grid_w,
+        "total_solar":        solar_w,
+        "home_load_ext":      home_w,
+        "battery_state":      bstate,
+        "connection_state":   "Connected",
+        "inverter_state":     "Running",
+        "mode_name":          mode_name,
+        "grid_mode":          grid_mode,
+        "ambient_temp_c":     ambient_temp,
+        "cabinet_temp_c":     cabinet_temp,
     }
 
 
