@@ -40,29 +40,54 @@ function dashboardTab() {
   // Mirrors mock_gateway.py synthetic_points() — used to build fake historical
   // time-series for mock gateways in the compare chart (they are never stored
   // to the DB, so we generate them client-side using the same deterministic formula).
+  // Mirrors mock_gateway.py synthetic_points() — realistic time-of-day patterns.
+  // Uses actual timestamps so historical bars show a real diurnal arc.
   function mockSyntheticSeries(gatewayId, nowTs, rangeSeconds, nPoints) {
     const seed = gatewayId.split('').reduce((s, c) => s + c.charCodeAt(0), 0) || 1;
-    const phase = (seed % 360) * Math.PI / 180;
-    const ampSolar   = 0.6 + 0.4 * ((seed * 7)  % 100) / 100;
-    const ampBattery = 0.6 + 0.4 * ((seed * 13) % 100) / 100;
-    const ampHome    = 0.7 + 0.3 * ((seed * 17) % 100) / 100;
-    const socBase    = 30  + 40  * ((seed * 3)  % 100) / 100;
-    const MODES = ['Self-Consumption', 'TOU', 'Emergency Backup'];
+
+    // Per-gateway capacity/timing — mirrors Python synthetic_points()
+    const solarPeakW = (3.5 + 2.5 * ((seed * 7)  % 100) / 100) * 1000;
+    const homeBaseW  =  400 + 400 * ((seed * 17) % 100) / 100;
+    const battCapW   = (2.0 + 1.5 * ((seed * 13) % 100) / 100) * 1000;
+    const socMorning =  25  +  20 * ((seed * 11) % 100) / 100;
+
     const step = rangeSeconds / nPoints;
     const points = [];
     for (let i = 0; i < nPoints; i++) {
       const ts   = nowTs - rangeSeconds + i * step;
       const tick = i;
-      const wave  = Math.sin(tick / 6.0  + phase);
-      const wave2 = Math.sin(tick / 11.0 + phase);
-      const wave3 = Math.sin(tick / 20.0 + phase + 1.0);
-      const soc       = Math.max(0, Math.min(100, Math.round((socBase + 25 * wave * ampBattery) * 10) / 10));
-      const battery_w = Math.round(2500 * wave * ampBattery * 10) / 10;
-      const solar_w   = Math.max(0, Math.round(4000 * Math.max(0, wave2) * ampSolar * 10) / 10);
-      const home_w    = Math.round((600 + 500 * Math.abs(wave)) * ampHome * 10) / 10;
-      const grid_w    = Math.round((home_w - solar_w - battery_w) * 10) / 10;
-      const mode_name = MODES[(Math.floor(tick / 30) + seed) % 3];
-      const grid_mode = wave3 > 0.7 ? 'Grid Forming' : 'Grid Following';
+
+      // Wall-clock fractional hour from unix timestamp (UTC)
+      const hour = (ts % 86400) / 3600;
+
+      // Solar: smooth bell curve 6h–20h
+      const solarFactor = Math.max(0, Math.sin((hour - 6) * Math.PI / 14));
+      const cloudNoise  = 0.88 + 0.12 * Math.sin(tick / 15.0 + seed * 0.7);
+      const solar_w     = Math.round(solarPeakW * Math.pow(solarFactor, 1.3) * cloudNoise * 10) / 10;
+
+      // Home load: base + morning peak (8h) + evening peak (19h)
+      const morningPeak = 900  * Math.exp(-Math.pow(hour - 8.0,  2) / 1.5);
+      const eveningPeak = 1400 * Math.exp(-Math.pow(hour - 19.0, 2) / 3.5);
+      const loadJitter  = 1.0  + 0.04 * Math.sin(tick / 4.0 + seed * 1.3);
+      const home_w      = Math.round((homeBaseW + morningPeak + eveningPeak) * loadJitter * 10) / 10;
+
+      // Battery: absorbs solar surplus, discharges on deficit
+      const rawBatt   = -(solar_w - home_w) * 0.75;
+      const battery_w = Math.round(Math.max(-battCapW, Math.min(battCapW, rawBatt)) * 10) / 10;
+
+      // SOC: diurnal arc morning-low → afternoon-high → evening-low
+      const socNoonPeak = Math.min(95, socMorning + 55);
+      const socCurve = socMorning + (socNoonPeak - socMorning) *
+        Math.pow(Math.max(0, Math.sin(Math.max(0, (hour - 6) * Math.PI / 14))), 0.7);
+      const soc = Math.round(Math.max(5, Math.min(98, socCurve + 0.3 * Math.sin(tick / 25.0 + seed * 0.5))) * 10) / 10;
+
+      const grid_w = Math.round((home_w - solar_w - battery_w) * 10) / 10;
+
+      const mode_name = (hour >= 22 || hour < 6) ? 'Emergency Backup'
+                      : (hour >= 16)             ? 'TOU'
+                      :                            'Self-Consumption';
+      const grid_mode = mode_name === 'Emergency Backup' ? 'Grid Forming' : 'Grid Following';
+
       points.push({ ts, battery_w, grid_w, solar_w, home_w, soc, mode_name, grid_mode });
     }
     return points;
