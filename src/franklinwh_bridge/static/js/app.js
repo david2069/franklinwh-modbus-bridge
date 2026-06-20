@@ -101,7 +101,7 @@ const POINT_SOURCES = {
   home_load_ext: 'ext.16000',
   grid_power_w: '701.W', voltage_v: '701.LNV', current_a: '701.A', frequency_hz: '701.Hz',
   power_factor: '701.PF', grid_va: '701.VA', grid_var: '701.Var',
-  connection_state: '701.ConnSt', inverter_state: '701.InvSt', grid_mode: '701.ConnSt',
+  connection_state: '701.ConnSt', inverter_state: '701.InvSt', grid_mode: '701.DERMode',
   ambient_temp_c: '701.TmpAmb', cabinet_temp_c: '701.TmpCab',
   mode_name: 'ext.15507', wset_enabled: '704.WSetEna', wset_pct: '704.WSetPct',
   wset_watts: '704.WSet', wset_mode: '704.WSetMod', wset_mode_name: '704.WSetMod',
