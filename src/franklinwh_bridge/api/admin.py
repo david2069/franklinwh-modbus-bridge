@@ -17,7 +17,11 @@ from pydantic import BaseModel
 
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
-from franklinwh_bridge.store.alarms import query_alarm_events
+from franklinwh_bridge.store.alarms import (
+    compute_grid_mode_intervals,
+    pair_alarm_events,
+    query_alarm_events,
+)
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_catalog_points,
@@ -438,6 +442,47 @@ async def get_alarm_events(
     events = await query_alarm_events(
         db, start_ts, end_ts, gateway_id=gateway_id
     )
+    return {"events": events, "count": len(events)}
+
+
+@router.get("/events")
+async def get_events(
+    request: Request,
+    start: float | None = None,
+    end: float | None = None,
+    range: str | None = None,
+    gateway_id: str | None = None,
+):
+    """Return durationed alarm + PV-Clipping events in a time window.
+
+    Unlike ``/alarm-events`` (raw SET/CLR transitions), this pairs each
+    transition into a single row with a start time, end time, and
+    duration, and merges in PV-Clipping/Grid-Forming intervals derived
+    from ``metrics.grid_mode``. Same ``start``+``end`` / ``range`` params
+    as ``/alarm-events``.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    now = time.time()
+
+    if start is not None and end is not None:
+        start_ts, end_ts = start, end
+    elif range is not None:
+        range_s = RANGE_MAP.get(range)
+        if range_s is None:
+            raise HTTPException(400, f"Unknown range '{range}'")
+        start_ts, end_ts = now - range_s, now
+    else:
+        start_ts, end_ts = now - 1800, now  # default 30m
+
+    raw_alarms = await query_alarm_events(db, start_ts, end_ts, gateway_id=gateway_id)
+    alarm_rows = pair_alarm_events(raw_alarms)
+
+    metrics_points = await query_metrics_daterange(
+        db, start_ts, end_ts, gateway_id=gateway_id
+    )
+    clip_rows = compute_grid_mode_intervals(metrics_points)
+
+    events = sorted(alarm_rows + clip_rows, key=lambda e: e["ts"], reverse=True)
     return {"events": events, "count": len(events)}
 
 

@@ -401,7 +401,7 @@
     <div class="card" x-show="cardVisible.batterySoc"
          draggable="true" :style="`order:${cardOrder.indexOf('batterySoc')}`"
          @dragstart="dragStart('batterySoc')" @dragover.prevent="dragOver($event,'batterySoc')" @dragend="dragEnd()">
-      <div class="card-label mb-3">Battery State of Charge</div>
+      <div class="card-label mb-3" x-text="$store.app.batteryLabel ? $store.app.batteryLabel + ' — State of Charge' : 'Battery State of Charge'"></div>
       <div class="flex items-center gap-5">
         <div class="soc-ring">
           <svg viewBox="0 0 100 100">
@@ -462,7 +462,7 @@
     <div class="card" x-show="cardVisible.battery"
          draggable="true" :style="`order:${cardOrder.indexOf('battery')}`"
          @dragstart="dragStart('battery')" @dragover.prevent="dragOver($event,'battery')" @dragend="dragEnd()">
-      <div class="card-label mb-3">Battery</div>
+      <div class="card-label mb-3" x-text="$store.app.batteryLabel || 'Battery'"></div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <!-- Power + Status -->
         <div class="flex justify-between">
@@ -931,6 +931,11 @@
                   class="px-2 py-1 text-[10px] font-medium rounded border border-violet-500/40 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition"
                   title="Compare all gateways">Compare</button>
 
+          <!-- Events (durationed alarm/PV-Clip history) -->
+          <button @click="openEventsModal()"
+                  class="px-2 py-1 text-[10px] font-medium rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition"
+                  title="View alarm/event history">Events</button>
+
           <!-- Expand -->
           <button @click="openChartModal()"
                   class="px-2 py-1 text-[10px] font-medium rounded border border-slate-600/40 bg-slate-700/30 text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition"
@@ -1140,6 +1145,88 @@
       <!-- Modal chart — use aspectRatio instead of flex-1 to prevent flattening -->
       <div class="p-5">
         <canvas x-ref="modalChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Events Modal (durationed alarm/PV-Clip history) ───────────────────── -->
+  <div x-show="showEventsModal" x-cloak
+       class="fixed inset-0 z-[100] flex items-center justify-center p-6"
+       @keydown.escape.window="closeEventsModal()">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="closeEventsModal()"></div>
+    <div class="relative bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95">
+      <!-- Modal header -->
+      <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.08]">
+        <div class="flex items-center gap-2 flex-wrap">
+          <h3 class="text-sm font-semibold text-slate-200">Alarm &amp; Event History</h3>
+
+          <!-- Range dropdown -->
+          <div class="relative" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open"
+                    class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 transition hover:bg-amber-500/20">
+              <span x-text="eventsRanges.find(r => r.value === eventsRange)?.label ?? eventsRange"></span>
+              <svg class="w-3 h-3" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute left-0 top-full mt-1 z-50 bg-slate-800 border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[80px]">
+              <template x-for="r in eventsRanges" :key="'evr-' + r.value">
+                <button @click="setEventsRange(r.value); open = false"
+                        class="w-full text-left px-3 py-1 text-[11px] hover:bg-slate-700 transition"
+                        :class="eventsRange === r.value ? 'text-amber-400 font-semibold' : 'text-slate-300'"
+                        x-text="r.label"></button>
+              </template>
+            </div>
+          </div>
+        </div>
+        <button @click="closeEventsModal()" class="text-sm text-slate-400 hover:text-slate-200 font-bold transition px-2">✕</button>
+      </div>
+
+      <!-- Loading -->
+      <div x-show="eventsLoading" class="flex items-center gap-3 py-8 justify-center">
+        <div class="loading-spinner"></div>
+        <span class="text-sm text-slate-500">Loading events...</span>
+      </div>
+
+      <!-- Empty state -->
+      <div x-show="!eventsLoading && eventsData.length === 0" class="py-8 text-center text-sm text-slate-500">
+        No alarm or PV-Clipping events in this range.
+      </div>
+
+      <!-- Events table -->
+      <div x-show="!eventsLoading && eventsData.length > 0" class="overflow-auto" style="max-height: calc(100vh - 320px);">
+        <table class="w-full text-xs">
+          <thead class="sticky top-0 bg-slate-800 z-10">
+            <tr class="border-b border-white/[0.08]">
+              <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">TIME</th>
+              <th class="text-left px-3 py-2 text-slate-500 font-semibold">REGISTER</th>
+              <th class="text-left px-3 py-2 text-slate-500 font-semibold">SUNSPEC GROUP.POINT</th>
+              <th class="text-left px-3 py-2 text-slate-500 font-semibold">VALUE</th>
+              <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">DURATION</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(ev, idx) in eventsData" :key="idx">
+              <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
+                <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" x-text="formatEventTime(ev.ts)"></td>
+                <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.register ?? '—'"></td>
+                <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.point ?? ev.source"></td>
+                <td class="px-3 py-1.5">
+                  <span class="chip text-[10px]" :class="severityChipClass(ev.severity)" x-text="ev.name"></span>
+                </td>
+                <td class="px-3 py-1.5 font-mono text-slate-300 whitespace-nowrap">
+                  <span x-text="formatDuration(ev.duration_seconds)"></span>
+                  <span x-show="ev.ongoing" class="text-amber-400"> (ongoing)</span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

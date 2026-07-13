@@ -149,7 +149,9 @@ function dashboardTab() {
       }
       ctx.restore();
 
-      // Grid-mode event markers — vertical tick + label chip at top of chart
+      // Grid-mode event markers — thin vertical tick only (no text; see the
+      // [Events] modal for readable detail, since closely-spaced events
+      // made on-chart text chips overlap and become unreadable).
       const gridModeData = chart._gridModeData;
       if (gridModeData && gridModeData.length >= 2) {
         const n = gridModeData.length;
@@ -160,7 +162,6 @@ function dashboardTab() {
           'PV Clipped':     'rgba(251,146,60,0.9)',
         };
         ctx.save();
-        ctx.font = 'bold 8px sans-serif';
         for (let i = 1; i < n; i++) {
           const prev = gridModeData[i - 1];
           const curr = gridModeData[i];
@@ -175,25 +176,12 @@ function dashboardTab() {
           ctx.lineTo(xPos, chartArea.bottom);
           ctx.stroke();
           ctx.setLineDash([]);
-          const label = curr.replace('Grid ', '').replace('PV Clipped', 'PV Clip');
-          const tw = ctx.measureText(label).width;
-          const chipW = tw + 6;
-          const chipH = 12;
-          const chipX = Math.min(xPos + 2, chartArea.right - chipW - 2);
-          const chipY = chartArea.top + 2;
-          ctx.fillStyle = color.replace('0.9)', '0.2)');
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1;
-          ctx.fillRect(chipX, chipY, chipW, chipH);
-          ctx.strokeRect(chipX, chipY, chipW, chipH);
-          ctx.fillStyle = color;
-          ctx.textAlign = 'left';
-          ctx.fillText(label, chipX + 3, chipY + chipH - 3);
         }
         ctx.restore();
       }
 
-      // Alarm event markers — vertical tick + chip at bottom of chart
+      // Alarm event markers — thin vertical tick only (no text chip; see the
+      // [Events] modal for readable detail).
       const alarmData = chart._alarmData;
       const tsRaw = chart._tsRaw;
       if (!alarmData || !alarmData.length || !tsRaw || tsRaw.length < 2) return;
@@ -214,16 +202,12 @@ function dashboardTab() {
         warning: 'rgba(245,158,11,0.9)',
         info:    'rgba(148,163,184,0.9)',
       };
-      const chipH = 11;
-      const chipY = chartArea.bottom - chipH - 16;  // just above mode legend row
 
       ctx.save();
-      ctx.font = 'bold 8px sans-serif';
       for (const ev of alarmData) {
         const xPos = tsToX(ev.ts);
         const color = ALARM_COLORS[ev.severity] || ALARM_COLORS.info;
 
-        // Dotted vertical line
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 2]);
@@ -232,26 +216,6 @@ function dashboardTab() {
         ctx.lineTo(xPos, chartArea.bottom);
         ctx.stroke();
         ctx.setLineDash([]);
-
-        // Compact label: source + first alarm name (or state transition for M713)
-        const src = ev.source.replace('M701_Alrm', 'M701').replace('M714_PrtAlrms', 'M714').replace('M713_Sta', 'M713');
-        let detail = ev.alarms_set || ev.alarms_cleared || '';
-        // Abbreviate: take first token if multiple
-        detail = detail.split(',')[0].trim();
-        if (detail.length > 12) detail = detail.slice(0, 11) + '…';
-        const chipLabel = detail ? `${src}: ${detail}` : src;
-
-        const tw = ctx.measureText(chipLabel).width;
-        const chipW = tw + 6;
-        const chipX = Math.min(Math.max(xPos - chipW / 2, chartArea.left), chartArea.right - chipW - 2);
-        ctx.fillStyle = color.replace('0.9)', '0.15)');
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.fillRect(chipX, chipY, chipW, chipH);
-        ctx.strokeRect(chipX, chipY, chipW, chipH);
-        ctx.fillStyle = color;
-        ctx.textAlign = 'left';
-        ctx.fillText(chipLabel, chipX + 3, chipY + chipH - 3);
       }
       ctx.restore();
     },
@@ -320,6 +284,17 @@ function dashboardTab() {
     // Multi-gateway compare modal
     showCompareModal: false,
     _compareCharts: [],
+
+    // Events modal (durationed alarm/PV-Clip history — see [Events] button)
+    showEventsModal: false,
+    eventsData: [],
+    eventsLoading: false,
+    eventsRange: '7d',
+    eventsRanges: [
+      { value: '24h', label: '24h' },
+      { value: '7d',  label: '7d' },
+      { value: '30d', label: '30d' },
+    ],
 
     // Chart range selector
     chartRange: '30m',
@@ -1006,6 +981,60 @@ function dashboardTab() {
       this.showCompareModal = false;
       for (const c of this._compareCharts) { try { c.destroy(); } catch (_) {} }
       this._compareCharts = [];
+    },
+
+    // ── Events Modal (durationed alarm/PV-Clip history) ──────
+    openEventsModal() {
+      this.showEventsModal = true;
+      this.loadEvents();
+    },
+
+    closeEventsModal() {
+      this.showEventsModal = false;
+    },
+
+    setEventsRange(range) {
+      this.eventsRange = range;
+      this.loadEvents();
+    },
+
+    async loadEvents() {
+      this.eventsLoading = true;
+      try {
+        const activeGw = Alpine.store('app')?.activeGateway;
+        let url = `api/events?range=${this.eventsRange}`;
+        if (activeGw && activeGw !== 'site') url += `&gateway_id=${encodeURIComponent(activeGw)}`;
+        const resp = await fetchJSON(url);
+        this.eventsData = resp?.events || [];
+      } catch (e) {
+        console.error('Failed to load events', e);
+        this.eventsData = [];
+      } finally {
+        this.eventsLoading = false;
+      }
+    },
+
+    formatDuration(seconds) {
+      if (seconds == null) return '—';
+      const s = Math.max(0, Math.round(seconds));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    },
+
+    formatEventTime(ts) {
+      if (!ts) return '';
+      return new Date(ts * 1000).toLocaleString();
+    },
+
+    severityChipClass(severity) {
+      switch (severity) {
+        case 'fault':   return 'error';
+        case 'warning': return 'warn';
+        case 'info':    return 'muted';
+        default:        return 'muted';
+      }
     },
 
     async _loadCompareCharts() {

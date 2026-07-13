@@ -406,7 +406,7 @@ async def query_metrics_daterange(
             CAST((ts - ?) / ? AS INTEGER) AS bucket,
             AVG(battery_w), AVG(grid_w), AVG(solar_w), AVG(home_w), AVG(soc),
             AVG(ambient_temp_c), AVG(cabinet_temp_c), MAX(mode_name),
-            MAX(self_reserve_pct), MAX(tou_reserve_pct)
+            MAX(self_reserve_pct), MAX(tou_reserve_pct), MAX(grid_mode)
         FROM {source}
         GROUP BY bucket
         ORDER BY bucket

@@ -14,6 +14,7 @@ from franklinwh_bridge.store.metrics import (
     get_storage_stats,
     purge_old,
     query_metrics,
+    query_metrics_daterange,
     record_sample,
     set_retention_days,
 )
@@ -165,6 +166,28 @@ async def test_query_metrics_downsampled(db):
     # Each row should have the expected keys
     assert "ts" in rows[0]
     assert "battery_w" in rows[0]
+
+
+async def test_query_metrics_daterange_bucketed_includes_grid_mode(db):
+    # Span > 6h with no explicit bucket_seconds forces the auto-bucket branch
+    # of query_metrics_daterange, which previously crashed with an
+    # IndexError reading grid_mode (SELECT was missing MAX(grid_mode)).
+    now = time.time()
+    start_ts = now - 8 * 3600
+    for i in range(50):
+        ts = start_ts + i * 576  # ~9.6min apart, spans 8h
+        mode = "PV Clipped" if i == 25 else "Grid Following"
+        await db.execute(
+            "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc, grid_mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ts, 100, 0, 0, 0, 50, mode),
+        )
+    await db.commit()
+
+    rows = await query_metrics_daterange(db, start_ts, now)
+    assert len(rows) > 0
+    assert "grid_mode" in rows[0]
+    assert any(r["grid_mode"] == "PV Clipped" for r in rows)
 
 
 async def test_purge_old_removes_expired(db):

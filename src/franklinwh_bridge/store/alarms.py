@@ -70,6 +70,20 @@ _WARN_BITS_M701 = {1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 15}
 _FAULT_BITS_M714 = {2, 5, 6, 7}
 _WARN_BITS_M714 = {0, 1, 3, 4}
 
+# SunSpec register/point metadata per alarm_events.source and the grid-mode
+# pseudo-source used for PV-Clipping intervals — not stored in alarm_events
+# itself, joined in at read time for display.
+_SOURCE_META: dict[str, dict[str, Any]] = {
+    "M701_Alrm":     {"register": 40076, "point": "DERMeasureAC.Alrm"},
+    "M701_DERMode":  {"register": 40078, "point": "DERMeasureAC.DERMode"},
+    "M713_Sta":      {"register": 41039, "point": "DERStorageCapacity.Sta"},
+    "M714_PrtAlrms": {"register": 41044, "point": "DERMeasureDC.PrtAlrms"},
+}
+
+# grid_mode values worth surfacing as a distinct interval (the default
+# "Grid Following" state is not an event).
+_GRID_MODES_OF_INTEREST = {"PV Clipped", "Grid Forming"}
+
 
 def _decode_bitfield(value: int, names: dict[int, str]) -> list[str]:
     """Return names of all set bits in *value*."""
@@ -248,3 +262,137 @@ async def query_alarm_events(
                 "severity": row[6],
             })
     return events
+
+
+def pair_alarm_events(events: list[dict]) -> list[dict]:
+    """Pair SET/open transitions with their later CLR/close transition.
+
+    ``alarm_events`` rows are discrete transitions (see ``process_sample``
+    above) — this walks them chronologically per ``(gateway_id, source)``
+    and turns each open/close pair into one durationed row. This also
+    handles ``M713_Sta`` state changes correctly with no special-casing:
+    its ``alarms_cleared`` field is the *previous* state name, so "closing"
+    that entry is exactly "the gateway left that state".
+
+    Names still open at the end of *events* (no matching CLR yet) are
+    returned with ``ongoing=True`` and a duration measured up to the last
+    timestamp seen for that source.
+    """
+    # open[(gateway_id, source)][name] = {"ts": set_ts, "value_raw": ..., "severity": ...}
+    open_entries: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
+    last_ts_per_key: dict[tuple[str, str], float] = {}
+    paired: list[dict] = []
+
+    for ev in sorted(events, key=lambda e: e["ts"]):
+        key = (ev["gateway_id"], ev["source"])
+        last_ts_per_key[key] = ev["ts"]
+        open_for_key = open_entries.setdefault(key, {})
+        meta = _SOURCE_META.get(ev["source"], {})
+
+        set_names = [n.strip() for n in (ev["alarms_set"] or "").split(",") if n.strip()]
+        cleared_names = [n.strip() for n in (ev["alarms_cleared"] or "").split(",") if n.strip()]
+
+        for name in set_names:
+            open_for_key[name] = {
+                "ts": ev["ts"],
+                "value_raw": ev["value_raw"],
+                "severity": ev["severity"],
+            }
+
+        for name in cleared_names:
+            opened = open_for_key.pop(name, None)
+            set_ts = opened["ts"] if opened else ev["ts"]
+            paired.append({
+                "ts": set_ts,
+                "end_ts": ev["ts"],
+                "duration_seconds": max(0.0, ev["ts"] - set_ts),
+                "ongoing": False,
+                "gateway_id": ev["gateway_id"],
+                "source": ev["source"],
+                "register": meta.get("register"),
+                "point": meta.get("point"),
+                "name": name,
+                "value_raw": opened["value_raw"] if opened else ev["value_raw"],
+                "severity": opened["severity"] if opened else ev["severity"],
+            })
+
+    # Anything still open has no CLR in this window — report as ongoing.
+    for key, open_for_key in open_entries.items():
+        gateway_id, source = key
+        meta = _SOURCE_META.get(source, {})
+        last_ts = last_ts_per_key.get(key)
+        for name, opened in open_for_key.items():
+            paired.append({
+                "ts": opened["ts"],
+                "end_ts": last_ts,
+                "duration_seconds": max(0.0, (last_ts or opened["ts"]) - opened["ts"]),
+                "ongoing": True,
+                "gateway_id": gateway_id,
+                "source": source,
+                "register": meta.get("register"),
+                "point": meta.get("point"),
+                "name": name,
+                "value_raw": opened["value_raw"],
+                "severity": opened["severity"],
+            })
+
+    return paired
+
+
+def compute_grid_mode_intervals(points: list[dict]) -> list[dict]:
+    """Run-length-encode ``grid_mode`` samples into durationed intervals.
+
+    Only modes in ``_GRID_MODES_OF_INTEREST`` (e.g. "PV Clipped") are
+    emitted — the default "Grid Following" state is not an event. The
+    ``end_ts`` of a closed interval is the timestamp of the *next*
+    differing sample (when the mode actually changed away), not the last
+    sample still in that mode — a single-sample blip must still report a
+    duration of roughly one poll interval, not 0.
+    """
+    meta = _SOURCE_META.get("M701_DERMode", {})
+    intervals: list[dict] = []
+    prev_mode: str | None = None
+    seg_start: float | None = None
+
+    ordered = sorted((p for p in points if p.get("ts") is not None), key=lambda p: p["ts"])
+
+    for point in ordered:
+        mode = point.get("grid_mode")
+        ts = point["ts"]
+        if mode != prev_mode:
+            if prev_mode in _GRID_MODES_OF_INTEREST and seg_start is not None:
+                intervals.append({
+                    "ts": seg_start,
+                    "end_ts": ts,
+                    "duration_seconds": max(0.0, ts - seg_start),
+                    "ongoing": False,
+                    "gateway_id": point.get("gateway_id", "default"),
+                    "source": "M701_DERMode",
+                    "register": meta.get("register"),
+                    "point": meta.get("point"),
+                    "name": prev_mode,
+                    "value_raw": None,
+                    "severity": "info",
+                })
+            seg_start = ts
+            prev_mode = mode
+
+    # Trailing open segment — still in a mode of interest at the last sample,
+    # with no later differing sample in range to close it.
+    if prev_mode in _GRID_MODES_OF_INTEREST and seg_start is not None and ordered:
+        last_ts = ordered[-1]["ts"]
+        intervals.append({
+            "ts": seg_start,
+            "end_ts": last_ts,
+            "duration_seconds": max(0.0, last_ts - seg_start),
+            "ongoing": True,
+            "gateway_id": ordered[-1].get("gateway_id", "default"),
+            "source": "M701_DERMode",
+            "register": meta.get("register"),
+            "point": meta.get("point"),
+            "name": prev_mode,
+            "value_raw": None,
+            "severity": "info",
+        })
+
+    return intervals
