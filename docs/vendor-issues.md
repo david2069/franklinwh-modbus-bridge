@@ -141,22 +141,29 @@ These proprietary registers are **not part of any SunSpec model** and require th
 
 | Register | Name | R/W | Precision | Notes |
 |----------|------|-----|-----------|-------|
-| 15500 | EXT_BASE | R | — | Base address |
+| 15500 | EXT_BASE / PVUse | R | — | Base address / PV Installed flag |
+| 15501 | apBoxPVUse | R | — | Remote PV Installed flag |
 | 15502 | PV Total | R | 1W | Total solar power |
 | 15503 | PV Proximal | R | 1W | Local PV array power |
 | 15504 | PV Remote 1 | R | 1W | Remote PV source 1 |
 | 15505 | PV Remote 2 | R | 1W | Remote PV source 2 |
 | 15506 | Home Load | R | ~100W | Quantized in ~100W steps |
-| 15507 | OnGrid Mode | R/W | — | 1=Backup, 2=Self-Consumption, 3=TOU |
+| 15507 | OnGrid Mode | R/W | — | 1=Backup, 2=Self-Consumption, 3=TOU on Modbus — **note: the Local API (franklinwh-local) uses a different numbering that swaps Backup/TOU; only Self-Consumption matches between the two** |
 | 15508 | Self Reserve % | R/W | 1% | Self-consumption reserve SOC |
 | 15509 | TOU Reserve % | R/W | 1% | TOU reserve SOC |
-| 15510-15511 | PV Output Wh | R | 1Wh | 32-bit unsigned, lifetime PV energy |
-| 15512-15513 | Unknown | R | — | Read but purpose unknown |
-| 16000 | Home Load Hi-Res | R | ~1W | Undocumented, discovered 2026-03-15 |
+| 15510-15511 | PV Output Wh (Total) | R | 1Wh | 32-bit unsigned, lifetime PV energy |
+| 15512-15513 | **proximalOutputWh** (PV Energy Proximal) | R | 1Wh | 32-bit unsigned — corrected 2026-07-13, this is NOT unknown; confirmed via both the bridge's own SunSpec Explorer catalog and `franklinwh-modbus`'s `SUNSPEC_MODEL_REFERENCE.md:171`. In one live sample this exactly equalled Total (15510) — plausible if there's no remote PV array contributing, but not independently confirmed either way |
+| 16000 | Home Load Hi-Res | R | ~1W | Undocumented by FranklinWH, discovered 2026-03-15 by the library author |
+| 16001 | **Disputed** | R | — | Two conflicting explanations exist in `franklinwh-modbus`'s own docs (mirror of Self/TOU Reserve % vs. Model 712.NPt) — never reconciled, not wired into any code. See `docs/modbus-library-docs-update-proposal.md` |
+| 16002 | **Disputed** | R | — | Same as above (mirror of TOU Reserve % vs. Model 701.TmpAmb) |
 
-**Vendor ask:** Document these registers officially. The 15510-15511 (PVOutputWh) 32-bit counter is critical for energy tracking but not documented. Register 16000 provides vastly better home load precision than 15506 but is completely undocumented.
+**Additionally, a separate 15000-15039 block** exists (distinct from the "extension" 15500+ range above) that's a bare hex/value dump in `franklinwh-modbus`'s own `FRANKLINWH_EXTENSIONS_MANIFEST.md` with no description for most entries. Cross-referencing a live raw read against the full 328-point SunSpec value database (via `tools/modbus_sunspec2_reader.py --match`) found three confirmed matches not yet in that manifest: **15020 → `713.WHRtg`** (battery rated Wh), **15025 → `701.LLV`/`701.LNV`** (raw line voltage), **15036 → `713.SoH`** (battery state of health, raw). The rest of that block (15007, 15021, 15022, 15026, 15027, 15029, 15030, 15033, 15034, 15035) remains genuinely unmatched against any known SunSpec value.
+
+**Vendor ask:** Document these registers officially. The 15510-15511 (PVOutputWh) 32-bit counter is critical for energy tracking but not documented. Register 16000 provides vastly better home load precision than 15506 but is completely undocumented, and 16001/16002 are disputed even within FranklinWH-adjacent tooling.
 
 **Library gap:** PVOutputWh (15510) is NOT read by `_read_extension_solar()` even though the register batch (15500-15513) already fetches it — `regs[10]` and `regs[11]` exist but are not mapped. Should be added to the library return dict as a 32-bit value: `(regs[10] << 16) | regs[11]`. Currently the bridge reads it via a separate raw pymodbus connection (poller.py:131-147).
+
+**See [modbus-library-docs-update-proposal.md](modbus-library-docs-update-proposal.md)** for a full write-up of the 16001/16002 conflict, the 15000-range findings, an empirical test plan using the Local API to resolve them, and a related but separate finding: several `franklinwh-modbus` docs still claim `WSetRvrtTms` (Issue 1) "works," contradicting the library's own current, correct docs/code.
 
 ---
 

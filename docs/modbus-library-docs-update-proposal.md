@@ -1,0 +1,158 @@
+# franklinwh-modbus documentation update proposal
+
+**Status:** Proposal only. `franklinwh-modbus` (`/Users/davidhona/dev/modbus`) is
+read-only from this bridge session — apply these from a dedicated session for
+that repo, per the multi-session repo workflow.
+
+**Origin:** User review 2026-07-13, prompted by a suspicion that the library's
+docs still promote a hardware timer that's confirmed broken, plus two rounds
+of extension-register exploration (SunSpec Explorer JSON export + a live
+`--match`-based raw register read against the device).
+
+---
+
+## A. Stale "WORKS"/"FUNCTIONAL" claims for `WSetRvrtTms` (safety-relevant)
+
+The library's *primary* docs are correct and current: `readme.md:69`,
+`docs/PICS_CONFORMANCE_CROSS_REFERENCE.md:65,307`, `docs/SAFETY_CONTROLS.md:
+356-379`, and `controller.py:78,1417` all consistently state the hardware
+auto-revert (`WSetRvrtTms`/`WSetRvrtRem`) is cosmetic and the software
+watchdog is the sole safety mechanism.
+
+But five **secondary** docs still say the hardware timer "WORKS" or is
+"FUNCTIONAL," with no caveat, and none of them reference the correct finding:
+
+| File | Line(s) | Current text |
+|---|---|---|
+| `docs/FRANKLINWH_SUNSPEC_QUIRKS.md` | 258, 293, 313 | *"✅ WORKS with proper sequencing! ... Timer=60s accepted, countdown active"*; *"Hardware reversion timer available: WSetRvrtTms works"* |
+| `docs/FRANKLINWH_MODBUS_GUIDE.md` | 301 | *"P1: WSetRvrtTms \| ✅ WORKS (60s accepted, countdown active) \| Re-tested 2026-03-13"* — directly contradicts the same file's own lines 55, 134, 252 ("never activates"/"broken") |
+| `docs/AGATE_FULL_MODEL_MAP.md` | 53, 64 | *"WSetRvrtTms: NOW FUNCTIONAL (Confirmed 2026-05-14). Countdown active."* |
+| `docs/SUNSPEC_DER_SEQUENCER_REFERENCE.md` | 44, 88-89 | *"Phase 2 (reversion safety — WSetRvrtTms) is now FULLY FUNCTIONAL ... VERIFIED (2026-05-14)"* |
+| `docs/SUNSPEC_GLOSSARY.md` | 40 | *"Dead-man Timer: Reversion timeout. Confirmed functional 2026-05-14."* |
+
+**Root cause** (via `git log -L` on `FRANKLINWH_SUNSPEC_QUIRKS.md`): the
+"WORKS" wording was added 2026-03-13 (`d9ea482`); the correct "Hardware
+Reversion is Cosmetic" section was added as a *separate* section the very
+next day, 2026-03-14 (`d862c16`) — but the earlier claims were never edited to
+match. The May-2026 docs then independently reintroduced the same "confirmed
+functional" language after a re-baseline test, apparently conflating "the
+countdown register decrements" with "the setpoint actually reverts" — the
+same mistake, twice. `docs/backlog.md` has no tracked item to reconcile this.
+
+**Proposed fix:** in all five locations, replace "WORKS"/"FUNCTIONAL"/
+"Confirmed functional" with something like *"Countdown decrements correctly,
+but does NOT cause reversion — see the Cosmetic/Issue-4 section below. Do not
+rely on this for safety."* Add a backlog item to prevent this drift recurring
+(a doc-consistency check, or at minimum a cross-link from every mention of
+`WSetRvrtTms` to the single canonical finding).
+
+---
+
+## B. Conflicting, unreconciled explanations for registers 16001/16002
+
+Two docs in the same repo attribute these registers to *different* things,
+and neither cross-references the other:
+
+- `docs/FRANKLINWH_SUNSPEC_QUIRKS.md:465-466` (2026-03-15): *"16001 \| Self
+  Reserve (%) \| 15508 \| Same"* and *"16002 \| TOU Reserve (%) \| 15509 \|
+  Same"* — presented as confirmed mirrors, based on a scan that found no other
+  non-zero registers in 15900-16100.
+- `docs/FRANKLINWH_EXTENSIONS_MANIFEST.md:27-28` (2026-05-15, headed
+  "Guess/Notes"): *"16001 \| NPt (Mirror) \| 712 \| NPt \| ... Mirror of
+  15508/15509 (Reserves=6)"* and *"16002 \| TmpAmb (Mirror) \| 701 \| TmpAmb \|
+  °C \| ... Matches 701.TmpAmb (scaled=20)"* — attributes them to SunSpec
+  Model 712's `NPt` and Model 701's ambient temperature instead.
+
+Neither value (16001=8, 16002=20 in a live read this session) is
+disambiguated between these explanations. Note also that `16001`/`16002` are
+**not present in `constants.py` at all** — only documentation references them;
+they're not wired into the library's actual register map or read by any code
+path, so this has never been resolved by exercising real code.
+
+**This session found a third data point** neither doc considered: a raw
+15000-15039 scan (via `tools/modbus_sunspec2_reader.py --match`) found real
+matches for `15020` (→ `713.WHRtg`, battery rated Wh), `15025` (→ `701.LLV`/
+`701.LNV`, raw line voltage), and `15036` (→ `713.SoH`, battery state of
+health) — none of which appear to be captured in `FRANKLINWH_EXTENSIONS_
+MANIFEST.md` yet (that file lists 15012-15035 as bare hex/value dumps with no
+description). These should be added.
+
+**Proposed fix:** run the empirical test in section D below to settle 16001/
+16002 definitively, then update whichever doc is wrong (or both, if neither
+current explanation survives contact with a real test) and add a note
+explaining why the other explanation was wrong, so this doesn't drift a third
+time. Also add the three newly-confirmed 15000-range matches to
+`FRANKLINWH_EXTENSIONS_MANIFEST.md`.
+
+---
+
+## C. Local API (franklinwh-local, TCP/9000) write inventory
+
+For the empirical test in section D, here's what can actually be changed via
+the Local API today (`/Users/davidhona/dev/franklinwh-local`):
+
+| Setting | cmd_type (req→resp) | Method | Fields |
+|---|---|---|---|
+| Operating mode (Backup/Self-Consumption/TOU) | 1727→1728, `opt=3` | `set_mode(mode)` (`client.py:263-274`) | `current_id` |
+| Off-grid / reconnect | 1723→1724, `opt=1` | `set_offgrid(on, soc=5)` (`client.py:276-280`) | `offgridSet`, `offgridSoc` |
+| Reserved SoC % (both Self-Consumption and TOU together) | 1405→1406, `opt=1` | `set_mode_soc(self_min, self_max, tou_min, tou_max)` (`client.py:282-293`) | `selfMinSoc`, `selfMaxSoc`, `touMinSoc`, `touMaxSoc` |
+| Smart circuit | 1409→1410, `opt=1` | documented in `catalog.WRITES` (`catalog.py:153-156`) but **no dedicated client method yet** — callable via generic `client.call(1409, data)` |
+
+**Critical caveat for the test plan**: `catalog.py:205-213` documents that
+Modbus register 15507 and the Local API's mode numbering **disagree and swap
+TOU/Backup** — *"register 15507/oldIndex = Backup 1/Self 2/TOU 3 — i.e. it
+swaps TOU and Backup (only Self-Consumption matches)."* When correlating a
+Local-API mode change against Modbus 15507, map by the Local API's
+`OPERATING_MODES` name (`catalog.py:214-218`), not by raw numeric id, or
+you'll draw a wrong conclusion about which mode is which.
+
+---
+
+## D. Proposed empirical test plan
+
+Goal: turn "16001/16002 might mirror X" from two competing guesses into a
+confirmed answer, and get real correlation data for the still-fully-unknown
+15000-range registers (15007, 15021, 15022, 15026, 15027, 15029, 15030,
+15033, 15034, 15035 — no match found against the 328-point SunSpec database
+or any named extension register so far).
+
+1. **Baseline capture**: read the full 15000-15039, 15500-15513, and
+   16000-16002 ranges via `tools/modbus_sunspec2_reader.py --raw ... --match`
+   (or the bridge's SunSpec Explorer export), alongside the standard SunSpec
+   registers for M701/M713 (ambient temp, line voltage, reserve %). Record
+   timestamp.
+2. **Change Self-Consumption reserve only** via `set_mode_soc()`, e.g. set
+   `selfMinSoc` to a value distinct from the current TOU reserve (so the two
+   are no longer numerically equal — this session's data had them both at 8%,
+   which is exactly why 16001 couldn't be disambiguated). Re-capture the same
+   ranges immediately after. Whichever of 16001/15508/15509 changes (or
+   doesn't) tells you definitively what 16001 tracks.
+3. **Change operating mode** via `set_mode()`, watching 15507 and 15016 (a
+   second register that numerically matched the current mode value in this
+   session's data, `2`, but wasn't confirmed as a real duplicate). Remember
+   the Backup/TOU swap caveat above when interpreting 15507.
+4. **Toggle off-grid** via `set_offgrid()` and scan the full 15500-16002
+   range for anything that changes — no register in this range is currently
+   documented as tracking off-grid state at all, so this is genuinely
+   unexplored territory.
+5. **Repeat the baseline capture 2-3 times over an hour** without changing
+   anything, to distinguish registers that are genuinely static/reserved
+   (real duplicates or unused) from ones that fluctuate with normal
+   operation (like the Home Load cluster — 15011, 15013, 15506, 16000 all
+   track something in the Home Load ballpark but diverged by up to 52W
+   between two single-snapshot captures taken minutes apart this session;
+   only repeated, timestamped sampling can tell whether they're the same
+   signal at different precision/latency or genuinely different quantities).
+6. Update `FRANKLINWH_EXTENSIONS_MANIFEST.md` and the 16001/16002 conflict
+   (section B) with whatever the data actually shows, cross-linking both
+   docs so they can't drift apart again the way WSetRvrtTms's docs did.
+
+## Recommended owner / sequencing
+
+This proposal spans two read-only-here repos (`franklinwh-modbus` docs,
+`franklinwh-local` is only a reference for the test plan, not something that
+needs changing) — hand to whichever session is dedicated to
+`franklinwh-modbus` per the established multi-session workflow. Suggested
+order: fix section A first (safety-relevant, no new testing needed, just
+doc correction) — then run section D's empirical test — then fix section B
+with real data.

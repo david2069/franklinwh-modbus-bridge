@@ -103,14 +103,39 @@ Bring the modal's active/inactive treatment onto the card:
 > The user's premise: *"the hardware timers are working — should the software
 > ones (Release dialog + library) be removed?"*
 
-### The contradiction to resolve first
-The **deployed library still asserts the opposite**: `WSetRvrtTms` is cosmetic,
-no hardware reversion observed, and the software `duration_s` timeout is "the
-ONLY safety mechanism." Before removing *any* software safety we must
-empirically establish current hardware behaviour — the firmware/library may have
-changed, or the observation may be a misread (RvrtRem counting ≠ auto-revert).
+### RESOLVED 2026-07-13 — verification step complete: hardware reversion is confirmed cosmetic
 
-### Verification step (prerequisite, do this first)
+The verification step below was gated on empirical confirmation. That evidence
+now exists from two independent sources, so this is no longer open:
+
+1. **Real hardware test logs**, `franklinwh-modbus/tests/results/
+   2026-05-15_live_sequencer_roadmap_results.md` and three other independent
+   test runs (`2026-03-08_cleanup_phase.md`, `2026-05-15_recovery_
+   verification.md`, `2026-05-14_ongrid_mode_correction.md`) — see
+   [vendor-issues.md Issue 1](vendor-issues.md) — all show `WSetRvrtRem`
+   counting down normally, but `WSetEna`/`WSetPct` unchanged well after
+   expiry. Power does not actually revert.
+2. **The modbus library's own current, authoritative docs and code already
+   say this**: `readme.md:69`, `docs/PICS_CONFORMANCE_CROSS_REFERENCE.md:65,307`,
+   `docs/SAFETY_CONTROLS.md:356-379`, and `controller.py:78,1417` all
+   consistently state the hardware timer is cosmetic and the software
+   watchdog is the sole safety mechanism.
+
+**One caveat surfaced during this check**: several *secondary* docs in the
+same library repo (`docs/FRANKLINWH_SUNSPEC_QUIRKS.md`'s compliance-matrix
+rows, `docs/FRANKLINWH_MODBUS_GUIDE.md`'s test-evidence table,
+`docs/AGATE_FULL_MODEL_MAP.md`, `docs/SUNSPEC_DER_SEQUENCER_REFERENCE.md`,
+`docs/SUNSPEC_GLOSSARY.md`) still say `WSetRvrtTms` "WORKS"/"FUNCTIONAL" with
+no caveat, added a day after (and independently reintroduced two months
+after) the correct cosmetic finding, never reconciled. If this is where the
+"the hardware timers are working" premise came from, it's a stale-docs bug in
+`franklinwh-modbus`, not a firmware change — see the proposal doc for that
+repo (separate from this one, since `franklinwh-modbus` is read-only here).
+
+**Conclusion: use the "Still cosmetic" row of the table below.** Do not
+remove the bridge software watchdog.
+
+### Verification step (historical — kept for reference; see resolution above)
 Issue a short, attended `Force Charge` with a small `duration_s` and **watch**:
 1. Does `WSetRvrtRem` count down to 0?
 2. **At expiry, does `WSetEna` auto-clear and power actually stop** (the real
@@ -137,45 +162,55 @@ vendor-issue catalog. This decides everything below.
   short hardware `WSetRvrtTms` as the orphan backstop while the bridge watchdog
   handles attended duration + SoC.
 
-### Proposal (conditional on verification)
+### Proposal — decided (hardware revert confirmed cosmetic)
 | Hardware revert verified… | Duration timeout | Target SoC | Orphan safety |
 |---|---|---|---|
-| **Working** | Hardware `WSetRvrtTms` (primary) + bridge watchdog (backstop) | Bridge watchdog (unchanged) | Hardware revert (closes crash-never-restart) |
-| **Still cosmetic** | Bridge watchdog only; pass `duration_s=None` to library to drop the redundant library timer | Bridge watchdog | Bridge `_release_stale_commands` on restart (status quo) |
+| ~~Working~~ (ruled out) | ~~Hardware `WSetRvrtTms` (primary) + bridge watchdog (backstop)~~ | ~~Bridge watchdog (unchanged)~~ | ~~Hardware revert~~ |
+| **Still cosmetic ← this row** | **Bridge watchdog only; pass `duration_s=None` to library to drop the redundant library timer** | **Bridge watchdog (unchanged)** | **Bridge `_release_stale_commands` on restart (status quo)** |
 
-In **both** cases: collapse the duplicate software duration timer to a single
-owner, and update the Release modal to show the timer that is actually
-authoritative (hide/relabel the redundant one to avoid implying two independent
-safeties).
+Collapse the duplicate software duration timer to a single owner (the bridge
+watchdog, since it already owns target-SoC and audit logging) — pass
+`duration_s=None` to the library's `send_command()` so it doesn't also
+schedule a competing reset. Update the Release modal to show only the
+authoritative timer.
 
 ### Release-modal display follow-on
-- If hardware is authoritative: feature `RvrtRem` as the live countdown; demote
-  `Watchdog` (software) to a secondary/backstop line or hide when 0.
-- If software remains authoritative: keep `Watchdog`, and label `RvrtTms`/
-  `RvrtRem` explicitly as "cosmetic (no auto-revert)" so it isn't mistaken for a
-  safety.
+Since software remains authoritative: keep `Watchdog` as the live
+elapsed/remaining display, and label `RvrtTms`/`RvrtRem` explicitly as
+"cosmetic (no auto-revert)" wherever shown, so it isn't mistaken for a real
+safety mechanism.
 
 ### Coordination / constraints
 - The software duration timer lives in the **`franklinwh-modbus` library**
   (`send_command` / `cancel_command_timer`). This repo is **read-only** here —
-  any library change (dropping/relabelling its timer, updating the PICS Issue 4
-  docstring) must be filed upstream, not edited locally.
-- Update the **vendor-issue catalog** (PICS Issue 4 status) and
-  `docs/agate-reference.md` with the verification result.
+  passing `duration_s=None` from the bridge is a bridge-side call-site change
+  and doesn't require a library edit. But the library's own stale secondary
+  docs (see caveat above) need fixing upstream — filed as a separate proposal,
+  not edited locally.
+- Vendor-issue catalog and `docs/agate-reference.md` are already updated with
+  the verification result (see `docs/vendor-issues.md` Issue 1).
 
-### Risk: **high** — safety-critical. Gated behind the verification step. Do not
-remove any software safety on the user's recollection alone.
+### Risk: **medium** — safety-critical change, but no longer gated on an open
+question. The decision is unambiguous (confirmed cosmetic, multiple
+independent sources); remaining risk is purely in the implementation
+(`duration_s=None` call-site change + Release modal relabeling), not in
+whether to proceed. Still: test the `duration_s=None` change against a real
+device before shipping, since it changes the library's own timer behavior
+even though the bridge watchdog was already the actual safety net.
 
 ---
 
 ## Suggested sequencing
 1. **WS-A** — reset staged inputs on release. Small, immediate UX win.
 2. **WS-B** — active/inactive surfacing on the card (shared with the modal).
-3. **WS-C verification** — the attended hardware-revert test. *Findings-first;*
-   only then schedule the consolidation, and split the library change upstream.
+3. **WS-C consolidation** — verification is done (confirmed cosmetic, 2026-07-13);
+   implement the decided path: `duration_s=None` call-site change + Release
+   modal relabeling. Test against a real device before shipping.
 
 ## Open questions
 - Re-issue while active, or lock inputs until Release? (WS-B)
 - Keep duration as a sticky preset, or always zero it? (WS-A)
-- If hardware revert works, what's the right `WSetRvrtTms` orphan-backstop value
-  (short enough to bound an orphan, long enough not to cut attended dispatches)?
+- ~~If hardware revert works, what's the right `WSetRvrtTms` orphan-backstop
+  value...~~ — moot, hardware revert confirmed not working (see WS-C
+  resolution). Orphan safety stays as bridge `_release_stale_commands` on
+  restart, status quo.
