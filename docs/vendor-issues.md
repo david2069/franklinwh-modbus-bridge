@@ -22,6 +22,17 @@ definitions in the vendored `sunspec2` Python package
 `model_713.json` / `model_714.json`), which encode the actual bit/enum
 orderings the PICS table's rows follow.
 
+**A second, more detailed internal document** — `docs/reference/
+PICS_span_20230711_SPANcomments20230803.xlsx` — is FranklinWH's SunSpec
+certifier's (SPAN's) own internal conformance review with annotator comments,
+dated 2023-08-03 (predates the formal certificate's public form). It includes
+a full conformance table for **Model 502 (`solar_module`)**, not present in
+the official certificate, and a dedicated "span" sheet with line-by-line
+reviewer notes on the 15500+ extension registers — several with open
+questions to FranklinWH that appear unanswered in the document itself. This
+is primary vendor-adjacent correspondence, stronger evidence than later
+third-party test logs where the two conflict — see Issues 8 and 11.
+
 ---
 
 ## 1. SAFETY-CRITICAL: WSetRvrtTms (M704, Register 327)
@@ -143,16 +154,16 @@ These proprietary registers are **not part of any SunSpec model** and require th
 |----------|------|-----|-----------|-------|
 | 15500 | EXT_BASE / PVUse | R | — | Base address / PV Installed flag |
 | 15501 | apBoxPVUse | R | — | Remote PV Installed flag |
-| 15502 | PV Total | R | 1W | Total solar power |
-| 15503 | PV Proximal | R | 1W | Local PV array power |
-| 15504 | PV Remote 1 | R | 1W | Remote PV source 1 |
-| 15505 | PV Remote 2 | R | 1W | Remote PV source 2 |
+| 15502 | PV Total | R | 1W | Total solar power — **SPAN's own 2023-08-03 internal conformance review flagged this as rounded to nearest 100W and lagging vs. the standard SunSpec `502.OutPw` (register 1119/absolute 41119), asking FranklinWH "is this expected? Can you explain this behavior?"** — apparently never answered in that document. Source: `PICS_span_20230711_SPANcomments20230803.xlsx`, "span" sheet |
+| 15503 | PV Proximal | R | 1W | Local PV array power — SPAN: "validated. see above" (i.e. same lag/rounding note applies) |
+| 15504 | PV Remote 1 | R | 1W | Remote PV source 1 — SPAN: "validated. see above" |
+| 15505 | PV Remote 2 | R | 1W | Remote PV source 2 — SPAN: **"not yet validated"** as of 2023-08-03 |
 | 15506 | Home Load | R | ~100W | Quantized in ~100W steps |
 | 15507 | OnGrid Mode | R/W | — | 1=Backup, 2=Self-Consumption, 3=TOU — this is the `oldIndex` numbering (confirmed via cloud API `get_mode_info`). **Do not confuse with `workMode`** (1=TOU, 2=Self, 3=Backup — swaps Backup/TOU vs. `oldIndex`) or the arbitrary per-installation `id` (e.g. 29287, 85232) used elsewhere — three different, unrelated numbering schemes for the same concept. See `docs/modbus-library-docs-update-proposal.md` |
-| 15508 | Self Reserve % | R/W | 1% | Self-consumption reserve SOC |
-| 15509 | TOU Reserve % | R/W | 1% | TOU reserve SOC |
-| 15510-15511 | PV Output Wh (Total) | R | 1Wh | 32-bit unsigned, lifetime PV energy |
-| 15512-15513 | **proximalOutputWh** (PV Energy Proximal) | R | 1Wh | 32-bit unsigned — corrected 2026-07-13, this is NOT unknown; confirmed via both the bridge's own SunSpec Explorer catalog and `franklinwh-modbus`'s `SUNSPEC_MODEL_REFERENCE.md:171`. In one live sample this exactly equalled Total (15510) — plausible if there's no remote PV array contributing, but not independently confirmed either way |
+| 15508 | Self Reserve % | R/W | 1% | Self-consumption reserve SOC — **see Issue 11 update: SPAN's 2023 review documents this resets to a default (10%) when `OnGridMode` is updated**, a more specific characterization than the later "SPAN-locked" tests |
+| 15509 | TOU Reserve % | R/W | 1% | TOU reserve SOC — same reset-on-mode-change behavior noted by SPAN, default 50% |
+| 15510-15511 | PV Output Wh (Total) | R | 1Wh | 32-bit unsigned, lifetime PV energy — this register was **explicitly requested by SPAN** in the 2023 review (not present at cert time), added by FranklinWH some time after |
+| 15512-15513 | **proximalOutputWh** (PV Energy Proximal) | R | 1Wh | 32-bit unsigned — corrected 2026-07-13, this is NOT unknown; confirmed via both the bridge's own SunSpec Explorer catalog and `franklinwh-modbus`'s `SUNSPEC_MODEL_REFERENCE.md:171`. **Also confirmed by SPAN's original 2023 request**: *"proximalOutputWh - (= register 1117)"* — register 1117/absolute 41117 is `502.OutWh` (SunSpec Model 502 solar_module lifetime output energy), i.e. this extension register was explicitly designed to mirror that standard SunSpec value, not an independent measurement. In one live sample this exactly equalled Total (15510) — plausible if there's no remote PV array contributing |
 | 16000 | Home Load Hi-Res | R | ~1W | Undocumented by FranklinWH, discovered 2026-03-15 by the library author |
 | 16001 | **Disputed** | R | — | Two conflicting explanations exist in `franklinwh-modbus`'s own docs (mirror of Self/TOU Reserve % vs. Model 712.NPt) — never reconciled, not wired into any code. See `docs/modbus-library-docs-update-proposal.md` |
 | 16002 | **Disputed** | R | — | Same as above (mirror of TOU Reserve % vs. Model 701.TmpAmb) |
@@ -162,6 +173,8 @@ These proprietary registers are **not part of any SunSpec model** and require th
 **Vendor ask:** Document these registers officially. The 15510-15511 (PVOutputWh) 32-bit counter is critical for energy tracking but not documented. Register 16000 provides vastly better home load precision than 15506 but is completely undocumented, and 16001/16002 are disputed even within FranklinWH-adjacent tooling.
 
 **Library gap:** PVOutputWh (15510) is NOT read by `_read_extension_solar()` even though the register batch (15500-15513) already fetches it — `regs[10]` and `regs[11]` exist but are not mapped. Should be added to the library return dict as a 32-bit value: `(regs[10] << 16) | regs[11]`. Currently the bridge reads it via a separate raw pymodbus connection (poller.py:131-147).
+
+**A previously-uncatalogued SunSpec model was found in the SPAN internal review document**: **Model 502 (`solar_module`)**, registers 1096-1125 (absolute 41096-41125), not present in the official certificate (SM-000028) but fully conformance-tested by SPAN — includes `OutWh` (1117), `OutPw` (1119, both referenced above as the "real" registers the 15500-range PV extensions mirror), and a named alarm bitfield (`Evt`, 1104) with `GROUND_FAULT`, `INPUT_OVER_VOLTAGE`, `DC_DISCONNECT`, `MANUAL_SHUTDOWN`, `OVER_TEMPERATURE`, `BLOWN_FUSE`, `UNDER_TEMPERATURE`, `MEMORY_LOSS`, `ARC_DETECTION`, `THEFT_DETECTION`, `OUTPUT_OVER_CURRENT`, `OUTPUT_OVER_VOLTAGE`, `OUTPUT_UNDER_VOLTAGE`, `TEST_FAILED` (plus 6 reserved bits) — all marked "supported." **The bridge does not currently read Model 502 at all** (only M701.Alrm and M714.PrtAlrms are polled for alarms per `controller.py:1753-1758`) — this is a whole alarm surface not yet wired up, separate from the M701/M714 issues in Issue 12.
 
 **See [modbus-library-docs-update-proposal.md](modbus-library-docs-update-proposal.md)** for a full write-up of the 16001/16002 conflict, the 15000-range findings, an empirical test plan using the Local API to resolve them, and a related but separate finding: several `franklinwh-modbus` docs still claim `WSetRvrtTms` (Issue 1) "works," contradicting the library's own current, correct docs/code.
 
@@ -304,6 +317,38 @@ It's an inferential error message attached to the write-back mismatch
 (`controller.py:1030,1094`: *"Write failed (Read-Only?)... Ensure 'SPAN Modbus' is
 unlocked in installer settings"*), a guess at the cause, not a confirmed unlock procedure.
 
+**UPDATE 2026-07-13 — a more specific failure mode, from primary FranklinWH/SPAN
+correspondence, not just later third-party test logs:** `PICS_span_20230711_
+SPANcomments20230803.xlsx` ("span" sheet) — FranklinWH's own SunSpec certifier's
+internal conformance review, dated 2023-08-03, predating all the 2026 test-result
+files above — documents, for both 15508 and 15509:
+
+> *"Resets to 10 when OnGridMode is updated. Is this intended behavior? Shouldn't
+> this user setting persist unless the user changes it?"* (15508, default 10%)
+> *"Resets to 50 when OnGridMode is updated..."* (15509, default 50%)
+
+This is a **different, more specific characterization** than a blanket permanent
+read-only lock: SPAN's own reviewers observed the value being **written and then
+reset to a default**, tied specifically to `OnGridMode` (15507) updates — not
+"every write to 15508/15509 is silently discarded" full stop. It's plausible the
+2026 test logs' "Update failure. Current: 6, Expected: 20" results were caused by
+this same reset firing between the write and the verification read-back (e.g. if
+the write path itself touches `OnGridMode`'s last-updated state internally), which
+would look identical to a hard lock in a simple write-then-immediately-verify test
+but is a distinguishable, different root cause. **This was never resolved in the
+SPAN document** — no FranklinWH response to the question is recorded — so it's
+unknown whether this is still current behavior on 2026 firmware or whether
+FranklinWH later hardened it into the outright block the newer tests show.
+
+**This is exactly the kind of question the bridge's own Modbus Sequencer feature
+was built to answer conclusively** (see `src/franklinwh_bridge/sequences/`,
+`api/admin.py:588-707`) — a sequence with `write 15508 → verify` immediately
+followed by `write 15507 (no-op, same value) → wait_for 15508 != written_value`
+would directly distinguish "hard lock" from "resets on mode-touch" without
+ambiguity, using the tool purpose-built for this rather than re-reading old logs.
+Nobody has run that specific sequence yet — it would be a genuinely new,
+first-party result, not a re-derivation of the existing evidence above.
+
 **Vendor ask:** Confirm what "SPAN Modbus unlock" actually requires (installer-level
 setting? firmware flag? account permission?) and document it, or clarify these registers
 are permanently read-only via Modbus regardless of provisioning.
@@ -440,6 +485,11 @@ disclaimer than "derived, unconfirmed."
    confirm in the register map that it's permanently unimplemented and
    reads should be ignored (Issue 12d) — FranklinWH's own PICS certification
    marks all three states "unimplemented" on this hardware
+9. **Answer the two open questions from SPAN's own 2023-08-03 conformance
+   review**, never resolved in that document: why does `15502` (PV Total)
+   round to 100W and lag vs. the standard `502.OutPw`, and is the
+   reset-to-default behavior on `15508`/`15509` when `OnGridMode` updates
+   intended (Issue 8, Issue 11 update)
 
 **Note:** M713.Sta does NOT need a vendor ask — it already correctly reports
 its actual 3-value OK/WARNING/ERROR health enum per spec (see Issue 4's
@@ -479,4 +529,13 @@ design regardless.
    verify the Events table's M701/M714 alarm names against the corrected maps
 7. Label Self/TOU Reserve % controls as unconfirmed/likely non-functional
    per Issue 11, until a working unlock procedure is confirmed
-   per Issue 11, until a working unlock procedure is confirmed
+8. **Wire up Model 502 (`solar_module`) alarm bits** — not currently read
+   anywhere in the bridge or library; a whole alarm surface (`Evt`, 13 named
+   bits, all "supported" per SPAN's review) sitting unused
+9. **Run a Sequencer test to distinguish "hard SPAN lock" from "resets when
+   OnGridMode is touched"** for 15508/15509 (Issue 11 update) — write
+   reserve, verify, then separately re-touch `OnGridMode` and watch whether
+   the reserve value changes. Nobody has run this specific test yet; it
+   would settle a real ambiguity in the existing evidence, using the tool
+   built for exactly this kind of repeatable verification
+   (`src/franklinwh_bridge/sequences/`)
