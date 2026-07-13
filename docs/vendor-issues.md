@@ -148,7 +148,7 @@ These proprietary registers are **not part of any SunSpec model** and require th
 | 15504 | PV Remote 1 | R | 1W | Remote PV source 1 |
 | 15505 | PV Remote 2 | R | 1W | Remote PV source 2 |
 | 15506 | Home Load | R | ~100W | Quantized in ~100W steps |
-| 15507 | OnGrid Mode | R/W | — | 1=Backup, 2=Self-Consumption, 3=TOU on Modbus — **note: the Local API (franklinwh-local) uses a different numbering that swaps Backup/TOU; only Self-Consumption matches between the two** |
+| 15507 | OnGrid Mode | R/W | — | 1=Backup, 2=Self-Consumption, 3=TOU — this is the `oldIndex` numbering (confirmed via cloud API `get_mode_info`). **Do not confuse with `workMode`** (1=TOU, 2=Self, 3=Backup — swaps Backup/TOU vs. `oldIndex`) or the arbitrary per-installation `id` (e.g. 29287, 85232) used elsewhere — three different, unrelated numbering schemes for the same concept. See `docs/modbus-library-docs-update-proposal.md` |
 | 15508 | Self Reserve % | R/W | 1% | Self-consumption reserve SOC |
 | 15509 | TOU Reserve % | R/W | 1% | TOU reserve SOC |
 | 15510-15511 | PV Output Wh (Total) | R | 1Wh | 32-bit unsigned, lifetime PV energy |

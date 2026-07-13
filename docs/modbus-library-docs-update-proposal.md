@@ -144,13 +144,35 @@ the Local API today (`/Users/davidhona/dev/franklinwh-local`):
 | Reserved SoC % (both Self-Consumption and TOU together) | 1405→1406, `opt=1` | `set_mode_soc(self_min, self_max, tou_min, tou_max)` (`client.py:282-293`) | `selfMinSoc`, `selfMaxSoc`, `touMinSoc`, `touMaxSoc` |
 | Smart circuit | 1409→1410, `opt=1` | documented in `catalog.WRITES` (`catalog.py:153-156`) but **no dedicated client method yet** — callable via generic `client.call(1409, data)` |
 
-**Critical caveat for the test plan**: `catalog.py:205-213` documents that
-Modbus register 15507 and the Local API's mode numbering **disagree and swap
-TOU/Backup** — *"register 15507/oldIndex = Backup 1/Self 2/TOU 3 — i.e. it
-swaps TOU and Backup (only Self-Consumption matches)."* When correlating a
-Local-API mode change against Modbus 15507, map by the Local API's
-`OPERATING_MODES` name (`catalog.py:214-218`), not by raw numeric id, or
-you'll draw a wrong conclusion about which mode is which.
+**Critical caveat for the test plan — RESOLVED 2026-07-13 with exact field
+names, not just a warning.** There are **three separate, unrelated mode
+identifiers** in this ecosystem, confirmed via live `franklinwh-cli` calls
+against the cloud API:
+
+- **`oldIndex`** — the legacy numbering, confirmed via `get_mode_info`
+  (`{'id': 29287, 'oldIndex': 3, 'name': 'Time-of-Use', 'workMode': 1, ...}`):
+  **1=Backup, 2=Self-Consumption, 3=TOU**. This is what Modbus register
+  15507 follows (matches `catalog.py:205-213`'s "register 15507/oldIndex"
+  wording exactly — it's not a separate scheme, it's literally this field).
+- **`workMode`** — the newer/canonical numbering, confirmed via
+  `get_all_mode_soc` (`workMode: 1→'Time-of-Use'`, `workMode: 2→
+  'Self-Consumption'`, `workMode: 3→'Emergency Backup'`): **1=TOU,
+  2=Self-Consumption, 3=Backup** — i.e. `oldIndex` and `workMode` swap
+  positions 1 and 3 (Backup↔TOU) while agreeing on position 2
+  (Self-Consumption). This is the actual "swap" `catalog.py` warned about,
+  now pinned to two named, confirmable fields instead of an unlabeled
+  comment.
+- **`id`** — an arbitrary, per-installation programme identifier (e.g.
+  `29287` for TOU, `85232` for Self-Consumption in a live `power_flow`
+  capture this session) — **not a 1-2-3 scheme at all**, don't try to map it
+  numerically to either of the above. This is what `power_flow`'s `mode`
+  field returns (see section C0), and what `franklinwh-local`'s
+  `_resolve_mode_id()` resolves a mode name to before writing.
+
+When correlating a Local-API mode change against Modbus 15507 during the
+test plan: map by **name** ("Self-Consumption" etc.), or by `oldIndex` if you
+need a number, never by `workMode` or `id` — using either of those against
+15507 will look like a mismatch that isn't really there.
 
 ---
 
