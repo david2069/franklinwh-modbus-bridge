@@ -12,6 +12,16 @@ Documented in `franklinwh-modbus` library at
 line 200+). SunSpec spec PDF at
 `/Users/davidhona/Downloads/Secure-SunSpec-Modbus-Specification_final.pdf`.
 
+**FranklinWH's official SunSpec PICS certificate (SM-000028)** — the ground
+truth used to confirm Issue 12's findings — is checked into this repo at
+`docs/reference/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx` (and a `.tsv`
+export alongside it), copied from Downloads on 2026-07-13 since Downloads
+isn't durable storage. Cross-referenced against the official SunSpec model
+definitions in the vendored `sunspec2` Python package
+(`venv/lib/python3.14/site-packages/sunspec2/models/json/model_701.json` /
+`model_713.json` / `model_714.json`), which encode the actual bit/enum
+orderings the PICS table's rows follow.
+
 ---
 
 ## 1. SAFETY-CRITICAL: WSetRvrtTms (M704, Register 327)
@@ -73,13 +83,31 @@ M714.DCW (battery DC power) works correctly. The entity `battery_current_a` exis
 
 ---
 
-## 4. MISSING: M713.Sta (Battery Status) — Always 0
+## 4. CORRECTED: M713.Sta is a health enum (OK/WARNING/ERROR), not battery activity state
 
-M713.Sta should report battery state (Charging=1, Discharging=2, Idle=3, etc. per SunSpec). On the aGate X it always returns 0 (OFF), regardless of actual battery activity.
+**CORRECTED 2026-07-13 — see Issue 12.** This entry originally assumed M713.Sta
+was meant to report battery *activity* state (Charging/Discharging/Idle/etc.).
+Checked against the official SunSpec Model 713 spec: `Sta` is actually a
+3-value **health** enum — `OK` (0), `WARNING` (1), `ERROR` (2) — not an
+activity-state field at all. "Always returns 0" therefore means "always
+reports OK," which is the *expected* value for a healthy battery, not a
+vendor defect. There is no SunSpec-defined register for battery
+charge/discharge/idle activity state in Model 713 to ask the vendor to
+populate — the library's existing workaround (below) is the correct approach
+regardless of this correction, and was already right for the right reasons.
 
-**Workaround:** Library derives battery state from M714.DCW power direction with ±50W deadband (controller.py:464-471). This works but is less reliable than the spec-defined status register.
+**Design (not a workaround):** Library derives battery activity state from
+M714.DCW power direction with ±50W deadband (controller.py:464-471). This is
+the correct way to get charge/discharge/idle state — there is no SunSpec
+Model 713 point that provides it directly.
 
-**Vendor ask:** Populate M713.Sta with actual battery state per SunSpec enumeration.
+**Separate, still-open issue:** the *bridge's* `alarms.py` module has its own
+`_M713_STA_NAMES` table that maps Sta's raw value against an 8-value guessed
+activity enum (Idle/Charging/Discharging/Holding/Full/Empty/FAULT/Sleep) —
+this models a different, incorrect concept than what Sta actually is (see
+Issue 12c). It should be replaced with the real 3-value OK/WARNING/ERROR
+enum, or dropped from alarm tracking entirely if health status alone isn't
+alarm-worthy.
 
 ---
 
@@ -153,6 +181,19 @@ Two places in the bridge use raw pymodbus instead of the franklinwh-modbus libra
 ---
 
 ## 10. UNVERIFIED: Alarm/mode bitfields decoded by guesswork, not vendor docs
+
+**Update 2026-07-13 — see Issue 12.** Vendor documentation for most of this was
+subsequently located (FranklinWH's SunSpec PICS certificate). M701.Alrm, M714's
+alarm register, M713.Sta, and M701.DERMode ("PV Clipped") are no longer merely
+"unverified" — they're now **confirmed** to be either mismapped or read from
+the wrong register entirely, detailed in Issue 12. What's still genuinely
+undocumented (no vendor source found for it) is narrower: the meaning of
+`VendorBit8`-`VendorBit31` on M714.PrtAlrms/DCAlrm and `VendorBit16`-`VendorBit31`
+on M701.Alrm (bits beyond what either spec defines), and the real value range
+of M713.Sta if it ever produces something other than 0/1/2 (e.g. the `State400`
+observed in real data — genuinely anomalous under either the old or corrected
+model). The rest of this section is kept for historical context on how the
+guesses were originally reasoned about; read Issue 12 for what's now confirmed.
 
 The bridge decodes several bitfields/enums using **locally reverse-engineered
 tables with no SunSpec or FranklinWH documentation backing them**. SunSpec's
@@ -266,36 +307,169 @@ likely non-functional pending vendor clarification, rather than implying it work
 
 ---
 
+## 12. CONFIRMED: alarm/mode decode bugs, found via FranklinWH's own SunSpec PICS certification (2026-07-13)
+
+Issue 10 (above) was written as "guessed, unverified" because no vendor documentation
+had been located. That changed: the user located FranklinWH's actual **SunSpec PICS
+(Protocol Implementation Conformance Statement) certificate SM-000028**
+(`UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx` / `.tsv`, in Downloads — worth
+copying into this repo for durability, e.g. `docs/reference/`), cross-referenced
+against the official SunSpec model definitions (vendored `sunspec2` Python package,
+`site-packages/sunspec2/models/json/model_701.json` / `model_713.json` /
+`model_714.json`). Three of the "guessed" mappings in Issue 10 aren't just
+undocumented — they're **confirmed wrong or misapplied to the wrong register**:
+
+### 12a. M701.Alrm — off-by-one bit mapping, 3 fabricated bit names, 2 real bits missing
+
+The official SunSpec Model 701 `Alrm` bitfield (17 named bits, all marked
+"supported" in FranklinWH's PICS) is, in bit order:
+
+```
+0 GROUND_FAULT      6 MANUAL_SHUTDOWN    12 BLOWN_STRING_FUSE
+1 DC_OVER_VOLT      7 OVER_TEMP          13 UNDER_TEMP
+2 AC_DISCONNECT     8 OVER_FREQUENCY     14 MEMORY_LOSS
+3 DC_DISCONNECT     9 UNDER_FREQUENCY    15 HW_TEST_FAILURE
+4 GRID_DISCONNECT  10 AC_OVER_VOLT       16 MANUFACTURER_ALRM
+5 CABINET_OPEN     11 AC_UNDER_VOLT
+```
+
+The bridge's `_M701_ALRM_BITS` (`store/alarms.py:22-40`) has bit 0 correct
+(`GroundFault`), but from bit 1 on it's shifted by one position relative to the
+real spec, and contains **three bit names that don't exist anywhere in the
+official 17-bit list**: `InputOverCurrent` (bit 1), `ArcFault` (bit 14),
+`ThermalDerate` (bit 15). It's also **missing two real bits**: `HW_TEST_FAILURE`
+(15) and `MANUFACTURER_ALRM` (16) — currently these would fall through to the
+generic `VendorBit15`/`VendorBit16` label even though they're officially named.
+
+**Net effect:** if real hardware bit 1 ever fires (DC_OVER_VOLT), the bridge
+currently reports it as "InputOverCurrent" — a name that isn't real. Every named
+bit from 1-16 is similarly mislabeled. This is a genuine decode bug, not a
+documentation gap, and should be fixed in the `franklinwh-modbus` library (the
+source of `_M701_ALRM_BITS`'s bit-position assumptions, per its own docstring).
+
+### 12b. M714 — the bridge reads the wrong alarm register entirely
+
+FranklinWH's PICS confirms `PrtAlrms` (register 41044, what
+`controller.py:1757-1758` actually reads into `dc_port_alrm`) has **no per-bit
+alarm-type names at all** — the official Model 714 spec describes it as "bitfield
+of ports with active alarms; bit is 1 if port has an active alarm; bit 0 is first
+port." It's a per-**port** summary flag, not a per-**alarm-type** breakdown.
+
+The actual alarm-*type* bitfield with real names is a **different point**,
+`Prt.N.DCAlrm` (register 41085 for port 1), confirmed "supported" in
+FranklinWH's PICS with non-contiguous bit positions:
+
+```
+0 GROUND_FAULT           7 OVER_TEMP              15 ARC_DETECTION
+1 INPUT_OVER_VOLTAGE    12 BLOWN_FUSE              19 RESERVED
+3 DC_DISCONNECT         13 UNDER_TEMP              20 TEST_FAILED
+5 CABINET_OPEN          14 MEMORY_LOSS             21 INPUT_UNDER_VOLTAGE
+6 MANUAL_SHUTDOWN                                  22 INPUT_OVER_CURRENT
+```
+
+`controller.py` never reads `Prt.N.DCAlrm` anywhere (confirmed via grep) — the
+bridge's `_M714_ALRM_BITS` guessed 8-bit table (`PortOverVoltage`,
+`PortUnderVoltage`, etc.) is applied to `PrtAlrms`, a register that was never
+meant to carry that information. This plausibly explains a lot of what Issue 10
+flagged as "transient noise" (self-clearing in 10-18s, physically contradictory
+combinations, huge raw values like 891292262) — decoding a per-port summary
+flag as if it were 8+ independent alarm types will produce exactly this kind
+of nonsensical pattern on a register that, with `NPrt=1`, should mostly only
+ever have bit 0 meaningful.
+
+**Fix:** the library should read `Prt.1.DCAlrm` for alarm-*type* detail (using
+the bit map above) and use `PrtAlrms` only for its actual meaning (which port,
+if any, has an active alarm — useful only once `NPrt > 1`).
+
+### 12c. M713.Sta — wrong semantic model, not just "always 0"
+
+Covered in Issue 4's correction above: `Sta` is a 3-value `OK`/`WARNING`/`ERROR`
+health enum per the official spec, not an 8-value activity-state enum
+(Idle/Charging/Discharging/etc.) as the bridge's `_M713_STA_NAMES`
+(`store/alarms.py:55-64`) assumes. "Always 0" = "always OK," not a defect.
+The bridge's alarm-tracking use of this table should be corrected or dropped.
+
+### 12d. M701.DERMode ("PV Clipped") — confirmed UNIMPLEMENTED by FranklinWH's own certification
+
+This is the strongest finding. FranklinWH's PICS lists `DERMode` (register
+40078) — **all three of its states, `GRID_FOLLOWING`, `GRID_FORMING`, and
+`PV_CLIPPED`** — as **`unimplemented`**. Not "supported," not partially
+supported: explicitly unimplemented, in FranklinWH's own signed conformance
+statement. Bit ordering itself matches what the bridge assumes (0/1/2 =
+Grid Following/Grid Forming/PV Clipped, confirmed against the official model
+spec), so that part of the reverse-engineering was right — but the vendor's
+own certification says the whole point doesn't do anything on this hardware.
+
+This fully explains Issue 10's finding that 12 of 13 "PV Clipped" events over
+30 days occurred with zero solar output: the bridge is deriving `grid_mode`
+from a register FranklinWH has certified as not implemented. Whatever value
+comes back should be treated as **meaningless noise, not a real signal** —
+not "possibly mislabeled," as Issue 10 hedged, but confirmed non-functional.
+
+**Vendor ask:** Either implement DERMode per the SunSpec spec, or note it more
+prominently in the register map that reads should be ignored/undefined.
+
+**Bridge ask:** Reconsider whether `grid_mode`/"PV Clipped" should be surfaced
+in the UI at all (including the Events history table) given the vendor has
+certified this point as unimplemented — at minimum it needs a much stronger
+disclaimer than "derived, unconfirmed."
+
+---
+
 ## Summary: Action items by owner
 
-### Vendor (FranklinWH firmware)
-1. **SAFETY:** Implement WSetRvrtTms reversion (Issue 4)
-2. **SAFETY:** Implement ControllerHb (M715.1092) dead-man switch (Issue 1)
+### Vendor (FranklinWH firmware) — things only FranklinWH can fix
+1. **SAFETY:** Implement WSetRvrtTms reversion (Issue 1)
+2. **SAFETY:** Implement ControllerHb (M715.1092) dead-man switch (Issue 2)
 3. **SAFETY:** Add WSet input validation / clamping (Issue 5)
-4. Populate M714.DCA (battery current)
-5. Populate M713.Sta (battery status enum)
-6. Implement or return errors for WMaxLimPctEna/WMaxLimPct/VarSetEna/WMax
-7. Document extension registers (15500+), especially 15510 and 16000
-8. Publish official bit/enum mapping for M701.Alrm, M714.PrtAlrms,
-   M713.Sta, and M701.DERMode (Issue 10) — current names are all guessed,
-   unconfirmed, and in the case of "PV Clipped" appear unreliable
-9. **Document the SPAN Modbus unlock procedure for registers 15507-15509**
+4. Populate M714.DCA (battery current) (Issue 3)
+5. Implement or return errors for WMaxLimPctEna/WMaxLimPct/VarSetEna/WMax (Issue 2)
+6. Document extension registers (15500+), especially 15510 and 16000 (Issue 8)
+7. **Document the SPAN Modbus unlock procedure for registers 15507-15509**
    (Issue 11) — Reserve SoC writes fail on every real-hardware test to date;
    Mode switching (15507) already works, only the reserve percentages are
    blocked, and it's unclear what unlocks them
+8. Implement M701.DERMode (Grid Following/Grid Forming/PV Clipped), or
+   confirm in the register map that it's permanently unimplemented and
+   reads should be ignored (Issue 12d) — FranklinWH's own PICS certification
+   marks all three states "unimplemented" on this hardware
 
-### Library (franklinwh-modbus)
+**Note:** M713.Sta does NOT need a vendor ask — it already correctly reports
+its actual 3-value OK/WARNING/ERROR health enum per spec (see Issue 4's
+correction). There is no SunSpec field to ask FranklinWH to populate for
+battery activity state; the library's DCW-derived workaround is the right
+design regardless.
+
+### Library (franklinwh-modbus) — bugs in how we decode FranklinWH's correctly-certified data
 1. Add PVOutputWh (15510-15511) to `_read_extension_solar()` return dict
-2. Reserve-write functions (`set_self_consumption_reserve()` /
+2. **Fix `_M701_ALRM_BITS`'s bit mapping** — currently off-by-one from bit 1
+   onward vs the official SunSpec Model 701 spec, with 3 fabricated names
+   (`InputOverCurrent`, `ArcFault`, `ThermalDerate`) that don't exist in the
+   real 17-bit list, and 2 real bits missing (`HW_TEST_FAILURE`,
+   `MANUFACTURER_ALRM`) (Issue 12a)
+3. **Read `Prt.N.DCAlrm` (register 41085+) for alarm-type detail** instead of
+   decoding `PrtAlrms` (41044) as if its bits were alarm types — `PrtAlrms` is
+   a per-port active-alarm summary flag with no per-bit names in the spec;
+   the real, PICS-certified alarm-type bitfield is a different, currently
+   unread register (Issue 12b)
+4. Reserve-write functions (`set_self_consumption_reserve()` /
    `set_tou_reserve()`) are implemented with protocol-level write-back
    checking, but the underlying hardware capability is still blocked
-   (Issue 11) — no library change needed until the vendor unlock is known
+   (Issue 11) — no further library change needed until the vendor unlock is known
 
 ### Bridge (franklinwh-modbus-bridge)
 1. ~~Replace raw pymodbus reserve writes with library's `set_self_consumption_reserve()` / `set_tou_reserve()`~~ **DONE** (code hygiene only — switched to library API; the underlying write still fails on hardware, see Issue 11)
 2. Replace raw pymodbus PVOutputWh read once library adds it
 3. Consider hiding/labeling battery_current_a entity as unavailable
-4. Label alarm/PV-Clip data in the Events UI as "derived, unconfirmed" per
-   Issue 10, until FranklinWH publishes the official bit mapping
-5. Label Self/TOU Reserve % controls as unconfirmed/likely non-functional
+4. **Fix or drop `_M713_STA_NAMES`** in `store/alarms.py` — models the wrong
+   concept (8-value activity enum vs the real 3-value OK/WARNING/ERROR
+   health enum) (Issue 4 correction / Issue 12c)
+5. **Reconsider surfacing `grid_mode`/"PV Clipped" at all** (dashboard chart,
+   Events table) given FranklinWH's own certification marks the underlying
+   register unimplemented — "derived, unconfirmed" is too weak a disclaimer
+   now that this is confirmed non-functional, not just unreliable (Issue 12d)
+6. Once the library fixes 12a/12b upstream, re-pull the dependency and
+   verify the Events table's M701/M714 alarm names against the corrected maps
+7. Label Self/TOU Reserve % controls as unconfirmed/likely non-functional
+   per Issue 11, until a working unlock procedure is confirmed
    per Issue 11, until a working unlock procedure is confirmed

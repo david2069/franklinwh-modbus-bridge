@@ -1,0 +1,1057 @@
+Certification Info: Table 1
+Certificate Number	SM-000028						
+Certificate Issue Date	1-May-23						
+Archive Location	https://sunspec.org/wp-content/uploads/2024/04/Franklin-WH-Certificate-SM000028.pdf						
+Manufacturer Name	FranklinWH Energy Storage Inc.						
+Product Name	"aGate, Meter Adapter Controller"						
+Product Models	"MAC；aGate X；may be followed by blank; may be followed by A to Z; may be followed by 0 to 9，may be followed by symbol ""-"""						
+							
+							
+Product Description	"FranklinWH Home Power FHP (FranklinWH Home Power) is an advanced user energy storage system with a maximum power of 5KW per unit and up to 15 parallel machines. The device supports Ethernet, wifi and 4G network conditions. It can support the operation and setting of web and app. Manage the whole life cycle of equipment through the Internet of Things technology. The product is an industry unicorn for future renewable energy development and technological innovation."						
+							
+Reserved For SunSpec Alliance							
+							
+SunSpec Certificate Number	SM-000028						
+Certificate Signer Name	Erin Mahan						
+Certificate Issued Date	"Monday, May 01, 2023"						
+Certificate Archive Location	http://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH-Modbus-1547-Certificate_SM-000028.pdf						
+
+
+Testing Info: Table 1
+Submitter	Xueji Dong	ATL		
+Email	Xueji.dong@csagroup.org	ATL		
+Phone		ATL		
+Interface Type	TCP	ATL	TCP/RTU	
+Port	502	ATL		
+Slave ID	1	ATL		
+Baud Rate		ATP		
+
+
+1: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+2	ID		1	R			
+3	L		66	R			
+4	Mn		"FranklinWH Technologies Co., Ltd"	R			
+20	Md		Model Name	R			
+36	Opt		Option Name	R			
+44	Vr		Version Number	R			
+52	SN		Serial Number	R			
+68	DA		supported	RW			
+69	Pad		32768	R			
+
+701: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+70	ID		701	R			
+71	L		153	R			
+72	ACType		supported	R			
+		SINGLE_PHASE	supported				
+		SPLIT_PHASE	supported				
+		THREE_PHASE	supported				
+73	St		supported	R			
+		OFF	supported				
+		ON	supported				
+74	InvSt		supported	R			
+		OFF	supported				
+		SLEEPING	supported				
+		STARTING	supported				
+		RUNNING	supported				
+		THROTTLED	supported				
+		SHUTTING_DOWN	supported				
+		FAULT	supported				
+		STANDBY	supported				
+75	ConnSt		supported	R			
+		DISCONNECTED	supported				
+		CONNECTED	supported				
+76	Alrm		supported	R			
+		GROUND_FAULT	supported				
+		DC_OVER_VOLT	supported				
+		AC_DISCONNECT	supported				
+		DC_DISCONNECT	supported				
+		GRID_DISCONNECT	supported				
+		CABINET_OPEN	supported				
+		MANUAL_SHUTDOWN	supported				
+		OVER_TEMP	supported				
+		OVER_FREQUENCY	supported				
+		UNDER_FREQUENCY	supported				
+		AC_OVER_VOLT	supported				
+		AC_UNDER_VOLT	supported				
+		BLOWN_STRING_FUSE	supported				
+		UNDER_TEMP	supported				
+		MEMORY_LOSS	supported				
+		HW_TEST_FAILURE	supported				
+		MANUFACTURER_ALRM	supported				
+78	DERMode		unimplemented	R			
+		GRID_FOLLOWING	unimplemented				
+		GRID_FORMING	unimplemented				
+		PV_CLIPPED	unimplemented				
+80	W		supported	R			
+81	VA		supported	R			
+82	Var		supported	R			
+83	PF		supported	R			
+84	A		supported	R			
+85	LLV		supported	R			
+86	LNV		supported	R			
+87	Hz		supported	R			
+89	TotWhInj		supported	R			
+93	TotWhAbs		supported	R			
+97	TotVarhInj		supported	R			
+101	TotVarhAbs		supported	R			
+105	TmpAmb		supported	R			
+106	TmpCab		supported	R			
+107	TmpSnk		supported	R			
+108	TmpTrns		supported	R			
+109	TmpSw		supported	R			
+110	TmpOt		supported	R			
+111	WL1		supported	R			
+112	VAL1		supported	R			
+113	VarL1		supported	R			
+114	PFL1		supported	R			
+115	AL1		supported	R			
+116	VL1L2		supported	R			
+117	VL1		supported	R			
+118	TotWhInjL1		supported	R			
+122	TotWhAbsL1		supported	R			
+126	TotVarhInjL1		supported	R			
+130	TotVarhAbsL1		supported	R			
+134	WL2		supported	R			
+135	VAL2		supported	R			
+136	VarL2		supported	R			
+137	PFL2		supported	R			
+138	AL2		supported	R			
+139	VL2L3		supported	R			
+140	VL2		supported	R			
+141	TotWhInjL2		supported	R			
+145	TotWhAbsL2		supported	R			
+149	TotVarhInjL2		supported	R			
+153	TotVarhAbsL2		supported	R			
+157	WL3		supported	R			
+158	VAL3		supported	R			
+159	VarL3		supported	R			
+160	PFL3		supported	R			
+161	AL3		supported	R			
+162	VL3L1		supported	R			
+163	VL3		supported	R			
+164	TotWhInjL3		supported	R			
+168	TotWhAbsL3		supported	R			
+172	TotVarhInjL3		supported	R			
+176	TotVarhAbsL3		supported	R			
+180	ThrotPct		unimplemented	R			
+181	ThrotSrc		unimplemented	R			
+		MAX_W	unimplemented				
+		FIXED_W	unimplemented				
+		FIXED_VAR	unimplemented				
+		FIXED_PF	unimplemented				
+		VOLT_VAR	unimplemented				
+		FREQ_WATT	unimplemented				
+		DYN_REACT_CURR	unimplemented				
+		LVRT	unimplemented				
+		HVRT	unimplemented				
+		WATT_VAR	unimplemented				
+		VOLT_WATT	unimplemented				
+		SCHEDULED	unimplemented				
+		LFRT	unimplemented				
+		HFRT	unimplemented				
+		DERATED	unimplemented				
+183	A_SF		-1	R			
+184	V_SF		-1	R			
+185	Hz_SF		-3	R			
+186	W_SF		0	R			
+187	PF_SF		-3	R			
+188	VA_SF		0	R			
+189	Var_SF		0	R			
+190	TotWh_SF		3	R			
+191	TotVarh_SF		3	R			
+192	Tmp_SF		-1	R			
+193	MnAlrmInfo		supported	R			
+
+702: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+225	ID		702	R			
+226	L		50	R			
+227	WMaxRtg		10000	R			
+228	WOvrExtRtg		10000	R			
+229	WOvrExtRtgPF		950	R			
+230	WUndExtRtg		10000	R			
+231	WUndExtRtgPF		950	R			
+232	VAMaxRtg		11000	R			
+233	VarMaxInjRtg		2500	R			
+234	VarMaxAbsRtg		2500	R			
+235	WChaRteMaxRtg		0	R			
+236	WDisChaRteMaxRtg		0	R			
+237	VAChaRteMaxRtg		0	R			
+238	VADisChaRteMaxRtg		0	R			
+239	VNomRtg		240	R			
+240	VMaxRtg		270	R			
+241	VMinRtg		210	R			
+242	AMaxRtg		50	R			
+243	PFOvrExtRtg		850	R			
+244	PFUndExtRtg		850	R			
+245	ReactSusceptRtg		0	R			
+246	NorOpCatRtg		2	R			
+		CAT_A	supported				
+		CAT_B	supported				
+247	AbnOpCatRtg		3	R			
+		CAT_1	supported				
+		CAT_2	supported				
+		CAT_3	supported				
+248	CtrlModes		14271	R			
+		MAX_W	supported				
+		FIXED_W	supported				
+		FIXED_VAR	supported				
+		FIXED_PF	supported				
+		VOLT_VAR	supported				
+		FREQ_WATT	supported				
+		DYN_REACT_CURR	supported				
+		LV_TRIP	supported				
+		HV_TRIP	supported				
+		WATT_VAR	supported				
+		VOLT_WATT	supported				
+		SCHEDULED	supported				
+		LF_TRIP	supported				
+		HF_TRIP	supported				
+250	IntIslandCatRtg		2	R			
+		UNCATEGORIZED	supported				
+		INT_ISL_CAPABLE	supported				
+		BLACK_START_CAPABLE	supported				
+		ISOCH_CAPABLE	supported				
+251	WMax		supported	RW	0	10000	
+252	WMaxOvrExt		unimplemented	RW			
+253	WOvrExtPF		unimplemented	RW			
+254	WMaxUndExt		unimplemented	RW			
+255	WUndExtPF		unimplemented	RW			
+256	VAMax		supported	RW	0	11000	
+257	VarMaxInj		unimplemented	RW			
+258	VarMaxAbs		unimplemented	RW			
+259	WChaRteMax		unimplemented	RW			
+260	WDisChaRteMax		unimplemented	RW			
+261	VAChaRteMax		unimplemented	RW			
+262	VADisChaRteMax		unimplemented	RW			
+263	VNom		unimplemented	RW			
+264	VMax		unimplemented	RW			
+265	VMin		unimplemented	RW			
+266	AMax		unimplemented	RW			
+267	PFOvrExt		unimplemented	RW			
+268	PFUndExt		unimplemented	RW			
+269	IntIslandCat		unimplemented	RW			
+		UNCATEGORIZED	unimplemented				
+		INT_ISL_CAPABLE	unimplemented				
+		BLACK_START_CAPABLE	unimplemented				
+		ISOCH_CAPABLE	unimplemented				
+270	W_SF		0	R			
+271	PF_SF		-3	R			
+272	VA_SF		0	R			
+273	Var_SF		0	R			
+274	V_SF		0	R			
+275	A_SF		0	R			
+276	S_SF		0	R			
+
+703: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+277	ID		703	R			
+278	L		17	R			
+279	ES		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+280	ESVHi		supported	RW	105	106	
+281	ESVLo		supported	RW	88	95	
+282	ESHzHi		supported	RW	60.1	61	
+284	ESHzLo		supported	RW	59	59.9	
+286	ESDlyTms		supported	RW	0	600	
+288	ESRndTms		supported	RW	0	1000	
+290	ESRmpTms		supported	RW	1	1000	
+292	ESDlyRemTms		supported	R	0	600	
+294	V_SF		-1	R			
+295	Hz_SF		-2	R			
+
+704: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+296	ID		704	R			
+297	L		65	R			
+298	PFWInjEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+299	PFWInjEnaRvrt		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+300	PFWInjRvrtTms		unimplemented	RW			
+302	PFWInjRvrtRem		unimplemented	R			
+304	PFWAbsEna		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+305	PFWAbsEnaRvrt		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+306	PFWAbsRvrtTms		unimplemented	RW			
+308	PFWAbsRvrtRem		unimplemented	R			
+310	WMaxLimPctEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+311	WMaxLimPct		supported	RW	0	100	
+312	WMaxLimPctRvrt		unimplemented	RW			
+313	WMaxLimPctEnaRvrt		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+314	WMaxLimPctRvrtTms		unimplemented	RW			
+316	WMaxLimPctRvrtRem		unimplemented	R			
+318	WSetEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+319	WSetMod		supported	RW			
+		W_MAX_PCT	supported				
+		WATTS	supported				
+320	WSet		supported	RW	0	10000	
+322	WSetRvrt		unimplemented	RW			
+324	WSetPct		supported	RW	0	100	
+325	WSetPctRvrt		supported	RW	0	100	
+326	WSetEnaRvrt		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+327	WSetRvrtTms		unimplemented	RW			
+329	WSetRvrtRem		unimplemented	R			
+331	VarSetEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+332	VarSetMod		supported	RW			
+		W_MAX_PCT	supported				
+		VAR_MAX_PCT	supported				
+		VAR_AVAIL_PCT	supported				
+		VA_MAX_PCT	supported				
+		VARS	supported				
+333	VarSetPri		supported	RW			
+		ACTIVE	supported				
+		REACTIVE	supported				
+		VENDOR	supported				
+334	VarSet		supported	RW	-2500	2500	
+336	VarSetRvrt		unimplemented	RW			
+338	VarSetPct		unimplemented	RW			
+339	VarSetPctRvrt		unimplemented	RW			
+340	VarSetEnaRvrt		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+341	VarSetRvrtTms		unimplemented	RW			
+343	VarSetRvrtRem		unimplemented	R			
+345	WRmp		unimplemented	RW			
+346	WRmpRef		unimplemented	RW			
+		A_MAX	unimplemented				
+		W_MAX	unimplemented				
+347	VarRmp		unimplemented	RW			
+348	AntiIslEna		unimplemented	RW			
+		DISABLED	unimplemented				
+		ENABLED	unimplemented				
+349	PF_SF		-3	R			
+350	WMaxLimPct_SF		-1	R			
+351	WSet_SF		0	R			
+352	WSetPct_SF		-1	R			
+353	VarSet_SF		0	R			
+354	VarSetPct_SF		-1	R			
+355	PFWInj.PF		supported	RW	0.85	1	
+356	PFWInj.Ext		supported	RW			
+		OVER_EXCITED	supported				
+		UNDER_EXCITED	supported				
+357	PFWInjRvrt.PF		unimplemented	RW			
+358	PFWInjRvrt.Ext		unimplemented	RW			
+		OVER_EXCITED	unimplemented				
+		UNDER_EXCITED	unimplemented				
+359	PFWAbs.PF		unimplemented	RW			
+360	PFWAbs.Ext		unimplemented	RW			
+		OVER_EXCITED	unimplemented				
+		UNDER_EXCITED	unimplemented				
+361	PFWAbsRvrt.PF		unimplemented	RW			
+362	PFWAbsRvrt.Ext		unimplemented	RW			
+		OVER_EXCITED	unimplemented				
+		UNDER_EXCITED	unimplemented				
+
+705: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+363	ID		705	R			
+364	L		67	R			
+365	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+366	AdptCrvReq		supported	RW			
+367	AdptCrvRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+368	NPt		4	R			
+369	NCrv		3	R			
+370	RvrtTms		unimplemented	RW			
+372	RvrtRem		unimplemented	R			
+374	RvrtCrv		unimplemented	RW			
+375	V_SF		-2	R			
+376	DeptRef_SF		-2	R			
+377	RspTms_SF		0	R			
+378	Crv.1.ActPt		supported	RW	4	4	
+379	Crv.1.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		VAR_MAX_PCT	supported				
+		VAR_AVAL_PCT	supported				
+		VA_MAX_PCT	supported				
+380	Crv.1.Pri		supported	RW			
+		ACTIVE	supported				
+		REACTIVE	supported				
+		VENDOR	supported				
+381	Crv.1.VRef		supported	RW	95	105	
+382	Crv.1.VRefAuto		supported	R			
+383	Crv.1.VRefAutoEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+384	Crv.1.VRefAutoTms		supported	RW	300	5000	
+385	Crv.1.RspTms		supported	RW	1	90	
+387	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+388	Crv.1.Pt.1.V		supported	RW	77	98	
+389	Crv.1.Pt.1.Var		supported	RW	0	100	
+390	Crv.1.Pt.2.V		supported	RW	97	100	
+391	Crv.1.Pt.2.Var		supported	RW	0	0	
+392	Crv.1.Pt.3.V		supported	RW	100	103	
+393	Crv.1.Pt.3.Var		supported	RW	0	0	
+394	Crv.1.Pt.4.V		supported	RW	102	118	
+395	Crv.1.Pt.4.Var		supported	RW	-100	0	
+396	Crv.2.ActPt		supported	RW			
+397	Crv.2.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		VAR_MAX_PCT	supported				
+		VAR_AVAL_PCT	supported				
+		VA_MAX_PCT	supported				
+398	Crv.2.Pri		supported	RW			
+		ACTIVE	supported				
+		REACTIVE	supported				
+		VENDOR	supported				
+399	Crv.2.VRef		supported	RW			
+400	Crv.2.VRefAuto		supported	R			
+401	Crv.2.VRefAutoEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+402	Crv.2.VRefAutoTms		supported	RW			
+403	Crv.2.RspTms		supported	RW			
+405	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+406	Crv.2.Pt.1.V		supported	RW			
+407	Crv.2.Pt.1.Var		supported	RW			
+408	Crv.2.Pt.2.V		supported	RW			
+409	Crv.2.Pt.2.Var		supported	RW			
+410	Crv.2.Pt.3.V		supported	RW			
+411	Crv.2.Pt.3.Var		supported	RW			
+412	Crv.2.Pt.4.V		supported	RW			
+413	Crv.2.Pt.4.Var		supported	RW			
+414	Crv.3.ActPt		supported	RW			
+415	Crv.3.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		VAR_MAX_PCT	supported				
+		VAR_AVAL_PCT	supported				
+		VA_MAX_PCT	supported				
+416	Crv.3.Pri		supported	RW			
+		ACTIVE	supported				
+		REACTIVE	supported				
+		VENDOR	supported				
+417	Crv.3.VRef		supported	RW			
+418	Crv.3.VRefAuto		supported	R			
+419	Crv.3.VRefAutoEna		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+420	Crv.3.VRefAutoTms		supported	RW			
+421	Crv.3.RspTms		supported	RW			
+423	Crv.3.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+424	Crv.3.Pt.1.V		supported	RW			
+425	Crv.3.Pt.1.Var		supported	RW			
+426	Crv.3.Pt.2.V		supported	RW			
+427	Crv.3.Pt.2.Var		supported	RW			
+428	Crv.3.Pt.3.V		supported	RW			
+429	Crv.3.Pt.3.Var		supported	RW			
+430	Crv.3.Pt.4.V		supported	RW			
+431	Crv.3.Pt.4.Var		supported	RW			
+
+706: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+432	ID		706	R			
+433	L		31	R			
+434	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+435	AdptCrvReq		supported	RW			
+436	AdptCrvRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+437	NPt		2	R			
+438	NCrv		2	R			
+439	RvrtTms		unimplemented	RW			
+441	RvrtRem		unimplemented	R			
+443	RvrtCrv		unimplemented	RW			
+444	V_SF		0	R			
+445	DeptRef_SF		0	R			
+446	RspTms_SF		-1	R			
+447	Crv.1.ActPt		supported	RW	2	2	
+448	Crv.1.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		W_AVAL_PCT	supported				
+449	Crv.1.RspTms		supported	RW	0.5	60	
+451	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+452	Crv.1.Pt.1.V		supported	RW	105	109	
+453	Crv.1.Pt.1.W		supported	RW	100	100	
+454	Crv.1.Pt.2.V		supported	RW	107	110	
+455	Crv.1.Pt.2.W		supported	RW	0	100	
+456	Crv.2.ActPt		supported	RW			
+457	Crv.2.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		W_AVAL_PCT	supported				
+458	Crv.2.RspTms		supported	RW			
+460	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+461	Crv.2.Pt.1.V		supported	RW			
+462	Crv.2.Pt.1.W		supported	RW			
+463	Crv.2.Pt.2.V		supported	RW			
+464	Crv.2.Pt.2.W		supported	RW			
+
+707: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+465	ID		707	R			
+466	L		105	R			
+467	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+468	AdptCrvReq		supported	RW			
+469	AdptCrvRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+470	NPt		5	R			
+471	NCrvSet		2	R			
+472	V_SF		-1	R			
+473	Tms_SF		-2	R			
+474	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+475	Crv.1.MustTrip.ActPt		supported	RW	5	5	
+476	Crv.1.MustTrip.Pt.1.V		supported	RW	0	50	
+477	Crv.1.MustTrip.Pt.1.Tms		supported	RW	2	21	
+479	Crv.1.MustTrip.Pt.2.V		supported	RW	0	50	
+480	Crv.1.MustTrip.Pt.2.Tms		supported	RW	2	21	
+482	Crv.1.MustTrip.Pt.3.V		supported	RW	0	50	
+483	Crv.1.MustTrip.Pt.3.Tms		supported	RW	21	50	
+485	Crv.1.MustTrip.Pt.4.V		supported	RW	0	88	
+486	Crv.1.MustTrip.Pt.4.Tms		supported	RW	21	50	
+488	Crv.1.MustTrip.Pt.5.V		supported	RW	0	88	
+489	Crv.1.MustTrip.Pt.5.Tms		supported	RW	21	51	
+491	Crv.1.MayTrip.ActPt		unimplemented	RW			
+492	Crv.1.MayTrip.Pt.1.V		unimplemented	RW			
+493	Crv.1.MayTrip.Pt.1.Tms		unimplemented	RW			
+495	Crv.1.MayTrip.Pt.2.V		unimplemented	RW			
+496	Crv.1.MayTrip.Pt.2.Tms		unimplemented	RW			
+498	Crv.1.MayTrip.Pt.3.V		unimplemented	RW			
+499	Crv.1.MayTrip.Pt.3.Tms		unimplemented	RW			
+501	Crv.1.MayTrip.Pt.4.V		unimplemented	RW			
+502	Crv.1.MayTrip.Pt.4.Tms		unimplemented	RW			
+504	Crv.1.MayTrip.Pt.5.V		unimplemented	RW			
+505	Crv.1.MayTrip.Pt.5.Tms		unimplemented	RW			
+507	Crv.1.MomCess.ActPt		supported	RW			
+508	Crv.1.MomCess.Pt.1.V		supported	RW			
+509	Crv.1.MomCess.Pt.1.Tms		supported	RW			
+511	Crv.1.MomCess.Pt.2.V		supported	RW			
+512	Crv.1.MomCess.Pt.2.Tms		supported	RW			
+514	Crv.1.MomCess.Pt.3.V		unimplemented	RW			
+515	Crv.1.MomCess.Pt.3.Tms		unimplemented	RW			
+517	Crv.1.MomCess.Pt.4.V		unimplemented	RW			
+518	Crv.1.MomCess.Pt.4.Tms		unimplemented	RW			
+520	Crv.1.MomCess.Pt.5.V		unimplemented	RW			
+521	Crv.1.MomCess.Pt.5.Tms		unimplemented	RW			
+523	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+524	Crv.2.MustTrip.ActPt		supported	RW			
+525	Crv.2.MustTrip.Pt.1.V		supported	RW			
+526	Crv.2.MustTrip.Pt.1.Tms		supported	RW			
+528	Crv.2.MustTrip.Pt.2.V		supported	RW			
+529	Crv.2.MustTrip.Pt.2.Tms		supported	RW			
+531	Crv.2.MustTrip.Pt.3.V		supported	RW			
+532	Crv.2.MustTrip.Pt.3.Tms		supported	RW			
+534	Crv.2.MustTrip.Pt.4.V		supported	RW			
+535	Crv.2.MustTrip.Pt.4.Tms		supported	RW			
+537	Crv.2.MustTrip.Pt.5.V		supported	RW			
+538	Crv.2.MustTrip.Pt.5.Tms		supported	RW			
+540	Crv.2.MayTrip.ActPt		unimplemented	RW			
+541	Crv.2.MayTrip.Pt.1.V		unimplemented	RW			
+542	Crv.2.MayTrip.Pt.1.Tms		unimplemented	RW			
+544	Crv.2.MayTrip.Pt.2.V		unimplemented	RW			
+545	Crv.2.MayTrip.Pt.2.Tms		unimplemented	RW			
+547	Crv.2.MayTrip.Pt.3.V		unimplemented	RW			
+548	Crv.2.MayTrip.Pt.3.Tms		unimplemented	RW			
+550	Crv.2.MayTrip.Pt.4.V		unimplemented	RW			
+551	Crv.2.MayTrip.Pt.4.Tms		unimplemented	RW			
+553	Crv.2.MayTrip.Pt.5.V		unimplemented	RW			
+554	Crv.2.MayTrip.Pt.5.Tms		unimplemented	RW			
+556	Crv.2.MomCess.ActPt		supported	RW			
+557	Crv.2.MomCess.Pt.1.V		supported	RW			
+558	Crv.2.MomCess.Pt.1.Tms		supported	RW			
+560	Crv.2.MomCess.Pt.2.V		supported	RW			
+561	Crv.2.MomCess.Pt.2.Tms		supported	RW			
+563	Crv.2.MomCess.Pt.3.V		unimplemented	RW			
+564	Crv.2.MomCess.Pt.3.Tms		unimplemented	RW			
+566	Crv.2.MomCess.Pt.4.V		unimplemented	RW			
+567	Crv.2.MomCess.Pt.4.Tms		unimplemented	RW			
+569	Crv.2.MomCess.Pt.5.V		unimplemented	RW			
+570	Crv.2.MomCess.Pt.5.Tms		unimplemented	RW			
+
+708: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+572	ID		708	R			
+573	L		105	R			
+574	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+575	AdptCrvReq		supported	RW			
+576	AdptCrvRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+577	NPt		5	R			
+578	NCrvSet		2	R			
+579	V_SF		-1	R			
+580	Tms_SF		-2	R			
+581	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+582	Crv.1.MustTrip.ActPt		supported	RW	5	5	
+583	Crv.1.MustTrip.Pt.1.V		supported	RW	0	50	
+584	Crv.1.MustTrip.Pt.1.Tms		supported	RW	0.16	0.16	
+586	Crv.1.MustTrip.Pt.2.V		supported	RW	120	120	
+587	Crv.1.MustTrip.Pt.2.Tms		supported	RW	0.16	0.16	
+589	Crv.1.MustTrip.Pt.3.V		supported	RW	120	120	
+590	Crv.1.MustTrip.Pt.3.Tms		supported	RW	1	13	
+592	Crv.1.MustTrip.Pt.4.V		supported	RW	110	120	
+593	Crv.1.MustTrip.Pt.4.Tms		supported	RW	1	13	
+595	Crv.1.MustTrip.Pt.5.V		supported	RW	110	120	
+596	Crv.1.MustTrip.Pt.5.Tms		supported	RW	2	14	
+598	Crv.1.MayTrip.ActPt		unimplemented	RW			
+599	Crv.1.MayTrip.Pt.1.V		unimplemented	RW			
+600	Crv.1.MayTrip.Pt.1.Tms		unimplemented	RW			
+602	Crv.1.MayTrip.Pt.2.V		unimplemented	RW			
+603	Crv.1.MayTrip.Pt.2.Tms		unimplemented	RW			
+605	Crv.1.MayTrip.Pt.3.V		unimplemented	RW			
+606	Crv.1.MayTrip.Pt.3.Tms		unimplemented	RW			
+608	Crv.1.MayTrip.Pt.4.V		unimplemented	RW			
+609	Crv.1.MayTrip.Pt.4.Tms		unimplemented	RW			
+611	Crv.1.MayTrip.Pt.5.V		unimplemented	RW			
+612	Crv.1.MayTrip.Pt.5.Tms		unimplemented	RW			
+614	Crv.1.MomCess.ActPt		supported	RW			
+615	Crv.1.MomCess.Pt.1.V		supported	RW			
+616	Crv.1.MomCess.Pt.1.Tms		supported	RW			
+618	Crv.1.MomCess.Pt.2.V		supported	RW			
+619	Crv.1.MomCess.Pt.2.Tms		supported	RW			
+621	Crv.1.MomCess.Pt.3.V		unimplemented	RW			
+622	Crv.1.MomCess.Pt.3.Tms		unimplemented	RW			
+624	Crv.1.MomCess.Pt.4.V		unimplemented	RW			
+625	Crv.1.MomCess.Pt.4.Tms		unimplemented	RW			
+627	Crv.1.MomCess.Pt.5.V		unimplemented	RW			
+628	Crv.1.MomCess.Pt.5.Tms		unimplemented	RW			
+630	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+631	Crv.2.MustTrip.ActPt		supported	RW			
+632	Crv.2.MustTrip.Pt.1.V		supported	RW			
+633	Crv.2.MustTrip.Pt.1.Tms		supported	RW			
+635	Crv.2.MustTrip.Pt.2.V		supported	RW			
+636	Crv.2.MustTrip.Pt.2.Tms		supported	RW			
+638	Crv.2.MustTrip.Pt.3.V		supported	RW			
+639	Crv.2.MustTrip.Pt.3.Tms		supported	RW			
+641	Crv.2.MustTrip.Pt.4.V		supported	RW			
+642	Crv.2.MustTrip.Pt.4.Tms		supported	RW			
+644	Crv.2.MustTrip.Pt.5.V		supported	RW			
+645	Crv.2.MustTrip.Pt.5.Tms		supported	RW			
+647	Crv.2.MayTrip.ActPt		unimplemented	RW			
+648	Crv.2.MayTrip.Pt.1.V		unimplemented	RW			
+649	Crv.2.MayTrip.Pt.1.Tms		unimplemented	RW			
+651	Crv.2.MayTrip.Pt.2.V		unimplemented	RW			
+652	Crv.2.MayTrip.Pt.2.Tms		unimplemented	RW			
+654	Crv.2.MayTrip.Pt.3.V		unimplemented	RW			
+655	Crv.2.MayTrip.Pt.3.Tms		unimplemented	RW			
+657	Crv.2.MayTrip.Pt.4.V		unimplemented	RW			
+658	Crv.2.MayTrip.Pt.4.Tms		unimplemented	RW			
+660	Crv.2.MayTrip.Pt.5.V		unimplemented	RW			
+661	Crv.2.MayTrip.Pt.5.Tms		unimplemented	RW			
+663	Crv.2.MomCess.ActPt		supported	RW			
+664	Crv.2.MomCess.Pt.1.V		supported	RW			
+665	Crv.2.MomCess.Pt.1.Tms		supported	RW			
+667	Crv.2.MomCess.Pt.2.V		supported	RW			
+668	Crv.2.MomCess.Pt.2.Tms		supported	RW			
+670	Crv.2.MomCess.Pt.3.V		unimplemented	RW			
+671	Crv.2.MomCess.Pt.3.Tms		unimplemented	RW			
+673	Crv.2.MomCess.Pt.4.V		unimplemented	RW			
+674	Crv.2.MomCess.Pt.4.Tms		unimplemented	RW			
+676	Crv.2.MomCess.Pt.5.V		unimplemented	RW			
+677	Crv.2.MomCess.Pt.5.Tms		unimplemented	RW			
+
+709: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+679	ID		709	R			
+680	L		135	R			
+681	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+682	AdptCrvReq		supported	RW			
+683	AdptCrvRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+684	NPt		5	R			
+685	NCrvSet		2	R			
+686	Hz_SF		-1	R			
+687	Tms_SF		-2	R			
+688	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+689	Crv.1.MustTrip.ActPt		supported	RW	5	5	
+690	Crv.1.MustTrip.Pt.1.Hz		supported	RW	0	50	
+692	Crv.1.MustTrip.Pt.1.Tms		supported	RW	0.16	1000	
+694	Crv.1.MustTrip.Pt.2.Hz		supported	RW	50	57	
+696	Crv.1.MustTrip.Pt.2.Tms		supported	RW	0.16	1000	
+698	Crv.1.MustTrip.Pt.3.Hz		supported	RW	50	57	
+700	Crv.1.MustTrip.Pt.3.Tms		supported	RW	180	1000	
+702	Crv.1.MustTrip.Pt.4.Hz		supported	RW	50	59	
+704	Crv.1.MustTrip.Pt.4.Tms		supported	RW	180	1000	
+706	Crv.1.MustTrip.Pt.5.Hz		supported	RW	50	59	
+708	Crv.1.MustTrip.Pt.5.Tms		supported	RW	180	1000	
+710	Crv.1.MayTrip.ActPt		unimplemented	RW			
+711	Crv.1.MayTrip.Pt.1.Hz		unimplemented	RW			
+713	Crv.1.MayTrip.Pt.1.Tms		unimplemented	RW			
+715	Crv.1.MayTrip.Pt.2.Hz		unimplemented	RW			
+717	Crv.1.MayTrip.Pt.2.Tms		unimplemented	RW			
+719	Crv.1.MayTrip.Pt.3.Hz		unimplemented	RW			
+721	Crv.1.MayTrip.Pt.3.Tms		unimplemented	RW			
+723	Crv.1.MayTrip.Pt.4.Hz		unimplemented	RW			
+725	Crv.1.MayTrip.Pt.4.Tms		unimplemented	RW			
+727	Crv.1.MayTrip.Pt.5.Hz		unimplemented	RW			
+729	Crv.1.MayTrip.Pt.5.Tms		unimplemented	RW			
+731	Crv.1.MomCess.ActPt		unimplemented	RW			
+732	Crv.1.MomCess.Pt.1.Hz		unimplemented	RW			
+734	Crv.1.MomCess.Pt.1.Tms		unimplemented	RW			
+736	Crv.1.MomCess.Pt.2.Hz		unimplemented	RW			
+738	Crv.1.MomCess.Pt.2.Tms		unimplemented	RW			
+740	Crv.1.MomCess.Pt.3.Hz		unimplemented	RW			
+742	Crv.1.MomCess.Pt.3.Tms		unimplemented	RW			
+744	Crv.1.MomCess.Pt.4.Hz		unimplemented	RW			
+746	Crv.1.MomCess.Pt.4.Tms		unimplemented	RW			
+748	Crv.1.MomCess.Pt.5.Hz		unimplemented	RW			
+750	Crv.1.MomCess.Pt.5.Tms		unimplemented	RW			
+752	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+753	Crv.2.MustTrip.ActPt		supported	RW			
+754	Crv.2.MustTrip.Pt.1.Hz		supported	RW			
+756	Crv.2.MustTrip.Pt.1.Tms		supported	RW			
+758	Crv.2.MustTrip.Pt.2.Hz		supported	RW			
+760	Crv.2.MustTrip.Pt.2.Tms		supported	RW			
+762	Crv.2.MustTrip.Pt.3.Hz		supported	RW			
+764	Crv.2.MustTrip.Pt.3.Tms		supported	RW			
+766	Crv.2.MustTrip.Pt.4.Hz		supported	RW			
+768	Crv.2.MustTrip.Pt.4.Tms		supported	RW			
+770	Crv.2.MustTrip.Pt.5.Hz		supported	RW			
+772	Crv.2.MustTrip.Pt.5.Tms		supported	RW			
+774	Crv.2.MayTrip.ActPt		unimplemented	RW			
+775	Crv.2.MayTrip.Pt.1.Hz		unimplemented	RW			
+777	Crv.2.MayTrip.Pt.1.Tms		unimplemented	RW			
+779	Crv.2.MayTrip.Pt.2.Hz		unimplemented	RW			
+781	Crv.2.MayTrip.Pt.2.Tms		unimplemented	RW			
+783	Crv.2.MayTrip.Pt.3.Hz		unimplemented	RW			
+785	Crv.2.MayTrip.Pt.3.Tms		unimplemented	RW			
+787	Crv.2.MayTrip.Pt.4.Hz		unimplemented	RW			
+789	Crv.2.MayTrip.Pt.4.Tms		unimplemented	RW			
+791	Crv.2.MayTrip.Pt.5.Hz		unimplemented	RW			
+793	Crv.2.MayTrip.Pt.5.Tms		unimplemented	RW			
+795	Crv.2.MomCess.ActPt		unimplemented	RW			
+796	Crv.2.MomCess.Pt.1.Hz		unimplemented	RW			
+798	Crv.2.MomCess.Pt.1.Tms		unimplemented	RW			
+800	Crv.2.MomCess.Pt.2.Hz		unimplemented	RW			
+802	Crv.2.MomCess.Pt.2.Tms		unimplemented	RW			
+804	Crv.2.MomCess.Pt.3.Hz		unimplemented	RW			
+806	Crv.2.MomCess.Pt.3.Tms		unimplemented	RW			
+808	Crv.2.MomCess.Pt.4.Hz		unimplemented	RW			
+810	Crv.2.MomCess.Pt.4.Tms		unimplemented	RW			
+812	Crv.2.MomCess.Pt.5.Hz		unimplemented	RW			
+814	Crv.2.MomCess.Pt.5.Tms		unimplemented	RW			
+
+710: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+816	ID		710	R			
+817	L		135	R			
+818	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+819	AdptCrvReq		supported	RW			
+820	AdptCrvRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+821	NPt		5	R			
+822	NCrvSet		2	R			
+823	Hz_SF		-1	R			
+824	Tms_SF		-2	R			
+825	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+826	Crv.1.MustTrip.ActPt		supported	RW	5	5	
+827	Crv.1.MustTrip.Pt.1.Hz		supported	RW	62	67	
+829	Crv.1.MustTrip.Pt.1.Tms		supported	RW	0.16	1000	
+831	Crv.1.MustTrip.Pt.2.Hz		supported	RW	61.8	66	
+833	Crv.1.MustTrip.Pt.2.Tms		supported	RW	0.16	1000	
+835	Crv.1.MustTrip.Pt.3.Hz		supported	RW	61.8	66	
+837	Crv.1.MustTrip.Pt.3.Tms		supported	RW	180	1000	
+839	Crv.1.MustTrip.Pt.4.Hz		supported	RW	61	66	
+841	Crv.1.MustTrip.Pt.4.Tms		supported	RW	180	1000	
+843	Crv.1.MustTrip.Pt.5.Hz		supported	RW	61	66	
+845	Crv.1.MustTrip.Pt.5.Tms		supported	RW	180	1000	
+847	Crv.1.MayTrip.ActPt		unimplemented	RW			
+848	Crv.1.MayTrip.Pt.1.Hz		unimplemented	RW			
+850	Crv.1.MayTrip.Pt.1.Tms		unimplemented	RW			
+852	Crv.1.MayTrip.Pt.2.Hz		unimplemented	RW			
+854	Crv.1.MayTrip.Pt.2.Tms		unimplemented	RW			
+856	Crv.1.MayTrip.Pt.3.Hz		unimplemented	RW			
+858	Crv.1.MayTrip.Pt.3.Tms		unimplemented	RW			
+860	Crv.1.MayTrip.Pt.4.Hz		unimplemented	RW			
+862	Crv.1.MayTrip.Pt.4.Tms		unimplemented	RW			
+864	Crv.1.MayTrip.Pt.5.Hz		unimplemented	RW			
+866	Crv.1.MayTrip.Pt.5.Tms		unimplemented	RW			
+868	Crv.1.MomCess.ActPt		unimplemented	RW			
+869	Crv.1.MomCess.Pt.1.Hz		unimplemented	RW			
+871	Crv.1.MomCess.Pt.1.Tms		unimplemented	RW			
+873	Crv.1.MomCess.Pt.2.Hz		unimplemented	RW			
+875	Crv.1.MomCess.Pt.2.Tms		unimplemented	RW			
+877	Crv.1.MomCess.Pt.3.Hz		unimplemented	RW			
+879	Crv.1.MomCess.Pt.3.Tms		unimplemented	RW			
+881	Crv.1.MomCess.Pt.4.Hz		unimplemented	RW			
+883	Crv.1.MomCess.Pt.4.Tms		unimplemented	RW			
+885	Crv.1.MomCess.Pt.5.Hz		unimplemented	RW			
+887	Crv.1.MomCess.Pt.5.Tms		unimplemented	RW			
+889	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+890	Crv.2.MustTrip.ActPt		supported	RW			
+891	Crv.2.MustTrip.Pt.1.Hz		supported	RW			
+893	Crv.2.MustTrip.Pt.1.Tms		supported	RW			
+895	Crv.2.MustTrip.Pt.2.Hz		supported	RW			
+897	Crv.2.MustTrip.Pt.2.Tms		supported	RW			
+899	Crv.2.MustTrip.Pt.3.Hz		supported	RW			
+901	Crv.2.MustTrip.Pt.3.Tms		supported	RW			
+903	Crv.2.MustTrip.Pt.4.Hz		supported	RW			
+905	Crv.2.MustTrip.Pt.4.Tms		supported	RW			
+907	Crv.2.MustTrip.Pt.5.Hz		supported	RW			
+909	Crv.2.MustTrip.Pt.5.Tms		supported	RW			
+911	Crv.2.MayTrip.ActPt		unimplemented	RW			
+912	Crv.2.MayTrip.Pt.1.Hz		unimplemented	RW			
+914	Crv.2.MayTrip.Pt.1.Tms		unimplemented	RW			
+916	Crv.2.MayTrip.Pt.2.Hz		unimplemented	RW			
+918	Crv.2.MayTrip.Pt.2.Tms		unimplemented	RW			
+920	Crv.2.MayTrip.Pt.3.Hz		unimplemented	RW			
+922	Crv.2.MayTrip.Pt.3.Tms		unimplemented	RW			
+924	Crv.2.MayTrip.Pt.4.Hz		unimplemented	RW			
+926	Crv.2.MayTrip.Pt.4.Tms		unimplemented	RW			
+928	Crv.2.MayTrip.Pt.5.Hz		unimplemented	RW			
+930	Crv.2.MayTrip.Pt.5.Tms		unimplemented	RW			
+932	Crv.2.MomCess.ActPt		unimplemented	RW			
+933	Crv.2.MomCess.Pt.1.Hz		unimplemented	RW			
+935	Crv.2.MomCess.Pt.1.Tms		unimplemented	RW			
+937	Crv.2.MomCess.Pt.2.Hz		unimplemented	RW			
+939	Crv.2.MomCess.Pt.2.Tms		unimplemented	RW			
+941	Crv.2.MomCess.Pt.3.Hz		unimplemented	RW			
+943	Crv.2.MomCess.Pt.3.Tms		unimplemented	RW			
+945	Crv.2.MomCess.Pt.4.Hz		unimplemented	RW			
+947	Crv.2.MomCess.Pt.4.Tms		unimplemented	RW			
+949	Crv.2.MomCess.Pt.5.Hz		unimplemented	RW			
+951	Crv.2.MomCess.Pt.5.Tms		unimplemented	RW			
+
+711: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+953	ID		711	R			
+954	L		32	R			
+955	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+956	AdptCtlReq		supported	RW			
+957	AdptCtlRslt		supported	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+958	NCtl		2	R			
+959	RvrtTms		unimplemented	RW			
+961	RvrtRem		unimplemented	R			
+963	RvrtCtl		unimplemented	RW			
+964	Db_SF		-3	R			
+965	K_SF		-2	R			
+966	RspTms_SF		-1	R			
+967	Ctl.1.DbOf		supported	RW	0.017	1	
+969	Ctl.1.DbUf		supported	RW	0.017	1	
+971	Ctl.1.KOf		supported	RW	0.02	0.05	
+972	Ctl.1.KUf		supported	RW	0.02	0.05	
+973	Ctl.1.RspTms		supported	RW	0.2	10	
+975	Ctl.1.PMin		unimplemented	RW			
+976	Ctl.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+977	Ctl.2.DbOf		supported	RW			
+979	Ctl.2.DbUf		supported	RW			
+981	Ctl.2.KOf		supported	RW			
+982	Ctl.2.KUf		supported	RW			
+983	Ctl.2.RspTms		supported	RW			
+985	Ctl.2.PMin		unimplemented	RW			
+986	Ctl.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+
+712: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+987	ID		712	R			
+988	L		44	R			
+989	Ena		supported	RW			
+		DISABLED	supported				
+		ENABLED	supported				
+990	AdptCrvReq		2	RW			
+991	AdptCrvRslt		1	R			
+		IN_PROGRESS	supported				
+		COMPLETED	supported				
+		FAILED	supported				
+992	NPt		6	R			
+993	NCrv		2	R			
+994	RvrtTms		unimplemented	RW			
+996	RvrtRem		unimplemented	R			
+998	RvrtCrv		unimplemented	RW			
+999	W_SF		-1	R			
+1000	DeptRef_SF		-1	R			
+1001	Crv.1.ActPt		supported	RW	6	6	
+1002	Crv.1.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		VAR_MAX_PCT	supported				
+		VAR_AVAL_PCT	supported				
+		VA_MAX_PCT	supported				
+1003	Crv.1.Pri		supported	RW			
+		ACTIVE	supported				
+		REACTIVE	supported				
+1004	Crv.1.ReadOnly		1	R			
+		RW	supported				
+		R	supported				
+1005	Crv.1.Pt.1.W		supported	RW	-50	-100	
+1006	Crv.1.Pt.1.Var		supported	RW	-100	100	
+1007	Crv.1.Pt.2.W		supported	RW	-40	-80	
+1008	Crv.1.Pt.2.Var		supported	RW	-100	100	
+1009	Crv.1.Pt.3.W		supported	RW	0	-70	
+1010	Crv.1.Pt.3.Var		supported	RW	-100	100	
+1011	Crv.1.Pt.4.W		supported	RW	0	70	
+1012	Crv.1.Pt.4.Var		supported	RW	-100	100	
+1013	Crv.1.Pt.5.W		supported	RW	40	80	
+1014	Crv.1.Pt.5.Var		supported	RW	-100	100	
+1015	Crv.1.Pt.6.W		supported	RW	50	100	
+1016	Crv.1.Pt.6.Var		supported	RW	-100	100	
+1017	Crv.2.ActPt		supported	RW			
+1018	Crv.2.DeptRef		supported	RW			
+		W_MAX_PCT	supported				
+		VAR_MAX_PCT	supported				
+		VAR_AVAL_PCT	supported				
+		VA_MAX_PCT	supported				
+1019	Crv.2.Pri		supported	RW			
+		ACTIVE	supported				
+		REACTIVE	supported				
+1020	Crv.2.ReadOnly		0	R			
+		RW	supported				
+		R	supported				
+1021	Crv.2.Pt.1.W		supported	RW			
+1022	Crv.2.Pt.1.Var		supported	RW			
+1023	Crv.2.Pt.2.W		supported	RW			
+1024	Crv.2.Pt.2.Var		supported	RW			
+1025	Crv.2.Pt.3.W		supported	RW			
+1026	Crv.2.Pt.3.Var		supported	RW			
+1027	Crv.2.Pt.4.W		supported	RW			
+1028	Crv.2.Pt.4.Var		supported	RW			
+1029	Crv.2.Pt.5.W		supported	RW			
+1030	Crv.2.Pt.5.Var		supported	RW			
+1031	Crv.2.Pt.6.W		supported	RW			
+1032	Crv.2.Pt.6.Var		supported	RW			
+
+713: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+1033	ID		713	R			
+1034	L		7	R			
+1035	WHRtg		supported	R			
+1036	WHAvail		supported	R			
+1037	SoC		supported	R			
+1038	SoH		supported	R			
+1039	Sta		supported	R			
+		OK	supported				
+		WARNING	supported				
+		ERROR	supported				
+1040	WH_SF		0	R			
+1041	Pct_SF		unimplemented	R			
+
+714: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+1042	ID		714	R			
+1043	L		43	R			
+1044	PrtAlrms		supported	R			
+1046	NPrt		1	R			
+1047	DCA		supported	R			
+1048	DCW		supported	R			
+1049	DCWhInj		supported	R			
+1053	DCWhAbs		supported	R			
+1057	DCA_SF		0	R			
+1058	DCV_SF		0	R			
+1059	DCW_SF		0	R			
+1060	DCWH_SF		0	R			
+1061	Tmp_SF		0	R			
+1062	Prt.1.PrtTyp		supported	R			
+		PV	supported				
+		ESS	supported				
+		EV	supported				
+		INJ	supported				
+		ABS	supported				
+		BIDIR	supported				
+		DC_DC	supported				
+1063	Prt.1.ID		supported	R			
+1064	Prt.1.IDStr		supported	R			
+1072	Prt.1.DCA		supported	R			
+1073	Prt.1.DCV		supported	R			
+1074	Prt.1.DCW		supported	R			
+1075	Prt.1.DCWhInj		supported	R			
+1079	Prt.1.DCWhAbs		supported	R			
+1083	Prt.1.Tmp		supported	R			
+1084	Prt.1.DCSta		supported	R			
+		OFF	supported				
+		ON	supported				
+		WARNING	supported				
+		ERROR	supported				
+1085	Prt.1.DCAlrm		supported	R			
+		GROUND_FAULT	supported				
+		INPUT_OVER_VOLTAGE	supported				
+		DC_DISCONNECT	supported				
+		CABINET_OPEN	supported				
+		MANUAL_SHUTDOWN	supported				
+		OVER_TEMP	supported				
+		BLOWN_FUSE	supported				
+		UNDER_TEMP	supported				
+		MEMORY_LOSS	supported				
+		ARC_DETECTION	supported				
+		RESERVED	supported				
+		TEST_FAILED	supported				
+		INPUT_UNDER_VOLTAGE	supported				
+		INPUT_OVER_CURRENT	supported				
+
+715: Table 1
+Address	Point	Subvalue	Value	R/W	Min	Max	Conformance Notes
+1087	ID		715	R			
+1088	L		7	R			
+1089	LocRemCtl		supported	R			
+		REMOTE	supported				
+		LOCAL	supported				
+1090	DERHb		supported	R			
+1092	ControllerHb		supported	RW			
+1094	AlarmReset		supported	RW			
+1095	OpCtl		supported	RW			
+		STOP	supported				
+		START	supported				
+		ENTER_STANDBY	supported				
+		EXIT_STANDBY	supported				
