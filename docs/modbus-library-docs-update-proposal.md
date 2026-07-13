@@ -86,6 +86,52 @@ time. Also add the three newly-confirmed 15000-range matches to
 
 ---
 
+## C0. `power_flow` (cmd 1301) — a rich, mostly-undocumented read source for cross-referencing
+
+Live output captured 2026-07-13 (`franklinwh-local -i 192.168.1.100
+power_flow`). `catalog.py:92` documents this endpoint only at a high level
+("Live power flow: run_status, mode, p_uti/p_sun/p_gen/p_fhp/p_load, soc,
+t_amb, daily kWh"), and only `run_status` has an actual decode table
+(`RUN_STATUS` dict, `catalog.py:185-196`; confirmed `run_status=2` →
+"Discharging", consistent with `p_fhp=1073` being positive). `mode` is
+explicitly documented as an arbitrary programme id, not something to decode
+further (`catalog.py:181-183`).
+
+**Everything else in this payload is undocumented** and worth using as
+correlation ground truth against the still-unknown Modbus registers, because
+several fields carry much higher precision than raw Modbus registers ever
+would (`soc: 51.684208`, `kwh_sun: 21.334961`, `t_amb: 13.2`) — matching a
+*scaled* raw Modbus integer against these (e.g. does some register equal
+`t_amb * 10 = 132`, or `soc * 10 ≈ 517`?) is a stronger test than the coarse
+whole-number coincidence matching used in section A/B, since it's far less
+likely to collide by chance:
+
+- `slaver_stat`, `elecnet_state`, `infi_status` — status/enum fields, no
+  decode table anywhere in the repo.
+- `cd_alm`, `ent`, `genStat`, `offgridreason` — single-value flags/codes, no
+  description. `offgridreason` in particular is worth capturing during an
+  actual `set_offgrid()` test (section D) since it should populate with a
+  real value at that moment. `cd_alm` — possibly "cabinet door alarm," given
+  `CABINET_OPEN` exists as a named alarm bit in both M701.Alrm and
+  M714.DCAlrm (Issue 12) — worth checking if it correlates with either.
+- `main_sw` (3 elements), `pro_load` (3 elements), `doStatus`/`diStatus` (4
+  elements each) — digital I/O / switch-state arrays, no field-by-field
+  description. Candidate correlates for the small integer-flag registers in
+  the still-unmatched 15000-range list (15021=1, 15026=1, etc.) — worth
+  testing whether any of those track a specific element of these arrays.
+- `sharp`/`peak`/`flat`/`valley` (7-element TOU billing-period energy
+  arrays) and `fhpSn`/`fhpSoc`/`fhpPower` (per-battery-unit arrays, useful on
+  multi-unit installs) — likely **not** exposed via Modbus at all; valuable
+  in their own right for the bridge's pricing/reporting features regardless
+  of the Modbus cross-referencing goal, but out of scope for this proposal.
+
+**Recommendation:** capture `power_flow` alongside every Modbus register dump
+in the test plan (step 1 below), not as an afterthought — its higher-precision
+fields make several of the "no match found" 15000-range registers worth a
+second look with a scaled-value comparison instead of only integer-equality.
+
+---
+
 ## C. Local API (franklinwh-local, TCP/9000) write inventory
 
 For the empirical test in section D, here's what can actually be changed via
@@ -119,8 +165,10 @@ or any named extension register so far).
 1. **Baseline capture**: read the full 15000-15039, 15500-15513, and
    16000-16002 ranges via `tools/modbus_sunspec2_reader.py --raw ... --match`
    (or the bridge's SunSpec Explorer export), alongside the standard SunSpec
-   registers for M701/M713 (ambient temp, line voltage, reserve %). Record
-   timestamp.
+   registers for M701/M713 (ambient temp, line voltage, reserve %) **and**
+   `franklinwh-local power_flow` in the same instant (see section C0) — its
+   higher-precision fields (`soc`, `t_amb`, `kwh_*`) let scaled-value matches
+   catch things whole-number coincidence would miss. Record timestamp.
 2. **Change Self-Consumption reserve only** via `set_mode_soc()`, e.g. set
    `selfMinSoc` to a value distinct from the current TOU reserve (so the two
    are no longer numerically equal — this session's data had them both at 8%,
