@@ -16,27 +16,34 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-# ── Bit-name tables (sourced from enum_alarms.py in the modbus library) ──────
+# ── Bit-name tables ────────────────────────────────────────────────────────
 
-# Model 701 Alrm — standard SunSpec DER AC alarms (bits 0-15 standard, 16-31 vendor)
+# Model 701 Alrm — standard SunSpec DER AC alarms (bits 0-16 standard per the
+# official SunSpec Model 701 spec, confirmed against FranklinWH's own PICS
+# certification, which marks all 17 as "supported"; bits 17-31 are vendor-
+# defined and unconfirmed). CORRECTED 2026-07-13 — the previous table here
+# was off-by-one from bit 1 onward and included three names that don't exist
+# in the spec at all (InputOverCurrent, ArcFault, ThermalDerate). See
+# docs/vendor-issues.md Issue 12a.
 _M701_ALRM_BITS: dict[int, str] = {
     0:  "GroundFault",
-    1:  "InputOverCurrent",
-    2:  "DCOverVoltage",
-    3:  "ACDisconnect",
-    4:  "DCDisconnect",
-    5:  "GridDisconnect",
-    6:  "CabinetOpen",
-    7:  "ManualShutdown",
-    8:  "OverTemp",
-    9:  "OverFrequency",
-    10: "UnderFrequency",
-    11: "ACOverVoltage",
-    12: "ACUnderVoltage",
-    13: "StringFault",
-    14: "ArcFault",
-    15: "ThermalDerate",
-    # Bits 16-31 are vendor-defined; decode as hex positions if set
+    1:  "DCOverVoltage",
+    2:  "ACDisconnect",
+    3:  "DCDisconnect",
+    4:  "GridDisconnect",
+    5:  "CabinetOpen",
+    6:  "ManualShutdown",
+    7:  "OverTemp",
+    8:  "OverFrequency",
+    9:  "UnderFrequency",
+    10: "ACOverVoltage",
+    11: "ACUnderVoltage",
+    12: "BlownStringFuse",
+    13: "UnderTemp",
+    14: "MemoryLoss",
+    15: "HwTestFailure",
+    16: "ManufacturerAlarm",
+    # Bits 17-31 are vendor-defined; decode as VendorBit{n} if set
 }
 
 # Model 714 PrtAlrms — DC port / battery alarms
@@ -63,9 +70,13 @@ _M713_STA_NAMES: dict[int, str] = {
     7: "Sleep",
 }
 
-# Severity rules per source
-_FAULT_BITS_M701 = {0, 6, 7, 13, 14}   # ground, cabinet, manual, string, arc
-_WARN_BITS_M701 = {1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 15}
+# Severity rules per source — same semantic choice as before (ground fault,
+# cabinet open, manual shutdown, blown fuse are fault-worthy; everything else
+# warning-tier), re-mapped to the corrected bit positions above. The three
+# newly-added bits (MemoryLoss, HwTestFailure, ManufacturerAlarm) default to
+# warning pending vendor guidance on their real-world severity.
+_FAULT_BITS_M701 = {0, 5, 6, 12}   # ground, cabinet, manual, blown string fuse
+_WARN_BITS_M701 = {1, 2, 3, 4, 7, 8, 9, 10, 11, 13, 14, 15, 16}
 
 _FAULT_BITS_M714 = {2, 5, 6, 7}
 _WARN_BITS_M714 = {0, 1, 3, 4}

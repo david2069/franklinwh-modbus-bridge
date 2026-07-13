@@ -1,9 +1,76 @@
 """Tests for alarm event pairing and grid-mode interval computation."""
 
 from franklinwh_bridge.store.alarms import (
+    _FAULT_BITS_M701,
+    _M701_ALRM_BITS,
+    _WARN_BITS_M701,
+    _decode_bitfield,
     compute_grid_mode_intervals,
     pair_alarm_events,
 )
+
+# Ground truth: official SunSpec Model 701 "Alrm" bitfield, bit value -> name,
+# per sunspec2's model_701.json (the reference implementation of the SunSpec
+# Alliance spec), cross-checked against FranklinWH's own PICS certification
+# (SM-000028), which marks all 17 as "supported" in this exact order. This is
+# intentionally a separate, hand-transcribed copy rather than importing
+# sunspec2 directly — sunspec2 is a transitive dependency (via
+# franklinwh-modbus), not a declared bridge dependency, so importing it here
+# would make this test fragile to unrelated dependency changes.
+_OFFICIAL_M701_ALRM_BITS = {
+    0: "GroundFault",
+    1: "DCOverVoltage",
+    2: "ACDisconnect",
+    3: "DCDisconnect",
+    4: "GridDisconnect",
+    5: "CabinetOpen",
+    6: "ManualShutdown",
+    7: "OverTemp",
+    8: "OverFrequency",
+    9: "UnderFrequency",
+    10: "ACOverVoltage",
+    11: "ACUnderVoltage",
+    12: "BlownStringFuse",
+    13: "UnderTemp",
+    14: "MemoryLoss",
+    15: "HwTestFailure",
+    16: "ManufacturerAlarm",
+}
+
+
+def test_m701_alrm_bits_matches_official_sunspec_spec():
+    assert _M701_ALRM_BITS == _OFFICIAL_M701_ALRM_BITS
+
+
+def test_m701_alrm_bits_has_no_fabricated_names():
+    # These three names appeared in the table before the 2026-07-13 fix and
+    # do not exist anywhere in the official 17-bit spec.
+    assert "InputOverCurrent" not in _M701_ALRM_BITS.values()
+    assert "ArcFault" not in _M701_ALRM_BITS.values()
+    assert "ThermalDerate" not in _M701_ALRM_BITS.values()
+
+
+def test_m701_alrm_severity_sets_are_valid_bit_positions():
+    # Every bit referenced by the severity sets must be a real, named bit —
+    # catches drift if the bit table changes without updating severity too.
+    known_bits = set(_M701_ALRM_BITS.keys())
+    assert known_bits >= _FAULT_BITS_M701
+    assert known_bits >= _WARN_BITS_M701
+    assert _FAULT_BITS_M701.isdisjoint(_WARN_BITS_M701)
+    assert known_bits == _FAULT_BITS_M701 | _WARN_BITS_M701
+
+
+def test_m701_alrm_decode_bit1_is_dc_over_voltage_not_input_over_current():
+    # The core regression: bit 1 set should decode to the real name, not the
+    # fabricated one from the pre-fix off-by-one table.
+    assert _decode_bitfield(0b10, _M701_ALRM_BITS) == ["DCOverVoltage"]
+
+
+def test_m701_alrm_decode_bit16_is_manufacturer_alarm_not_vendor_bit():
+    # Bit 16 is officially MANUFACTURER_ALRM, not unknown vendor territory —
+    # the vendor-bit fallback should only kick in from bit 17 onward now.
+    assert _decode_bitfield(1 << 16, _M701_ALRM_BITS) == ["ManufacturerAlarm"]
+    assert _decode_bitfield(1 << 17, _M701_ALRM_BITS) == ["VendorBit17"]
 
 
 def test_pair_simple_set_then_clear():
