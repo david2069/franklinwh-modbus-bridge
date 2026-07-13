@@ -67,6 +67,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "hardware: requires a real aGate (deselect with -m 'not hardware')",
+    "destructive: writes to a real aGate (dispatches power, changes reserve %). NOTE: pytest markers are additive, not exclusive — a bare '-m hardware' still selects these too. For read-only hardware tests only, use -m \"hardware and not destructive\"; to run only the write tests, use -m destructive.",
 ]
 
 [tool.ruff]

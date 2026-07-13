@@ -4,7 +4,11 @@ These tests verify the bridge's data path works with real Modbus hardware.
 No registers are written — safe to run at any time.
 
 Run with:
-    pytest tests/hardware/ -v -m hardware
+    pytest tests/hardware/ -v -m "hardware and not destructive"
+
+(Plain `-m hardware` also picks up the write-based tests in
+test_reversion_and_reserve_persistence.py, since pytest markers are
+additive — use the "and not destructive" form if you want read-only only.)
 """
 
 import pytest
