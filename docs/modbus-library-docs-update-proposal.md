@@ -77,6 +77,15 @@ health) — none of which appear to be captured in `FRANKLINWH_EXTENSIONS_
 MANIFEST.md` yet (that file lists 15012-15035 as bare hex/value dumps with no
 description). These should be added.
 
+**15025 is now triple-confirmed**, via a fourth capture (`franklinwh-cli
+schema --live`): `grid_line_voltage`'s raw API key is literally shown as
+`gridLineVol÷10`, value 242.50V from a raw 2425 — the exact same number as
+Modbus 15025 and SunSpec `701.LLV`/`701.LNV`, with the exact `÷10` scale
+factor SunSpec's `V_SF=-1` already implies. Three independent sources
+(Modbus, SunSpec spec, cloud API) agree exactly — this one can move from
+"confirmed match" to "certain," no further testing needed for this specific
+register.
+
 **Proposed fix:** run the empirical test in section D below to settle 16001/
 16002 definitively, then update whichever doc is wrong (or both, if neither
 current explanation survives contact with a real test) and add a note
@@ -163,14 +172,18 @@ endpoint at all — `API_FIELD_REGISTRY.md`'s own header scopes it to
   totals when cross-referencing.
 - **Relay encoding is vendor-specific and counter-intuitive — load-bearing
   for any Modbus `main_sw`/`pro_load`/`doStatus`/`diStatus` correlation
-  later**: `docs/AGENT_GROUND_TRUTH.md` §1 states this has been "flipped
+  later**: `1=OPEN (connected), 0=CLOSED (disconnected)`, for every relay
+  field. `docs/AGENT_GROUND_TRUTH.md` §1 states this has been "flipped
   incorrectly multiple times by successive agents" and must not be
-  "corrected" based on normal electrical-engineering intuition — it's the
-  vendor's own convention, confirmed against live hardware. (That same
-  section has an internal wording inconsistency between its header framing
-  and its own worked example — not this proposal's repo to fix, just noting
-  it exists so it isn't silently relied on without double-checking against
-  the worked example, not the header prose.)
+  "corrected" based on normal electrical-engineering intuition. **Resolved a
+  minor internal inconsistency while checking this**: that section's own
+  worked example labels `grid_relay1=1` as "→ CLOSED (grid is connected),"
+  which contradicts both its own header ("1=OPEN") and the `franklinwh-cli
+  schema --live` tool's authoritative footnote (also "1=OPEN (connected),
+  0=CLOSED (disconnected) — all relays"). The header and the CLI tool agree;
+  the worked example's wording is the outlier. Not this proposal's repo to
+  fix, but don't rely on that one worked-example line if you read it before
+  finding this note.
 
 **Recommendation:** before writing off any `get_runtime_data` field as
 unknown, grep `franklinwh-cloud/franklinwh_cloud/` (`models.py`, `schema.py`,
