@@ -132,6 +132,58 @@ second look with a scaled-value comparison instead of only integer-equality.
 
 ---
 
+## C-cloud. `franklinwh-cloud`'s `get_runtime_data` — a fourth, already well-documented ground-truth source
+
+A live `franklinwh-cli raw get_runtime_data` capture this session returned ~50
+fields with heavy overlap with `power_flow` plus several new ones (`bms_work`,
+`pe_stat`, `sinHTemp`/`sinLTemp`, `soChBat`, `soOutGrid`, `batOutGrid`,
+`gridChBat`, `genChBat`, `genVoltage`, `remoteSolarEn`, `report_type`,
+relay states). **Before assuming any of these are undocumented, check
+`/Users/davidhona/dev/franklinwh-cloud` first** — unlike `franklinwh-local`'s
+`power_flow`, most of this is already named, typed, and in some cases decoded
+in that repo's code (not just its markdown docs, which don't cover this
+endpoint at all — `API_FIELD_REGISTRY.md`'s own header scopes it to
+"static/config APIs" only):
+
+- **`bms_work` is a simple offset of `run_status`, not a separate unknown**:
+  `const/states.py:54-56` documents `bms_work = run_status + 5, always` (with
+  an explicit warning not to look it up against the `RUN_STATUS` table — it
+  uses a different dict, `BMS_STATE`, with a different offset). Confirms
+  `bms_work=[7]` and `run_status=2` in the same capture are the same fact
+  twice, not two facts.
+- **`pe_stat`** decodes via a documented `PCS_STATE` table (`const/states.py:38`).
+- **`gridChBat`/`soOutGrid`/`soChBat`/`batOutGrid`/`genVoltage`/
+  `remoteSolarEn`** are all named, typed, and unit-labeled in `models.py`
+  (lines 136-143, 172) and `franklinwh_cloud/cli_commands/schema.py` (lines
+  77-83, 125) as part of a "Power Flow"/"Power Measurements" field group.
+- **`kwhSolarLoad`/`kwhGridLoad`/`kwhFhpLoad`/`kwhGenLoad`** are documented
+  in `docs/AGENT_GROUND_TRUTH.md` §5 as likely cumulative/lifetime Wh (not
+  daily kWh) — status explicitly marked "unconfirmed, pending FEM app
+  cross-reference" by that repo's own authors. Don't treat these as daily
+  totals when cross-referencing.
+- **Relay encoding is vendor-specific and counter-intuitive — load-bearing
+  for any Modbus `main_sw`/`pro_load`/`doStatus`/`diStatus` correlation
+  later**: `docs/AGENT_GROUND_TRUTH.md` §1 states this has been "flipped
+  incorrectly multiple times by successive agents" and must not be
+  "corrected" based on normal electrical-engineering intuition — it's the
+  vendor's own convention, confirmed against live hardware. (That same
+  section has an internal wording inconsistency between its header framing
+  and its own worked example — not this proposal's repo to fix, just noting
+  it exists so it isn't silently relied on without double-checking against
+  the worked example, not the header prose.)
+
+**Recommendation:** before writing off any `get_runtime_data` field as
+unknown, grep `franklinwh-cloud/franklinwh_cloud/` (`models.py`, `schema.py`,
+`const/states.py`, the `mixins/` directory) first — a lot of reverse-engineering
+legwork already happened there. The genuinely-still-open question is whether
+any of these *cloud* fields correlate with the still-unmatched *Modbus*
+15000-range registers (15007, 15021, 15022, 15026, 15027, 15029, 15030,
+15033, 15034, 15035) or the disputed 16001/16002 — that cross-repo
+correlation is what section D's test plan is for; the cloud side of the data
+just isn't a mystery in its own right.
+
+---
+
 ## C. Local API (franklinwh-local, TCP/9000) write inventory
 
 For the empirical test in section D, here's what can actually be changed via
@@ -188,8 +240,11 @@ or any named extension register so far).
    16000-16002 ranges via `tools/modbus_sunspec2_reader.py --raw ... --match`
    (or the bridge's SunSpec Explorer export), alongside the standard SunSpec
    registers for M701/M713 (ambient temp, line voltage, reserve %) **and**
-   `franklinwh-local power_flow` in the same instant (see section C0) — its
-   higher-precision fields (`soc`, `t_amb`, `kwh_*`) let scaled-value matches
+   `franklinwh-local power_flow` **and** `franklinwh-cli raw get_runtime_data`
+   in the same instant (see sections C0 and C-cloud) — the cloud capture adds
+   fields with no Modbus/local-API equivalent at all (`sinHTemp`/`sinLTemp`,
+   `pe_stat`, per-source kW splits) worth checking against the still-unmatched
+   15000-range registers. Higher-precision fields (`soc`, `t_amb`, `kwh_*`)
    catch things whole-number coincidence would miss. Record timestamp.
 2. **Change Self-Consumption reserve only** via `set_mode_soc()`, e.g. set
    `selfMinSoc` to a value distinct from the current TOU reserve (so the two
