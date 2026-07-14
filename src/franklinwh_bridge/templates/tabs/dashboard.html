@@ -1214,6 +1214,34 @@
       <span x-show="eventsRange === 'custom'" class="text-[10px] text-purple-400 font-medium">Custom range active</span>
     </div>
 
+    <!-- Severity + source filters. Severity chips double as the legend --
+         labels answer "what severities exist" instead of leaving it to be
+         guessed from row colors alone; click to filter. -->
+    <div x-show="!eventsLoading && eventsData.length > 0" class="flex items-center gap-2 mb-3 flex-wrap">
+      <button @click="toggleEventsSeverityFilter('fault')"
+              class="chip text-[10px] transition"
+              :class="[severityChipClass('fault'), eventsSeverityFilter === 'fault' ? 'ring-1 ring-current' : 'opacity-70 hover:opacity-100']">
+        Fault <span x-text="eventsSeverityCounts.fault"></span>
+      </button>
+      <button @click="toggleEventsSeverityFilter('warning')"
+              class="chip text-[10px] transition"
+              :class="[severityChipClass('warning'), eventsSeverityFilter === 'warning' ? 'ring-1 ring-current' : 'opacity-70 hover:opacity-100']">
+        Warning <span x-text="eventsSeverityCounts.warning"></span>
+      </button>
+      <button @click="toggleEventsSeverityFilter('info')"
+              class="chip text-[10px] transition"
+              :class="[severityChipClass('info'), eventsSeverityFilter === 'info' ? 'ring-1 ring-current' : 'opacity-70 hover:opacity-100']">
+        Info <span x-text="eventsSeverityCounts.info"></span>
+      </button>
+
+      <select x-model="eventsSourceFilter" class="form-control !py-1 !text-[10px] w-44 ml-auto">
+        <option value="">All Sources</option>
+        <template x-for="s in availableEventSources" :key="'evsrc-' + s">
+          <option :value="s" x-text="eventSourceLabel(s)"></option>
+        </template>
+      </select>
+    </div>
+
     <!-- Loading -->
     <div x-show="eventsLoading" class="flex items-center gap-3 py-6 justify-center">
       <div class="loading-spinner"></div>
@@ -1224,9 +1252,13 @@
     <div x-show="!eventsLoading && eventsData.length === 0" class="py-6 text-center text-sm text-slate-500">
       No alarm or PV-Clipping events in this range.
     </div>
+    <div x-show="!eventsLoading && eventsData.length > 0 && filteredEventsData.length === 0" class="py-6 text-center text-sm text-slate-500">
+      No events match the current severity/source filter.
+      <button @click="eventsSeverityFilter = ''; eventsSourceFilter = ''" class="text-cyan-400 hover:underline">Clear filters</button>
+    </div>
 
     <!-- Events table -->
-    <div x-show="!eventsLoading && eventsData.length > 0" class="overflow-auto" style="max-height: 320px;">
+    <div x-show="!eventsLoading && filteredEventsData.length > 0" class="overflow-auto" style="max-height: 320px;">
       <table class="w-full text-xs">
         <thead class="sticky top-0 bg-slate-800 z-10">
           <tr class="border-b border-white/[0.08]">
@@ -1238,7 +1270,7 @@
           </tr>
         </thead>
         <tbody>
-          <template x-for="(ev, idx) in eventsData" :key="idx">
+          <template x-for="(ev, idx) in filteredEventsData" :key="idx">
             <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
               <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" x-text="formatEventTime(ev.ts)"></td>
               <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.register ?? '—'"></td>
@@ -1270,12 +1302,16 @@
          x-transition:leave-start="opacity-100 scale-100"
          x-transition:leave-end="opacity-0 scale-95">
       <!-- Modal header — pure display of the Events History card's shared
-           filter state; adjust the range from the card, not here. -->
+           filter state; adjust filters from the card, not here. -->
       <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.08]">
         <div class="flex items-center gap-2 flex-wrap">
           <h3 class="text-sm font-semibold text-slate-200">Alarm &amp; Event History</h3>
           <span class="px-2 py-0.5 text-[10px] font-medium rounded border border-amber-500/40 bg-amber-500/10 text-amber-400"
                 x-text="eventsRange === 'custom' ? 'Custom range' : (eventsRanges.find(r => r.value === eventsRange)?.label ?? eventsRange)"></span>
+          <span x-show="eventsSeverityFilter" class="chip text-[10px]" :class="severityChipClass(eventsSeverityFilter)"
+                x-text="eventSeverityLabel(eventsSeverityFilter)"></span>
+          <span x-show="eventsSourceFilter" class="px-2 py-0.5 text-[10px] font-medium rounded border border-slate-600/40 bg-slate-700/30 text-slate-400"
+                x-text="eventSourceLabel(eventsSourceFilter)"></span>
         </div>
         <button @click="closeEventsModal()" class="text-sm text-slate-400 hover:text-slate-200 font-bold transition px-2">✕</button>
       </div>
@@ -1290,9 +1326,13 @@
       <div x-show="!eventsLoading && eventsData.length === 0" class="py-8 text-center text-sm text-slate-500">
         No alarm or PV-Clipping events in this range.
       </div>
+      <div x-show="!eventsLoading && eventsData.length > 0 && filteredEventsData.length === 0" class="py-8 text-center text-sm text-slate-500">
+        No events match the current severity/source filter.
+        <button @click="eventsSeverityFilter = ''; eventsSourceFilter = ''" class="text-cyan-400 hover:underline">Clear filters</button>
+      </div>
 
       <!-- Events table -->
-      <div x-show="!eventsLoading && eventsData.length > 0" class="overflow-auto" style="max-height: calc(100vh - 320px);">
+      <div x-show="!eventsLoading && filteredEventsData.length > 0" class="overflow-auto" style="max-height: calc(100vh - 320px);">
         <table class="w-full text-xs">
           <thead class="sticky top-0 bg-slate-800 z-10">
             <tr class="border-b border-white/[0.08]">
@@ -1304,7 +1344,7 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="(ev, idx) in eventsData" :key="idx">
+            <template x-for="(ev, idx) in filteredEventsData" :key="idx">
               <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
                 <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" x-text="formatEventTime(ev.ts)"></td>
                 <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.register ?? '—'"></td>

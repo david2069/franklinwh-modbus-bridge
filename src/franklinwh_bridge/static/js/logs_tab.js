@@ -104,10 +104,10 @@ function logsTab() {
       }
 
       if (this.sourceFilter) {
-        const sf = this.sourceFilter.toLowerCase();
-        result = result.filter(e =>
-          (e.name || '').toLowerCase().includes(sf)
-        );
+        // Exact match against the full raw logger name -- sourceFilter is
+        // now populated from a dropdown of real values (availableSources),
+        // not free text, so no need for substring matching.
+        result = result.filter(e => e.name === this.sourceFilter);
       }
 
       // Most recent first
@@ -151,6 +151,25 @@ function logsTab() {
         case 'CRITICAL': return 'error';
         default:         return '';
       }
+    },
+
+    // Every logger name is prefixed "franklinwh_bridge." (or is exactly
+    // "franklinwh_bridge") -- that's always true for this app, so it's dead
+    // weight in the display. Filtering still matches the full raw name
+    // (see availableSources/sourceFilter) to avoid any ambiguity.
+    shortSource(name) {
+      if (!name) return '';
+      if (name === 'franklinwh_bridge') return name;
+      return name.startsWith('franklinwh_bridge.') ? name.slice('franklinwh_bridge.'.length) : name;
+    },
+
+    // ── Source dropdown (distinct loggers actually present) ───
+    get availableSources() {
+      const seen = new Set();
+      for (const entry of this.logs) {
+        if (entry.name) seen.add(entry.name);
+      }
+      return [...seen].sort();
     },
   };
 }

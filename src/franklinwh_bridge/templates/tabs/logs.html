@@ -41,8 +41,12 @@
         </template>
       </select>
       <!-- Source filter -->
-      <input type="text" x-model="sourceFilter" placeholder="Source filter..."
-             class="form-control !py-1.5 !text-xs w-40" @input.debounce.300ms="loadLogs()">
+      <select x-model="sourceFilter" @change="page = 0" class="form-control !py-1.5 !text-xs w-48">
+        <option value="">All Sources</option>
+        <template x-for="s in availableSources" :key="'src-' + s">
+          <option :value="s" x-text="shortSource(s)"></option>
+        </template>
+      </select>
       <!-- Auto-refresh toggle -->
       <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none">
         <input type="checkbox" x-model="autoRefresh" class="accent-cyan-500"
@@ -85,7 +89,7 @@
                       x-text="entry.level"></span>
               </td>
               <td class="px-3 py-1.5 font-mono text-slate-500 truncate max-w-[200px]"
-                  x-text="entry.name || ''"></td>
+                  :title="entry.name" x-text="shortSource(entry.name)"></td>
               <td class="px-3 py-1.5 font-mono text-slate-300"
                   :class="entry.level === 'ERROR' || entry.level === 'CRITICAL' ? 'text-red-400' :
                           entry.level === 'WARNING' ? 'text-amber-400' : ''"

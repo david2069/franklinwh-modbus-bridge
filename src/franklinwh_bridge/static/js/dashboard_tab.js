@@ -59,6 +59,14 @@ function dashboardTab() {
     warning: 'Warning',
     info:    'Info',
   };
+  // Human-readable labels for the Events source filter dropdown — the four
+  // possible values of an event row's `source` field.
+  const EVENT_SOURCE_LABELS = {
+    'M701_Alrm':     'M701 System Alarm',
+    'M714_PrtAlrms': 'M714 DC Port Alarm',
+    'M713_Sta':      'M713 Battery State',
+    'M701_DERMode':  'M701 Grid Mode',
+  };
 
   // Mirrors mock_gateway.py synthetic_points() — used to build fake historical
   // time-series for mock gateways in the compare chart (they are never stored
@@ -373,6 +381,13 @@ function dashboardTab() {
     showEventsDateRange: false,
     eventsDateStart: '',
     eventsDateEnd: '',
+
+    // Severity + source filters (mirror the Logs tab's levelFilter/
+    // sourceFilter pattern — clickable severity chips double as the
+    // legend, since the chip labels themselves answer "what severities
+    // exist" instead of leaving it to be guessed from row colors alone).
+    eventsSeverityFilter: '',
+    eventsSourceFilter: '',
 
     // Chart range selector
     chartRange: '30m',
@@ -1147,6 +1162,50 @@ function dashboardTab() {
         case 'info':    return 'muted';
         default:        return 'muted';
       }
+    },
+
+    eventSourceLabel(source) {
+      return EVENT_SOURCE_LABELS[source] || source || '—';
+    },
+
+    eventSeverityLabel(severity) {
+      return ALARM_SEVERITY_LABELS[severity] || severity || '—';
+    },
+
+    toggleEventsSeverityFilter(severity) {
+      this.eventsSeverityFilter = this.eventsSeverityFilter === severity ? '' : severity;
+    },
+
+    // ── Events filtering (severity + source) ──────────────────
+    // Severity counts double as both filter chips AND the answer to "what
+    // severities exist" -- the chip labels are the legend, no guessing
+    // required. Only counts what's actually in the current eventsData, like
+    // the Logs tab's per-level summary.
+    get eventsSeverityCounts() {
+      const counts = { fault: 0, warning: 0, info: 0 };
+      for (const ev of this.eventsData) {
+        if (ev.severity in counts) counts[ev.severity]++;
+      }
+      return counts;
+    },
+
+    get availableEventSources() {
+      const seen = new Set();
+      for (const ev of this.eventsData) {
+        if (ev.source) seen.add(ev.source);
+      }
+      return [...seen].sort();
+    },
+
+    get filteredEventsData() {
+      let result = this.eventsData;
+      if (this.eventsSeverityFilter) {
+        result = result.filter(ev => ev.severity === this.eventsSeverityFilter);
+      }
+      if (this.eventsSourceFilter) {
+        result = result.filter(ev => ev.source === this.eventsSourceFilter);
+      }
+      return result;
     },
 
     async _loadCompareCharts() {
