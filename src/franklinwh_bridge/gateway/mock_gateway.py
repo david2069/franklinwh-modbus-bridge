@@ -94,9 +94,9 @@ def synthetic_points(gateway_id: str, tick: int, ts: float | None = None) -> dic
     # ── SOC: integrate battery power across the day from a morning base ──
     # Approximate: morning low → afternoon high (solar charging) → evening low
     soc_noon_peak = min(95.0, soc_morning + 55.0)
-    soc_curve = soc_morning + (soc_noon_peak - soc_morning) * math.sin(
+    soc_curve = soc_morning + (soc_noon_peak - soc_morning) * max(0.0, math.sin(
         max(0.0, (hour - 6.0) * math.pi / 14.0)
-    ) ** 0.7
+    )) ** 0.7
     soc_jitter = 0.3 * math.sin(tick / 25.0 + seed * 0.5)
     soc = round(max(5.0, min(98.0, soc_curve + soc_jitter)), 1)
 

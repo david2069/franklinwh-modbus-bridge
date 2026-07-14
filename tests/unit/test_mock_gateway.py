@@ -43,6 +43,18 @@ def test_synthetic_points_differ_per_gateway():
     assert synthetic_points("alpha", 5) != synthetic_points("bravo", 5)
 
 
+def test_synthetic_points_valid_late_at_night():
+    """Regression: soc_curve's sin(...) ** 0.7 raised on a complex number for
+    any hour past ~20:00 UTC, since sin() goes negative once its (unclamped)
+    output -- not just its input -- needs clamping before a fractional power.
+    Pin an affected hour (22:26 UTC) so this can't silently regress with the
+    time of day again."""
+    ts = 22 * 3600 + 26 * 60  # 22:26 UTC, day-of-epoch irrelevant (mod 86400)
+    pts = synthetic_points("gw_night", 7, ts=ts)
+    assert isinstance(pts["soc"], float)
+    assert 0 <= pts["soc"] <= 100
+
+
 def test_mock_controller_nameplate():
     c = MockController("gw2")
     assert c.connect() is True
