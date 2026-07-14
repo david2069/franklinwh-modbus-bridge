@@ -36,6 +36,29 @@ function dashboardTab() {
     'Self-Consumption': 'Self',
     'Emergency Backup': 'Backup',
   };
+  // Grid-mode / alarm marker LINE colors — shared between the chart's
+  // afterDraw (which draws the dashed vertical lines) and its legend (which
+  // explains what they mean). See Events card/modal for readable detail.
+  const GRID_MODE_COLORS = {
+    'Grid Following': 'rgba(34,197,94,0.9)',
+    'Grid Forming':   'rgba(251,191,36,0.9)',
+    'PV Clipped':     'rgba(251,146,60,0.9)',
+  };
+  const GRID_MODE_ABBR = {
+    'Grid Following': 'Following',
+    'Grid Forming':   'Forming',
+    'PV Clipped':     'PV Clip',
+  };
+  const ALARM_COLORS = {
+    fault:   'rgba(239,68,68,0.9)',
+    warning: 'rgba(245,158,11,0.9)',
+    info:    'rgba(148,163,184,0.9)',
+  };
+  const ALARM_SEVERITY_LABELS = {
+    fault:   'Fault',
+    warning: 'Warning',
+    info:    'Info',
+  };
 
   // Mirrors mock_gateway.py synthetic_points() — used to build fake historical
   // time-series for mock gateways in the compare chart (they are never stored
@@ -123,44 +146,87 @@ function dashboardTab() {
       const { ctx, chartArea } = chart;
       if (!chartArea) return;
       const modeData = chart._modeData;
-      if (!modeData || !modeData.length) return;
+      const gridModeData = chart._gridModeData;
+      const alarmData = chart._alarmData;
+      const tsRaw = chart._tsRaw;
 
-      // Collect unique abbreviated mode labels in order of first appearance
-      const seen = new Map();
-      for (const m of modeData) {
-        if (m && MODE_ABBR[m]) {
-          const abbr = MODE_ABBR[m];
-          if (!seen.has(abbr)) seen.set(abbr, MODE_LEGEND_COLORS[m]);
+      // ── Operating-mode background legend (filled-square swatches) ──────
+      if (modeData && modeData.length) {
+        // Collect unique abbreviated mode labels in order of first appearance
+        const seen = new Map();
+        for (const m of modeData) {
+          if (m && MODE_ABBR[m]) {
+            const abbr = MODE_ABBR[m];
+            if (!seen.has(abbr)) seen.set(abbr, MODE_LEGEND_COLORS[m]);
+          }
+        }
+        if (seen.size) {
+          ctx.save();
+          ctx.font = '9px sans-serif';
+          let x = chartArea.left + 6;
+          const y = chartArea.bottom - 5;
+          for (const [label, color] of seen) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y - 8, 8, 8);
+            ctx.fillStyle = color;
+            ctx.textAlign = 'left';
+            ctx.fillText(label, x + 10, y);
+            x += 10 + ctx.measureText(label).width + 10;
+          }
+          ctx.restore();
         }
       }
-      if (!seen.size) return;
 
-      ctx.save();
-      ctx.font = '9px sans-serif';
-      let x = chartArea.left + 6;
-      const y = chartArea.bottom - 5;
-      for (const [label, color] of seen) {
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y - 8, 8, 8);
-        ctx.fillStyle = color;
-        ctx.textAlign = 'left';
-        ctx.fillText(label, x + 10, y);
-        x += 10 + ctx.measureText(label).width + 10;
+      // ── Grid-mode / alarm marker legend (dashed-line swatches, distinct
+      // style from the filled squares above since these represent the
+      // vertical dashed lines drawn below, not an area fill). Only shown
+      // for colors actually present in the current window. Second row, so
+      // it doesn't collide with the mode-background legend. ─────────────
+      const lineLegend = new Map();
+      if (gridModeData && gridModeData.length) {
+        for (const m of gridModeData) {
+          if (m && GRID_MODE_ABBR[m] && !lineLegend.has(GRID_MODE_ABBR[m])) {
+            lineLegend.set(GRID_MODE_ABBR[m], GRID_MODE_COLORS[m]);
+          }
+        }
       }
-      ctx.restore();
+      if (alarmData && alarmData.length) {
+        for (const ev of alarmData) {
+          const label = ALARM_SEVERITY_LABELS[ev.severity] || 'Info';
+          if (!lineLegend.has(label)) {
+            lineLegend.set(label, ALARM_COLORS[ev.severity] || ALARM_COLORS.info);
+          }
+        }
+      }
+      if (lineLegend.size) {
+        ctx.save();
+        ctx.font = '9px sans-serif';
+        let x2 = chartArea.left + 6;
+        const y2 = chartArea.bottom - 18;
+        for (const [label, color] of lineLegend) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 2]);
+          ctx.beginPath();
+          ctx.moveTo(x2, y2 - 4);
+          ctx.lineTo(x2, y2 + 4);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = color;
+          ctx.textAlign = 'left';
+          ctx.fillText(label, x2 + 6, y2 + 3);
+          x2 += 6 + ctx.measureText(label).width + 10;
+        }
+        ctx.restore();
+      }
 
-      // Grid-mode event markers — thin vertical tick only (no text; see the
-      // [Events] modal for readable detail, since closely-spaced events
-      // made on-chart text chips overlap and become unreadable).
-      const gridModeData = chart._gridModeData;
+      // ── Grid-mode event markers — thin vertical tick (color explained by
+      // the legend above; see the Events card/modal for readable detail,
+      // since closely-spaced events made on-chart text chips overlap and
+      // become unreadable). ───────────────────────────────────────────────
       if (gridModeData && gridModeData.length >= 2) {
         const n = gridModeData.length;
         const slotW = (chartArea.right - chartArea.left) / Math.max(n - 1, 1);
-        const GRID_MODE_COLORS = {
-          'Grid Following': 'rgba(34,197,94,0.9)',
-          'Grid Forming':   'rgba(251,191,36,0.9)',
-          'PV Clipped':     'rgba(251,146,60,0.9)',
-        };
         ctx.save();
         for (let i = 1; i < n; i++) {
           const prev = gridModeData[i - 1];
@@ -180,10 +246,8 @@ function dashboardTab() {
         ctx.restore();
       }
 
-      // Alarm event markers — thin vertical tick only (no text chip; see the
-      // [Events] modal for readable detail).
-      const alarmData = chart._alarmData;
-      const tsRaw = chart._tsRaw;
+      // ── Alarm event markers — thin vertical tick (color explained by the
+      // legend above; see the Events card/modal for readable detail). ────
       if (!alarmData || !alarmData.length || !tsRaw || tsRaw.length < 2) return;
 
       // Helper: map a Unix timestamp to an x pixel position via linear interpolation
@@ -196,12 +260,6 @@ function dashboardTab() {
         const frac = (ts - tsRaw[lo]) / (tsRaw[hi] - tsRaw[lo]);
         return chartArea.left + ((lo + frac) / (n2 - 1)) * (chartArea.right - chartArea.left);
       }
-
-      const ALARM_COLORS = {
-        fault:   'rgba(239,68,68,0.9)',
-        warning: 'rgba(245,158,11,0.9)',
-        info:    'rgba(148,163,184,0.9)',
-      };
 
       ctx.save();
       for (const ev of alarmData) {
@@ -233,12 +291,13 @@ function dashboardTab() {
     batteryControl: true,
     operatingMode: true,
     livePoints: true,
+    eventsHistory: true,
   };
 
   const DEFAULT_CARD_ORDER = [
     'bridgeStatus', 'powerFlow', 'acPower', 'batterySoc',
     'solarInputs', 'battery', 'lifetimeEnergy', 'batteryControl',
-    'operatingMode', 'livePoints',
+    'operatingMode', 'livePoints', 'eventsHistory',
   ];
 
   function loadCardPrefs() {
@@ -285,16 +344,35 @@ function dashboardTab() {
     showCompareModal: false,
     _compareCharts: [],
 
-    // Events modal (durationed alarm/PV-Clip history — see [Events] button)
+    // Events History — persistent card (always visible) + Expand modal,
+    // sharing one filter state so the modal is a pure larger display of
+    // whatever the card currently has loaded, not a separate view.
     showEventsModal: false,
     eventsData: [],
     eventsLoading: false,
     eventsRange: '7d',
+    // Same preset list as the Power History chart's own Time Span dropdown,
+    // minus 'live' (events are historical, there's no "live" mode for them).
     eventsRanges: [
-      { value: '24h', label: '24h' },
-      { value: '7d',  label: '7d' },
-      { value: '30d', label: '30d' },
+      { value: '30m',  label: '30m' },
+      { value: '1h',   label: '1h' },
+      { value: '2h',   label: '2h' },
+      { value: '4h',   label: '4h' },
+      { value: '6h',   label: '6h' },
+      { value: '8h',   label: '8h' },
+      { value: '12h',  label: '12h' },
+      { value: '18h',  label: '18h' },
+      { value: '24h',  label: '24h' },
+      { value: '3d',   label: '3d' },
+      { value: '5d',   label: '5d' },
+      { value: '7d',   label: '7d' },
+      { value: '30d',  label: '30d' },
     ],
+    // Custom date range (mirrors the chart's own dateStart/dateEnd/
+    // showDateRange/loadDateRange pattern exactly).
+    showEventsDateRange: false,
+    eventsDateStart: '',
+    eventsDateEnd: '',
 
     // Chart range selector
     chartRange: '30m',
@@ -355,6 +433,7 @@ function dashboardTab() {
         });
       });
       this._startPolling();
+      this.loadEvents();  // Events History card is persistent, load on page load
 
       // Reload chart data whenever the active gateway changes
       this.$watch(
@@ -369,6 +448,7 @@ function dashboardTab() {
             _liveHistory.selfReserve = []; _liveHistory.touReserve = []; _liveHistory.gridMode = [];
           }
           this._loadMetrics();
+          this.loadEvents();
         },
       );
     },
@@ -983,9 +1063,13 @@ function dashboardTab() {
       this._compareCharts = [];
     },
 
-    // ── Events Modal (durationed alarm/PV-Clip history) ──────
+    // ── Events History (persistent card + Expand modal, shared state) ────
+    // The card is the source of truth; the modal just displays the same
+    // eventsData/eventsRange larger — see openEventsModal().
     openEventsModal() {
       this.showEventsModal = true;
+      // Card already loads on init/range-change; this is just a safety
+      // refresh in case the card was hidden (cardVisible.eventsHistory off).
       this.loadEvents();
     },
 
@@ -995,14 +1079,42 @@ function dashboardTab() {
 
     setEventsRange(range) {
       this.eventsRange = range;
+      this.showEventsDateRange = false;  // close date picker when selecting preset
       this.loadEvents();
+    },
+
+    async loadEventsDateRange() {
+      if (!this.eventsDateStart || !this.eventsDateEnd) {
+        Alpine.store('app').toast('Select both start and end dates', 'error');
+        return;
+      }
+      const startTs = new Date(this.eventsDateStart).getTime() / 1000;
+      const endTs = new Date(this.eventsDateEnd).getTime() / 1000;
+      if (endTs <= startTs) {
+        Alpine.store('app').toast('End date must be after start date', 'error');
+        return;
+      }
+      // Cap to 90 days, matching the chart's own custom-range cap.
+      if ((endTs - startTs) > 90 * 86400) {
+        Alpine.store('app').toast('Date range cannot exceed 90 days', 'error');
+        return;
+      }
+      this.eventsRange = 'custom';
+      await this.loadEvents();
     },
 
     async loadEvents() {
       this.eventsLoading = true;
       try {
         const activeGw = Alpine.store('app')?.activeGateway;
-        let url = `api/events?range=${this.eventsRange}`;
+        let url;
+        if (this.eventsRange === 'custom') {
+          const startTs = new Date(this.eventsDateStart).getTime() / 1000;
+          const endTs = new Date(this.eventsDateEnd).getTime() / 1000;
+          url = `api/events?start=${startTs}&end=${endTs}`;
+        } else {
+          url = `api/events?range=${this.eventsRange}`;
+        }
         if (activeGw && activeGw !== 'site') url += `&gateway_id=${encodeURIComponent(activeGw)}`;
         const resp = await fetchJSON(url);
         this.eventsData = resp?.events || [];
