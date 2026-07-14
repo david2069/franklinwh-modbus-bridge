@@ -170,6 +170,20 @@ These proprietary registers are **not part of any SunSpec model** and require th
 
 **Additionally, a separate 15000-15039 block** exists (distinct from the "extension" 15500+ range above) that's a bare hex/value dump in `franklinwh-modbus`'s own `FRANKLINWH_EXTENSIONS_MANIFEST.md` with no description for most entries. Cross-referencing a live raw read against the full 328-point SunSpec value database (via `tools/modbus_sunspec2_reader.py --match`) found three confirmed matches not yet in that manifest: **15020 → `713.WHRtg`** (battery rated Wh), **15025 → `701.LLV`/`701.LNV`** (raw line voltage), **15036 → `713.SoH`** (battery state of health, raw). **15025 is now triple-confirmed**: `franklinwh-cloud`'s `schema --live` output independently shows `grid_line_voltage` (raw API key literally `gridLineVol÷10`) = 242.50V from a raw value of 2425 — the exact same number, with the exact same ÷10 scale factor SunSpec's `V_SF=-1` implies. Three independent sources (Modbus raw register, SunSpec model spec, cloud API) agree exactly. The rest of that block (15007, 15021, 15022, 15026, 15027, 15029, 15030, 15033, 15034, 15035) remains genuinely unmatched against any known SunSpec value.
 
+**Writability of this block, and 16000-16002, is unresolved** — everything
+above came from reads only. A same-value write-back probe
+(2026-07-15, `docs/reference/register-writability-probe.md`,
+`tools/probe_register_writability.py`) found the device ACKs a write to
+*every* register in both ranges with no Modbus exception, including
+addresses that are almost certainly read-only telemetry mirrors (e.g.
+15020) — meaning this firmware doesn't gate writes by address at the
+protocol level, and a same-value probe therefore *can't* distinguish
+genuinely writable registers from ones that silently discard the write.
+Determining real writability would need the same differential-value +
+read-back methodology already used to establish 15508/15509's blocked
+status (Issue 11) — not yet attempted here, and higher-risk for registers
+whose function is completely unknown.
+
 **Vendor ask:** Document these registers officially. The 15510-15511 (PVOutputWh) 32-bit counter is critical for energy tracking but not documented. Register 16000 provides vastly better home load precision than 15506 but is completely undocumented, and 16001/16002 are disputed even within FranklinWH-adjacent tooling.
 
 **Library gap:** PVOutputWh (15510) is NOT read by `_read_extension_solar()` even though the register batch (15500-15513) already fetches it — `regs[10]` and `regs[11]` exist but are not mapped. Should be added to the library return dict as a 32-bit value: `(regs[10] << 16) | regs[11]`. Currently the bridge reads it via a separate raw pymodbus connection (poller.py:131-147).
@@ -625,3 +639,9 @@ design regardless.
     current mode, change only the reserve, atomically," which the Sequencer
     can't express (it skips same-value writes). Script:
     `tools/test_atomic_block_write.py`. Not yet run.
+12. ~~Probe 15000-15039/16000-16002 for Modbus-protocol writability~~
+    **DONE (2026-07-15)** — result: no register in either range rejects a
+    write, which turned out to mean the safe same-value technique can't
+    classify writability on this firmware (Issue 8 update). See
+    `docs/reference/register-writability-probe.md`. A real writability
+    determination needs differential-value testing per register, not run.
