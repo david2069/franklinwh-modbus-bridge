@@ -49,6 +49,9 @@ class Window(BaseModel):
 class WhenSpec(BaseModel):
     days: list[int] = Field(default_factory=list)  # 0..6, Mon=0; empty = daily
     windows: list[Window] = Field(default_factory=list)
+    # One-time entry: exact ISO date. When set, `days` is ignored — the entry
+    # fires only on this calendar date and never again.
+    date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ScheduleCreate(BaseModel):
@@ -155,7 +158,7 @@ async def schedule_timeline(request: Request, day: int | None = None):
     Each segment is minutes-from-midnight so the UI can lay out a 24h bar.
     """
     db: aiosqlite.Connection = request.app.state.db
-    from franklinwh_bridge.gateway.scheduler import parse_when
+    from franklinwh_bridge.gateway.scheduler import entry_date, parse_when
 
     now = datetime.now()
     weekday = now.weekday() if day is None else max(0, min(int(day), 6))
@@ -163,8 +166,15 @@ async def schedule_timeline(request: Request, day: int | None = None):
     for e in await get_schedules(db):
         if not e.get("enabled"):
             continue
-        days, windows = parse_when(e.get("when_spec", {}))
-        if days and weekday not in days:
+        when = e.get("when_spec", {})
+        days, windows = parse_when(when)
+        d = entry_date(when)
+        if d is not None:
+            # One-time entry: only show on the weekday its actual date falls
+            # on, as a preview — the real gate is the date, not the weekday.
+            if weekday != d.weekday():
+                continue
+        elif days and weekday not in days:
             continue
         for start_min, end_min in windows:
             segments.append({

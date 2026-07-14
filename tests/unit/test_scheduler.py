@@ -14,6 +14,7 @@ from franklinwh_bridge.gateway.scheduler import (
     action_signature,
     action_to_commands,
     entry_active_at,
+    entry_date,
     next_fire,
     parse_when,
     winner,
@@ -89,6 +90,71 @@ def test_next_fire_rolls_to_matching_weekday():
 
 def test_next_fire_none_without_windows():
     assert next_fire({"days": [0]}, MON) is None
+
+
+# ── one-time (dated) entries ────────────────────────────────────
+
+
+def test_entry_date_parses_iso_string():
+    assert entry_date({"date": "2026-06-15"}) == datetime(2026, 6, 15).date()
+    assert entry_date({}) is None
+    assert entry_date({"date": "not-a-date"}) is None
+
+
+def test_dated_entry_active_on_its_date():
+    spec = {"date": "2026-06-15", "windows": [{"start": "10:00", "end": "11:00"}]}
+    assert entry_active_at(spec, MON) is True  # MON is 2026-06-15
+
+
+def test_dated_entry_does_not_refire_next_week_same_weekday():
+    """The exact bug being fixed: a one-time entry must not behave like a
+    recurring weekly rule just because the date happens to share a weekday."""
+    spec = {"date": "2026-06-15", "windows": [{"start": "10:00", "end": "11:00"}]}
+    next_monday = datetime(2026, 6, 22, 10, 30)
+    assert entry_active_at(spec, next_monday) is False
+
+
+def test_dated_entry_inactive_day_before_and_after():
+    spec = {"date": "2026-06-15", "windows": [{"start": "10:00", "end": "11:00"}]}
+    assert entry_active_at(spec, datetime(2026, 6, 14, 10, 30)) is False
+    assert entry_active_at(spec, datetime(2026, 6, 16, 10, 30)) is False
+
+
+def test_dated_entry_ignores_days_field():
+    # date wins even if a (stale/unused) days list would otherwise exclude it.
+    spec = {"date": "2026-06-15", "days": [5], "windows": [{"start": "10:00", "end": "11:00"}]}
+    assert entry_active_at(spec, MON) is True
+
+
+def test_next_fire_for_dated_entry_same_day():
+    spec = {"date": "2026-06-15", "windows": [{"start": "14:00", "end": "15:00"}]}
+    assert next_fire(spec, MON) == datetime(2026, 6, 15, 14, 0)
+
+
+def test_next_fire_for_dated_entry_beyond_horizon():
+    spec = {"date": "2026-07-01", "windows": [{"start": "09:00", "end": "10:00"}]}
+    nf = next_fire(spec, MON, horizon_days=8)  # 2026-07-01 is >8 days out
+    assert nf == datetime(2026, 7, 1, 9, 0)
+
+
+def test_next_fire_none_once_dated_entry_has_passed():
+    spec = {"date": "2026-06-01", "windows": [{"start": "09:00", "end": "10:00"}]}
+    assert next_fire(spec, MON) is None
+
+
+async def test_dated_entry_fires_only_on_its_own_date_across_restarts():
+    """Simulates the reported bug: an engine restarting a week later at the
+    same time-of-day must not re-dispatch a one-time entry."""
+    spec = {"date": "2026-06-15", "windows": [{"start": "10:00", "end": "11:00"}]}
+    h = FakeHandler()
+    eng = _engine([_entry(when_spec=spec)], h)
+    await eng.tick(MON)
+    assert h.state.action == "Force Charge"
+
+    h2 = FakeHandler()
+    eng2 = _engine([_entry(when_spec=spec)], h2)
+    await eng2.tick(datetime(2026, 6, 22, 10, 30))  # restart, one week later
+    assert h2.state.active is False
 
 
 # ── action translation ────────────────────────────────────────

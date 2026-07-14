@@ -25,7 +25,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -66,14 +66,31 @@ def parse_when(when_spec: dict) -> tuple[set[int], list[tuple[int, int]]]:
     """Return (weekday-set, [(start_min, end_min)…]) from a when-spec.
 
     days: ints 0..6, Monday=0 (Python ``date.weekday``). Empty/absent = every
-    day. windows: list of {start,end} 'HH:MM'. end<=start means the window wraps
-    past midnight.
+    day (ignored entirely when ``date`` is set — see ``entry_date``). windows:
+    list of {start,end} 'HH:MM'. end<=start means the window wraps past
+    midnight.
     """
     days = {int(d) for d in (when_spec.get("days") or []) if 0 <= int(d) <= 6}
     windows: list[tuple[int, int]] = []
     for w in when_spec.get("windows") or []:
         windows.append((_to_minutes(w.get("start", "00:00")), _to_minutes(w.get("end", "24:00"))))
     return days, windows
+
+
+def entry_date(when_spec: dict) -> date | None:
+    """Parse when_spec['date'] (ISO 'YYYY-MM-DD'), or None for a recurring entry.
+
+    A one-time entry is scoped to this exact calendar date instead of a
+    weekday set — it fires only that day and goes dormant forever after,
+    with no separate "consumed" flag needed.
+    """
+    date_str = when_spec.get("date")
+    if not date_str:
+        return None
+    try:
+        return date.fromisoformat(date_str)
+    except ValueError:
+        return None
 
 
 def _window_contains(start: int, end: int, t: int) -> bool:
@@ -87,19 +104,36 @@ def _window_contains(start: int, end: int, t: int) -> bool:
 
 def entry_active_at(when_spec: dict, now: datetime) -> bool:
     """True if ``now`` falls inside any of the entry's windows on a matching day."""
+    d = entry_date(when_spec)
+    if d is not None and now.date() != d:
+        return False
     days, windows = parse_when(when_spec)
-    if days and now.weekday() not in days:
+    if d is None and days and now.weekday() not in days:
         return False
     t = now.hour * 60 + now.minute
     return any(_window_contains(s, e, t) for s, e in windows)
 
 
 def next_fire(when_spec: dict, now: datetime, horizon_days: int = 8) -> datetime | None:
-    """Next window *start* at/after ``now`` (minute resolution), or None."""
+    """Next window *start* at/after ``now`` (minute resolution), or None.
+
+    A dated (one-time) entry is checked against its own date directly, not
+    the rolling ``horizon_days`` window, since it may be scheduled further
+    out than a recurring entry ever needs to look.
+    """
     days, windows = parse_when(when_spec)
     if not windows:
         return None
     now = now.replace(second=0, microsecond=0)
+    d = entry_date(when_spec)
+    if d is not None:
+        if d < now.date():
+            return None  # date has passed — this entry will never fire again
+        for start_min, _end in sorted(windows):
+            cand = datetime(d.year, d.month, d.day) + timedelta(minutes=start_min)
+            if cand >= now:
+                return cand
+        return None
     for day_offset in range(horizon_days):
         day = now + timedelta(days=day_offset)
         if days and day.weekday() not in days:
