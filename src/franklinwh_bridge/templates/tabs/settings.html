@@ -300,6 +300,120 @@
       </div>
     </div>
 
+    <!-- System Setup -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label !mb-0">System Setup</div>
+        <template x-if="!setupEditing">
+          <button @click="startSetupEdit()" class="btn btn-sm btn-secondary">Edit</button>
+        </template>
+        <template x-if="setupEditing">
+          <div class="flex gap-1.5">
+            <button @click="saveSetupConfig()" class="btn btn-sm btn-primary">Save</button>
+            <button @click="setupEditing = false" class="btn btn-sm btn-secondary">Cancel</button>
+          </div>
+        </template>
+      </div>
+
+      <!-- Read-only view -->
+      <template x-if="!setupEditing">
+        <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Whole-Home Backup</span>
+            <span :class="siteConfig.full_backup ? 'text-emerald-400' : 'text-slate-400'"
+                  x-text="siteConfig.full_backup ? 'Yes' : 'No'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Grid-Forming</span>
+            <span :class="siteConfig.grid_forming ? 'text-emerald-400' : 'text-slate-400'"
+                  x-text="siteConfig.grid_forming ? 'Yes' : 'No'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Generator Input</span>
+            <span :class="siteConfig.generator_input ? 'text-emerald-400' : 'text-slate-400'"
+                  x-text="siteConfig.generator_input ? 'Yes' : 'No'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Load Shedding</span>
+            <span :class="siteConfig.load_shedding ? 'text-emerald-400' : 'text-slate-400'"
+                  x-text="siteConfig.load_shedding ? 'Yes' : 'No'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Non-Backup Loads Panel</span>
+            <span :class="siteConfig.nonbackup_loads ? 'text-emerald-400' : 'text-slate-400'"
+                  x-text="siteConfig.nonbackup_loads ? 'Yes' : 'No'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Solar Type</span>
+            <span class="text-slate-300 capitalize" x-text="siteConfig.solar_type || 'None'"></span>
+          </div>
+          <div class="flex justify-between" x-show="siteConfig.solar_type && siteConfig.solar_type !== 'none'">
+            <span class="text-slate-500">Solar kWp</span>
+            <span class="text-slate-300" x-text="(siteConfig.solar_kwp || 0) + ' kWp'"></span>
+          </div>
+          <div class="flex justify-between" x-show="siteConfig.battery_label">
+            <span class="text-slate-500">Battery Label</span>
+            <span class="text-slate-300" x-text="siteConfig.battery_label"></span>
+          </div>
+        </div>
+      </template>
+
+      <!-- Edit form -->
+      <template x-if="setupEditing">
+        <div class="space-y-3 text-sm">
+          <!-- Toggle rows -->
+          <template x-for="[key, label] in [
+            ['full_backup',     'Full / Whole-Home Backup'],
+            ['grid_forming',    'Grid-Forming (Island-capable)'],
+            ['generator_input', 'Generator Input'],
+            ['load_shedding',   'Load Shedding'],
+            ['nonbackup_loads', 'Non-Backup Loads Panel']
+          ]" :key="key">
+            <div class="flex justify-between items-center">
+              <label class="text-slate-400" x-text="label"></label>
+              <button type="button"
+                      @click="setupEdit[key] = !setupEdit[key]"
+                      :class="setupEdit[key]
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : 'bg-slate-700 border-slate-600'"
+                      class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border transition-colors focus:outline-none">
+                <span :class="setupEdit[key] ? 'translate-x-4' : 'translate-x-0'"
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"></span>
+              </button>
+            </div>
+          </template>
+
+          <!-- Solar type -->
+          <div class="flex justify-between items-center">
+            <label class="text-slate-400">Solar Type</label>
+            <select x-model="setupEdit.solar_type"
+                    class="bg-slate-700 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1">
+              <option value="none">None</option>
+              <option value="ac">AC-Coupled</option>
+              <option value="dc">DC-Coupled</option>
+            </select>
+          </div>
+
+          <!-- Solar kWp (shown when solar_type != none) -->
+          <div class="flex justify-between items-center" x-show="setupEdit.solar_type && setupEdit.solar_type !== 'none'">
+            <label class="text-slate-400">Solar kWp</label>
+            <div class="flex items-center gap-1">
+              <input type="number" x-model.number="setupEdit.solar_kwp" min="0" max="999" step="0.1"
+                     class="form-control !py-0.5 !text-xs w-24 text-right">
+              <span class="text-slate-500 text-xs">kWp</span>
+            </div>
+          </div>
+
+          <!-- Battery label -->
+          <div class="flex justify-between items-center">
+            <label class="text-slate-400">Battery Label</label>
+            <input type="text" x-model="setupEdit.battery_label" placeholder="e.g. Franklin WHB13"
+                   class="form-control !py-0.5 !text-xs w-40">
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- Modbus Poller -->
     <div class="card">
       <div class="card-label mb-3">Modbus Poller</div>
@@ -568,7 +682,13 @@
           <input type="number" x-model.number="newGw.poll_interval" min="1" max="300"
                  class="form-control !py-1 !text-xs w-16 font-mono">
         </div>
-        <div class="sm:col-span-2">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
+                 title="Modbus connection/read timeout. Raise this if you see frequent timeouts on a flaky link.">Timeout (s)</label>
+          <input type="number" x-model.number="newGw.timeout" min="1" max="60" step="0.5"
+                 class="form-control !py-1 !text-xs w-16 font-mono">
+        </div>
+        <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
           <input type="text" x-model="newGw.description" placeholder="Phase 1, FHP 1"
                  class="form-control !py-1 !text-xs w-full">
@@ -705,11 +825,19 @@
               <input type="number" x-model.number="editGw.poll_interval" min="1" max="300"
                      class="form-control !py-1 !text-xs w-16 font-mono">
             </div>
-            <div class="sm:col-span-3">
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
+                     title="Modbus connection/read timeout. Raise this if you see frequent timeouts on a flaky link.">Timeout (s)</label>
+              <input type="number" x-model.number="editGw.timeout" min="1" max="60" step="0.5"
+                     class="form-control !py-1 !text-xs w-16 font-mono">
+            </div>
+            <div class="sm:col-span-2">
               <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
               <input type="text" x-model="editGw.description" class="form-control !py-1 !text-xs w-full">
             </div>
           </div>
+          <p class="text-[10px] text-slate-600 -mt-1.5 mb-2">Poll interval and timeout apply after this
+             gateway reconnects (stop/start, or app restart) — not instantly.</p>
 
           <!-- Service & phase linkage (Layer 2) -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 pt-2 border-t border-amber-500/15">

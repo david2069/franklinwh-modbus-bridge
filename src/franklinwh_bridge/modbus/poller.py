@@ -72,11 +72,13 @@ class ModbusPoller:
         poll_interval: int = 30,
         stats: Any | None = None,
         modbus_lock: asyncio.Lock | None = None,
+        timeout: float = 10.0,
     ) -> None:
         self._controller = controller
         self._bus = sample_bus
         self._gateway_id = gateway_id
         self._poll_interval = poll_interval
+        self._timeout = timeout
         self._state = PollerState()
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -633,7 +635,8 @@ class ModbusPoller:
                 with contextlib.suppress(Exception):
                     self._vreg_client.close()
             self._vreg_client = ModbusTcpClient(
-                self._controller.ip_address, port=self._controller.port
+                self._controller.ip_address, port=self._controller.port,
+                timeout=self._timeout,
             )
             self._vreg_client.connect()
         return self._vreg_client

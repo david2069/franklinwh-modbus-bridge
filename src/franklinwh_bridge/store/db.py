@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -347,6 +347,23 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX IF NOT EXISTS idx_alarm_events_ts ON alarm_events(ts);
     CREATE INDEX IF NOT EXISTS idx_alarm_events_gw ON alarm_events(gateway_id, ts);
     """,
+    23: """
+    -- System topology flags for site setup wizard.
+    ALTER TABLE site_config ADD COLUMN full_backup       INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE site_config ADD COLUMN grid_forming      INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE site_config ADD COLUMN generator_input   INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE site_config ADD COLUMN solar_type        TEXT    NOT NULL DEFAULT 'none';
+    ALTER TABLE site_config ADD COLUMN solar_kwp         REAL    NOT NULL DEFAULT 0;
+    ALTER TABLE site_config ADD COLUMN load_shedding     INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE site_config ADD COLUMN nonbackup_loads   INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE site_config ADD COLUMN battery_label     TEXT    NOT NULL DEFAULT '';
+    """,
+    24: """
+    -- Per-gateway Modbus connection timeout (seconds), user-configurable
+    -- (default matches the franklinwh-modbus library's own prior default,
+    -- so existing gateways see no behaviour change until adjusted).
+    ALTER TABLE gateways ADD COLUMN timeout REAL NOT NULL DEFAULT 10;
+    """,
     16: """
     -- Scheduler (SCH1): declarative time -> command-handler action entries.
     -- when_spec/params are JSON; action draws from the command vocabulary.
@@ -572,6 +589,7 @@ async def create_gateway(
     unit_id: int = 1,
     description: str = "",
     poll_interval: int = 10,
+    timeout: float = 10.0,
     mock: bool = False,
 ) -> dict:
     """Create a new gateway."""
@@ -584,10 +602,10 @@ async def create_gateway(
 
     await db.execute(
         "INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at, "
-        "description, poll_interval, display_order, mock) "
-        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
+        "description, poll_interval, timeout, display_order, mock) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)",
         (gateway_id, name, host, port, unit_id, now, description,
-         poll_interval, order, int(mock)),
+         poll_interval, timeout, order, int(mock)),
     )
     await db.commit()
     return await get_gateway(db, gateway_id)  # type: ignore[return-value]
@@ -670,6 +688,14 @@ async def get_site_config(db: aiosqlite.Connection) -> dict:
                 "ac_service_type": row["ac_service_type"],
                 "aggregate_entities": bool(row["aggregate_entities"]),
                 "updated_at": row["updated_at"],
+                "full_backup": bool(row["full_backup"]) if "full_backup" in row.keys() else False,
+                "grid_forming": bool(row["grid_forming"]) if "grid_forming" in row.keys() else False,
+                "generator_input": bool(row["generator_input"]) if "generator_input" in row.keys() else False,
+                "solar_type": row["solar_type"] if "solar_type" in row.keys() else "none",
+                "solar_kwp": float(row["solar_kwp"]) if "solar_kwp" in row.keys() else 0.0,
+                "load_shedding": bool(row["load_shedding"]) if "load_shedding" in row.keys() else False,
+                "nonbackup_loads": bool(row["nonbackup_loads"]) if "nonbackup_loads" in row.keys() else False,
+                "battery_label": row["battery_label"] if "battery_label" in row.keys() else "",
             }
     finally:
         db.row_factory = aiosqlite.Row

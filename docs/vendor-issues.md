@@ -398,9 +398,14 @@ Two concrete follow-ups:
   `execute_reads()` also issues one function-code-3 request per tag, never
   batched). Filed as
   [franklinwh-modbus#11](https://github.com/david2069/franklinwh-modbus/issues/11)
-  (`batch_write`/`batch_read` support) rather than implemented ad hoc in the
-  bridge, per this project's own rule that the library owns all Modbus I/O.
-  Not yet implemented.
+  (`batch_write`/`batch_read` support) for the permanent Sequencer
+  capability — but a standalone diagnostic doesn't need to wait for that:
+  `tools/test_atomic_block_write.py` uses pymodbus's `write_registers()`
+  directly for a real one-transaction write, and (unlike the Sequencer,
+  which silently skips a same-value write) can test "keep the current mode,
+  change only the reserve, atomically" — a case the Sequencer literally
+  cannot express. Pauses/resumes the bridge's own polling around the test to
+  avoid the documented concurrent-access corruption risk. Not yet run.
 - A `set_mode(requestedSOC=...)` cloud-API call **with an actual Modbus
   readback of 15508/15509 afterward** — closing the gap the existing cloud
   live test leaves open. Script written:
@@ -615,3 +620,8 @@ design regardless.
     2026-07-15 update) — closes the gap the existing cloud live test leaves
     open (it checks `workMode` only, never reads back SOC). Script:
     `tools/test_cloud_soc_persistence.py`. Not yet run.
+11. **Run a genuinely atomic (function-code-16) Modbus block write** across
+    mode + both reserves (Issue 11, 2026-07-15 update) — tests "keep the
+    current mode, change only the reserve, atomically," which the Sequencer
+    can't express (it skips same-value writes). Script:
+    `tools/test_atomic_block_write.py`. Not yet run.

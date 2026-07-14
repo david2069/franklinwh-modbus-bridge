@@ -44,6 +44,7 @@ class GatewayConfig:
     port: int = 502
     unit_id: int = 1
     poll_interval: int = 10
+    timeout: float = 10.0
     description: str = ""
     enabled: bool = True
     mock: bool = False  # synthetic gateway — no Modbus connection
@@ -119,6 +120,7 @@ class GatewayInstance:
         cfg = self.config
         self.controller = FranklinWHController(
             ip_address=cfg.host, port=cfg.port, unit_id=cfg.unit_id,
+            timeout=cfg.timeout,
         )
 
         self.poller = ModbusPoller(
@@ -128,6 +130,7 @@ class GatewayInstance:
             poll_interval=cfg.poll_interval,
             stats=self._stats,
             modbus_lock=self.modbus_lock,
+            timeout=cfg.timeout,
         )
 
         # Fan-in: forward per-gateway samples to the global bus

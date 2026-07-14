@@ -54,6 +54,14 @@ class SiteConfigUpdate(BaseModel):
     account_number: str | None = None
     ac_service_type: int | None = Field(default=None, ge=1, le=3)
     aggregate_entities: bool | None = None
+    full_backup: bool | None = None
+    grid_forming: bool | None = None
+    generator_input: bool | None = None
+    solar_type: str | None = None
+    solar_kwp: float | None = Field(default=None, ge=0)
+    load_shedding: bool | None = None
+    nonbackup_loads: bool | None = None
+    battery_label: str | None = None
 
 
 @router.get("/site")
@@ -157,6 +165,7 @@ class GatewayCreate(BaseModel):
     unit_id: int = Field(default=1, ge=1, le=247)
     description: str = ""
     poll_interval: int = Field(default=10, ge=1, le=300)
+    timeout: float = Field(default=10.0, ge=1, le=60)
     mock: bool = False
 
 
@@ -167,6 +176,7 @@ class GatewayUpdate(BaseModel):
     unit_id: int | None = Field(default=None, ge=1, le=247)
     description: str | None = None
     poll_interval: int | None = Field(default=None, ge=1, le=300)
+    timeout: float | None = Field(default=None, ge=1, le=60)
     enabled: bool | None = None
     # Layer-2 linkage. service_id='' clears the link; phase in all|L1|L2|L3|combo.
     service_id: str | None = Field(default=None, max_length=63)
@@ -252,6 +262,7 @@ async def add_gateway(body: GatewayCreate, request: Request):
         unit_id=body.unit_id,
         description=body.description,
         poll_interval=body.poll_interval,
+        timeout=body.timeout,
         mock=body.mock,
     )
 

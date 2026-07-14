@@ -79,6 +79,7 @@ class GatewayRegistry:
             port=gw_row["port"],
             unit_id=gw_row.get("unit_id", 1),
             poll_interval=gw_row.get("poll_interval", 10),
+            timeout=gw_row.get("timeout", 10.0),
             description=gw_row.get("description", ""),
             enabled=bool(gw_row.get("enabled", True)),
             mock=bool(gw_row.get("mock", 0)),

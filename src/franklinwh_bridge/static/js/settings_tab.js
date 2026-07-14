@@ -34,6 +34,9 @@ function settingsTab() {
     siteConfig: {},
     siteEditing: false,
     siteEdit: {},
+    // System setup
+    setupEditing: false,
+    setupEdit: {},
 
     // Electricity Utility Services (Layer 1)
     services: [],
@@ -43,7 +46,7 @@ function settingsTab() {
     gwList: [],
     gwBusy: false,
     showAddGateway: false,
-    newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '', mock: false },
+    newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false },
     gwTestResults: {},     // per-gateway TCP test result, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
     editGw: null,          // gateway being edited (PATCH form fields)
@@ -154,6 +157,36 @@ function settingsTab() {
       }
     },
 
+    // ── System Setup ──────────────────────────────────────────
+
+    startSetupEdit() {
+      this.setupEdit = {
+        full_backup:     !!this.siteConfig.full_backup,
+        grid_forming:    !!this.siteConfig.grid_forming,
+        generator_input: !!this.siteConfig.generator_input,
+        load_shedding:   !!this.siteConfig.load_shedding,
+        nonbackup_loads: !!this.siteConfig.nonbackup_loads,
+        solar_type:      this.siteConfig.solar_type || 'none',
+        solar_kwp:       this.siteConfig.solar_kwp || 0,
+        battery_label:   this.siteConfig.battery_label || '',
+      };
+      this.setupEditing = true;
+    },
+
+    async saveSetupConfig() {
+      const data = await fetchJSON('api/site', {
+        method: 'PATCH',
+        body: JSON.stringify(this.setupEdit),
+      });
+      if (data && !data.error) {
+        this.siteConfig = data;
+        this.setupEditing = false;
+        Alpine.store('app').toast('System setup saved', 'info');
+      } else {
+        Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
     // ── Electricity Utility Services ───────────────────────
 
     AC_SERVICE_LABELS: { 1: 'Single Phase', 2: 'Split Phase', 3: 'Three Phase' },
@@ -236,7 +269,7 @@ function settingsTab() {
         });
         if (data && !data.error && data.id) {
           Alpine.store('app').toast(`Gateway "${data.name}" added`, 'info');
-          this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, description: '', mock: false };
+          this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false };
           this.showAddGateway = false;
           await this.loadGateways();
         } else {
@@ -326,6 +359,7 @@ function settingsTab() {
         port: gw.port,
         unit_id: gw.unit_id ?? 1,
         poll_interval: gw.poll_interval ?? 10,
+        timeout: gw.timeout ?? 10,
         description: gw.description || '',
         service_id: gw.service_id || '',
         phase: gw.phase || 'all',
@@ -367,7 +401,7 @@ function settingsTab() {
           method: 'PATCH',
           body: JSON.stringify({
             name: g.name, host: g.host, port: g.port,
-            unit_id: g.unit_id, poll_interval: g.poll_interval,
+            unit_id: g.unit_id, poll_interval: g.poll_interval, timeout: g.timeout,
             description: g.description,
             service_id: g.service_id, phase: g.phase, phase_view: g.phase_view,
           }),
