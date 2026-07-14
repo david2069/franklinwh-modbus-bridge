@@ -115,7 +115,13 @@ def test_pair_ongoing_alarm_with_no_clear():
     assert row["duration_seconds"] == 0.0
 
 
-def test_pair_multi_bit_episode_set_and_cleared_together():
+def test_pair_multi_bit_episode_severity_is_per_name_not_blanket():
+    # PortOverVoltage (bit 0) and PortUnderVoltage (bit 1) are warning-tier;
+    # ContactorFault (bit 5) is fault-tier. AlarmTracker.process_sample()
+    # records ONE blanket "fault" severity for the whole transition (worst
+    # bit wins, for logging purposes) -- pair_alarm_events() must NOT just
+    # copy that blanket value onto every name. Each name gets its own,
+    # correct severity independent of what else co-occurred.
     events = [
         {
             "ts": 300.0, "gateway_id": "default", "source": "M714_PrtAlrms",
@@ -131,11 +137,38 @@ def test_pair_multi_bit_episode_set_and_cleared_together():
     ]
     paired = pair_alarm_events(events)
     assert len(paired) == 3
-    names = {row["name"] for row in paired}
-    assert names == {"PortOverVoltage", "PortUnderVoltage", "ContactorFault"}
+    by_name = {row["name"]: row for row in paired}
+    assert set(by_name) == {"PortOverVoltage", "PortUnderVoltage", "ContactorFault"}
     for row in paired:
         assert row["duration_seconds"] == 18.0
-        assert row["severity"] == "fault"  # severity carried from the SET row
+    assert by_name["PortOverVoltage"]["severity"] == "warning"
+    assert by_name["PortUnderVoltage"]["severity"] == "warning"
+    assert by_name["ContactorFault"]["severity"] == "fault"
+
+
+def test_pair_unclassified_vendor_bit_defaults_to_info_not_borrowed_severity():
+    # A VendorBit* name has no known fault/warning classification at all --
+    # it must show as "info" (unknown), not inherit "fault" just because a
+    # real fault-tier bit (ContactorFault) happened to be set in the same
+    # raw-register transition. This is the exact bug a user caught by eye
+    # in the Events table: unrelated/unknown bits were all rendering red.
+    events = [
+        {
+            "ts": 300.0, "gateway_id": "default", "source": "M714_PrtAlrms",
+            "value_raw": 12345, "alarms_set": "ContactorFault, VendorBit21",
+            "alarms_cleared": "", "severity": "fault",
+        },
+        {
+            "ts": 310.0, "gateway_id": "default", "source": "M714_PrtAlrms",
+            "value_raw": 0, "alarms_set": "",
+            "alarms_cleared": "ContactorFault, VendorBit21",
+            "severity": "info",
+        },
+    ]
+    paired = pair_alarm_events(events)
+    by_name = {row["name"]: row for row in paired}
+    assert by_name["ContactorFault"]["severity"] == "fault"
+    assert by_name["VendorBit21"]["severity"] == "info"
 
 
 def test_pair_m713_sta_chained_state_transitions():

@@ -154,6 +154,39 @@ def _severity_m714(set_bits: list[str]) -> str:
     return "info"
 
 
+def _name_severity(source: str, name: str, fallback: str) -> str:
+    """Per-name severity, independent of whatever else co-occurred in the
+    same raw-register transition.
+
+    ``AlarmTracker.process_sample()`` computes one blanket severity per
+    transition (worst bit wins) for logging purposes — correct for "was this
+    transition dangerous," but wrong to apply to every bit name individually:
+    a co-occurring fault-tier bit (e.g. ``ContactorFault``) would otherwise
+    make an unrelated warning-tier bit (e.g. ``PortOverVoltage``) or a
+    totally unclassified ``VendorBit*`` display as if it were itself
+    fault-severity, when we have no actual information suggesting that.
+    """
+    if source == "M701_Alrm":
+        bit_names, fault_bits, warn_bits = _M701_ALRM_BITS, _FAULT_BITS_M701, _WARN_BITS_M701
+    elif source == "M714_PrtAlrms":
+        bit_names, fault_bits, warn_bits = _M714_ALRM_BITS, _FAULT_BITS_M714, _WARN_BITS_M714
+    else:
+        # M713_Sta (state enum) and anything else: no bit-based severity
+        # table exists here — use the transition's own recorded severity.
+        return fallback
+    for bit, bit_name in bit_names.items():
+        if bit_name == name:
+            if bit in fault_bits:
+                return "fault"
+            if bit in warn_bits:
+                return "warning"
+            return "info"
+    # Unnamed/VendorBit*: genuinely unknown meaning — don't borrow a
+    # neighbor's severity just because it happened to be set in the same
+    # transition.
+    return "info"
+
+
 # ── Per-gateway state tracker (in-memory) ─────────────────────────────────────
 
 class AlarmTracker:
@@ -307,12 +340,16 @@ def pair_alarm_events(events: list[dict]) -> list[dict]:
             open_for_key[name] = {
                 "ts": ev["ts"],
                 "value_raw": ev["value_raw"],
-                "severity": ev["severity"],
+                "severity": _name_severity(ev["source"], name, ev["severity"]),
             }
 
         for name in cleared_names:
             opened = open_for_key.pop(name, None)
             set_ts = opened["ts"] if opened else ev["ts"]
+            severity = (
+                opened["severity"] if opened
+                else _name_severity(ev["source"], name, ev["severity"])
+            )
             paired.append({
                 "ts": set_ts,
                 "end_ts": ev["ts"],
@@ -324,7 +361,7 @@ def pair_alarm_events(events: list[dict]) -> list[dict]:
                 "point": meta.get("point"),
                 "name": name,
                 "value_raw": opened["value_raw"] if opened else ev["value_raw"],
-                "severity": opened["severity"] if opened else ev["severity"],
+                "severity": severity,
             })
 
     # Anything still open has no CLR in this window — report as ongoing.
