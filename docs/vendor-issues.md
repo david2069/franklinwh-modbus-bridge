@@ -349,6 +349,63 @@ ambiguity, using the tool purpose-built for this rather than re-reading old logs
 Nobody has run that specific sequence yet — it would be a genuinely new,
 first-party result, not a re-derivation of the existing evidence above.
 
+**Note on the above:** `SunSpecSequencer.execute_writes()` (`franklinwh-modbus`
+`src/franklinwh_modbus/sequencer.py:296-308`) silently skips a write when the
+target value already matches the current value (no Modbus transaction is sent
+at all) — so a literal "no-op, same value" write as described can't actually
+be issued through the Sequencer as written. A true mode-touch test needs to
+cycle the mode away and back (two real transitions), not a same-value poke.
+
+**UPDATE 2026-07-15 — two independent cross-repo leads pointing at the same
+mechanism, neither confirmed by readback yet:**
+
+1. **`franklinwh-local`** (the local-API sibling repo) reportedly found that its
+   REST API can set reserve SOC if *all* the exposed reserve-SOC fields (cloud
+   and local APIs each expose several) are written together, rather than one
+   at a time — consistent with SPAN's 2023 "resets when OnGridMode is updated"
+   note above: a *partial* write may be what triggers the reset, not any write.
+
+2. **`franklinwh-cloud`** (the Cloud API client repo,
+   `/Users/davidhona/dev/franklinwh-cloud`) has exactly the "set together"
+   mechanism SPAN's note implies should matter:
+   - `ModesMixin.set_mode(requestedOperatingMode, requestedSOC=None, ...)`
+     (`franklinwh_cloud/mixins/modes.py:39`) accepts an **optional SOC**
+     alongside the mode change, sent as **one combined HTTP request** — a
+     single query string with both `oldIndex` (mode) and `soc` against
+     `hes-gateway/terminal/tou/updateTouModeV2` (`modes.py:212-270`), not two
+     sequential calls. `requestedSOC` is explicitly ignored for Emergency
+     Backup mode (`modes.py:138`) — TOU/Self-Consumption only.
+   - A fully independent `update_soc(requestedSOC, workMode, electricityType)`
+     (`modes.py:451`) posts to a separate endpoint (`updateSocV2`), unrelated
+     to mode-switching.
+   - **Critically, neither is confirmed to persist.** The only live-hardware
+     test touching this, `tests/test_live_mode.py`, calls `set_mode(...,
+     requestedSOC=5)`, asserts the HTTP call returned success, then reads back
+     only `workMode` — **it never reads back the SOC value.** `update_soc()`
+     has zero live tests, only mocked ones asserting the call was *made* with
+     the right arguments, not that anything changed on the device
+     (`tests/test_force_mixin.py:76,104`). This is the identical evidentiary
+     gap as the Modbus-side tests above: request-succeeded ≠ confirmed-to-stick.
+
+Both leads independently point at "set mode + reserve together" as the
+mechanism worth testing, but across three transports (Modbus, Local API,
+Cloud API) nobody has yet closed the loop with an actual persistence readback.
+Two concrete follow-ups:
+- A genuinely **atomic** Modbus write across 15507-15509 (function code 16,
+  "Write Multiple Registers," one transaction — the registers are
+  contiguous) would be a stronger test than the Sequencer's current
+  per-register sequential writes (and the same gap exists on the read side —
+  `execute_reads()` also issues one function-code-3 request per tag, never
+  batched). Filed as
+  [franklinwh-modbus#11](https://github.com/david2069/franklinwh-modbus/issues/11)
+  (`batch_write`/`batch_read` support) rather than implemented ad hoc in the
+  bridge, per this project's own rule that the library owns all Modbus I/O.
+  Not yet implemented.
+- A `set_mode(requestedSOC=...)` cloud-API call **with an actual Modbus
+  readback of 15508/15509 afterward** — closing the gap the existing cloud
+  live test leaves open. Script written:
+  `tools/test_cloud_soc_persistence.py`. Not yet run.
+
 **Vendor ask:** Confirm what "SPAN Modbus unlock" actually requires (installer-level
 setting? firmware flag? account permission?) and document it, or clarify these registers
 are permanently read-only via Modbus regardless of provisioning.
@@ -513,6 +570,20 @@ design regardless.
    `set_tou_reserve()`) are implemented with protocol-level write-back
    checking, but the underlying hardware capability is still blocked
    (Issue 11) — no further library change needed until the vendor unlock is known
+5. **Feature request: `batch_write`/`batch_read` support in `SunSpecSequencer`**
+   (Issue 11, 2026-07-15 update) — both `execute_writes()` and
+   `execute_reads()`/`read_value()` issue one Modbus transaction per
+   register/tag (function code 6 per write, function code 3 per read), even
+   when a step lists several contiguous addresses — the step syntax implies
+   one batched operation but neither direction actually is. 15507-15509
+   (mode + both reserves) are contiguous, so a genuine function-code-16
+   write (and multi-count function-code-3 read) covering all three in one
+   transaction is directly possible and would be a materially stronger test
+   of the "set together" hypothesis than the current sequential-write
+   approximation. Filed as
+   [franklinwh-modbus#11](https://github.com/david2069/franklinwh-modbus/issues/11)
+   rather than implemented ad hoc in the bridge, per this project's own rule
+   that the library owns all Modbus I/O.
 
 ### Bridge (franklinwh-modbus-bridge)
 1. ~~Replace raw pymodbus reserve writes with library's `set_self_consumption_reserve()` / `set_tou_reserve()`~~ **DONE** (code hygiene only — switched to library API; the underlying write still fails on hardware, see Issue 11)
@@ -539,3 +610,8 @@ design regardless.
    would settle a real ambiguity in the existing evidence, using the tool
    built for exactly this kind of repeatable verification
    (`src/franklinwh_bridge/sequences/`)
+10. **Run the `franklinwh-cloud` `set_mode(requestedSOC=...)` call with an
+    actual Modbus readback of 15508/15509 afterward** (Issue 11,
+    2026-07-15 update) — closes the gap the existing cloud live test leaves
+    open (it checks `workMode` only, never reads back SOC). Script:
+    `tools/test_cloud_soc_persistence.py`. Not yet run.
