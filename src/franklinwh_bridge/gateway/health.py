@@ -14,8 +14,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import socket
 from typing import TYPE_CHECKING
+
+from franklinwh_bridge.gateway.net_probe import tcp_probe
 
 if TYPE_CHECKING:
     from franklinwh_bridge.gateway.registry import GatewayRegistry
@@ -87,24 +88,8 @@ class HealthChecker:
     @staticmethod
     async def _tcp_probe(host: str, port: int) -> bool:
         """Attempt a TCP connection. Returns True if the port is reachable."""
-
-        def _connect() -> bool:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(TCP_TIMEOUT_S)
-            try:
-                sock.connect((host, port))
-                return True
-            except (ConnectionRefusedError, OSError, TimeoutError):
-                return False
-            finally:
-                sock.close()
-
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_connect), timeout=TCP_TIMEOUT_S + 1,
-            )
-        except TimeoutError:
-            return False
+        result = await tcp_probe(host, port, timeout=TCP_TIMEOUT_S)
+        return result.ok
 
     async def check_one(self, gateway_id: str) -> str:
         """Probe a single gateway and return the health status string."""

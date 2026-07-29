@@ -714,7 +714,7 @@
             <th>Host</th>
             <th>Serial</th>
             <th>Model</th>
-            <th class="text-center">Status</th>
+            <th class="text-center">Enabled</th>
             <th class="text-right">Last Poll</th>
             <th></th>
           </tr>
@@ -739,16 +739,19 @@
               <td class="font-mono text-slate-500 text-[10px]" x-text="gw.serial || '--'"></td>
               <td class="text-slate-400" x-text="gw.model || '--'"></td>
               <td class="text-center">
-                <span class="text-[10px] px-1.5 py-0.5 rounded"
-                      :class="gw.polling ? 'bg-emerald-900/30 text-emerald-400' :
-                              gw.enabled ? 'bg-amber-900/30 text-amber-400' :
-                              'bg-slate-700/50 text-slate-500'"
-                      x-text="gw.polling ? 'Polling' : gw.enabled ? 'Stopped' : 'Disabled'"></span>
+                <button @click="gw.polling ? stopGw(gw.id) : startGw(gw.id)"
+                        :disabled="gwBusy || gw.enabled === false"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-40"
+                        :class="gw.polling ? 'bg-emerald-600' : 'bg-slate-600'"
+                        :title="gw.enabled === false ? 'Disabled' : (gw.polling ? 'Polling — click to stop' : 'Stopped — click to start')">
+                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                        :class="gw.polling ? 'translate-x-[18px]' : 'translate-x-[3px]'"></span>
+                </button>
               </td>
               <td class="text-right font-mono text-[10px] text-slate-500"
                   x-text="gw.last_poll_ts ? fmt.ago(gw.last_poll_ts) : '--'"></td>
               <td class="!px-1">
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-2">
                   <button @click="testGw(gw.id)" :disabled="gwBusy"
                           class="text-[10px] text-cyan-400 hover:text-cyan-300" title="Test TCP">Test</button>
                   <!-- Per-row TCP test result -->
@@ -761,26 +764,9 @@
                                 (gwTestResults[gw.id]?.ok
                                   ? '✓ ' + (gwTestResults[gw.id]?.latency ?? '') + 'ms'
                                   : '✗ ' + (gwTestResults[gw.id]?.msg || ''))"></span>
-                  <template x-if="gw.polling">
-                    <button @click="stopGw(gw.id)" :disabled="gwBusy"
-                            class="text-[10px] text-amber-400 hover:text-amber-300">Stop</button>
-                  </template>
-                  <template x-if="!gw.polling && gw.enabled !== false">
-                    <button @click="startGw(gw.id)" :disabled="gwBusy"
-                            class="text-[10px] text-emerald-400 hover:text-emerald-300">Start</button>
-                  </template>
                   <button @click="startEditGw(gw)" :disabled="gwBusy"
-                          class="text-slate-500 hover:text-cyan-400" title="Edit gateway">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                    </svg>
-                  </button>
-                  <button x-show="gw.id !== 'default'" @click="confirmRemoveGw(gw)" :disabled="gwBusy"
-                          class="text-red-400/60 hover:text-red-400" title="Remove gateway">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                  </button>
+                          class="text-[10px] text-slate-400 hover:text-cyan-400 border border-slate-600/50 rounded px-1.5 py-0.5"
+                          title="Edit, and run diagnostics/restart/remove">Edit</button>
                 </div>
               </td>
             </tr>
@@ -789,15 +775,18 @@
       </table>
     </div>
 
-    <!-- Edit gateway form -->
+    <!-- Edit gateway modal -->
     <div x-show="editGw" x-cloak
-         class="mt-3 p-3 rounded-lg border border-amber-500/20 bg-amber-900/10">
+         @keydown.escape.window="editGw = null"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+         @click.self="editGw = null">
+      <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4">
       <template x-if="editGw">
         <div>
           <div class="flex items-center justify-between mb-2">
-            <span class="text-[10px] uppercase text-amber-400 font-semibold">Edit Gateway
+            <span class="text-xs uppercase text-amber-400 font-semibold">Edit Gateway
               <span class="font-mono text-slate-400 normal-case" x-text="editGw.id"></span></span>
-            <button @click="editGw = null" class="text-[10px] text-slate-500 hover:text-slate-300">Cancel</button>
+            <button @click="editGw = null" class="text-slate-500 hover:text-slate-300 text-lg leading-none" title="Close">&times;</button>
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
             <div>
@@ -894,9 +883,76 @@
             </div>
           </template>
 
-          <button @click="saveEditGw()" :disabled="gwBusy" class="btn btn-sm btn-primary">Save Changes</button>
+          <div class="flex justify-end gap-2">
+            <button @click="editGw = null" class="btn btn-sm btn-secondary">Cancel</button>
+            <button @click="saveEditGw()" :disabled="gwBusy" class="btn btn-sm btn-primary">Save Changes</button>
+          </div>
+
+          <!-- Connection & Diagnostics -->
+          <div class="mt-4 pt-3 border-t border-slate-700">
+            <div class="text-[10px] uppercase text-slate-500 font-semibold mb-2">Connection &amp; Diagnostics</div>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <button @click="testGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Test</button>
+              <button @click="diagnoseGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Diagnose</button>
+              <button @click="forceHealthcheckGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Force Healthcheck</button>
+              <button @click="restartGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Restart</button>
+            </div>
+
+            <!-- Test result -->
+            <div x-show="gwTestResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwTestResults[editGw.id]?.testing ? 'text-slate-500' : (gwTestResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwTestResults[editGw.id]?.testing ? 'Testing…' :
+                         (gwTestResults[editGw.id]?.ok
+                           ? '✓ ' + gwTestResults[editGw.id]?.msg + ' (' + gwTestResults[editGw.id]?.latency + ' ms)'
+                           : '✗ ' + gwTestResults[editGw.id]?.msg)"></div>
+
+            <!-- Diagnose result: per-check breakdown + full verdict -->
+            <div x-show="gwDiagResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50">
+              <template x-if="gwDiagResults[editGw.id]?.testing">
+                <div class="text-slate-500">Diagnosing…</div>
+              </template>
+              <template x-if="!gwDiagResults[editGw.id]?.testing">
+                <div>
+                  <template x-if="gwDiagResults[editGw.id]?.checks">
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono mb-2">
+                      <template x-for="[label, key] in [['TCP 502 (Modbus)', 'tcp_502_modbus'], ['TCP 9000 (Local API)', 'tcp_9000_local_api'], ['Modbus protocol read', 'modbus_protocol']]" :key="key">
+                        <span :class="gwDiagResults[editGw.id]?.checks[key]?.ok ? 'text-emerald-400' : 'text-red-400'">
+                          <span x-text="gwDiagResults[editGw.id]?.checks[key]?.ok ? '✓' : '✗'"></span>
+                          <span x-text="label"></span>
+                          <span class="text-slate-500" x-show="gwDiagResults[editGw.id]?.checks[key]?.latency_ms != null"
+                                x-text="'(' + gwDiagResults[editGw.id]?.checks[key]?.latency_ms + ' ms)'"></span>
+                          <span class="text-slate-500" x-show="gwDiagResults[editGw.id]?.checks[key]?.error"
+                                x-text="'— ' + gwDiagResults[editGw.id]?.checks[key]?.error"></span>
+                        </span>
+                      </template>
+                    </div>
+                  </template>
+                  <div :class="gwDiagResults[editGw.id]?.ok ? 'text-emerald-300' : 'text-amber-300'"
+                       x-text="gwDiagResults[editGw.id]?.verdict"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Force healthcheck result -->
+            <div x-show="gwHealthResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwHealthResults[editGw.id]?.testing ? 'text-slate-500' : (gwHealthResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwHealthResults[editGw.id]?.testing ? 'Checking…' : 'health: ' + gwHealthResults[editGw.id]?.health"></div>
+
+            <!-- Restart result -->
+            <div x-show="gwRestartResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwRestartResults[editGw.id]?.testing ? 'text-slate-500' : (gwRestartResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwRestartResults[editGw.id]?.testing ? 'Restarting…' : gwRestartResults[editGw.id]?.msg"></div>
+          </div>
+
+          <!-- Danger zone -->
+          <div class="mt-4 pt-3 border-t border-red-500/20" x-show="editGw.id !== 'default'">
+            <div class="text-[10px] uppercase text-red-400/70 font-semibold mb-2">Danger Zone</div>
+            <button @click="confirmRemoveGw({id: editGw.id, name: editGw.name})" :disabled="gwBusy"
+                    class="btn btn-sm bg-red-500/80 hover:bg-red-500 text-white border border-red-400/40 !py-1 !text-xs">Remove Gateway</button>
+          </div>
         </div>
       </template>
+      </div>
     </div>
 
     <!-- Delete gateway confirmation modal -->

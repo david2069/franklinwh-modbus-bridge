@@ -48,8 +48,12 @@ function settingsTab() {
     showAddGateway: false,
     newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false },
     gwTestResults: {},     // per-gateway TCP test result, keyed by gateway id
+    gwDiagResults: {},     // per-gateway diagnose result, keyed by gateway id
+    gwRestartResults: {},  // per-gateway restart result, keyed by gateway id
+    gwHealthResults: {},   // per-gateway force-healthcheck result, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
-    editGw: null,          // gateway being edited (PATCH form fields)
+    editGw: null,          // gateway being edited (PATCH form fields) — shown in a modal,
+                            // which also hosts Test/Diagnose/Healthcheck/Restart
     // Publishing groups
     groups: [],
     groupsBusy: false,
@@ -295,6 +299,69 @@ function settingsTab() {
       }
     },
 
+    async diagnoseGw(gwId) {
+      this.gwBusy = true;
+      this.gwDiagResults = { ...this.gwDiagResults, [gwId]: { testing: true } };
+      try {
+        const data = await fetchJSON(`api/gateways/${gwId}/diagnose`, { method: 'POST' });
+        if (!data.checks && !data.mock) {
+          this.gwDiagResults = { ...this.gwDiagResults, [gwId]: { ok: false, summary: 'Diagnose failed', verdict: data.error || data.detail || 'No response from bridge' } };
+          return;
+        }
+        const c = data.checks || {};
+        const healthy = data.mock || !!(c.tcp_502_modbus?.ok && c.tcp_9000_local_api?.ok && c.modbus_protocol?.ok);
+        const summary = data.mock ? 'mock — no live connection' : [
+          `502:${c.tcp_502_modbus?.ok ? '✓' : '✗'}`,
+          `9000:${c.tcp_9000_local_api?.ok ? '✓' : '✗'}`,
+          `Modbus:${c.modbus_protocol?.ok ? '✓' : '✗'}`,
+        ].join(' ');
+        this.gwDiagResults = {
+          ...this.gwDiagResults,
+          [gwId]: { ok: healthy, summary, verdict: data.verdict || '', checks: c, mock: !!data.mock },
+        };
+      } finally {
+        this.gwBusy = false;
+      }
+    },
+
+    async restartGw(gwId) {
+      this.gwBusy = true;
+      this.gwRestartResults = { ...this.gwRestartResults, [gwId]: { testing: true } };
+      try {
+        const data = await fetchJSON(`api/gateways/${gwId}/restart`, { method: 'POST' });
+        if (data && data.restarted) {
+          this.gwRestartResults = { ...this.gwRestartResults, [gwId]: { ok: true, msg: 'Restarted — reconnecting…' } };
+          Alpine.store('app').toast(`Gateway ${gwId} restarted`, 'info');
+        } else {
+          const msg = data?.error || data?.detail || 'unknown';
+          this.gwRestartResults = { ...this.gwRestartResults, [gwId]: { ok: false, msg } };
+          Alpine.store('app').toast('Restart failed: ' + msg, 'error');
+        }
+      } finally {
+        this.gwBusy = false;
+        await this.loadGateways();
+      }
+    },
+
+    async forceHealthcheckGw(gwId) {
+      this.gwBusy = true;
+      this.gwHealthResults = { ...this.gwHealthResults, [gwId]: { testing: true } };
+      try {
+        const data = await fetchJSON(`api/gateways/${gwId}/healthcheck`, { method: 'POST' });
+        if (data && data.health) {
+          this.gwHealthResults = { ...this.gwHealthResults, [gwId]: { ok: true, health: data.health } };
+          Alpine.store('app').toast(`Gateway ${gwId} health: ${data.health}`, 'info');
+        } else {
+          const msg = data?.error || data?.detail || 'unknown';
+          this.gwHealthResults = { ...this.gwHealthResults, [gwId]: { ok: false, health: msg } };
+          Alpine.store('app').toast('Health check failed: ' + msg, 'error');
+        }
+      } finally {
+        this.gwBusy = false;
+        await this.loadGateways();
+      }
+    },
+
     async startGw(gwId) {
       this.gwBusy = true;
       try {
@@ -341,6 +408,7 @@ function settingsTab() {
         if (data && data.deleted) {
           Alpine.store('app').toast(`Gateway "${gw.name}" removed`, 'info');
           this.deleteGwTarget = null;
+          if (this.editGw?.id === gw.id) this.editGw = null;  // close the edit modal it was opened from
           await this.loadGateways();
         } else {
           Alpine.store('app').toast('Remove failed: ' + (data?.detail || data?.error || 'unknown'), 'error');

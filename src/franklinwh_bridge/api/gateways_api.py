@@ -7,15 +7,14 @@ endpoints (points, command, models, battery limits).
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import socket
-import time
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
+from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.db import (
@@ -407,6 +406,53 @@ async def stop_gateway_endpoint(gw_id: str, request: Request):
     return {"stopped": True, "gateway_id": gw_id}
 
 
+@router.post("/gateways/{gw_id}/restart")
+async def restart_gateway_endpoint(gw_id: str, request: Request):
+    """Tear down and recreate a gateway's Modbus connection.
+
+    Unlike /diagnose (read-only), this is the actual fix for a wedged
+    session: it discards the current GatewayInstance (closing whatever
+    socket state it had, good or bad) and reconnects from scratch, without
+    needing a full bridge process restart. ``registry.start_gateway``
+    already stops any existing instance for this ID before starting a new
+    one, so this is mechanically identical to /start — this endpoint exists
+    for a clear, explicit "restart" action in the UI/CLI regardless of
+    whether the gateway looked like it was already running.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    registry = _registry(request)
+
+    row = await get_gateway(db, gw_id)
+    if row is None:
+        raise HTTPException(404, f"Gateway '{gw_id}' not found")
+
+    await update_gateway(db, gw_id, enabled=1, autostart=1)
+    inst = await registry.start_gateway(gw_id)
+    if inst is None:
+        raise HTTPException(500, f"Failed to restart gateway '{gw_id}'")
+    return {"restarted": True, "gateway_id": gw_id}
+
+
+@router.post("/gateways/{gw_id}/healthcheck")
+async def force_healthcheck_endpoint(gw_id: str, request: Request):
+    """Force an immediate TCP health probe, instead of waiting for the
+    periodic HealthChecker (default: every 60s) to get to this gateway.
+
+    Updates the same ``status.health`` field the topbar dot reads, so the
+    UI reflects the result on its next refresh.
+    """
+    registry = _registry(request)
+    if registry.get(gw_id) is None:
+        raise HTTPException(404, f"Gateway '{gw_id}' not found or not running")
+
+    health_checker = getattr(request.app.state, "health_checker", None)
+    if health_checker is None:
+        raise HTTPException(503, "Health checker not available")
+
+    health = await health_checker.check_one(gw_id)
+    return {"gateway_id": gw_id, "health": health}
+
+
 @router.get("/gateways/{gw_id}/detect-phases")
 async def detect_gateway_phases(gw_id: str, request: Request):
     """Auto-detect the gateway's wired phase(s) from its 701 registers.
@@ -449,39 +495,28 @@ async def test_gateway_tcp(gw_id: str, request: Request):
     if row is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
 
-    host = row["host"]
-    port = row["port"]
+    result = await tcp_probe(row["host"], row["port"])
+    return {"gateway_id": gw_id, **result.to_dict()}
 
-    def _tcp_connect() -> float:
-        t0 = time.monotonic()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5)
-        try:
-            sock.connect((host, port))
-        finally:
-            sock.close()
-        return time.monotonic() - t0
 
-    try:
-        elapsed = await asyncio.wait_for(
-            asyncio.to_thread(_tcp_connect), timeout=5,
-        )
-        return {
-            "ok": True,
-            "gateway_id": gw_id,
-            "host": host,
-            "port": port,
-            "latency_ms": round(elapsed * 1000, 1),
-        }
-    except (ConnectionRefusedError, OSError, TimeoutError) as exc:
-        return {
-            "ok": False,
-            "gateway_id": gw_id,
-            "host": host,
-            "port": port,
-            "latency_ms": None,
-            "error": str(exc) or type(exc).__name__,
-        }
+@router.post("/gateways/{gw_id}/diagnose")
+async def diagnose_gateway(gw_id: str, request: Request):
+    """Root-cause a Modbus connectivity problem for a gateway.
+
+    Runs TCP reachability probes (Modbus port + Local API port), a live
+    Modbus protocol-level read reusing the poller's existing session (never
+    opens a second concurrent Modbus session — see docs/vendor-issues.md on
+    concurrent-access corruption), and cross-checks the result against the
+    poller's own reported state to catch cases where the poller thinks it's
+    fine but isn't.
+    """
+    registry = getattr(request.app.state, "registry", None)
+    inst = registry.get(gw_id) if registry else None
+    if inst is None:
+        raise HTTPException(404, f"Gateway '{gw_id}' not found or not running")
+
+    log_buffer = getattr(request.app.state, "log_buffer", None)
+    return await diagnostics_mod.run_diagnostics(inst, log_buffer=log_buffer)
 
 
 # ── Gateway-scoped endpoints ─────────────────────────────────

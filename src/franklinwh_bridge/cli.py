@@ -123,6 +123,120 @@ def models_refresh(
     typer.echo("Use the REST API: POST /api/models/refresh")
 
 
+gateway_app = typer.Typer(help="Gateway management")
+app.add_typer(gateway_app, name="gateway")
+
+
+@gateway_app.command("diagnose")
+def gateway_diagnose(gateway_id: str = typer.Argument(..., help="Gateway ID")):
+    """Check TCP reachability for a gateway's Modbus (502) and Local API (9000) ports.
+
+    This is a network-reachability check only. It deliberately does not
+    attempt a live Modbus protocol read: if the bridge is already running
+    (the normal case), a standalone CLI process has no safe way to reuse
+    its live Modbus session, and opening a second one is a known corruption
+    trigger on the aGate (see docs/vendor-issues.md). For the full
+    diagnostic, including a protocol-level check against the running
+    bridge's own session, use the Web UI's Diagnose button or
+    'POST /api/gateways/{id}/diagnose'.
+    """
+    async def _diagnose():
+        from franklinwh_bridge.config.manager import AppConfig
+        from franklinwh_bridge.gateway.net_probe import tcp_probe
+        from franklinwh_bridge.store.db import get_gateway, init_db
+
+        config = AppConfig()
+        db = await init_db(config.db_path)
+        row = await get_gateway(db, gateway_id)
+        await db.close()
+
+        if row is None:
+            typer.echo(f"Gateway '{gateway_id}' not found")
+            raise typer.Exit(1)
+
+        host = row["host"]
+        modbus_result = await tcp_probe(host, row["port"])
+        local_api_result = await tcp_probe(host, 9000)
+
+        typer.echo(f"Gateway '{gateway_id}' at {host}")
+        for label, result in (
+            (f"Modbus TCP ({row['port']})", modbus_result),
+            ("Local API (9000)", local_api_result),
+        ):
+            if result.ok:
+                typer.echo(f"  {label}: reachable ({result.latency_ms} ms)")
+            else:
+                typer.echo(f"  {label}: unreachable ({result.error})")
+
+        typer.echo(
+            "\nFor a full diagnosis (including a live Modbus protocol check "
+            "against the running bridge), use the Web UI's Diagnose button "
+            f"or: curl -X POST http://localhost:8099/api/gateways/{gateway_id}/diagnose"
+        )
+
+    asyncio.run(_diagnose())
+
+
+DEFAULT_BRIDGE_URL = "http://localhost:8099"
+
+
+async def _call_bridge_api(url: str, path: str) -> dict:
+    """POST to the running bridge's own REST API.
+
+    Restart and force-healthcheck act on live state inside the bridge's
+    server process (the registry, the poller's Modbus session) — there is
+    no in-process equivalent to call from a separate one-shot CLI process,
+    unlike 'diagnose' (network-only) or 'backup'/'config' (DB/filesystem
+    only). This talks to the already-running bridge over HTTP instead.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(f"{url.rstrip('/')}{path}")
+        if resp.status_code >= 400:
+            detail = resp.json().get("detail", resp.text) if resp.content else resp.text
+            typer.echo(f"Error ({resp.status_code}): {detail}")
+            raise typer.Exit(1)
+        return resp.json()
+    except httpx.ConnectError:
+        typer.echo(f"Could not reach the bridge at {url} — is it running?")
+        raise typer.Exit(1) from None
+
+
+@gateway_app.command("restart")
+def gateway_restart(
+    gateway_id: str = typer.Argument(..., help="Gateway ID"),
+    url: str = typer.Option(DEFAULT_BRIDGE_URL, help="Running bridge's base URL"),
+):
+    """Reconnect a gateway's Modbus session (tear down and recreate).
+
+    Fixes a wedged/dead session without restarting the whole bridge
+    process. Requires the bridge to already be running.
+    """
+    async def _restart():
+        data = await _call_bridge_api(url, f"/api/gateways/{gateway_id}/restart")
+        typer.echo(f"Gateway '{gateway_id}' restarted: {data}")
+
+    asyncio.run(_restart())
+
+
+@gateway_app.command("healthcheck")
+def gateway_healthcheck(
+    gateway_id: str = typer.Argument(..., help="Gateway ID"),
+    url: str = typer.Option(DEFAULT_BRIDGE_URL, help="Running bridge's base URL"),
+):
+    """Force an immediate TCP health probe instead of waiting for the
+    periodic health checker (default: every 60s). Requires the bridge to
+    already be running.
+    """
+    async def _healthcheck():
+        data = await _call_bridge_api(url, f"/api/gateways/{gateway_id}/healthcheck")
+        typer.echo(f"Gateway '{gateway_id}' health: {data.get('health')}")
+
+    asyncio.run(_healthcheck())
+
+
 backup_app = typer.Typer(help="Backup and restore")
 app.add_typer(backup_app, name="backup")
 

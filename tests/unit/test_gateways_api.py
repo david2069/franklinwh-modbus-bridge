@@ -153,3 +153,50 @@ async def test_mock_gateway_and_conflict_guard(client):
 
     for gid in ("mockx", "realA", "mockB"):
         await client.delete(f"/api/gateways/{gid}")
+
+
+async def test_gateway_diagnose(client):
+    """POST /api/gateways/{id}/diagnose — mock short-circuits, unknown 404s."""
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "diagmock", "name": "Diag Mock", "mock": True,
+    })
+    assert resp.status_code == 201
+
+    resp = await client.post("/api/gateways/diagmock/diagnose")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["gateway_id"] == "diagmock"
+    assert data["mock"] is True
+    assert "mock gateway" in data["verdict"]
+
+    resp = await client.post("/api/gateways/does-not-exist/diagnose")
+    assert resp.status_code == 404
+
+    await client.delete("/api/gateways/diagmock")
+
+
+async def test_gateway_restart_and_healthcheck(client):
+    """POST /restart reconnects (mechanically same as /start); /healthcheck
+    forces an immediate probe instead of waiting for the periodic loop."""
+    resp = await client.post("/api/gateways", json={
+        "gateway_id": "restartmock", "name": "Restart Mock", "mock": True,
+    })
+    assert resp.status_code == 201
+
+    resp = await client.post("/api/gateways/restartmock/restart")
+    assert resp.status_code == 200
+    assert resp.json() == {"restarted": True, "gateway_id": "restartmock"}
+
+    resp = await client.get("/api/gateways/restartmock")
+    assert resp.json()["polling"] is True
+
+    resp = await client.post("/api/gateways/restartmock/healthcheck")
+    assert resp.status_code == 200
+    assert "health" in resp.json()
+
+    resp = await client.post("/api/gateways/does-not-exist/restart")
+    assert resp.status_code == 404
+    resp = await client.post("/api/gateways/does-not-exist/healthcheck")
+    assert resp.status_code == 404
+
+    await client.delete("/api/gateways/restartmock")

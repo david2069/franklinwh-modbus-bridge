@@ -104,6 +104,72 @@ class ModbusPoller:
     def state(self) -> PollerState:
         return self._state
 
+    async def probe_protocol(self) -> dict[str, Any]:
+        """Attempt one live Modbus register read, reusing the existing session.
+
+        For the diagnostics tool. Deliberately does NOT open a second
+        concurrent Modbus connection — a fresh session while the poller
+        already has one open is a known corruption trigger on the aGate
+        firmware (see docs/vendor-issues.md). Instead it re-reads a small,
+        already-cached SunSpec model under the same ``_modbus_lock`` the
+        regular poll cycle uses, so it either runs between poll cycles or
+        waits its turn — never in parallel with one.
+
+        Read-only: never mutates ``self._state`` or any error counters.
+        """
+        if not self._state.connected or self._controller is None:
+            return {
+                "ok": False,
+                "latency_ms": None,
+                "error": "No active Modbus session (poller not connected)",
+                "error_type": "not_connected",
+            }
+
+        def _read() -> None:
+            model = self._controller.get_model(713) or self._controller.get_model(1)
+            if model is None:
+                raise RuntimeError("No cached SunSpec model available to probe")
+            model.read()
+
+        t0 = time.monotonic()
+        try:
+            async with self._modbus_lock:
+                await asyncio.wait_for(asyncio.to_thread(_read), timeout=self._timeout)
+            return {
+                "ok": True,
+                "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+                "error": None,
+                "error_type": None,
+            }
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            return {
+                "ok": False,
+                "latency_ms": None,
+                "error": str(exc) or type(exc).__name__,
+                "error_type": "dead_session",
+            }
+        except TimeoutError as exc:
+            return {
+                "ok": False,
+                "latency_ms": None,
+                "error": str(exc) or "Modbus read timed out",
+                "error_type": "not_responding",
+            }
+        except OSError as exc:
+            return {
+                "ok": False,
+                "latency_ms": None,
+                "error": str(exc) or type(exc).__name__,
+                "error_type": "network_error",
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "latency_ms": None,
+                "error": str(exc) or type(exc).__name__,
+                "error_type": "protocol_error",
+            }
+
     async def _connect(self) -> bool:
         async with self._modbus_lock:
             try:
