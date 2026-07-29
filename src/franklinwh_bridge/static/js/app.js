@@ -221,6 +221,7 @@ document.addEventListener('alpine:init', () => {
     points: {},
     quality: null,
     bridgeStats: null,
+    batteryLabel: '',
 
     // Toast notifications
     toasts: [],
@@ -237,6 +238,8 @@ document.addEventListener('alpine:init', () => {
       document.documentElement.setAttribute('data-theme', this.theme);
       this.refresh();
       this._interval = setInterval(() => this.refresh(), 10000);
+      // Load battery label from site config (one-shot at startup)
+      fetchJSON('api/site').then(d => { if (d && d.battery_label) this.batteryLabel = d.battery_label; });
     },
 
     toggleTheme() {
