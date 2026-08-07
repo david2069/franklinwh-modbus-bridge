@@ -29,6 +29,7 @@ from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
+from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_gateway,
@@ -38,7 +39,6 @@ from franklinwh_bridge.store.db import (
     log_schedule_event,
     log_startup_event,
 )
-from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.metrics import (
     archive_old_metrics,
     get_raw_age_days,
@@ -309,8 +309,15 @@ async def lifespan(app: FastAPI):
     ) -> None:
         await log_schedule_event(db, schedule_id, action, target, result, detail)
 
+    def _schedule_points(gw_id: str) -> dict:
+        """Latest cached points for a gateway (no Modbus call) — feeds the sensor
+        snapshot the engine evaluates entry/exit condition trees against."""
+        inst = registry.get(gw_id)
+        return inst.latest_points() if inst else {}
+
     schedule_engine = ScheduleEngine(
         db, _schedule_resolver, on_audit=_schedule_audit,
+        points_fn=_schedule_points,
     )
     app.state.schedule_engine = schedule_engine
 

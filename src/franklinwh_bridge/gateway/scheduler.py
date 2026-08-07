@@ -28,6 +28,9 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from franklinwh_bridge.gateway.scheduler_conditions import evaluate as eval_conditions
+from franklinwh_bridge.gateway.scheduler_sensors import snapshot as sensor_snapshot
+
 logger = logging.getLogger(__name__)
 
 # Resolver: (target_type, target_id) -> list of (gateway_id, handler) pairs.
@@ -162,13 +165,27 @@ def action_signature(action: str, params: dict) -> str:
     """Stable string identifying a desired dispatch, for change detection."""
     p = params or {}
     return "|".join(
-        str(x) for x in (
+        str(x)
+        for x in (
             action,
-            p.get("power_w", ""), p.get("power_pct", ""),
-            p.get("pct", ""), p.get("mode", ""),
-            p.get("duration_s", ""), p.get("target_soc", ""),
+            p.get("power_w", ""),
+            p.get("power_pct", ""),
+            p.get("pct", ""),
+            p.get("mode", ""),
+            p.get("duration_s", ""),
+            p.get("target_soc", ""),
         )
     )
+
+
+def _condition_reason(prefix: str, trace: list[dict]) -> str:
+    """One-line audit detail listing the failing conditions from a trace."""
+    fails = [
+        f"{t.get('sensor')}{t.get('op')}{t.get('value')} (live={t.get('live_value')})"
+        for t in trace
+        if not t.get("result")
+    ]
+    return f"{prefix}: " + "; ".join(fails[:4]) if fails else prefix
 
 
 def action_to_commands(action: str, params: dict) -> list[tuple[str, str]]:
@@ -218,12 +235,17 @@ class ScheduleEngine:
         now_fn: Callable[[], datetime] | None = None,
         tick_s: int = DEFAULT_TICK_S,
         on_audit: Callable[..., Awaitable[None]] | None = None,
+        points_fn: Callable[[str], dict] | None = None,
     ) -> None:
         self._db = db
         self._resolver = resolver
         self._now = now_fn or datetime.now
         self._tick_s = tick_s
         self._on_audit = on_audit
+        # gw_id -> latest cached poll points (no Modbus call). Feeds the sensor
+        # snapshot that entry/exit condition trees evaluate against. None → the
+        # engine runs condition-free (legacy SCH1 behaviour, all sensors None).
+        self._points_fn = points_fn
         self._entries: list[dict] = []
         self._task: asyncio.Task | None = None
         # serialise tick() so reload()'s immediate eval can't race the periodic
@@ -242,6 +264,13 @@ class ScheduleEngine:
         # sustained dispatch ended in-window via the watchdog or an external
         # release). Suppresses re-firing until the window is re-entered.
         self._expired: dict[tuple, str] = {}
+        # targets whose entry-conditions gate is currently failing (so we audit
+        # the gate once, not every tick while the window stays open and gated).
+        self._gated: set[tuple] = set()
+        # per-tick gw_id -> sensor snapshot, rebuilt each _tick_locked so one
+        # gateway's points are read at most once per tick and every tree sees a
+        # consistent view.
+        self._snap_cache: dict[str, dict] = {}
 
     # ---- lifecycle ----
 
@@ -296,6 +325,9 @@ class ScheduleEngine:
             await self._tick_locked(now or self._now())
 
     async def _tick_locked(self, now: datetime) -> None:
+        # Fresh per-tick snapshot cache: each gateway's points are read at most
+        # once per tick and shared by every condition-tree evaluation.
+        self._snap_cache = {}
         # Keep ownership for targets that still have entries; targets dropped
         # entirely (entry deleted) are reconciled to "no desired" below.
         seen: set[tuple] = set()
@@ -304,7 +336,7 @@ class ScheduleEngine:
             for gw_id, h in self._resolver(ttype, tid):
                 tkey = (ttype, tid, gw_id)
                 seen.add(tkey)
-                await self._reconcile(tkey, h, win)
+                await self._reconcile(tkey, h, win, now)
 
         # A target/gateway we used to own but whose entries are now gone (or that
         # left a fan-out group) → release it. Re-resolve the handler by gw_id.
@@ -312,35 +344,49 @@ class ScheduleEngine:
             if tkey in seen:
                 continue
             ttype, tid, gw_id = tkey
-            handler = next(
-                (h for g, h in self._resolver(ttype, tid) if g == gw_id), None
-            )
+            handler = next((h for g, h in self._resolver(ttype, tid) if g == gw_id), None)
             if handler is not None:
-                await self._reconcile(tkey, handler, None)
+                await self._reconcile(tkey, handler, None, now)
             else:
                 # gateway is gone — drop our records (nothing to release)
                 self._owned.pop(tkey, None)
                 self._deferred.discard(tkey)
                 self._expired.pop(tkey, None)
+                self._gated.discard(tkey)
 
-    async def _reconcile(self, tkey: tuple, handler: Any, win: dict | None) -> None:
+    async def _reconcile(self, tkey: tuple, handler: Any, win: dict | None, now: datetime) -> None:
         own = self._owned.get(tkey)
 
         # ── no winning entry: release/hold if we hold a sustained dispatch ──
         if win is None:
             self._expired.pop(tkey, None)  # window over — next entry may re-fire
+            self._gated.discard(tkey)  # gate resets; re-entry re-audits if gated
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
                     await self._dispatch(handler, "force_standby", {}, label="hold")
-                    self._owned[tkey] = {**own, "action": "force_standby",
-                                         "display": "Force Standby", "mode": "hold"}
-                    await self._audit(own.get("entry_id"), "hold", tkey,
-                                      "ok", "window exit — holding native suppressed")
+                    self._owned[tkey] = {
+                        **own,
+                        "action": "force_standby",
+                        "display": "Force Standby",
+                        "mode": "hold",
+                    }
+                    await self._audit(
+                        own.get("entry_id"),
+                        "hold",
+                        tkey,
+                        "ok",
+                        "window exit — holding native suppressed",
+                    )
                 elif own["release"] != "hold":
                     await self._send(handler, [("battery_command", "Release")])
                     self._owned.pop(tkey, None)
-                    await self._audit(own.get("entry_id"), "release", tkey,
-                                      "ok", "window exit — released to native")
+                    await self._audit(
+                        own.get("entry_id"),
+                        "release",
+                        tkey,
+                        "ok",
+                        "window exit — released to native",
+                    )
             else:
                 self._owned.pop(tkey, None)
             return
@@ -350,6 +396,33 @@ class ScheduleEngine:
         sig = action_signature(action, params)
         display = _DISPLAY.get(action)
 
+        # ── exit criteria met? intentional in-window termination ──
+        # While we actively own a sustained dispatch, a satisfied exit tree
+        # (e.g. "battery.soc_pct <= 20") ends the window early and hands back to
+        # native. Mark the window completed so it doesn't immediately re-fire —
+        # same bound the watchdog-expiry path uses.
+        if (
+            own
+            and own["action"] in _SUSTAINED
+            and own.get("mode") != "hold"
+            and handler.state.active
+        ):
+            exit_tree = win.get("exit_conditions")
+            if exit_tree is not None:
+                met, trace = eval_conditions(exit_tree, self._snapshot(tkey[2], now))
+                if met:
+                    await self._send(handler, [("battery_command", "Release")])
+                    self._owned.pop(tkey, None)
+                    self._expired[tkey] = win["id"]
+                    await self._audit(
+                        win["id"],
+                        own["action"],
+                        tkey,
+                        "exit_condition_met",
+                        _condition_reason("exit conditions met", trace),
+                    )
+                    return
+
         # ── our sustained dispatch ended in-window (watchdog or external
         #    release)? Mark the window completed and don't re-fire until it's
         #    re-entered. The window — not a per-command watchdog — is the
@@ -357,15 +430,19 @@ class ScheduleEngine:
         #    after a safety release. (hold-mode standby is still active, so it
         #    doesn't trip this.)
         if (
-            own and own["action"] in _SUSTAINED
-            and own.get("mode") != "hold" and not handler.state.active
+            own
+            and own["action"] in _SUSTAINED
+            and own.get("mode") != "hold"
+            and not handler.state.active
         ):
             self._expired[tkey] = win["id"]
             self._owned.pop(tkey, None)
             await self._audit(
-                win["id"], own["action"], tkey, "expired",
-                "dispatch ended in-window (watchdog/release) — not re-firing "
-                "until next window",
+                win["id"],
+                own["action"],
+                tkey,
+                "expired",
+                "dispatch ended in-window (watchdog/release) — not re-firing until next window",
             )
             return
 
@@ -386,27 +463,56 @@ class ScheduleEngine:
                     self._owned.pop(tkey, None)
                 if tkey not in self._deferred:  # audit the defer once, not per tick
                     self._deferred.add(tkey)
-                    await self._audit(win["id"], action, tkey, "deferred",
-                                      f"target under manual control ({handler.state.action})")
+                    await self._audit(
+                        win["id"],
+                        action,
+                        tkey,
+                        "deferred",
+                        f"target under manual control ({handler.state.action})",
+                    )
                 return
             # override → fall through and take control (logs a supersede via handler)
         self._deferred.discard(tkey)  # no longer deferring this target
 
         # ── idempotent: already applying this exact desired state? ──
-        if own and own["signature"] == sig and (
-            action not in _SUSTAINED or handler.state.action == display
+        if (
+            own
+            and own["signature"] == sig
+            and (action not in _SUSTAINED or handler.state.action == display)
         ):
             return
+
+        # ── entry gate: conditions must hold at fire-time ──
+        # Checked only here, on the verge of a (new/changed) dispatch — not while
+        # already owning idempotently (that returned above). A failing gate skips
+        # the fire and audits once; when it later passes, dispatch proceeds.
+        entry_tree = win.get("entry_conditions")
+        if entry_tree is not None:
+            ok, trace = eval_conditions(entry_tree, self._snapshot(tkey[2], now))
+            if not ok:
+                if tkey not in self._gated:
+                    self._gated.add(tkey)
+                    await self._audit(
+                        win["id"],
+                        action,
+                        tkey,
+                        "gated",
+                        _condition_reason("entry gated", trace),
+                    )
+                return
+        self._gated.discard(tkey)  # gate passed — clear any prior gated mark
 
         self._expired.pop(tkey, None)  # fresh dispatch supersedes any old mark
         await self._dispatch(handler, action, params, label=win.get("name", action))
         self._owned[tkey] = {
-            "entry_id": win["id"], "signature": sig, "action": action,
-            "display": display, "release": win.get("release", "release"),
+            "entry_id": win["id"],
+            "signature": sig,
+            "action": action,
+            "display": display,
+            "release": win.get("release", "release"),
             "mode": "window",
         }
-        await self._audit(win["id"], action, tkey, "ok",
-                          f"dispatched {win.get('name', action)}")
+        await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
 
     async def _dispatch(self, handler: Any, action: str, params: dict, label: str) -> None:
         cmds = action_to_commands(action, params)
@@ -420,9 +526,30 @@ class ScheduleEngine:
         for slug, value in cmds:
             await handler.handle_command(slug, value)
 
+    def _snapshot(self, gw_id: str, now: datetime) -> dict[str, Any]:
+        """Sensor snapshot for a gateway, cached per tick. No points source (or a
+        failing one) yields an all-None snapshot, so conditions fail closed."""
+        cached = self._snap_cache.get(gw_id)
+        if cached is not None:
+            return cached
+        pts: dict = {}
+        if self._points_fn is not None:
+            try:
+                pts = self._points_fn(gw_id) or {}
+            except Exception as exc:
+                logger.debug("Schedule: points_fn(%s) failed: %s", gw_id, exc)
+                pts = {}
+        snap = sensor_snapshot(pts, now)
+        self._snap_cache[gw_id] = snap
+        return snap
+
     async def _audit(
-        self, schedule_id: str | None, action: str, target: str,
-        result: str, detail: str,
+        self,
+        schedule_id: str | None,
+        action: str,
+        target: str,
+        result: str,
+        detail: str,
     ) -> None:
         if self._on_audit is None:
             return

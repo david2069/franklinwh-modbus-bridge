@@ -365,6 +365,14 @@ class GatewayInstance:
         s = self.sample_bus.last_sample
         return s.points if s else {}
 
+    def latest_points(self) -> dict:
+        """Public: latest cached poller points for this gateway (no Modbus call).
+
+        Used by the schedule engine to build the sensor snapshot that entry/exit
+        condition trees evaluate against, without adding Modbus traffic.
+        """
+        return self._get_cached_points()
+
     async def stop(self) -> None:
         """Gracefully shut down: release commands, stop poller, disconnect."""
         if self._init_task and not self._init_task.done():
