@@ -32,6 +32,16 @@ async def health(request: Request):
     }
 
 
+@router.get("/api/health/connectivity")
+async def connectivity(request: Request):
+    """Outage-aware connectivity: per-gateway connected/last-good-poll state plus
+    recent outages. Powers the scheduler's outage view (WiFi→4G drops etc.)."""
+    monitor = getattr(request.app.state, "connectivity", None)
+    if monitor is None:
+        return {"connected": True, "gateways": {}, "recent_outages": []}
+    return await monitor.snapshot()
+
+
 @router.get("/api/status")
 async def status(request: Request):
     config = getattr(request.app.state, "config", None)

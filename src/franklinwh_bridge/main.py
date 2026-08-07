@@ -24,6 +24,7 @@ from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
+from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
@@ -315,9 +316,14 @@ async def lifespan(app: FastAPI):
         inst = registry.get(gw_id)
         return inst.latest_points() if inst else {}
 
+    # ── Connectivity monitor — outage detection + (later) catch-up ────
+    connectivity = ConnectivityMonitor(db)
+    sample_bus.subscribe(connectivity.on_sample)
+    app.state.connectivity = connectivity
+
     schedule_engine = ScheduleEngine(
         db, _schedule_resolver, on_audit=_schedule_audit,
-        points_fn=_schedule_points,
+        points_fn=_schedule_points, connectivity=connectivity,
     )
     app.state.schedule_engine = schedule_engine
 

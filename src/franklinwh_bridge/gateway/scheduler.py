@@ -275,12 +275,16 @@ class ScheduleEngine:
         tick_s: int = DEFAULT_TICK_S,
         on_audit: Callable[..., Awaitable[None]] | None = None,
         points_fn: Callable[[str], dict] | None = None,
+        connectivity: Any | None = None,
     ) -> None:
         self._db = db
         self._resolver = resolver
         self._now = now_fn or datetime.now
         self._tick_s = tick_s
         self._on_audit = on_audit
+        # Optional ConnectivityMonitor — driven once per tick to detect outages
+        # (staleness) alongside its SampleBus-driven recovery.
+        self._connectivity = connectivity
         # gw_id -> latest cached poll points (no Modbus call). Feeds the sensor
         # snapshot that entry/exit condition trees evaluate against. None → the
         # engine runs condition-free (legacy SCH1 behaviour, all sensors None).
@@ -367,6 +371,13 @@ class ScheduleEngine:
         # Fresh per-tick snapshot cache: each gateway's points are read at most
         # once per tick and shared by every condition-tree evaluation.
         self._snap_cache = {}
+        # Drive the connectivity monitor's staleness check (never let it break a
+        # tick — recovery/catch-up is best-effort relative to dispatch).
+        if self._connectivity is not None:
+            try:
+                await self._connectivity.tick()
+            except Exception as exc:
+                logger.debug("Connectivity tick failed: %s", exc)
         # Keep ownership for targets that still have entries; targets dropped
         # entirely (entry deleted) are reconciled to "no desired" below.
         seen: set[tuple] = set()

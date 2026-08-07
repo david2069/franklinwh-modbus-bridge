@@ -46,6 +46,15 @@ async def test_status(client):
     assert "mqtt" in data["components"]
 
 
+async def test_connectivity_endpoint(client):
+    resp = await client.get("/api/health/connectivity")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "connected" in data
+    assert "gateways" in data
+    assert "recent_outages" in data
+
+
 async def test_config_crud(client):
     resp = await client.put("/api/config/theme", json={"value": "dark"})
     assert resp.status_code == 200
