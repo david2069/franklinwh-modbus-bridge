@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 24
+CURRENT_SCHEMA_VERSION = 25
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -397,6 +397,27 @@ MIGRATIONS: dict[int, str] = {
         detail      TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_schedule_log_ts ON schedule_log(ts);
+    """,
+    25: """
+    -- Scheduler v2 (FWHAI-parity): extend `schedules` with FWHAI-style trigger
+    -- kinds, a shared ALL/ANY condition tree used for BOTH entry gates and exit
+    -- criteria, a bounded duration, and richer release/missed policies. All
+    -- columns are additive with back-compatible defaults so existing SCH1 rows
+    -- (which are when_spec-driven) keep firing untouched: a NULL `trigger_kind`
+    -- means "evaluate the legacy when_spec", exactly the pre-v25 behaviour.
+    --
+    -- NOTE: the legacy `release` column (release|hold, window-exit hand-back)
+    -- co-exists with the new `release_policy` (release|restore_prior_mode|
+    -- set_operating_mode:<v>) rather than being repurposed, to avoid a
+    -- destructive rewrite. Reconciling the two is a follow-up, not this
+    -- migration.
+    ALTER TABLE schedules ADD COLUMN trigger_kind TEXT;
+    ALTER TABLE schedules ADD COLUMN trigger_spec TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE schedules ADD COLUMN entry_conditions TEXT;   -- JSON ConditionTree | NULL (always allow)
+    ALTER TABLE schedules ADD COLUMN exit_conditions TEXT;    -- JSON ConditionTree | NULL (disabled)
+    ALTER TABLE schedules ADD COLUMN duration_s INTEGER;      -- NULL = open-ended
+    ALTER TABLE schedules ADD COLUMN release_policy TEXT NOT NULL DEFAULT 'restore_prior_mode';
+    ALTER TABLE schedules ADD COLUMN missed_policy TEXT NOT NULL DEFAULT 'late_fire_remaining';
     """,
 }
 
@@ -812,8 +833,11 @@ _SCHEDULE_FIELDS = (
     "name", "enabled", "when_spec", "action", "params",
     "target_type", "target_id", "release", "conflict", "priority",
 )
-# Columns stored as JSON text but surfaced as dicts.
-_SCHEDULE_JSON_FIELDS = ("when_spec", "params")
+# Columns stored as JSON text but always surfaced as dicts (default {} when absent).
+_SCHEDULE_JSON_FIELDS = ("when_spec", "params", "trigger_spec")
+# JSON columns that are meaningfully nullable: NULL decodes to None (not {}),
+# because for a condition tree "no gate / disabled" differs from "empty tree".
+_SCHEDULE_NULLABLE_JSON_FIELDS = ("entry_conditions", "exit_conditions")
 
 
 def _decode_schedule(row: dict) -> dict:
@@ -826,6 +850,15 @@ def _decode_schedule(row: dict) -> dict:
             d[f] = json.loads(raw)
         except (ValueError, TypeError):
             d[f] = {}
+    for f in _SCHEDULE_NULLABLE_JSON_FIELDS:
+        raw = d.get(f)
+        if raw in (None, ""):
+            d[f] = None
+        else:
+            try:
+                d[f] = json.loads(raw)
+            except (ValueError, TypeError):
+                d[f] = None
     return d
 
 
