@@ -187,6 +187,26 @@ def entry_active(entry: dict, now: datetime) -> bool:
     return entry_active_at(entry.get("when_spec", {}), now)
 
 
+def _missed_fire_time(entry: dict, since: datetime, now: datetime) -> datetime | None:
+    """The most recent fire/window-start in ``(since, now]`` for an entry, or None.
+
+    Used by catch-up to decide whether an outage swallowed a fire. The caller
+    only invokes this for entries that are NOT currently active (a still-open
+    window is resumed by the normal tick, not treated as missed). ``always`` has
+    no discrete fire to miss.
+    """
+    kind = entry.get("trigger_kind")
+    if kind:
+        if kind == "always":
+            return None
+        spec = dict(entry.get("trigger_spec") or {})
+        spec["kind"] = kind
+        last = prev_fire_at(spec, now)
+        return last if (last is not None and last >= since) else None
+    nf = next_fire(entry.get("when_spec", {}), since)
+    return nf if (nf is not None and nf <= now) else None
+
+
 def winner(entries: list[dict], now: datetime) -> dict | None:
     """Pick the single winning *active* entry for one target.
 
@@ -328,6 +348,48 @@ class ScheduleEngine:
         """Reload + evaluate immediately (call after a CRUD change)."""
         await self.load()
         await self.tick()
+
+    async def catchup(
+        self, gateway_id: str, since_ts: float, now: datetime | None = None
+    ) -> list[str]:
+        """After an outage on ``gateway_id`` spanning ``since_ts``..now, find fires
+        that were swallowed and audit them as ``missed`` (MissedRun).
+
+        Implements the default ``late_fire_remaining`` policy: a window still open
+        now is left for the normal tick to resume (not "missed"); a window that
+        fully passed during the outage is recorded as missed. Returns the list of
+        affected entry ids (for linking to the OutageEvent).
+
+        Not handled here (documented follow-ups): ``late_fire_always`` (needs a
+        re-fire-now override of the stateless model) and startup catch-up (needs a
+        persisted last-ok timestamp across restarts).
+        """
+        now_dt = now or self._now()
+        since_dt = datetime.fromtimestamp(since_ts)
+        missed_ids: list[str] = []
+        for entry in self._entries:
+            pairs = self._resolver(entry.get("target_type", "gateway"), entry.get("target_id"))
+            if gateway_id not in [gw for gw, _h in pairs]:
+                continue
+            if entry_active(entry, now_dt):
+                continue  # still-open window → the normal tick resumes it
+            missed_at = _missed_fire_time(entry, since_dt, now_dt)
+            if missed_at is None:
+                continue
+            missed_ids.append(entry["id"])
+            policy = entry.get("missed_policy") or "late_fire_remaining"
+            ttype = entry.get("target_type", "gateway")
+            target = f"{ttype}:{entry.get('target_id') or ''}:{gateway_id}"
+            await self._audit(
+                entry["id"], entry.get("action"), target, "missed",
+                f"fire at {missed_at.isoformat()} missed during outage (policy={policy})",
+            )
+        if missed_ids:
+            logger.info(
+                "Catch-up: gateway %s — %d missed fire(s) after outage recovery",
+                gateway_id, len(missed_ids),
+            )
+        return missed_ids
 
     async def start(self) -> None:
         await self.load()

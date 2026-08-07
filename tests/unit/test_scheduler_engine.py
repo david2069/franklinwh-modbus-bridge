@@ -363,3 +363,76 @@ async def test_legacy_window_exit_still_plain_release():
     await eng.tick(datetime(2026, 6, 15, 12, 0))  # window exit
     assert h.calls[-1] == ("battery_command", "Release")  # nothing after Release
     assert not any(c[0] == "operating_mode" for c in h.calls)
+
+
+# ── outage catch-up (Phase 2 B) ───────────────────────────────
+
+# since_ts / now chosen around MON (2026-06-15 10:30).
+import time as _time  # noqa: E402
+
+_SINCE = _time.mktime(datetime(2026, 6, 15, 9, 0).timetuple())  # 09:00 local
+
+
+async def test_catchup_audits_fully_passed_trigger_as_missed():
+    h = FakeHandler()
+    audits: list = []
+    # oneoff fired at 09:30 for 30 min → window [09:30, 10:00], fully passed by 10:30.
+    e = entry(
+        trigger_kind="oneoff", trigger_spec={"fire_at": "2026-06-15T09:30:00"},
+        duration_s=1800, when_spec={},
+    )
+    eng = make_engine([e], h, audits=audits)
+    missed = await eng.catchup("default", _SINCE, now=MON)
+    assert missed == ["e1"]
+    assert any(a["result"] == "missed" for a in audits)
+
+
+async def test_catchup_skips_still_open_window():
+    h = FakeHandler()
+    audits: list = []
+    # oneoff fired at 10:00 for 2h → window still open at 10:30 → NOT missed
+    # (the normal tick resumes it).
+    e = entry(
+        trigger_kind="oneoff", trigger_spec={"fire_at": "2026-06-15T10:00:00"},
+        duration_s=7200, when_spec={},
+    )
+    eng = make_engine([e], h, audits=audits)
+    missed = await eng.catchup("default", _SINCE, now=MON)
+    assert missed == []
+    assert not any(a["result"] == "missed" for a in audits)
+
+
+async def test_catchup_no_fire_during_outage_window():
+    h = FakeHandler()
+    # oneoff fired at 08:00 (before the 09:00 outage start) → not attributable.
+    e = entry(
+        trigger_kind="oneoff", trigger_spec={"fire_at": "2026-06-15T08:00:00"},
+        duration_s=600, when_spec={},
+    )
+    eng = make_engine([e], h)
+    missed = await eng.catchup("default", _SINCE, now=MON)
+    assert missed == []
+
+
+async def test_catchup_legacy_window_missed():
+    h = FakeHandler()
+    audits: list = []
+    # legacy window 09:15–09:45, fully passed by 10:30.
+    e = entry(when_spec={"windows": [{"start": "09:15", "end": "09:45"}]})
+    eng = make_engine([e], h, audits=audits)
+    missed = await eng.catchup("default", _SINCE, now=MON)
+    assert missed == ["e1"]
+    assert any(a["result"] == "missed" for a in audits)
+
+
+async def test_catchup_ignores_other_gateway_targets():
+    h = FakeHandler()
+    e = entry(
+        trigger_kind="oneoff", trigger_spec={"fire_at": "2026-06-15T09:30:00"},
+        duration_s=600, when_spec={},
+    )
+    # Resolver maps this entry to gateway "gwX", not "default".
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("gwX", h)])
+    eng._entries = [e]
+    missed = await eng.catchup("default", _SINCE, now=MON)  # recovered gw ≠ gwX
+    assert missed == []

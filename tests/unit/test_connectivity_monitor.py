@@ -129,3 +129,53 @@ async def test_snapshot_shape(db):
     assert snap["gateways"]["default"]["last_ok_ts"] == 1000.0
     assert snap["gateways"]["default"]["current_outage_id"] is not None
     assert len(snap["recent_outages"]) == 1
+
+
+# ── recovery → catch-up → outage linkage (A1 + B end-to-end) ──
+
+
+async def test_recovery_runs_catchup_and_links_outage(db):
+    import time as _time
+    from datetime import datetime
+
+    from franklinwh_bridge.gateway.scheduler import ScheduleEngine
+    from franklinwh_bridge.store.db import create_schedule, get_outage, set_outage_catchup
+
+    now_dt = datetime(2026, 6, 15, 10, 30)
+    since_ts = _time.mktime(datetime(2026, 6, 15, 9, 0).timetuple())
+    recover_ts = _time.mktime(now_dt.timetuple())
+
+    # A oneoff that fired at 09:30 for 30 min → fully passed (missed) by 10:30.
+    row = await create_schedule(
+        db, name="peak", when_spec={}, action="force_discharge",
+        target_type="gateway", target_id="default",
+    )
+    # Trigger columns aren't in the CRUD helper's field set — set them directly.
+    await db.execute(
+        "UPDATE schedules SET trigger_kind='oneoff', "
+        "trigger_spec='{\"fire_at\": \"2026-06-15T09:30:00\"}', duration_s=1800 "
+        "WHERE id=?",
+        (row["id"],),
+    )
+    await db.commit()
+
+    engine = ScheduleEngine(
+        db, resolver=lambda tt, tid: [("default", object())], now_fn=lambda: now_dt
+    )
+    await engine.load()
+
+    async def on_recover(gw, oid, start, end):
+        missed = await engine.catchup(gw, start)
+        if missed:
+            await set_outage_catchup(db, oid, missed, [])
+
+    mon = ConnectivityMonitor(db, outage_threshold_s=60, on_recover=on_recover)
+    await mon.on_sample(sample("default", since_ts))       # last good poll 09:00
+    await mon.tick(now=since_ts + 120)                      # outage opens
+    open_row = await get_open_outage(db, "default")
+    assert open_row is not None
+    await mon.on_sample(sample("default", recover_ts))      # recovery → catch-up
+
+    outage = await get_outage(db, open_row["id"])
+    assert outage["end_ts"] == recover_ts
+    assert outage["missed_job_ids"] == [row["id"]]

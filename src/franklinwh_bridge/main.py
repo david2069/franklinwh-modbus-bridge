@@ -39,6 +39,7 @@ from franklinwh_bridge.store.db import (
     init_db,
     log_schedule_event,
     log_startup_event,
+    set_outage_catchup,
 )
 from franklinwh_bridge.store.metrics import (
     archive_old_metrics,
@@ -326,6 +327,15 @@ async def lifespan(app: FastAPI):
         points_fn=_schedule_points, connectivity=connectivity,
     )
     app.state.schedule_engine = schedule_engine
+
+    async def _on_recover(gw_id: str, outage_id: str, start_ts: float, end_ts: float) -> None:
+        """On outage recovery, run schedule catch-up and link the missed jobs to
+        the outage record. Still-open windows are resumed by the next tick."""
+        missed = await schedule_engine.catchup(gw_id, start_ts)
+        if missed:
+            await set_outage_catchup(db, outage_id, missed, [])
+
+    connectivity.set_on_recover(_on_recover)
 
     # ── Health Checker ─────────────────────────────────────────
     health_checker = HealthChecker(registry)

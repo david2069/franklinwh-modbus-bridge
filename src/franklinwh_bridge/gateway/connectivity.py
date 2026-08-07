@@ -61,6 +61,11 @@ class ConnectivityMonitor:
         # gw_id -> {"id": outage_id, "start_ts": ts} for currently-open outages
         self._open: dict[str, dict] = {}
 
+    def set_on_recover(self, callback: RecoverCallback | None) -> None:
+        """Set the recovery callback after construction (resolves the
+        monitor↔engine wiring order in the app lifespan)."""
+        self._on_recover = callback
+
     # ── signal intake ────────────────────────────────────────
 
     async def on_sample(self, sample: Any) -> None:
