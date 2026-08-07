@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 26
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -419,15 +419,31 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE schedules ADD COLUMN release_policy TEXT NOT NULL DEFAULT 'restore_prior_mode';
     ALTER TABLE schedules ADD COLUMN missed_policy TEXT NOT NULL DEFAULT 'late_fire_remaining';
     """,
+    26: """
+    -- Scheduler v2 Phase 2: first-class connectivity outages. One row per
+    -- per-gateway outage (a stretch with no successful poll beyond the
+    -- threshold). end_ts/duration_s are filled on recovery; missed_job_ids /
+    -- catchup_run_ids link an outage to the schedule fires it caused to be
+    -- missed and the catch-up runs that resolved them (populated by catchup).
+    CREATE TABLE IF NOT EXISTS outages (
+        id              TEXT PRIMARY KEY,
+        gateway_id      TEXT NOT NULL,
+        start_ts        REAL NOT NULL,
+        end_ts          REAL,
+        duration_s      REAL,
+        reason          TEXT NOT NULL DEFAULT 'stale_reads',
+        missed_job_ids  TEXT NOT NULL DEFAULT '[]',
+        catchup_run_ids TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_outages_gw_start ON outages(gateway_id, start_ts);
+    """,
 }
 
 
 async def get_schema_version(db: aiosqlite.Connection) -> int:
     """Get the current schema version, or 0 if no schema exists."""
     try:
-        async with db.execute(
-            "SELECT MAX(version) FROM schema_version"
-        ) as cursor:
+        async with db.execute("SELECT MAX(version) FROM schema_version") as cursor:
             row = await cursor.fetchone()
             return row[0] if row and row[0] else 0
     except aiosqlite.OperationalError:
@@ -511,6 +527,7 @@ async def log_control_event(
     gateway_id: str = "default",
 ) -> None:
     import json
+
     hw_json = json.dumps(hw_state) if hw_state else None
     await db.execute(
         "INSERT INTO control_log (ts, event, action, power_w, detail, hw_state_json, gateway_id) "
@@ -541,14 +558,14 @@ async def save_control_state(
         "power_w=excluded.power_w, started_at=excluded.started_at, "
         "watchdog_s=excluded.watchdog_s, updated_at=excluded.updated_at, "
         "gateway_id=excluded.gateway_id",
-        (row_id, int(active), action, power_w, started_at,
-         watchdog_s, time.time(), gateway_id),
+        (row_id, int(active), action, power_w, started_at, watchdog_s, time.time(), gateway_id),
     )
     await db.commit()
 
 
 async def load_control_state(
-    db: aiosqlite.Connection, gateway_id: str = "default",
+    db: aiosqlite.Connection,
+    gateway_id: str = "default",
 ) -> dict:
     db.row_factory = aiosqlite.Row
     try:
@@ -578,9 +595,7 @@ async def get_gateways(db: aiosqlite.Connection) -> list[dict]:
     db.row_factory = aiosqlite.Row
     try:
         rows = []
-        async with db.execute(
-            "SELECT * FROM gateways ORDER BY display_order, id"
-        ) as cursor:
+        async with db.execute("SELECT * FROM gateways ORDER BY display_order, id") as cursor:
             async for row in cursor:
                 rows.append(dict(row))
         return rows
@@ -592,9 +607,7 @@ async def get_gateway(db: aiosqlite.Connection, gateway_id: str) -> dict | None:
     """Get a single gateway by ID."""
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT * FROM gateways WHERE id = ?", (gateway_id,)
-        ) as cur:
+        async with db.execute("SELECT * FROM gateways WHERE id = ?", (gateway_id,)) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
     finally:
@@ -616,17 +629,26 @@ async def create_gateway(
     """Create a new gateway."""
     now = time.time()
     # Find next display_order
-    async with db.execute(
-        "SELECT COALESCE(MAX(display_order), -1) + 1 FROM gateways"
-    ) as cur:
+    async with db.execute("SELECT COALESCE(MAX(display_order), -1) + 1 FROM gateways") as cur:
         order = (await cur.fetchone())[0]
 
     await db.execute(
         "INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at, "
         "description, poll_interval, timeout, display_order, mock) "
         "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)",
-        (gateway_id, name, host, port, unit_id, now, description,
-         poll_interval, timeout, order, int(mock)),
+        (
+            gateway_id,
+            name,
+            host,
+            port,
+            unit_id,
+            now,
+            description,
+            poll_interval,
+            timeout,
+            order,
+            int(mock),
+        ),
     )
     await db.commit()
     return await get_gateway(db, gateway_id)  # type: ignore[return-value]
@@ -697,8 +719,11 @@ async def get_site_config(db: aiosqlite.Connection) -> dict:
             row = await cur.fetchone()
             if row is None:
                 return {
-                    "name": "My Site", "description": "", "meter_number": "",
-                    "account_number": "", "ac_service_type": 1,
+                    "name": "My Site",
+                    "description": "",
+                    "meter_number": "",
+                    "account_number": "",
+                    "ac_service_type": 1,
                     "aggregate_entities": True,
                 }
             return {
@@ -710,12 +735,20 @@ async def get_site_config(db: aiosqlite.Connection) -> dict:
                 "aggregate_entities": bool(row["aggregate_entities"]),
                 "updated_at": row["updated_at"],
                 "full_backup": bool(row["full_backup"]) if "full_backup" in row.keys() else False,
-                "grid_forming": bool(row["grid_forming"]) if "grid_forming" in row.keys() else False,
-                "generator_input": bool(row["generator_input"]) if "generator_input" in row.keys() else False,
+                "grid_forming": bool(row["grid_forming"])
+                if "grid_forming" in row.keys()
+                else False,
+                "generator_input": bool(row["generator_input"])
+                if "generator_input" in row.keys()
+                else False,
                 "solar_type": row["solar_type"] if "solar_type" in row.keys() else "none",
                 "solar_kwp": float(row["solar_kwp"]) if "solar_kwp" in row.keys() else 0.0,
-                "load_shedding": bool(row["load_shedding"]) if "load_shedding" in row.keys() else False,
-                "nonbackup_loads": bool(row["nonbackup_loads"]) if "nonbackup_loads" in row.keys() else False,
+                "load_shedding": bool(row["load_shedding"])
+                if "load_shedding" in row.keys()
+                else False,
+                "nonbackup_loads": bool(row["nonbackup_loads"])
+                if "nonbackup_loads" in row.keys()
+                else False,
                 "battery_label": row["battery_label"] if "battery_label" in row.keys() else "",
             }
     finally:
@@ -761,9 +794,7 @@ async def get_service(db: aiosqlite.Connection, service_id: str) -> dict | None:
     """Get a single service by ID."""
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT * FROM services WHERE id = ?", (service_id,)
-        ) as cur:
+        async with db.execute("SELECT * FROM services WHERE id = ?", (service_id,)) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
     finally:
@@ -783,16 +814,13 @@ async def create_service(
 
     service_id = f"svc_{uuid.uuid4().hex[:8]}"
     now = time.time()
-    async with db.execute(
-        "SELECT COALESCE(MAX(display_order), -1) + 1 FROM services"
-    ) as cur:
+    async with db.execute("SELECT COALESCE(MAX(display_order), -1) + 1 FROM services") as cur:
         order = (await cur.fetchone())[0]
     await db.execute(
         "INSERT INTO services "
         "(id, name, meter_number, account, ac_service, rated_amps, display_order, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (service_id, name, meter_number, account, int(ac_service),
-         int(rated_amps), order, now),
+        (service_id, name, meter_number, account, int(ac_service), int(rated_amps), order, now),
     )
     await db.commit()
     return await get_service(db, service_id)  # type: ignore[return-value]
@@ -830,8 +858,16 @@ async def delete_service(db: aiosqlite.Connection, service_id: str) -> bool:
 
 # Mutable columns a PATCH may touch. id/created_at are immutable.
 _SCHEDULE_FIELDS = (
-    "name", "enabled", "when_spec", "action", "params",
-    "target_type", "target_id", "release", "conflict", "priority",
+    "name",
+    "enabled",
+    "when_spec",
+    "action",
+    "params",
+    "target_type",
+    "target_id",
+    "release",
+    "conflict",
+    "priority",
 )
 # Columns stored as JSON text but always surfaced as dicts (default {} when absent).
 _SCHEDULE_JSON_FIELDS = ("when_spec", "params", "trigger_spec")
@@ -881,9 +917,7 @@ async def get_schedule(db: aiosqlite.Connection, schedule_id: str) -> dict | Non
     """Get a single schedule by ID."""
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT * FROM schedules WHERE id = ?", (schedule_id,)
-        ) as cur:
+        async with db.execute("SELECT * FROM schedules WHERE id = ?", (schedule_id,)) as cur:
             row = await cur.fetchone()
             return _decode_schedule(dict(row)) if row else None
     finally:
@@ -914,9 +948,19 @@ async def create_schedule(
         " release, conflict, priority, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            schedule_id, name, int(enabled), json.dumps(when_spec), action,
-            json.dumps(params or {}), target_type, target_id,
-            release, conflict, int(priority), now, now,
+            schedule_id,
+            name,
+            int(enabled),
+            json.dumps(when_spec),
+            action,
+            json.dumps(params or {}),
+            target_type,
+            target_id,
+            release,
+            conflict,
+            int(priority),
+            now,
+            now,
         ),
     )
     await db.commit()
@@ -974,9 +1018,7 @@ async def log_schedule_event(
     await db.commit()
 
 
-async def get_schedule_log(
-    db: aiosqlite.Connection, limit: int = 100
-) -> list[dict]:
+async def get_schedule_log(db: aiosqlite.Connection, limit: int = 100) -> list[dict]:
     """Return the most recent schedule_log rows, newest first."""
     db.row_factory = aiosqlite.Row
     try:
@@ -990,6 +1032,105 @@ async def get_schedule_log(
         return rows
     finally:
         db.row_factory = aiosqlite.Row
+
+
+# ── Connectivity outages (scheduler v2 Phase 2) ──────────────
+
+_OUTAGE_JSON_FIELDS = ("missed_job_ids", "catchup_run_ids")
+
+
+def _decode_outage(row: dict) -> dict:
+    d = dict(row)
+    for f in _OUTAGE_JSON_FIELDS:
+        raw = d.get(f) or "[]"
+        try:
+            d[f] = json.loads(raw)
+        except (ValueError, TypeError):
+            d[f] = []
+    return d
+
+
+async def create_outage(
+    db: aiosqlite.Connection,
+    gateway_id: str,
+    start_ts: float,
+    reason: str = "stale_reads",
+) -> str:
+    """Open a new outage for a gateway. Returns the new outage id."""
+    import uuid
+
+    outage_id = f"out_{uuid.uuid4().hex[:8]}"
+    await db.execute(
+        "INSERT INTO outages (id, gateway_id, start_ts, reason) VALUES (?, ?, ?, ?)",
+        (outage_id, gateway_id, start_ts, reason),
+    )
+    await db.commit()
+    return outage_id
+
+
+async def close_outage(db: aiosqlite.Connection, outage_id: str, end_ts: float) -> dict | None:
+    """Close an outage: set end_ts and duration_s. Returns the decoded row."""
+    row = await get_outage(db, outage_id)
+    if row is None:
+        return None
+    duration = max(0.0, end_ts - float(row["start_ts"]))
+    await db.execute(
+        "UPDATE outages SET end_ts = ?, duration_s = ? WHERE id = ?",
+        (end_ts, duration, outage_id),
+    )
+    await db.commit()
+    return await get_outage(db, outage_id)
+
+
+async def get_outage(db: aiosqlite.Connection, outage_id: str) -> dict | None:
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT * FROM outages WHERE id = ?", (outage_id,)) as cur:
+        row = await cur.fetchone()
+        return _decode_outage(dict(row)) if row else None
+
+
+async def get_open_outage(db: aiosqlite.Connection, gateway_id: str) -> dict | None:
+    """The currently-open (end_ts NULL) outage for a gateway, if any."""
+    db.row_factory = aiosqlite.Row
+    async with db.execute(
+        "SELECT * FROM outages WHERE gateway_id = ? AND end_ts IS NULL "
+        "ORDER BY start_ts DESC LIMIT 1",
+        (gateway_id,),
+    ) as cur:
+        row = await cur.fetchone()
+        return _decode_outage(dict(row)) if row else None
+
+
+async def get_recent_outages(
+    db: aiosqlite.Connection, limit: int = 50, gateway_id: str | None = None
+) -> list[dict]:
+    """Most recent outages (newest first), optionally filtered by gateway."""
+    db.row_factory = aiosqlite.Row
+    if gateway_id is not None:
+        sql = "SELECT * FROM outages WHERE gateway_id = ? ORDER BY start_ts DESC LIMIT ?"
+        args: tuple = (gateway_id, limit)
+    else:
+        sql = "SELECT * FROM outages ORDER BY start_ts DESC LIMIT ?"
+        args = (limit,)
+    rows = []
+    async with db.execute(sql, args) as cur:
+        async for row in cur:
+            rows.append(_decode_outage(dict(row)))
+    return rows
+
+
+async def set_outage_catchup(
+    db: aiosqlite.Connection,
+    outage_id: str,
+    missed_job_ids: list[str],
+    catchup_run_ids: list[str],
+) -> None:
+    """Record which jobs an outage caused to be missed and their catch-up runs."""
+    await db.execute(
+        "UPDATE outages SET missed_job_ids = ?, catchup_run_ids = ? WHERE id = ?",
+        (json.dumps(missed_job_ids), json.dumps(catchup_run_ids), outage_id),
+    )
+    await db.commit()
 
 
 # ── PICS compliance ──────────────────────────────────────────
@@ -1007,13 +1148,15 @@ async def get_pics_compliance(db: aiosqlite.Connection) -> list[dict]:
             "FROM pics_compliance ORDER BY model_id, point_name"
         ) as cursor:
             async for row in cursor:
-                rows.append({
-                    "model_id": row["model_id"],
-                    "point_name": row["point_name"],
-                    "status": row["status"],
-                    "notes": row["notes"],
-                    "updated_at": row["updated_at"],
-                })
+                rows.append(
+                    {
+                        "model_id": row["model_id"],
+                        "point_name": row["point_name"],
+                        "status": row["status"],
+                        "notes": row["notes"],
+                        "updated_at": row["updated_at"],
+                    }
+                )
         return rows
     finally:
         db.row_factory = aiosqlite.Row
@@ -1041,9 +1184,17 @@ async def set_pics_status(
 
 
 MQTT_CONFIG_COLUMNS = (
-    "host", "port", "username", "password", "tls_mode",
-    "enabled", "client_id", "qos", "retain_discovery",
-    "topic_prefix", "discovery_prefix",
+    "host",
+    "port",
+    "username",
+    "password",
+    "tls_mode",
+    "enabled",
+    "client_id",
+    "qos",
+    "retain_discovery",
+    "topic_prefix",
+    "discovery_prefix",
 )
 
 MQTT_CONFIG_DEFAULTS = {
@@ -1193,17 +1344,19 @@ async def get_publishing_groups(db: aiosqlite.Connection) -> list[dict]:
             "FROM publishing_groups g ORDER BY g.sort_order, g.slug"
         ) as cursor:
             async for row in cursor:
-                rows.append({
-                    "slug": row["slug"],
-                    "name": row["name"],
-                    "description": row["description"],
-                    "enabled": bool(row["enabled"]),
-                    "is_default": bool(row["is_default"]),
-                    "sort_order": row["sort_order"],
-                    "member_count": row["member_count"],
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                })
+                rows.append(
+                    {
+                        "slug": row["slug"],
+                        "name": row["name"],
+                        "description": row["description"],
+                        "enabled": bool(row["enabled"]),
+                        "is_default": bool(row["is_default"]),
+                        "sort_order": row["sort_order"],
+                        "member_count": row["member_count"],
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    }
+                )
         return rows
     finally:
         db.row_factory = aiosqlite.Row
@@ -1213,9 +1366,7 @@ async def get_publishing_group(db: aiosqlite.Connection, slug: str) -> dict | No
     """Get a single publishing group with its member slugs."""
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT * FROM publishing_groups WHERE slug = ?", (slug,)
-        ) as cursor:
+        async with db.execute("SELECT * FROM publishing_groups WHERE slug = ?", (slug,)) as cursor:
             row = await cursor.fetchone()
     finally:
         db.row_factory = aiosqlite.Row
@@ -1343,8 +1494,7 @@ async def set_group_members(
 ) -> list[str]:
     """Replace a group's curated-entity members (promoted points untouched)."""
     await db.execute(
-        "DELETE FROM publishing_group_members "
-        "WHERE group_slug = ? AND member_type = 'entity'",
+        "DELETE FROM publishing_group_members WHERE group_slug = ? AND member_type = 'entity'",
         (slug,),
     )
     if entity_slugs:
@@ -1382,9 +1532,7 @@ async def add_group_point_member(
     await db.commit()
 
 
-async def remove_group_point_member(
-    db: aiosqlite.Connection, slug: str, ref: str
-) -> None:
+async def remove_group_point_member(db: aiosqlite.Connection, slug: str, ref: str) -> None:
     """Remove a promoted point from a group."""
     await db.execute(
         "DELETE FROM publishing_group_members "
@@ -1394,9 +1542,7 @@ async def remove_group_point_member(
     await db.commit()
 
 
-async def get_group_point_members(
-    db: aiosqlite.Connection, slug: str
-) -> list[dict]:
+async def get_group_point_members(db: aiosqlite.Connection, slug: str) -> list[dict]:
     """Return a group's promoted-point members with optional display overrides."""
     db.row_factory = aiosqlite.Row
     try:
@@ -1414,13 +1560,10 @@ async def get_group_point_members(
         db.row_factory = aiosqlite.Row
 
 
-async def add_group_member(
-    db: aiosqlite.Connection, slug: str, entity_slug: str
-) -> None:
+async def add_group_member(db: aiosqlite.Connection, slug: str, entity_slug: str) -> None:
     """Add a single entity to a group (idempotent)."""
     await db.execute(
-        "INSERT OR IGNORE INTO publishing_group_members (group_slug, entity_slug) "
-        "VALUES (?, ?)",
+        "INSERT OR IGNORE INTO publishing_group_members (group_slug, entity_slug) VALUES (?, ?)",
         (slug, entity_slug),
     )
     await db.execute(
@@ -1430,13 +1573,10 @@ async def add_group_member(
     await db.commit()
 
 
-async def remove_group_member(
-    db: aiosqlite.Connection, slug: str, entity_slug: str
-) -> None:
+async def remove_group_member(db: aiosqlite.Connection, slug: str, entity_slug: str) -> None:
     """Remove a single entity from a group."""
     await db.execute(
-        "DELETE FROM publishing_group_members "
-        "WHERE group_slug = ? AND entity_slug = ?",
+        "DELETE FROM publishing_group_members WHERE group_slug = ? AND entity_slug = ?",
         (slug, entity_slug),
     )
     await db.execute(
@@ -1506,9 +1646,7 @@ async def get_point_catalog_meta(
         db.row_factory = aiosqlite.Row
 
 
-async def get_catalog_points(
-    db: aiosqlite.Connection, gateway_id: str = "default"
-) -> list[dict]:
+async def get_catalog_points(db: aiosqlite.Connection, gateway_id: str = "default") -> list[dict]:
     """All catalog points for a gateway with metadata + a ``published`` flag."""
     enabled = {p["ref"] for p in await get_enabled_promoted_points(db)}
     db.row_factory = aiosqlite.Row
