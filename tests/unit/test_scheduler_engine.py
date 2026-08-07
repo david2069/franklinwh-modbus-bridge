@@ -193,6 +193,77 @@ async def test_refires_after_window_reenter_following_exit():
     assert h.state.action == "Force Discharge"
 
 
+# ── release policy on the exit path ───────────────────────────
+
+
+async def test_exit_restore_prior_mode_reasserts_captured_mode():
+    h = FakeHandler()
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="restore_prior_mode",
+    )
+    eng = make_engine([e], h, points=pts)
+    await eng.tick(MON)  # dispatch — captures prior mode Self-Consumption
+    pts["soc"] = 15
+    await eng.tick(MON)  # exit → Release, then restore mode
+    assert ("battery_command", "Release") in h.calls
+    assert ("operating_mode", "Self-Consumption") in h.calls
+    # Release must come before the mode re-assert.
+    assert h.calls.index(("battery_command", "Release")) < h.calls.index(
+        ("operating_mode", "Self-Consumption")
+    )
+
+
+async def test_exit_set_operating_mode_policy():
+    h = FakeHandler()
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="set_operating_mode:TOU",
+    )
+    eng = make_engine([e], h, points=pts)
+    await eng.tick(MON)
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert ("operating_mode", "TOU") in h.calls
+
+
+async def test_exit_release_policy_plain_release_no_mode_command():
+    h = FakeHandler()
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="release",
+    )
+    eng = make_engine([e], h, points=pts)
+    await eng.tick(MON)
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert ("battery_command", "Release") in h.calls
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+
+
+async def test_exit_restore_prior_mode_noop_when_mode_unknown_at_dispatch():
+    # No mode_name in the snapshot at dispatch → nothing to restore, just Release.
+    h = FakeHandler()
+    pts = {"soc": 80}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="restore_prior_mode",
+    )
+    eng = make_engine([e], h, points=pts)
+    await eng.tick(MON)
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert ("battery_command", "Release") in h.calls
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+
+
 async def test_first_tick_dispatches_even_if_exit_already_true():
     # Exit is a while-active termination, not an entry gate: one dispatch happens,
     # then the next tick releases. (Use an entry_condition to gate the start.)

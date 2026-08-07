@@ -109,3 +109,86 @@ async def test_engine_dispatch_and_exit_release_live(controller, tmp_path):
                 m704.WSetEnaRvrt.value = 0
                 m704.write()
         await db.close()
+
+
+async def test_engine_restore_prior_mode_live(controller, tmp_path):
+    """Slice-2 restore_prior_mode round-trip on real hardware.
+
+    Uses a NO-OP restore (prior mode == current mode) so the aGate's mode is
+    never actually changed — this verifies the mechanism (capture mode at
+    dispatch → set_native_mode(prior) on exit succeeds) without altering the
+    user's configured mode.
+    """
+    db = await init_db(tmp_path / "sched2.db")
+    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock())
+
+    soc = (await asyncio.to_thread(controller.read_battery_status))["soc"]
+    mode0 = await asyncio.to_thread(controller.read_native_mode)
+    mode_name = mode0.get("mode_name")
+    mode_raw = mode0.get("mode_raw")
+    print(f"\nlive SOC={soc} mode={mode_name!r} (raw {mode_raw})")
+    assert mode_name, "aGate did not report mode_name"
+    points = {"soc": soc, "mode_name": mode_name}
+
+    audits: list[str] = []
+
+    async def on_audit(sid, action, target, result, detail):
+        audits.append(result)
+
+    engine = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", handler)],
+        on_audit=on_audit,
+        points_fn=lambda gw: points,
+    )
+    engine._entries = [{
+        "id": "live", "name": "live-restore", "enabled": True,
+        "when_spec": _ALLDAY, "action": "force_standby", "params": {},
+        "target_type": "gateway", "target_id": "default",
+        "release": "release", "conflict": "defer", "priority": 0,
+        "entry_conditions": None,
+        "exit_conditions": {"conditions": [
+            {"sensor": "battery.soc_pct", "op": "<=", "value": soc + 5}]},
+        "release_policy": "restore_prior_mode",
+    }]
+
+    now = datetime.now()
+    try:
+        await engine.tick(now)  # dispatch standby, capture prior mode
+        assert handler.state.action == "Force Standby"
+        await engine.tick(now)  # exit → Release, then restore prior mode
+        assert "exit_condition_met" in audits
+        # last command was the mode re-assert — confirm it succeeded on hardware
+        assert handler.state.last_success, (
+            f"mode restore failed on hardware: {handler.state.last_result!r}"
+        )
+
+        released = False
+        for _ in range(10):
+            hw = await asyncio.to_thread(controller.read_control_status)
+            if not _wset_enabled(hw):
+                released = True
+                break
+            await asyncio.sleep(1)
+        assert released, "aGate did not release after exit"
+
+        after = (await asyncio.to_thread(controller.read_native_mode)).get("mode_name")
+        print(f"after restore: mode={after!r}")
+        assert after == mode_name, f"mode not restored: {mode_name!r} -> {after!r}"
+        print("restore_prior_mode round-trip verified ✓")
+    finally:
+        with contextlib.suppress(Exception):
+            await handler.stop()
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(controller.reset_control_state)
+        with contextlib.suppress(Exception):
+            if mode_raw is not None:
+                await asyncio.to_thread(controller.set_native_mode, mode_raw)
+        with contextlib.suppress(Exception):
+            m704 = controller.get_model(704)
+            if m704:
+                m704.read()
+                m704.WSetRvrtTms.value = 0
+                m704.WSetEnaRvrt.value = 0
+                m704.write()
+        await db.close()

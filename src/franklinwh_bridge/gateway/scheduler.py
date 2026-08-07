@@ -411,7 +411,7 @@ class ScheduleEngine:
             if exit_tree is not None:
                 met, trace = eval_conditions(exit_tree, self._snapshot(tkey[2], now))
                 if met:
-                    await self._send(handler, [("battery_command", "Release")])
+                    await self._release_with_policy(handler, win, own)
                     self._owned.pop(tkey, None)
                     self._expired[tkey] = win["id"]
                     await self._audit(
@@ -511,6 +511,9 @@ class ScheduleEngine:
             "display": display,
             "release": win.get("release", "release"),
             "mode": "window",
+            # Snapshot the native mode at dispatch so a restore_prior_mode exit
+            # can re-assert it (mode.name matches the operating_mode vocabulary).
+            "prior_mode": self._snapshot(tkey[2], now).get("mode.name"),
         }
         await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
 
@@ -525,6 +528,30 @@ class ScheduleEngine:
     async def _send(self, handler: Any, cmds: list[tuple[str, str]]) -> None:
         for slug, value in cmds:
             await handler.handle_command(slug, value)
+
+    async def _release_with_policy(self, handler: Any, win: dict, own: dict) -> None:
+        """Release a sustained dispatch honouring the entry's ``release_policy``.
+
+        Always hands VPP control back first (``battery_command Release``), then:
+        - ``restore_prior_mode`` (default): re-assert the operating mode captured
+          at dispatch, so a condition-driven exit never leaves the aGate in an
+          unintended native mode.
+        - ``set_operating_mode:<name>``: set that specific mode.
+        - ``release``: plain hand-back only.
+
+        Applied only on the condition-exit path (see _reconcile); the legacy
+        window-exit release/hold path is unchanged.
+        """
+        await self._send(handler, [("battery_command", "Release")])
+        policy = win.get("release_policy") or "restore_prior_mode"
+        if policy == "restore_prior_mode":
+            prior = own.get("prior_mode")
+            if prior:
+                await self._send(handler, [("operating_mode", str(prior))])
+        elif policy.startswith("set_operating_mode:"):
+            target = policy.split(":", 1)[1].strip()
+            if target:
+                await self._send(handler, [("operating_mode", target)])
 
     def _snapshot(self, gw_id: str, now: datetime) -> dict[str, Any]:
         """Sensor snapshot for a gateway, cached per tick. No points source (or a
