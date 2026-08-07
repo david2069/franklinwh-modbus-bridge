@@ -30,6 +30,7 @@ from typing import Any
 
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate as eval_conditions
 from franklinwh_bridge.gateway.scheduler_sensors import snapshot as sensor_snapshot
+from franklinwh_bridge.gateway.scheduler_triggers import prev_fire_at
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,44 @@ def next_fire(when_spec: dict, now: datetime, horizon_days: int = 8) -> datetime
     return None
 
 
+def _is_v2(entry: dict) -> bool:
+    """A v2 entry carries a trigger kind and/or a condition tree. Only these opt
+    into fire-based activation and release_policy; legacy entries are untouched."""
+    return bool(
+        entry.get("trigger_kind") or entry.get("entry_conditions") or entry.get("exit_conditions")
+    )
+
+
+def trigger_active_at(entry: dict, now: datetime) -> bool:
+    """Is a fire-based (v2) entry currently active?
+
+    Active during ``[prev_fire, prev_fire + duration_s)``. ``always`` is
+    continuously active (its entry-conditions gate decides dispatch). A missing
+    ``duration_s`` yields a minimal one-minute active window — enough for an
+    instantaneous fire (e.g. a mode/reserve set); sustained actions should set a
+    duration or an exit condition.
+    """
+    kind = entry.get("trigger_kind")
+    if kind == "always":
+        return True
+    spec = dict(entry.get("trigger_spec") or {})
+    spec["kind"] = kind
+    prev = prev_fire_at(spec, now)
+    if prev is None:
+        return False
+    dur = entry.get("duration_s")
+    window_s = int(dur) if dur else 60
+    return now < prev + timedelta(seconds=window_s)
+
+
+def entry_active(entry: dict, now: datetime) -> bool:
+    """Unified activation: fire-based for v2 trigger entries, window-based for
+    legacy (and any v2 entry that still expresses timing via when_spec)."""
+    if entry.get("trigger_kind"):
+        return trigger_active_at(entry, now)
+    return entry_active_at(entry.get("when_spec", {}), now)
+
+
 def winner(entries: list[dict], now: datetime) -> dict | None:
     """Pick the single winning *active* entry for one target.
 
@@ -156,7 +195,7 @@ def winner(entries: list[dict], now: datetime) -> dict | None:
     (last-writer). Disabled entries are excluded by the caller.
     """
     for e in entries:
-        if entry_active_at(e.get("when_spec", {}), now):
+        if entry_active(e, now):
             return e
     return None
 
@@ -378,15 +417,18 @@ class ScheduleEngine:
                         "window exit — holding native suppressed",
                     )
                 elif own["release"] != "hold":
-                    await self._send(handler, [("battery_command", "Release")])
+                    # v2 entries honour release_policy on window/duration exit too
+                    # (so a duration-elapsed dispatch restores the prior mode);
+                    # legacy entries keep the plain hand-back.
+                    policy = own.get("release_policy", "release")
+                    if own.get("is_v2") and policy != "release":
+                        await self._apply_release(handler, policy, own.get("prior_mode"))
+                        detail = f"window exit — released ({policy})"
+                    else:
+                        await self._send(handler, [("battery_command", "Release")])
+                        detail = "window exit — released to native"
                     self._owned.pop(tkey, None)
-                    await self._audit(
-                        own.get("entry_id"),
-                        "release",
-                        tkey,
-                        "ok",
-                        "window exit — released to native",
-                    )
+                    await self._audit(own.get("entry_id"), "release", tkey, "ok", detail)
             else:
                 self._owned.pop(tkey, None)
             return
@@ -514,6 +556,10 @@ class ScheduleEngine:
             # Snapshot the native mode at dispatch so a restore_prior_mode exit
             # can re-assert it (mode.name matches the operating_mode vocabulary).
             "prior_mode": self._snapshot(tkey[2], now).get("mode.name"),
+            # v2 entries honour release_policy on ALL release paths (condition
+            # exit + duration/window exit); legacy entries never do.
+            "is_v2": _is_v2(win),
+            "release_policy": win.get("release_policy") or "restore_prior_mode",
         }
         await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
 
@@ -529,29 +575,29 @@ class ScheduleEngine:
         for slug, value in cmds:
             await handler.handle_command(slug, value)
 
-    async def _release_with_policy(self, handler: Any, win: dict, own: dict) -> None:
-        """Release a sustained dispatch honouring the entry's ``release_policy``.
+    async def _apply_release(self, handler: Any, policy: str, prior_mode: Any) -> None:
+        """Hand VPP control back (``battery_command Release``), then apply the
+        release policy: re-assert the prior mode, set a specific mode, or nothing.
 
-        Always hands VPP control back first (``battery_command Release``), then:
-        - ``restore_prior_mode`` (default): re-assert the operating mode captured
-          at dispatch, so a condition-driven exit never leaves the aGate in an
-          unintended native mode.
-        - ``set_operating_mode:<name>``: set that specific mode.
-        - ``release``: plain hand-back only.
-
-        Applied only on the condition-exit path (see _reconcile); the legacy
-        window-exit release/hold path is unchanged.
+        Applies to v2 entries only (condition-exit and v2 duration/window-exit);
+        the legacy release/hold path never calls this, so it is unaffected.
         """
         await self._send(handler, [("battery_command", "Release")])
-        policy = win.get("release_policy") or "restore_prior_mode"
         if policy == "restore_prior_mode":
-            prior = own.get("prior_mode")
-            if prior:
-                await self._send(handler, [("operating_mode", str(prior))])
+            if prior_mode:
+                await self._send(handler, [("operating_mode", str(prior_mode))])
         elif policy.startswith("set_operating_mode:"):
             target = policy.split(":", 1)[1].strip()
             if target:
                 await self._send(handler, [("operating_mode", target)])
+
+    async def _release_with_policy(self, handler: Any, win: dict, own: dict) -> None:
+        """Condition-exit release honouring the winning entry's release_policy."""
+        await self._apply_release(
+            handler,
+            win.get("release_policy") or "restore_prior_mode",
+            own.get("prior_mode"),
+        )
 
     def _snapshot(self, gw_id: str, now: datetime) -> dict[str, Any]:
         """Sensor snapshot for a gateway, cached per tick. No points source (or a

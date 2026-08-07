@@ -147,3 +147,89 @@ def next_fire_at(trigger: dict | None, now: datetime) -> datetime | None:
         return _interval(trigger, now)
     # "always" and anything unrecognised
     return None
+
+
+# ── previous fire (mirror of next_fire_at, looking backwards) ──
+
+
+def _prev_oneoff(trigger: dict, now: datetime) -> datetime | None:
+    raw = trigger.get("fire_at")
+    if not raw:
+        return None
+    try:
+        fire = datetime.fromisoformat(str(raw))
+    except (ValueError, TypeError):
+        return None
+    fire = _coerce_awareness(fire, now)
+    return fire if fire <= now else None
+
+
+def _prev_daily(trigger: dict, now: datetime) -> datetime | None:
+    hm = _parse_hhmm(trigger.get("time_of_day"))
+    if hm is None:
+        return None
+    h, m = hm
+    today = _at(now, h, m, now)
+    if today <= now:
+        return today
+    return _at(now - timedelta(days=1), h, m, now)
+
+
+def _prev_weekly(trigger: dict, now: datetime) -> datetime | None:
+    hm = _parse_hhmm(trigger.get("time_of_day"))
+    if hm is None:
+        return None
+    days = {int(d) for d in (trigger.get("days_of_week") or []) if 0 <= int(d) <= 6}
+    if not days:
+        return None
+    h, m = hm
+    for offset in range(8):  # scan back up to a full week (incl. today)
+        day = now - timedelta(days=offset)
+        if day.weekday() not in days:
+            continue
+        cand = _at(day, h, m, now)
+        if cand <= now:
+            return cand
+    return None
+
+
+def _prev_interval(trigger: dict, now: datetime) -> datetime | None:
+    try:
+        every = int(trigger.get("every_seconds"))
+    except (ValueError, TypeError):
+        return None
+    if every <= 0:
+        return None
+    anchor_raw = trigger.get("anchor_time")
+    hm = _parse_hhmm(anchor_raw) if anchor_raw else (0, 0)
+    if hm is None:
+        return None
+    anchor = _at(now, hm[0], hm[1], now)
+    if anchor > now:
+        anchor -= timedelta(days=1)
+    elapsed = (now - anchor).total_seconds()
+    k = int(elapsed // every)
+    return anchor + timedelta(seconds=every * k)  # <= now by construction
+
+
+def prev_fire_at(trigger: dict | None, now: datetime) -> datetime | None:
+    """Most recent fire instant at/before ``now``, or None.
+
+    The backward counterpart of ``next_fire_at``. The engine uses it to derive a
+    trigger entry's synthetic active window ``[prev_fire, prev_fire + duration]``
+    without holding fire state. ``always`` and invalid specs return None (the
+    engine treats ``always`` as continuously active, condition-gated).
+    """
+    if not isinstance(trigger, dict):
+        return None
+    now = now.replace(second=0, microsecond=0)
+    kind = trigger.get("kind")
+    if kind == "oneoff":
+        return _prev_oneoff(trigger, now)
+    if kind == "daily":
+        return _prev_daily(trigger, now)
+    if kind == "weekly":
+        return _prev_weekly(trigger, now)
+    if kind == "interval":
+        return _prev_interval(trigger, now)
+    return None

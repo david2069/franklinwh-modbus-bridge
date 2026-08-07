@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from franklinwh_bridge.gateway.scheduler_triggers import next_fire_at
+from franklinwh_bridge.gateway.scheduler_triggers import next_fire_at, prev_fire_at
 
 # ── oneoff ────────────────────────────────────────────────────
 
@@ -173,3 +173,60 @@ def test_aware_now_returns_aware_fire():
     result = next_fire_at({"kind": "daily", "time_of_day": "09:00"}, now)
     assert result.tzinfo is ny
     assert result >= now
+
+
+# ── prev_fire_at (backward: most recent fire ≤ now) ───────────
+
+
+def test_prev_oneoff_past_and_future():
+    now = datetime(2026, 8, 6, 10, 0)
+    assert prev_fire_at({"kind": "oneoff", "fire_at": "2026-08-06T09:00:00"}, now) == datetime(
+        2026, 8, 6, 9, 0
+    )
+    # future fire has no "previous"
+    assert prev_fire_at({"kind": "oneoff", "fire_at": "2026-08-06T11:00:00"}, now) is None
+
+
+def test_prev_daily_today_vs_yesterday():
+    assert prev_fire_at({"kind": "daily", "time_of_day": "09:00"}, datetime(2026, 8, 6, 10, 0)) == (
+        datetime(2026, 8, 6, 9, 0)
+    )
+    # before today's time → yesterday's occurrence
+    assert prev_fire_at({"kind": "daily", "time_of_day": "09:00"}, datetime(2026, 8, 6, 8, 0)) == (
+        datetime(2026, 8, 5, 9, 0)
+    )
+
+
+def test_prev_daily_exactly_now():
+    now = datetime(2026, 8, 6, 9, 0)
+    assert prev_fire_at({"kind": "daily", "time_of_day": "09:00"}, now) == datetime(
+        2026, 8, 6, 9, 0
+    )
+
+
+def test_prev_weekly_scans_back():
+    now = datetime(2026, 8, 6, 8, 0)  # after 12:00? no — 08:00
+    trig = {"kind": "weekly", "time_of_day": "12:00", "days_of_week": [now.weekday()]}
+    # today's 12:00 hasn't happened yet at 08:00 → previous week same weekday
+    result = prev_fire_at(trig, now)
+    assert result.weekday() == now.weekday()
+    assert result <= now
+    assert 0 < (now.date() - result.date()).days <= 7
+
+
+def test_prev_interval_current_window_start():
+    now = datetime(2026, 8, 6, 8, 30)
+    assert prev_fire_at({"kind": "interval", "every_seconds": 3600}, now) == datetime(
+        2026, 8, 6, 8, 0
+    )
+    # exactly on a boundary returns that boundary
+    assert prev_fire_at(
+        {"kind": "interval", "every_seconds": 3600}, datetime(2026, 8, 6, 9, 0)
+    ) == datetime(2026, 8, 6, 9, 0)
+
+
+def test_prev_always_and_invalid_return_none():
+    now = datetime(2026, 8, 6, 8, 0)
+    assert prev_fire_at({"kind": "always"}, now) is None
+    assert prev_fire_at({"kind": "cron"}, now) is None
+    assert prev_fire_at(None, now) is None

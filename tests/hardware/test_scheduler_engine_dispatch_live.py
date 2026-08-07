@@ -17,7 +17,7 @@ regardless of outcome — hardware auto-revert is cosmetic on this device
 
 import asyncio
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -176,6 +176,88 @@ async def test_engine_restore_prior_mode_live(controller, tmp_path):
         print(f"after restore: mode={after!r}")
         assert after == mode_name, f"mode not restored: {mode_name!r} -> {after!r}"
         print("restore_prior_mode round-trip verified ✓")
+    finally:
+        with contextlib.suppress(Exception):
+            await handler.stop()
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(controller.reset_control_state)
+        with contextlib.suppress(Exception):
+            if mode_raw is not None:
+                await asyncio.to_thread(controller.set_native_mode, mode_raw)
+        with contextlib.suppress(Exception):
+            m704 = controller.get_model(704)
+            if m704:
+                m704.read()
+                m704.WSetRvrtTms.value = 0
+                m704.WSetEnaRvrt.value = 0
+                m704.write()
+        await db.close()
+
+
+async def test_oneoff_trigger_duration_release_live(controller, tmp_path):
+    """Slice-3 fire-based trigger + duration on real hardware.
+
+    A oneoff trigger fires → dispatch Force Standby (0 W); after the duration
+    elapses (simulated by passing an advanced `now` to tick — no real waiting)
+    the window exit releases with restore_prior_mode. Verifies fire activation,
+    duration bound, and v2 window-exit restore end to end on the aGate.
+    """
+    db = await init_db(tmp_path / "sched3.db")
+    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock())
+
+    soc = (await asyncio.to_thread(controller.read_battery_status))["soc"]
+    mode0 = await asyncio.to_thread(controller.read_native_mode)
+    mode_name = mode0.get("mode_name")
+    mode_raw = mode0.get("mode_raw")
+    print(f"\nlive SOC={soc} mode={mode_name!r}")
+    points = {"soc": soc, "mode_name": mode_name}
+
+    audits: list[str] = []
+
+    async def on_audit(sid, action, target, result, detail):
+        audits.append(result)
+
+    engine = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", handler)],
+        on_audit=on_audit,
+        points_fn=lambda gw: points,
+    )
+    t0 = datetime.now().replace(second=0, microsecond=0)  # minute-aligned fire
+    engine._entries = [{
+        "id": "live", "name": "live-oneoff", "enabled": True,
+        "when_spec": {}, "action": "force_standby", "params": {},
+        "target_type": "gateway", "target_id": "default",
+        "release": "release", "conflict": "defer", "priority": 0,
+        "entry_conditions": None, "exit_conditions": None,
+        "trigger_kind": "oneoff", "trigger_spec": {"fire_at": t0.isoformat()},
+        "duration_s": 120, "release_policy": "restore_prior_mode",
+    }]
+
+    try:
+        await engine.tick(t0)  # trigger fires → dispatch standby
+        assert handler.state.action == "Force Standby"
+        hw = await asyncio.to_thread(controller.read_control_status)
+        assert _wset_enabled(hw), "aGate did not engage on trigger fire"
+        print("trigger fired → standby engaged ✓")
+
+        # advance past the 120 s duration → duration-elapsed release + restore
+        await engine.tick(t0 + timedelta(minutes=3))
+        assert handler.state.last_success, (
+            f"mode restore failed on hardware: {handler.state.last_result!r}"
+        )
+        released = False
+        for _ in range(10):
+            hw2 = await asyncio.to_thread(controller.read_control_status)
+            if not _wset_enabled(hw2):
+                released = True
+                break
+            await asyncio.sleep(1)
+        assert released, "aGate did not release after duration elapsed"
+
+        after = (await asyncio.to_thread(controller.read_native_mode)).get("mode_name")
+        assert after == mode_name, f"mode not restored: {mode_name!r} -> {after!r}"
+        print(f"duration elapsed → released + mode restored ({after}) ✓")
     finally:
         with contextlib.suppress(Exception):
             await handler.stop()

@@ -275,3 +275,91 @@ async def test_first_tick_dispatches_even_if_exit_already_true():
     assert h.state.action == "Force Discharge"  # started
     await eng.tick(MON)
     assert h.state.active is False  # then exited
+
+
+# ── fire-based triggers (slice 3) ─────────────────────────────
+
+# MON is 2026-06-15 10:30 (a Monday), used by the tests above.
+
+
+async def test_daily_trigger_active_dispatches():
+    h = FakeHandler()
+    e = entry(trigger_kind="daily", trigger_spec={"time_of_day": "09:00"}, duration_s=7200)
+    eng = make_engine([e], h, points={"soc": 50})
+    await eng.tick(MON)  # 10:30 within [09:00, 11:00)
+    assert h.state.action == "Force Charge"
+
+
+async def test_trigger_inactive_after_duration_window():
+    h = FakeHandler()
+    e = entry(trigger_kind="daily", trigger_spec={"time_of_day": "09:00"}, duration_s=1800)
+    eng = make_engine([e], h)
+    await eng.tick(MON)  # 10:30 is past 09:30 → not active
+    assert h.state.active is False
+
+
+async def test_interval_trigger_active_dispatches():
+    h = FakeHandler()
+    e = entry(trigger_kind="interval", trigger_spec={"every_seconds": 3600}, duration_s=3600)
+    eng = make_engine([e], h, points={"soc": 50})
+    await eng.tick(MON)  # prev fire 10:00 (midnight anchor), active until 11:00
+    assert h.state.action == "Force Charge"
+
+
+async def test_oneoff_trigger_dispatch_then_duration_release():
+    h = FakeHandler()
+    e = entry(
+        action="force_discharge",
+        trigger_kind="oneoff",
+        trigger_spec={"fire_at": "2026-06-15T10:30:00"},
+        duration_s=1800,
+        release_policy="release",
+    )
+    eng = make_engine([e], h, points={"soc": 80})
+    await eng.tick(MON)  # fire at 10:30 → dispatch
+    assert h.state.action == "Force Discharge"
+    await eng.tick(datetime(2026, 6, 15, 11, 1))  # past 11:00 end → release
+    assert h.state.active is False
+    assert ("battery_command", "Release") in h.calls
+
+
+async def test_duration_elapsed_restores_prior_mode_for_v2():
+    h = FakeHandler()
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        trigger_kind="oneoff",
+        trigger_spec={"fire_at": "2026-06-15T10:30:00"},
+        duration_s=1800,
+        release_policy="restore_prior_mode",
+    )
+    eng = make_engine([e], h, points=pts)
+    await eng.tick(MON)  # dispatch, capture prior mode
+    assert h.state.action == "Force Discharge"
+    await eng.tick(datetime(2026, 6, 15, 11, 1))  # duration elapsed → release + restore
+    assert ("battery_command", "Release") in h.calls
+    assert ("operating_mode", "Self-Consumption") in h.calls
+
+
+async def test_always_trigger_gated_by_entry_conditions():
+    # always is continuously active; entry_conditions decide dispatch.
+    h_ok = FakeHandler()
+    e_ok = entry(trigger_kind="always", entry_conditions={"conditions": [GT]})
+    await make_engine([e_ok], h_ok, points={"soc": 80}).tick(MON)
+    assert h_ok.state.action == "Force Charge"
+
+    h_no = FakeHandler()
+    e_no = entry(trigger_kind="always", entry_conditions={"conditions": [GT]})
+    await make_engine([e_no], h_no, points={"soc": 30}).tick(MON)
+    assert h_no.state.active is False
+
+
+async def test_legacy_window_exit_still_plain_release():
+    # A legacy (non-v2) entry must NOT restore a mode on window exit.
+    h = FakeHandler()
+    e = entry(when_spec={"windows": [{"start": "10:00", "end": "11:00"}]})
+    eng = make_engine([e], h, points={"soc": 50, "mode_name": "Self-Consumption"})
+    await eng.tick(MON)
+    await eng.tick(datetime(2026, 6, 15, 12, 0))  # window exit
+    assert h.calls[-1] == ("battery_command", "Release")  # nothing after Release
+    assert not any(c[0] == "operating_mode" for c in h.calls)
