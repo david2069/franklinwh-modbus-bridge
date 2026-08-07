@@ -151,3 +151,36 @@ async def test_logs(client):
 async def test_refresh_models_no_reader(client):
     resp = await client.post("/api/models/refresh")
     assert resp.status_code == 503
+
+
+async def test_sensors_endpoint(client):
+    resp = await client.get("/api/sensors")
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {s["id"] for s in data["sensors"]}
+    assert "battery.soc_pct" in ids
+    assert "price.export_c_per_kwh" in ids
+    # each entry carries id/label/unit/kind/value
+    first = data["sensors"][0]
+    assert {"id", "label", "unit", "kind", "value"} <= set(first)
+
+
+async def test_scheduler_evaluate_endpoint(client):
+    # time.month always resolves from the clock (no gateway points needed), so
+    # this exercises the full evaluate path end to end.
+    body = {"match": "ALL", "conditions": [{"sensor": "time.month", "op": ">=", "value": 1}]}
+    resp = await client.post("/api/scheduler/evaluate", json=body)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["result"] is True
+    assert data["per_condition"][0]["sensor"] == "time.month"
+    assert data["per_condition"][0]["result"] is True
+
+
+async def test_scheduler_evaluate_fails_closed_on_missing_sensor(client):
+    body = {"match": "ALL", "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 50}]}
+    resp = await client.post("/api/scheduler/evaluate", json=body)
+    assert resp.status_code == 200
+    data = resp.json()
+    # no live poll data in a hardware-less test → soc is None → fails closed
+    assert data["result"] is False

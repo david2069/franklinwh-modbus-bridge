@@ -20,6 +20,7 @@ from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
+from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
@@ -501,6 +502,7 @@ app.include_router(mqtt_router)
 app.include_router(groups_router)
 app.include_router(gateways_router)
 app.include_router(schedules_router)
+app.include_router(scheduler_router)
 
 # UI router (serves GET / and POST /api/command)
 app.include_router(ui_router)
