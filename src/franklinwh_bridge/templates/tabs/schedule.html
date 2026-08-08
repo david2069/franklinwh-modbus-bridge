@@ -219,14 +219,25 @@
             <input type="text" x-model="form.name" class="form-control w-full" placeholder="e.g. Evening peak discharge">
           </div>
 
-          <!-- trigger type -->
-          <div>
-            <label class="card-label">Trigger Type</label>
-            <select x-model="form.trigger_type" class="form-control w-full">
-              <template x-for="t in triggerTypes" :key="t.id">
-                <option :value="t.id" x-text="t.label"></option>
-              </template>
-            </select>
+          <!-- trigger type + quick preset -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="card-label">Trigger Type</label>
+              <select x-model="form.trigger_type" class="form-control w-full">
+                <template x-for="t in triggerTypes" :key="t.id">
+                  <option :value="t.id" x-text="t.label"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="card-label">Quick preset <span class="text-slate-500 normal-case">(fills fields)</span></label>
+              <select class="form-control w-full" @change="applyPreset($event.target.value); $event.target.value = ''">
+                <option value="">— choose a preset —</option>
+                <template x-for="p in triggerPresets" :key="p.id">
+                  <option :value="p.id" x-text="p.label"></option>
+                </template>
+              </select>
+            </div>
           </div>
 
           <!-- days (window recurring / weekly trigger) -->

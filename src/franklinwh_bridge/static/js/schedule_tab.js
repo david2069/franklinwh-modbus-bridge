@@ -34,6 +34,22 @@ const TRIGGER_TYPES = [
 
 const OPERATORS = ['<', '<=', '==', '!=', '>=', '>', 'between'];
 
+// FWHAI-style quick presets that map onto existing engine trigger kinds
+// (interval/daily/weekly). Selecting one fills the real fields below, which stay
+// editable. Calendar presets (monthly/quarterly/annually) + custom cron need new
+// engine kinds and are a separate backlog item.
+const TRIGGER_PRESETS = [
+  { id: 'min_1',          label: 'Every minute',              type: 'interval', interval_min: 1 },
+  { id: 'min_5',          label: 'Every 5 minutes',           type: 'interval', interval_min: 5 },
+  { id: 'min_10',         label: 'Every 10 minutes',          type: 'interval', interval_min: 10 },
+  { id: 'min_15',         label: 'Every 15 minutes',          type: 'interval', interval_min: 15 },
+  { id: 'min_30',         label: 'Every 30 minutes',          type: 'interval', interval_min: 30 },
+  { id: 'hourly',         label: 'Every hour',                type: 'interval', interval_min: 60 },
+  { id: 'daily_midnight', label: 'Every day (midnight)',      type: 'daily',    time_of_day: '00:00' },
+  { id: 'daily_8am',      label: 'Every day (8:00 am)',       type: 'daily',    time_of_day: '08:00' },
+  { id: 'weekly_sun',     label: 'Every week (Sun midnight)', type: 'weekly',   time_of_day: '00:00', days: [6] },
+];
+
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -64,6 +80,7 @@ function scheduleTab() {
     actions: SCHEDULE_ACTIONS,
     weekdays: WEEKDAYS,
     triggerTypes: TRIGGER_TYPES,
+    triggerPresets: TRIGGER_PRESETS,
     operators: OPERATORS,
 
     init() {
@@ -345,6 +362,17 @@ function scheduleTab() {
     get showTimeOfDay() { return ['daily', 'weekly'].includes(this.form.trigger_type); },
     get showInterval() { return this.form.trigger_type === 'interval'; },
     get showDate() { return this.form.trigger_type === 'once'; },
+
+    // Apply a quick preset → sets the trigger type + fills its spec fields
+    // (which remain editable). No-op for the placeholder option.
+    applyPreset(id) {
+      const p = this.triggerPresets.find(x => x.id === id);
+      if (!p) return;
+      this.form.trigger_type = p.type;
+      if (p.interval_min != null) this.form.interval_min = p.interval_min;
+      if (p.time_of_day) this.form.time_of_day = p.time_of_day;
+      this.form.days = p.days ? p.days.slice() : [];
+    },
 
     toggleDay(i) {
       const idx = this.form.days.indexOf(i);
