@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 
 from franklinwh_bridge.gateway.scheduler import (
     action_to_commands,
-    entry_active_at,
     next_fire,
 )
 from franklinwh_bridge.store.db import (
@@ -54,9 +53,14 @@ class WhenSpec(BaseModel):
     date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
+_TRIGGER_KIND = r"^(oneoff|daily|weekly|interval|always)$"
+_MISSED_POLICY = r"^(late_fire_remaining|skip|late_fire_always)$"
+
+
 class ScheduleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
-    when_spec: WhenSpec
+    # Optional so a pure fire-based (trigger) entry needn't send a window spec.
+    when_spec: WhenSpec = Field(default_factory=WhenSpec)
     action: str
     params: dict = Field(default_factory=dict)
     target_type: str = Field(default="gateway", pattern=r"^(gateway|service|site)$")
@@ -65,6 +69,14 @@ class ScheduleCreate(BaseModel):
     release: str = Field(default="release", pattern=r"^(release|hold)$")
     conflict: str = Field(default="defer", pattern=r"^(defer|override|wait)$")
     priority: int = Field(default=0, ge=0, le=1000)
+    # ── v2 fields (trigger + conditions + policies) ──
+    trigger_kind: str | None = Field(default=None, pattern=_TRIGGER_KIND)
+    trigger_spec: dict = Field(default_factory=dict)
+    entry_conditions: dict | None = None
+    exit_conditions: dict | None = None
+    duration_s: int | None = Field(default=None, ge=0)
+    release_policy: str = Field(default="restore_prior_mode")
+    missed_policy: str = Field(default="late_fire_remaining", pattern=_MISSED_POLICY)
 
 
 class ScheduleUpdate(BaseModel):
@@ -78,6 +90,13 @@ class ScheduleUpdate(BaseModel):
     release: str | None = Field(default=None, pattern=r"^(release|hold)$")
     conflict: str | None = Field(default=None, pattern=r"^(defer|override|wait)$")
     priority: int | None = Field(default=None, ge=0, le=1000)
+    trigger_kind: str | None = Field(default=None, pattern=_TRIGGER_KIND)
+    trigger_spec: dict | None = None
+    entry_conditions: dict | None = None
+    exit_conditions: dict | None = None
+    duration_s: int | None = Field(default=None, ge=0)
+    release_policy: str | None = None
+    missed_policy: str | None = Field(default=None, pattern=_MISSED_POLICY)
 
 
 def _validate_action(action: str, params: dict) -> None:
@@ -100,11 +119,22 @@ async def _reload_engine(request: Request) -> None:
 
 
 def _decorate(entry: dict, now: datetime) -> dict:
-    """Add live previews (active-now, next-fire) to an entry for the UI."""
-    when = entry.get("when_spec", {})
-    nf = next_fire(when, now)
+    """Add live previews (active-now, next-fire) to an entry for the UI.
+
+    Trigger (v2) entries are previewed via the fire-based helpers; legacy
+    window entries via the when_spec helpers.
+    """
+    from franklinwh_bridge.gateway.scheduler import entry_active
+    from franklinwh_bridge.gateway.scheduler_triggers import next_fire_at
+
     entry = dict(entry)
-    entry["active_now"] = entry.get("enabled", False) and entry_active_at(when, now)
+    if entry.get("trigger_kind"):
+        spec = dict(entry.get("trigger_spec") or {})
+        spec["kind"] = entry["trigger_kind"]
+        nf = next_fire_at(spec, now)
+    else:
+        nf = next_fire(entry.get("when_spec", {}), now)
+    entry["active_now"] = entry.get("enabled", False) and entry_active(entry, now)
     entry["next_fire"] = nf.isoformat() if nf else None
     return entry
 
@@ -138,6 +168,13 @@ async def add_schedule(body: ScheduleCreate, request: Request):
         release=body.release,
         conflict=body.conflict,
         priority=body.priority,
+        trigger_kind=body.trigger_kind,
+        trigger_spec=body.trigger_spec,
+        entry_conditions=body.entry_conditions,
+        exit_conditions=body.exit_conditions,
+        duration_s=body.duration_s,
+        release_policy=body.release_policy,
+        missed_policy=body.missed_policy,
     )
     await _reload_engine(request)
     return _decorate(entry, datetime.now())

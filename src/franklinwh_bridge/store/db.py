@@ -868,6 +868,14 @@ _SCHEDULE_FIELDS = (
     "release",
     "conflict",
     "priority",
+    # v2 fields
+    "trigger_kind",
+    "trigger_spec",
+    "entry_conditions",
+    "exit_conditions",
+    "duration_s",
+    "release_policy",
+    "missed_policy",
 )
 # Columns stored as JSON text but always surfaced as dicts (default {} when absent).
 _SCHEDULE_JSON_FIELDS = ("when_spec", "params", "trigger_spec")
@@ -936,6 +944,14 @@ async def create_schedule(
     release: str = "release",
     conflict: str = "defer",
     priority: int = 0,
+    *,
+    trigger_kind: str | None = None,
+    trigger_spec: dict | None = None,
+    entry_conditions: dict | None = None,
+    exit_conditions: dict | None = None,
+    duration_s: int | None = None,
+    release_policy: str = "restore_prior_mode",
+    missed_policy: str = "late_fire_remaining",
 ) -> dict:
     """Create a schedule entry. Returns the created (decoded) row."""
     import uuid
@@ -945,8 +961,10 @@ async def create_schedule(
     await db.execute(
         "INSERT INTO schedules "
         "(id, name, enabled, when_spec, action, params, target_type, target_id, "
-        " release, conflict, priority, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " release, conflict, priority, created_at, updated_at, "
+        " trigger_kind, trigger_spec, entry_conditions, exit_conditions, "
+        " duration_s, release_policy, missed_policy) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             schedule_id,
             name,
@@ -961,6 +979,13 @@ async def create_schedule(
             int(priority),
             now,
             now,
+            trigger_kind,
+            json.dumps(trigger_spec or {}),
+            json.dumps(entry_conditions) if entry_conditions is not None else None,
+            json.dumps(exit_conditions) if exit_conditions is not None else None,
+            duration_s,
+            release_policy,
+            missed_policy,
         ),
     )
     await db.commit()
@@ -979,6 +1004,10 @@ async def update_schedule(
         return existing
     for f in _SCHEDULE_JSON_FIELDS:
         if f in updates and not isinstance(updates[f], str):
+            updates[f] = json.dumps(updates[f])
+    # Nullable JSON (condition trees): encode dicts, but leave None as SQL NULL.
+    for f in _SCHEDULE_NULLABLE_JSON_FIELDS:
+        if f in updates and updates[f] is not None and not isinstance(updates[f], str):
             updates[f] = json.dumps(updates[f])
     if "enabled" in updates:
         updates["enabled"] = int(bool(updates["enabled"]))
