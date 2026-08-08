@@ -140,13 +140,16 @@ function scheduleTab() {
     toggleExpand(id) { this.expandedId = this.expandedId === id ? null : id; },
     get expandedEntry() { return this.schedules.find(x => x.id === this.expandedId) || null; },
 
-    // Readable one-line rendering of a condition tree (one level of nesting shown as "(…)").
+    // Readable one-line rendering of a condition tree (nested groups parenthesised).
     treeText(t) {
       if (!t || !t.conditions || !t.conditions.length) return '—';
-      const join = t.match === 'ANY' ? ' OR ' : ' AND ';
-      return t.conditions.map(c =>
-        c.conditions ? '(…)' : `${c.sensor} ${c.op} ${c.value}${c.op === 'between' ? '..' + c.value2 : ''}`
-      ).join(join);
+      const render = (node) => {
+        const join = node.match === 'ANY' ? ' OR ' : ' AND ';
+        return node.conditions.map(c =>
+          c.conditions ? '(' + render(c) + ')' : `${c.sensor} ${c.op} ${c.value}${c.op === 'between' ? '..' + c.value2 : ''}`
+        ).join(join);
+      };
+      return render(t);
     },
 
     triggerText(e) {
@@ -326,7 +329,11 @@ function scheduleTab() {
     },
 
     _cloneTree(t) {
-      return { match: t.match || 'ALL', conditions: (t.conditions || []).map(c => ({ ...c })) };
+      const clone = (node) => ({
+        match: node.match || 'ALL',
+        conditions: (node.conditions || []).map(c => (c.conditions ? clone(c) : { ...c })),
+      });
+      return clone(t);
     },
 
     closeForm() { this.form = null; this.testResult = null; },
@@ -348,12 +355,17 @@ function scheduleTab() {
     addWindow() { this.form.windows.push({ start: '00:00', end: '06:00' }); },
     removeWindow(i) { this.form.windows.splice(i, 1); },
 
-    // ── condition rows ───────────────────────────────────────
-    addCond(which) {
-      const firstSensor = this.sensors[0] ? this.sensors[0].id : 'battery.soc_pct';
-      this.form[which].conditions.push({ sensor: firstSensor, op: '<', value: 0, value2: 0 });
+    // ── condition rows + nested groups ───────────────────────
+    _newLeaf() {
+      const s = this.sensors[0] ? this.sensors[0].id : 'battery.soc_pct';
+      return { sensor: s, op: '<', value: 0, value2: 0 };
     },
+    isGroup(c) { return !!(c && c.conditions); },
+    addCond(which) { this.form[which].conditions.push(this._newLeaf()); },
+    addCondGroup(which) { this.form[which].conditions.push({ match: 'ALL', conditions: [] }); },
     removeCond(which, i) { this.form[which].conditions.splice(i, 1); },
+    addToGroup(group) { group.conditions.push(this._newLeaf()); },
+    removeFromGroup(group, j) { group.conditions.splice(j, 1); },
 
     formActionMeta() { return this.actionMeta(this.form.action); },
 
@@ -378,17 +390,25 @@ function scheduleTab() {
       return Number.isNaN(n) ? v : n;
     },
 
-    // Build a condition tree for the API, or null when there are no rows.
+    // Build a condition tree for the API (recursively), or null when empty.
+    // Empty nested groups are pruned so they don't skew ALL/ANY evaluation.
     _buildTree(tree) {
       if (!tree || !tree.conditions.length) return null;
-      return {
-        match: tree.match,
-        conditions: tree.conditions.map(c => {
-          const row = { sensor: c.sensor, op: c.op, value: this._coerceVal(c.value) };
-          if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
-          return row;
-        }),
+      const build = (node) => {
+        const conds = [];
+        for (const c of node.conditions) {
+          if (c.conditions) {
+            if (c.conditions.length) conds.push(build(c));  // skip empty groups
+          } else {
+            const row = { sensor: c.sensor, op: c.op, value: this._coerceVal(c.value) };
+            if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
+            conds.push(row);
+          }
+        }
+        return { match: node.match, conditions: conds };
       };
+      const built = build(tree);
+      return built.conditions.length ? built : null;
     },
 
     _buildTriggerSpec() {

@@ -343,19 +343,53 @@
                   <option value="ANY">Match ANY</option>
                 </select>
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCond('entry_conditions')">+ row</button>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCondGroup('entry_conditions')">+ group</button>
               </div>
             </div>
             <template x-for="(c, i) in form.entry_conditions.conditions" :key="i">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <select x-model="c.sensor" class="form-control !py-1 !text-xs">
-                  <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
-                </select>
-                <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
-                  <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
-                </select>
-                <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
-                <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
-                <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
+              <div>
+                <!-- leaf row -->
+                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
+                  <select x-model="c.sensor" class="form-control !py-1 !text-xs">
+                    <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                  </select>
+                  <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
+                    <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                  </select>
+                  <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                  <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                  <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
+                </div>
+                <!-- nested group -->
+                <div x-show="isGroup(c)" class="rounded border border-cyan-500/20 bg-white/[0.02] p-2 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-[10px] uppercase text-cyan-300/70">group</span>
+                      <select x-model="c.match" class="form-control !py-1 !text-xs w-24">
+                        <option value="ALL">Match ALL</option>
+                        <option value="ANY">Match ANY</option>
+                      </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addToGroup(c)">+ row</button>
+                      <button type="button" class="text-xs text-red-400 hover:text-red-300" @click="removeCond('entry_conditions', i)">remove group</button>
+                    </div>
+                  </div>
+                  <template x-for="(cc, j) in (c.conditions || [])" :key="j">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <select x-model="cc.sensor" class="form-control !py-1 !text-xs">
+                        <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                      </select>
+                      <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
+                        <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                      </select>
+                      <input x-model="cc.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                      <input x-show="cc.op === 'between'" x-model="cc.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                      <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
+                    </div>
+                  </template>
+                  <div x-show="isGroup(c) && !c.conditions.length" class="text-[10px] text-slate-600">empty group — add rows</div>
+                </div>
               </div>
             </template>
             <div class="flex items-center gap-3 pt-1">
@@ -378,19 +412,53 @@
                   <option value="ANY">Match ANY</option>
                 </select>
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCond('exit_conditions')">+ row</button>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCondGroup('exit_conditions')">+ group</button>
               </div>
             </div>
             <template x-for="(c, i) in form.exit_conditions.conditions" :key="i">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <select x-model="c.sensor" class="form-control !py-1 !text-xs">
-                  <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
-                </select>
-                <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
-                  <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
-                </select>
-                <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
-                <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
-                <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
+              <div>
+                <!-- leaf row -->
+                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
+                  <select x-model="c.sensor" class="form-control !py-1 !text-xs">
+                    <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                  </select>
+                  <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
+                    <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                  </select>
+                  <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                  <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                  <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
+                </div>
+                <!-- nested group -->
+                <div x-show="isGroup(c)" class="rounded border border-cyan-500/20 bg-white/[0.02] p-2 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-[10px] uppercase text-cyan-300/70">group</span>
+                      <select x-model="c.match" class="form-control !py-1 !text-xs w-24">
+                        <option value="ALL">Match ALL</option>
+                        <option value="ANY">Match ANY</option>
+                      </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addToGroup(c)">+ row</button>
+                      <button type="button" class="text-xs text-red-400 hover:text-red-300" @click="removeCond('exit_conditions', i)">remove group</button>
+                    </div>
+                  </div>
+                  <template x-for="(cc, j) in (c.conditions || [])" :key="j">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <select x-model="cc.sensor" class="form-control !py-1 !text-xs">
+                        <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                      </select>
+                      <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
+                        <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                      </select>
+                      <input x-model="cc.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                      <input x-show="cc.op === 'between'" x-model="cc.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                      <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
+                    </div>
+                  </template>
+                  <div x-show="isGroup(c) && !c.conditions.length" class="text-[10px] text-slate-600">empty group — add rows</div>
+                </div>
               </div>
             </template>
           </div>
