@@ -1,4 +1,4 @@
-<!-- ── Schedule Tab (SCH2) ──────────────────────────────────── -->
+<!-- ── Schedule Tab (SCH2 + v2 Automations) ─────────────────── -->
 <div x-data="scheduleTab()" x-init="init()">
 
   <!-- Header -->
@@ -10,9 +10,9 @@
           <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
           <circle cx="12" cy="16" r="3"/><line x1="12" y1="14.5" x2="12" y2="16"/><line x1="12" y1="16" x2="13" y2="16.5"/>
         </svg>
-        Schedule
+        Schedule &amp; Automations
       </h2>
-      <p class="text-xs text-slate-500">Time-driven battery dispatch — VPP setpoints that override native TOU while a window is active.</p>
+      <p class="text-xs text-slate-500">Time- and sensor-driven battery dispatch — VPP setpoints that override native TOU, with condition gates &amp; exit criteria.</p>
     </div>
     <div class="flex items-center gap-2">
       <span class="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300"
@@ -25,7 +25,7 @@
   <!-- Visual Timeline -->
   <div class="card mb-4">
     <div class="flex items-center justify-between mb-3">
-      <div class="card-label">24-Hour Visual Timeline</div>
+      <div class="card-label">24-Hour Visual Timeline <span class="text-slate-600 normal-case">(window schedules)</span></div>
       <div class="flex gap-1">
         <template x-for="(d, i) in weekdays" :key="i">
           <button class="text-[11px] px-2 py-0.5 rounded transition"
@@ -35,10 +35,8 @@
       </div>
     </div>
 
-    <!-- bar -->
     <div class="relative h-12 rounded-md overflow-hidden border border-white/[0.06]"
          style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.06) 0 6px, transparent 6px 12px);">
-      <!-- "native (TOU)" hatch is the background; entries paint over it -->
       <template x-for="(seg, idx) in visualSegments" :key="idx">
         <div class="absolute top-0 h-full flex items-center justify-center overflow-hidden"
              :style="`left:${pct(seg._l)}%; width:${pct(seg._w)}%; background:${seg.colour}; opacity:.85;`"
@@ -46,18 +44,15 @@
           <span class="text-[9px] font-semibold text-white/90 truncate px-1" x-show="seg._w > 80" x-text="seg.name"></span>
         </div>
       </template>
-      <!-- now marker (only meaningful for today) -->
       <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
            x-show="previewDay === (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1)"
            :style="`left:${nowPct}%`"></div>
     </div>
 
-    <!-- hour ticks -->
     <div class="flex justify-between text-[10px] text-slate-600 mt-1 font-mono">
       <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
     </div>
 
-    <!-- legend -->
     <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px]">
       <template x-for="a in actions" :key="a.id">
         <span class="flex items-center gap-1.5 text-slate-400">
@@ -75,10 +70,10 @@
 
   <!-- Entry table -->
   <div class="card">
-    <div class="card-label mb-3">Schedule Entries</div>
+    <div class="card-label mb-3">Entries</div>
 
     <div x-show="schedules.length === 0" class="text-center py-8 text-slate-500 text-sm">
-      No schedule entries yet. Click <span class="text-cyan-400">+ Add Entry</span> to create one.
+      No entries yet. Click <span class="text-cyan-400">+ Add Entry</span> to create a schedule or automation.
     </div>
 
     <div x-show="schedules.length > 0" class="overflow-x-auto">
@@ -89,9 +84,8 @@
             <th class="py-2 pr-3">Name</th>
             <th class="py-2 pr-3">When</th>
             <th class="py-2 pr-3">Action</th>
+            <th class="py-2 pr-3">Conditions</th>
             <th class="py-2 pr-3">Target</th>
-            <th class="py-2 pr-3">Release</th>
-            <th class="py-2 pr-3">Conflict</th>
             <th class="py-2 pr-3">Next fire</th>
             <th class="py-2 pr-3 text-right">Actions</th>
           </tr>
@@ -99,31 +93,28 @@
         <tbody>
           <template x-for="e in schedules" :key="e.id">
             <tr class="border-b border-white/[0.04] hover:bg-white/[0.02]">
-              <!-- enabled / active dot -->
               <td class="py-2 pr-3">
                 <button @click="toggleEnabled(e)" :title="e.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
                   <span class="w-2.5 h-2.5 rounded-full inline-block"
                         :class="e.active_now ? 'bg-emerald-400 animate-pulse' : (e.enabled ? 'bg-cyan-500/50' : 'bg-slate-600')"></span>
                 </button>
               </td>
-              <td class="py-2 pr-3 font-medium" x-text="e.name"></td>
-              <td class="py-2 pr-3 text-slate-400 text-xs">
-                <div x-text="daysLabel(e.when_spec)"></div>
-                <div class="font-mono text-[11px]" x-text="windowsLabel(e.when_spec)"></div>
+              <td class="py-2 pr-3 font-medium">
+                <span x-text="e.name"></span>
+                <span x-show="e.trigger_kind" class="ml-1 text-[9px] uppercase px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-300 align-middle">auto</span>
               </td>
+              <td class="py-2 pr-3 text-slate-400 text-xs" x-text="whenLabel(e)"></td>
               <td class="py-2 pr-3">
                 <span class="inline-flex items-center gap-1.5 text-xs">
                   <span class="w-2.5 h-2.5 rounded-sm inline-block" :style="`background:${actionMeta(e.action).colour}`"></span>
                   <span x-text="actionMeta(e.action).label"></span>
                 </span>
               </td>
+              <td class="py-2 pr-3 text-[11px] text-slate-500" x-text="condSummary(e) || '—'"></td>
               <td class="py-2 pr-3 text-slate-400 text-xs" x-text="targetLabel(e)"></td>
-              <td class="py-2 pr-3 text-xs">
-                <span :class="e.release === 'hold' ? 'text-amber-400' : 'text-slate-400'" x-text="e.release"></span>
-              </td>
-              <td class="py-2 pr-3 text-xs text-slate-400" x-text="e.conflict"></td>
               <td class="py-2 pr-3 text-xs text-slate-400" x-text="nextFireLabel(e)"></td>
               <td class="py-2 pr-3 text-right whitespace-nowrap">
+                <button class="btn btn-sm btn-secondary !py-1 !text-xs" @click="executeEntry(e)" title="Fire now">⚡</button>
                 <button class="btn btn-sm btn-secondary !py-1 !text-xs" @click="editEntry(e)">Edit</button>
                 <button class="btn btn-sm bg-red-600 hover:bg-red-500 text-white border-0 !py-1 !text-xs" @click="deleteEntry(e)">⌫</button>
               </td>
@@ -141,50 +132,76 @@
       <template x-if="form !== null">
         <div class="p-5 space-y-4">
           <div class="flex items-center justify-between">
-            <h3 class="text-lg font-bold" x-text="form.id ? 'Edit Schedule Entry' : 'New Schedule Entry'"></h3>
+            <h3 class="text-lg font-bold" x-text="form.id ? 'Edit Entry' : 'New Entry'"></h3>
             <button class="text-slate-500 hover:text-slate-300" @click="closeForm()">✕</button>
           </div>
 
           <!-- name -->
           <div>
             <label class="card-label">Name</label>
-            <input type="text" x-model="form.name" class="form-control w-full" placeholder="e.g. Off-peak grid charge">
+            <input type="text" x-model="form.name" class="form-control w-full" placeholder="e.g. Evening peak discharge">
           </div>
 
-          <!-- repeats vs one-time -->
+          <!-- trigger type -->
           <div>
-            <label class="card-label mb-1 block">Repeat</label>
-            <div class="flex gap-1.5">
-              <button type="button" class="text-xs px-2.5 py-1 rounded border transition"
-                      :class="form.repeats ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-slate-400 border-white/10 hover:border-white/20'"
-                      @click="form.repeats = true">Repeats weekly</button>
-              <button type="button" class="text-xs px-2.5 py-1 rounded border transition"
-                      :class="!form.repeats ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-slate-400 border-white/10 hover:border-white/20'"
-                      @click="form.repeats = false">Once on a date</button>
-            </div>
+            <label class="card-label">Trigger Type</label>
+            <select x-model="form.trigger_type" class="form-control w-full">
+              <template x-for="t in triggerTypes" :key="t.id">
+                <option :value="t.id" x-text="t.label"></option>
+              </template>
+            </select>
           </div>
 
-          <!-- days (recurring) -->
-          <div x-show="form.repeats">
+          <!-- days (window recurring / weekly trigger) -->
+          <div x-show="showDays">
             <label class="card-label mb-1 block">Days <span class="text-slate-500 normal-case">(none = every day)</span></label>
             <div class="flex gap-1.5">
               <template x-for="(d, i) in weekdays" :key="i">
-                <button class="text-xs px-2.5 py-1 rounded border transition"
+                <button type="button" class="text-xs px-2.5 py-1 rounded border transition"
                         :class="form.days.includes(i) ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-slate-400 border-white/10 hover:border-white/20'"
                         @click="toggleDay(i)" x-text="d"></button>
               </template>
             </div>
           </div>
 
-          <!-- date (one-time) -->
-          <div x-show="!form.repeats">
+          <!-- date (one-off window) -->
+          <div x-show="showDate">
             <label class="card-label mb-1 block">Date</label>
             <input type="date" x-model="form.date" class="form-control w-40">
-            <p class="text-[10px] text-slate-600 mt-1">Fires once on this date, then never again — the entry stays but goes dormant.</p>
+            <p class="text-[10px] text-slate-600 mt-1">Fires once on this date, then goes dormant.</p>
           </div>
 
-          <!-- windows -->
-          <div>
+          <!-- time of day (daily / weekly) -->
+          <div x-show="showTimeOfDay" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="card-label">Fire at</label>
+              <input type="time" x-model="form.time_of_day" class="form-control w-32">
+            </div>
+            <div>
+              <label class="card-label">Duration (min)</label>
+              <input type="number" x-model="form.duration_min" min="0" step="5" class="form-control w-28">
+              <p class="text-[10px] text-slate-600 mt-1">0 = brief (use an exit condition to bound it)</p>
+            </div>
+          </div>
+
+          <!-- interval -->
+          <div x-show="showInterval" class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="card-label">Every (min)</label>
+              <input type="number" x-model="form.interval_min" min="1" step="5" class="form-control w-24">
+            </div>
+            <div>
+              <label class="card-label">Anchor <span class="text-slate-500 normal-case">(optional)</span></label>
+              <input type="time" x-model="form.anchor_time" class="form-control w-28">
+            </div>
+            <div>
+              <label class="card-label">Duration (min)</label>
+              <input type="number" x-model="form.duration_min" min="0" step="5" class="form-control w-24">
+            </div>
+          </div>
+
+          <!-- windows (window / once) -->
+          <div x-show="showWindows">
             <label class="card-label mb-1 block">Time windows</label>
             <div class="space-y-2">
               <template x-for="(w, i) in form.windows" :key="i">
@@ -192,13 +209,18 @@
                   <input type="time" x-model="w.start" class="form-control w-32">
                   <span class="text-slate-500">→</span>
                   <input type="time" x-model="w.end" class="form-control w-32">
-                  <button class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeWindow(i)" x-show="form.windows.length > 1">✕</button>
+                  <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeWindow(i)" x-show="form.windows.length > 1">✕</button>
                   <span class="text-[10px] text-slate-600" x-show="w.end <= w.start && w.end !== w.start">wraps past midnight</span>
                 </div>
               </template>
             </div>
-            <button class="text-xs text-cyan-400 hover:text-cyan-300 mt-1.5" @click="addWindow()">+ add window</button>
+            <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 mt-1.5" @click="addWindow()">+ add window</button>
           </div>
+
+          <p x-show="form.trigger_type === 'always'" class="text-[11px] text-slate-500 bg-white/[0.03] rounded p-2">
+            <span class="text-cyan-300">Always evaluate:</span> no time trigger — the entry dispatches whenever its
+            entry conditions below hold, and releases when they stop (or an exit condition fires).
+          </p>
 
           <!-- action + params -->
           <div class="grid grid-cols-2 gap-3">
@@ -219,7 +241,6 @@
                 <input type="number" x-model="form.power_pct" min="0" max="100" step="5" class="form-control w-20">
                 <span class="text-xs text-slate-500">%</span>
               </div>
-              <p class="text-[10px] text-slate-600 mt-1">% &gt; 0 overrides watts</p>
             </div>
             <div x-show="formActionMeta().params.includes('pct')">
               <label class="card-label">Reserve %</label>
@@ -233,6 +254,68 @@
                 <option value="Emergency Backup">Emergency Backup</option>
               </select>
             </div>
+          </div>
+
+          <!-- ── Entry conditions (gate) ── -->
+          <div class="rounded border border-white/[0.06] p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="card-label !mb-0">Entry conditions <span class="text-slate-500 normal-case">(gate — must hold to fire)</span></label>
+              <div class="flex items-center gap-2">
+                <select x-model="form.entry_conditions.match" class="form-control !py-1 !text-xs w-24">
+                  <option value="ALL">Match ALL</option>
+                  <option value="ANY">Match ANY</option>
+                </select>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCond('entry_conditions')">+ row</button>
+              </div>
+            </div>
+            <template x-for="(c, i) in form.entry_conditions.conditions" :key="i">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <select x-model="c.sensor" class="form-control !py-1 !text-xs">
+                  <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                </select>
+                <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
+                  <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                </select>
+                <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
+              </div>
+            </template>
+            <div class="flex items-center gap-3 pt-1">
+              <button type="button" class="btn btn-sm btn-secondary !py-1 !text-xs" @click="testVerification()"
+                      x-show="form.entry_conditions.conditions.length">Test Verification</button>
+              <template x-if="testResult !== null">
+                <span class="text-xs" :class="testResult.result === true ? 'text-emerald-300' : (testResult.result === false ? 'text-amber-300' : 'text-slate-400')"
+                      x-text="testResult.msg ? testResult.msg : (testResult.result ? '✓ conditions currently PASS' : '✗ conditions currently FAIL')"></span>
+              </template>
+            </div>
+          </div>
+
+          <!-- ── Exit conditions ── -->
+          <div class="rounded border border-white/[0.06] p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="card-label !mb-0">Exit conditions <span class="text-slate-500 normal-case">(first true ends the window)</span></label>
+              <div class="flex items-center gap-2">
+                <select x-model="form.exit_conditions.match" class="form-control !py-1 !text-xs w-24">
+                  <option value="ALL">Match ALL</option>
+                  <option value="ANY">Match ANY</option>
+                </select>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCond('exit_conditions')">+ row</button>
+              </div>
+            </div>
+            <template x-for="(c, i) in form.exit_conditions.conditions" :key="i">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <select x-model="c.sensor" class="form-control !py-1 !text-xs">
+                  <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                </select>
+                <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
+                  <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                </select>
+                <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
+              </div>
+            </template>
           </div>
 
           <!-- target -->
@@ -260,17 +343,16 @@
                   <option :value="s.id" x-text="s.name"></option>
                 </template>
               </select>
-              <p class="text-[10px] text-slate-500 mt-1">Fans out to every gateway linked to this service. Link gateways under <span class="text-cyan-400">Services Setup</span>.</p>
             </div>
           </div>
 
           <!-- release / conflict / priority -->
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="card-label">On window exit</label>
-              <select x-model="form.release" class="form-control w-full">
-                <option value="release">release → native TOU</option>
-                <option value="hold">hold → suppress native</option>
+              <label class="card-label">On exit / release</label>
+              <select x-model="form.release_policy" class="form-control w-full">
+                <option value="restore_prior_mode">restore prior mode</option>
+                <option value="release">release → native</option>
               </select>
             </div>
             <div>
@@ -285,6 +367,16 @@
               <label class="card-label">Priority</label>
               <input type="number" x-model="form.priority" min="0" max="1000" class="form-control w-full">
             </div>
+          </div>
+
+          <!-- missed policy (triggers only) -->
+          <div x-show="isTrigger">
+            <label class="card-label">If missed during an outage</label>
+            <select x-model="form.missed_policy" class="form-control w-full">
+              <option value="late_fire_remaining">resume if window still open, else log missed</option>
+              <option value="skip">skip (log missed only)</option>
+              <option value="late_fire_always">late-fire even if window passed</option>
+            </select>
           </div>
 
           <!-- footer -->
