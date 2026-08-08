@@ -47,9 +47,15 @@ function scheduleTab() {
     timeline: { segments: [], now_min: 0, weekday: 0 },
     services: [],
     sensors: [],
+    audit: [],
+    auditFilter: '',
+    conn: { connected: true, gateways: {}, recent_outages: [] },
+    expandedId: null,
     previewDay: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, // Mon=0
     loading: false,
     _interval: null,
+
+    auditStatuses: ['fired', 'executed', 'gated', 'missed', 'exit_condition_met'],
 
     // edit form ('null' = closed)
     form: null,
@@ -70,17 +76,84 @@ function scheduleTab() {
       }, 20000);
     },
 
+    _logUrl() {
+      return `api/schedules/log?limit=40${this.auditFilter ? '&status=' + this.auditFilter : ''}`;
+    },
+
     async load() {
-      const [sch, tl, svc, sen] = await Promise.all([
+      const [sch, tl, svc, sen, log, conn] = await Promise.all([
         fetchJSON('api/schedules'),
         fetchJSON(`api/schedules/timeline?day=${this.previewDay}`),
         fetchJSON('api/services'),
         fetchJSON('api/sensors'),
+        fetchJSON(this._logUrl()),
+        fetchJSON('api/health/connectivity'),
       ]);
       if (sch && sch.schedules) this.schedules = sch.schedules;
       if (tl && tl.segments) this.timeline = tl;
       if (svc && svc.services) this.services = svc.services;
       if (sen && sen.sensors) this.sensors = sen.sensors;
+      if (log && log.events) this.audit = log.events;
+      if (conn) this.conn = conn;
+    },
+
+    async setAuditFilter(f) {
+      this.auditFilter = this.auditFilter === f ? '' : f;
+      const log = await fetchJSON(this._logUrl());
+      if (log && log.events) this.audit = log.events;
+    },
+
+    // ── audit / connectivity display ─────────────────────────
+    scheduleName(id) {
+      const s = this.schedules.find(x => x.id === id);
+      return s ? s.name : (id || '—');
+    },
+
+    fmtTs(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts * 1000);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    },
+
+    auditClass(r) {
+      return ({
+        fired: 'text-emerald-300', executed: 'text-emerald-300',
+        gated: 'text-amber-300', deferred: 'text-amber-300', hold: 'text-amber-300',
+        missed: 'text-red-300', failed: 'text-red-300',
+        exit_condition_met: 'text-cyan-300', duration_elapsed: 'text-slate-400',
+        release: 'text-slate-400', ok: 'text-emerald-300',
+      })[r] || 'text-slate-300';
+    },
+
+    get anyOutage() {
+      return this.conn && this.conn.connected === false;
+    },
+    get recentOutages() {
+      return (this.conn && this.conn.recent_outages) || [];
+    },
+    outageDur(o) {
+      if (!o.end_ts) return 'ongoing';
+      const s = Math.round(o.end_ts - o.start_ts);
+      return s < 60 ? `${s}s` : `${Math.round(s / 60)}m`;
+    },
+
+    toggleExpand(id) { this.expandedId = this.expandedId === id ? null : id; },
+    get expandedEntry() { return this.schedules.find(x => x.id === this.expandedId) || null; },
+
+    // Readable one-line rendering of a condition tree (one level of nesting shown as "(…)").
+    treeText(t) {
+      if (!t || !t.conditions || !t.conditions.length) return '—';
+      const join = t.match === 'ANY' ? ' OR ' : ' AND ';
+      return t.conditions.map(c =>
+        c.conditions ? '(…)' : `${c.sensor} ${c.op} ${c.value}${c.op === 'between' ? '..' + c.value2 : ''}`
+      ).join(join);
+    },
+
+    triggerText(e) {
+      if (!e.trigger_kind) return this.whenLabel(e);
+      const s = e.trigger_spec || {};
+      const dur = e.duration_s ? ` for ${Math.round(e.duration_s / 60)} min` : '';
+      return this.whenLabel(e) + dur;
     },
 
     async setPreviewDay(d) {
