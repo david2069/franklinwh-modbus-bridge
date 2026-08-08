@@ -142,3 +142,38 @@ def test_sensor_catalog_includes_values_when_points_given():
     by_id = {row["id"]: row for row in cat}
     assert by_id["battery.soc_pct"]["value"] == 62.5
     assert by_id["price.export_c_per_kwh"]["value"] is None
+
+
+# ── lifetime energy sensors (Wh counter → kWh) ────────────────
+
+
+def test_lifetime_energy_sensors_wh_to_kwh():
+    pts = {
+        "grid_import_wh": 1_879_145,
+        "grid_export_wh": 4_874_971,
+        "pv_energy_total_wh": 14_179_911,
+        "dc_energy_charged_wh": 7_334_060,
+        "dc_energy_discharged_wh": 7_174_380,
+    }
+    snap = snapshot(pts, NOW)
+    assert snap["energy.grid_import.total_kwh"] == 1879.145
+    assert snap["energy.grid_export.total_kwh"] == 4874.971
+    assert snap["energy.solar.total_kwh"] == 14179.911
+    assert snap["energy.battery_charge.total_kwh"] == 7334.06
+    assert snap["energy.battery_discharge.total_kwh"] == 7174.38
+
+
+def test_lifetime_energy_none_when_counter_absent():
+    snap = snapshot({}, NOW)
+    for sid in (
+        "energy.grid_import.total_kwh", "energy.grid_export.total_kwh",
+        "energy.solar.total_kwh", "energy.battery_charge.total_kwh",
+        "energy.battery_discharge.total_kwh",
+    ):
+        assert snap[sid] is None
+
+
+def test_energy_sensors_in_catalog_with_kwh_unit():
+    cat = {row["id"]: row for row in sensor_catalog()}
+    assert cat["energy.grid_export.total_kwh"]["unit"] == "kWh"
+    assert cat["energy.solar.total_kwh"]["kind"] == "number"

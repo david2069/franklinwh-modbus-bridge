@@ -97,6 +97,18 @@ def _pv_generating(points: Points, _now: datetime) -> bool | None:
     return solar > PV_GENERATING_THRESHOLD_W
 
 
+def _kwh(points: Points, key: str) -> float | None:
+    """Lifetime cumulative energy in kWh from a Wh point, or None if absent.
+
+    The aGate exposes monotonically-increasing lifetime counters over Modbus
+    (701.TotWhAbs/Inj, 502.OutWh, 714.DCWhAbs/Inj) surfaced under these keys.
+    Period totals (today/week/month/YTD) are counter deltas across a boundary —
+    a separate stateful component; these are the raw lifetime figures.
+    """
+    wh = _num(points, key)
+    return round(wh / 1000.0, 3) if wh is not None else None
+
+
 SENSORS: list[SensorDef] = [
     SensorDef("battery.soc_pct", "Battery SOC (%)", "%", "number", lambda p, _n: _num(p, "soc")),
     SensorDef(
@@ -125,6 +137,27 @@ SENSORS: list[SensorDef] = [
         "mode.raw", "Operating Mode (code)", None, "number", lambda p, _n: _num(p, "mode_raw")
     ),
     SensorDef("pv.is_generating", "PV Generating", None, "bool", _pv_generating),
+    # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
+    SensorDef(
+        "energy.grid_import.total_kwh", "Grid Import — lifetime (kWh)", "kWh", "number",
+        lambda p, _n: _kwh(p, "grid_import_wh"),
+    ),
+    SensorDef(
+        "energy.grid_export.total_kwh", "Grid Export — lifetime (kWh)", "kWh", "number",
+        lambda p, _n: _kwh(p, "grid_export_wh"),
+    ),
+    SensorDef(
+        "energy.solar.total_kwh", "Solar — lifetime (kWh)", "kWh", "number",
+        lambda p, _n: _kwh(p, "pv_energy_total_wh"),
+    ),
+    SensorDef(
+        "energy.battery_charge.total_kwh", "Battery Charged — lifetime (kWh)", "kWh", "number",
+        lambda p, _n: _kwh(p, "dc_energy_charged_wh"),
+    ),
+    SensorDef(
+        "energy.battery_discharge.total_kwh", "Battery Discharged — lifetime (kWh)", "kWh",
+        "number", lambda p, _n: _kwh(p, "dc_energy_discharged_wh"),
+    ),
     SensorDef("time.hour", "Hour of day (0..23, local)", None, "number", lambda _p, n: n.hour),
     SensorDef("time.dow", "Day of week (0=Mon..6=Sun)", None, "number", lambda _p, n: n.weekday()),
     SensorDef("time.month", "Month (1..12)", None, "number", lambda _p, n: n.month),
