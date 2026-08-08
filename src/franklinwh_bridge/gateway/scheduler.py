@@ -351,45 +351,83 @@ class ScheduleEngine:
 
     async def catchup(
         self, gateway_id: str, since_ts: float, now: datetime | None = None
-    ) -> list[str]:
-        """After an outage on ``gateway_id`` spanning ``since_ts``..now, find fires
-        that were swallowed and audit them as ``missed`` (MissedRun).
+    ) -> dict:
+        """After an outage on ``gateway_id`` spanning ``since_ts``..now, resolve the
+        fires that were swallowed per each entry's ``missed_policy``.
 
-        Implements the default ``late_fire_remaining`` policy: a window still open
-        now is left for the normal tick to resume (not "missed"); a window that
-        fully passed during the outage is recorded as missed. Returns the list of
-        affected entry ids (for linking to the OutageEvent).
+        - A window still open now is left for the normal tick to resume (not
+          "missed") — this is the default ``late_fire_remaining`` behaviour.
+        - A window that fully passed during the outage is recorded as ``missed``.
+        - ``late_fire_always``: additionally **re-dispatch** the entry now for its
+          duration (``catchup_duration_s`` if set, else ``duration_s``), gated by
+          ``entry_conditions`` — audited ``late_fired``. The dispatch carries a
+          command watchdog so the handler auto-releases (it takes no engine
+          ownership; the stateless tick won't manage or release it).
 
-        Not handled here (documented follow-ups): ``late_fire_always`` (needs a
-        re-fire-now override of the stateless model) and startup catch-up (needs a
-        persisted last-ok timestamp across restarts).
+        Returns ``{"missed": [...], "late_fired": [...]}`` (entry ids) for linking
+        to the OutageEvent. Serialised against the tick.
+
+        Still a follow-up: startup catch-up (needs a persisted last-ok timestamp
+        across restarts — this runs on live recovery only).
         """
         now_dt = now or self._now()
         since_dt = datetime.fromtimestamp(since_ts)
         missed_ids: list[str] = []
-        for entry in self._entries:
-            pairs = self._resolver(entry.get("target_type", "gateway"), entry.get("target_id"))
-            if gateway_id not in [gw for gw, _h in pairs]:
-                continue
-            if entry_active(entry, now_dt):
-                continue  # still-open window → the normal tick resumes it
-            missed_at = _missed_fire_time(entry, since_dt, now_dt)
-            if missed_at is None:
-                continue
-            missed_ids.append(entry["id"])
-            policy = entry.get("missed_policy") or "late_fire_remaining"
-            ttype = entry.get("target_type", "gateway")
-            target = f"{ttype}:{entry.get('target_id') or ''}:{gateway_id}"
-            await self._audit(
-                entry["id"], entry.get("action"), target, "missed",
-                f"fire at {missed_at.isoformat()} missed during outage (policy={policy})",
-            )
+        late_fired: list[str] = []
+        async with self._tick_lock:
+            self._snap_cache = {}  # fresh reads for any late-fire gate check
+            for entry in self._entries:
+                pairs = self._resolver(entry.get("target_type", "gateway"), entry.get("target_id"))
+                handlers = {gw: h for gw, h in pairs}
+                if gateway_id not in handlers:
+                    continue
+                if entry_active(entry, now_dt):
+                    continue  # still-open window → the normal tick resumes it
+                missed_at = _missed_fire_time(entry, since_dt, now_dt)
+                if missed_at is None:
+                    continue
+                missed_ids.append(entry["id"])
+                policy = entry.get("missed_policy") or "late_fire_remaining"
+                ttype = entry.get("target_type", "gateway")
+                target = f"{ttype}:{entry.get('target_id') or ''}:{gateway_id}"
+
+                if policy != "late_fire_always":
+                    await self._audit(
+                        entry["id"], entry.get("action"), target, "missed",
+                        f"fire at {missed_at.isoformat()} missed during outage (policy={policy})",
+                    )
+                    continue
+
+                # late_fire_always → re-dispatch now, gated by entry_conditions.
+                entry_tree = entry.get("entry_conditions")
+                if entry_tree is not None:
+                    ok, trace = eval_conditions(entry_tree, self._snapshot(gateway_id, now_dt))
+                    if not ok:
+                        await self._audit(
+                            entry["id"], entry.get("action"), target, "missed",
+                            _condition_reason(
+                                f"missed at {missed_at.isoformat()} — late_fire_always gated", trace
+                            ),
+                        )
+                        continue
+                params = dict(entry.get("params") or {})
+                dur = entry.get("catchup_duration_s") or entry.get("duration_s")
+                if dur:
+                    params.setdefault("duration_s", dur)
+                cmds = action_to_commands(entry.get("action"), params)
+                if cmds:
+                    await self._send(handlers[gateway_id], cmds)
+                    late_fired.append(entry["id"])
+                    await self._audit(
+                        entry["id"], entry.get("action"), target, "late_fired",
+                        f"late-fired (missed at {missed_at.isoformat()}, policy late_fire_always)",
+                    )
         if missed_ids:
             logger.info(
-                "Catch-up: gateway %s — %d missed fire(s) after outage recovery",
-                gateway_id, len(missed_ids),
+                "Catch-up: gateway %s — %d missed, %d late-fired after recovery",
+                gateway_id, len(missed_ids), len(late_fired),
             )
-        return missed_ids
+        return {"missed": missed_ids, "late_fired": late_fired}
 
     async def execute(
         self, schedule_id: str, *, force: bool = False, now: datetime | None = None

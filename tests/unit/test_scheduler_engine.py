@@ -382,8 +382,8 @@ async def test_catchup_audits_fully_passed_trigger_as_missed():
         duration_s=1800, when_spec={},
     )
     eng = make_engine([e], h, audits=audits)
-    missed = await eng.catchup("default", _SINCE, now=MON)
-    assert missed == ["e1"]
+    result = await eng.catchup("default", _SINCE, now=MON)
+    assert result["missed"] == ["e1"]
     assert any(a["result"] == "missed" for a in audits)
 
 
@@ -397,8 +397,8 @@ async def test_catchup_skips_still_open_window():
         duration_s=7200, when_spec={},
     )
     eng = make_engine([e], h, audits=audits)
-    missed = await eng.catchup("default", _SINCE, now=MON)
-    assert missed == []
+    result = await eng.catchup("default", _SINCE, now=MON)
+    assert result["missed"] == []
     assert not any(a["result"] == "missed" for a in audits)
 
 
@@ -410,8 +410,8 @@ async def test_catchup_no_fire_during_outage_window():
         duration_s=600, when_spec={},
     )
     eng = make_engine([e], h)
-    missed = await eng.catchup("default", _SINCE, now=MON)
-    assert missed == []
+    result = await eng.catchup("default", _SINCE, now=MON)
+    assert result["missed"] == []
 
 
 async def test_catchup_legacy_window_missed():
@@ -420,8 +420,8 @@ async def test_catchup_legacy_window_missed():
     # legacy window 09:15–09:45, fully passed by 10:30.
     e = entry(when_spec={"windows": [{"start": "09:15", "end": "09:45"}]})
     eng = make_engine([e], h, audits=audits)
-    missed = await eng.catchup("default", _SINCE, now=MON)
-    assert missed == ["e1"]
+    result = await eng.catchup("default", _SINCE, now=MON)
+    assert result["missed"] == ["e1"]
     assert any(a["result"] == "missed" for a in audits)
 
 
@@ -434,8 +434,41 @@ async def test_catchup_ignores_other_gateway_targets():
     # Resolver maps this entry to gateway "gwX", not "default".
     eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("gwX", h)])
     eng._entries = [e]
-    missed = await eng.catchup("default", _SINCE, now=MON)  # recovered gw ≠ gwX
-    assert missed == []
+    result = await eng.catchup("default", _SINCE, now=MON)  # recovered gw ≠ gwX
+    assert result["missed"] == []
+
+
+async def test_catchup_late_fire_always_redispatches():
+    h = FakeHandler()
+    audits: list = []
+    # Fully-passed fire (09:30 for 30 min) + late_fire_always → re-dispatch NOW.
+    e = entry(
+        action="force_discharge", trigger_kind="oneoff",
+        trigger_spec={"fire_at": "2026-06-15T09:30:00"}, duration_s=1800,
+        when_spec={}, missed_policy="late_fire_always",
+    )
+    eng = make_engine([e], h, points={"soc": 80}, audits=audits)
+    result = await eng.catchup("default", _SINCE, now=MON)
+    assert result["missed"] == ["e1"]
+    assert result["late_fired"] == ["e1"]
+    assert h.state.action == "Force Discharge"  # actually dispatched
+    assert any(a["result"] == "late_fired" for a in audits)
+
+
+async def test_catchup_late_fire_always_gated_by_entry_conditions():
+    h = FakeHandler()
+    audits: list = []
+    e = entry(
+        action="force_charge", trigger_kind="oneoff",
+        trigger_spec={"fire_at": "2026-06-15T09:30:00"}, duration_s=1800,
+        when_spec={}, missed_policy="late_fire_always",
+        entry_conditions={"conditions": [GT]},  # soc > 50
+    )
+    eng = make_engine([e], h, points={"soc": 30}, audits=audits)  # gate fails
+    result = await eng.catchup("default", _SINCE, now=MON)
+    assert result["missed"] == ["e1"]
+    assert result["late_fired"] == []  # gated, not re-fired
+    assert not any(c[0] == "battery_command" for c in h.calls)
 
 
 # ── execute (fire-now) ────────────────────────────────────────

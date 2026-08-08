@@ -330,11 +330,11 @@ async def lifespan(app: FastAPI):
     app.state.schedule_engine = schedule_engine
 
     async def _on_recover(gw_id: str, outage_id: str, start_ts: float, end_ts: float) -> None:
-        """On outage recovery, run schedule catch-up and link the missed jobs to
-        the outage record. Still-open windows are resumed by the next tick."""
-        missed = await schedule_engine.catchup(gw_id, start_ts)
-        if missed:
-            await set_outage_catchup(db, outage_id, missed, [])
+        """On outage recovery, run schedule catch-up and link the missed +
+        late-fired jobs to the outage record. Still-open windows resume next tick."""
+        result = await schedule_engine.catchup(gw_id, start_ts)
+        if result["missed"] or result["late_fired"]:
+            await set_outage_catchup(db, outage_id, result["missed"], result["late_fired"])
 
     connectivity.set_on_recover(_on_recover)
 

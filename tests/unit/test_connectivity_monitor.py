@@ -165,9 +165,9 @@ async def test_recovery_runs_catchup_and_links_outage(db):
     await engine.load()
 
     async def on_recover(gw, oid, start, end):
-        missed = await engine.catchup(gw, start)
-        if missed:
-            await set_outage_catchup(db, oid, missed, [])
+        result = await engine.catchup(gw, start)
+        if result["missed"] or result["late_fired"]:
+            await set_outage_catchup(db, oid, result["missed"], result["late_fired"])
 
     mon = ConnectivityMonitor(db, outage_threshold_s=60, on_recover=on_recover)
     await mon.on_sample(sample("default", since_ts))       # last good poll 09:00
