@@ -25,7 +25,7 @@
   <!-- Visual Timeline -->
   <div class="card mb-4">
     <div class="flex items-center justify-between mb-3">
-      <div class="card-label">24-Hour Visual Timeline <span class="text-slate-600 normal-case">(window schedules)</span></div>
+      <div class="card-label">24-Hour Visual Timeline <span class="text-slate-600 normal-case">(schedules &amp; automations)</span></div>
       <div class="flex gap-1">
         <template x-for="(d, i) in weekdays" :key="i">
           <button class="text-[11px] px-2 py-0.5 rounded transition"
@@ -39,8 +39,9 @@
          style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.06) 0 6px, transparent 6px 12px);">
       <template x-for="(seg, idx) in visualSegments" :key="idx">
         <div class="absolute top-0 h-full flex items-center justify-center overflow-hidden"
+             :class="seg.trigger ? 'border-t-2 border-white/70' : ''"
              :style="`left:${pct(seg._l)}%; width:${pct(seg._w)}%; background:${seg.colour}; opacity:.85;`"
-             :title="`${seg.name} — ${actionMeta(seg.action).label}`">
+             :title="`${seg.name} — ${actionMeta(seg.action).label}${seg.trigger ? ' (automation fire)' : ''}`">
           <span class="text-[9px] font-semibold text-white/90 truncate px-1" x-show="seg._w > 80" x-text="seg.name"></span>
         </div>
       </template>
@@ -64,6 +65,10 @@
         <span class="w-3 h-3 rounded-sm inline-block"
               style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.3) 0 3px, transparent 3px 6px);"></span>
         <span>Native (TOU / mode)</span>
+      </span>
+      <span class="flex items-center gap-1.5 text-slate-400">
+        <span class="w-3 h-3 rounded-sm inline-block border-t-2 border-white/70" style="background: rgba(100,116,139,.85);"></span>
+        <span>Automation fire (trigger + duration)</span>
       </span>
     </div>
   </div>

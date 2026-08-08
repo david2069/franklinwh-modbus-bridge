@@ -230,3 +230,53 @@ def test_prev_always_and_invalid_return_none():
     assert prev_fire_at({"kind": "always"}, now) is None
     assert prev_fire_at({"kind": "cron"}, now) is None
     assert prev_fire_at(None, now) is None
+
+
+# ── day_segments (timeline preview) ──────────────────────────
+
+
+def test_day_segments_daily_every_weekday():
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
+    for wd in range(7):
+        segs = day_segments("daily", {"time_of_day": "18:00"}, 7200, wd)
+        assert segs == [(1080, 1080 + 120)]  # 18:00 for 120 min
+
+
+def test_day_segments_weekly_only_matching_days():
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
+    spec = {"time_of_day": "09:00", "days_of_week": [0, 2]}  # Mon, Wed
+    assert day_segments("weekly", spec, 1800, 0) == [(540, 570)]
+    assert day_segments("weekly", spec, 1800, 1) == []  # Tue
+
+
+def test_day_segments_min_width_for_zero_duration():
+    from franklinwh_bridge.gateway.scheduler_triggers import MIN_SEGMENT_MIN, day_segments
+    segs = day_segments("daily", {"time_of_day": "06:00"}, None, 0)
+    assert segs == [(360, 360 + MIN_SEGMENT_MIN)]
+
+
+def test_day_segments_interval_tiles_the_day():
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
+    segs = day_segments("interval", {"every_seconds": 3600}, 900, 0)  # hourly, 15 min
+    assert len(segs) == 24
+    assert segs[0] == (0, 15)
+    assert segs[1] == (60, 75)
+
+
+def test_day_segments_clamps_past_midnight():
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
+    segs = day_segments("daily", {"time_of_day": "23:30"}, 7200, 0)  # 23:30 + 2h
+    assert segs == [(1410, 1440)]  # clamped to end-of-day
+
+
+def test_day_segments_oneoff_on_matching_weekday_only():
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
+    # 2026-06-15 is a Monday (weekday 0)
+    spec = {"fire_at": "2026-06-15T14:00:00"}
+    assert day_segments("oneoff", spec, 3600, 0) == [(840, 900)]
+    assert day_segments("oneoff", spec, 3600, 1) == []
+
+
+def test_day_segments_always_is_empty():
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
+    assert day_segments("always", {}, 3600, 0) == []

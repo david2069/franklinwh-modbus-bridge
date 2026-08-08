@@ -212,6 +212,69 @@ def _prev_interval(trigger: dict, now: datetime) -> datetime | None:
     return anchor + timedelta(seconds=every * k)  # <= now by construction
 
 
+#: Minimum segment width (minutes) so a brief/zero-duration fire is still visible
+#: on the 24h timeline bar.
+MIN_SEGMENT_MIN = 8
+
+
+def day_segments(
+    trigger_kind: str,
+    spec: dict,
+    duration_s: int | None,
+    weekday: int,
+) -> list[tuple[int, int]]:
+    """Timeline segments (start_min, end_min) a trigger produces on ``weekday``
+    (0=Mon..6=Sun), for the 24h preview bar. Pure — no clock.
+
+    ``always`` has no discrete fire → no segments. A fire+duration crossing
+    midnight is clamped to end-of-day (the bar is per-day). ``interval`` is
+    capped to keep a dense schedule from flooding the bar.
+    """
+    dur_min = max(int((duration_s or 0) // 60), MIN_SEGMENT_MIN)
+    spec = spec or {}
+    out: list[tuple[int, int]] = []
+
+    def add(start_min: int) -> None:
+        if 0 <= start_min < 1440:
+            out.append((start_min, min(start_min + dur_min, 1440)))
+
+    if trigger_kind == "daily":
+        hm = _parse_hhmm(spec.get("time_of_day"))
+        if hm:
+            add(hm[0] * 60 + hm[1])
+    elif trigger_kind == "weekly":
+        hm = _parse_hhmm(spec.get("time_of_day"))
+        days = {int(d) for d in (spec.get("days_of_week") or []) if 0 <= int(d) <= 6}
+        if hm and weekday in days:
+            add(hm[0] * 60 + hm[1])
+    elif trigger_kind == "interval":
+        try:
+            every_min = max(1, int(spec.get("every_seconds")) // 60)
+        except (ValueError, TypeError):
+            every_min = 0
+        if every_min:
+            anchor_hm = _parse_hhmm(spec.get("anchor_time")) if spec.get("anchor_time") else (0, 0)
+            anchor = (anchor_hm[0] * 60 + anchor_hm[1]) if anchor_hm else 0
+            first = anchor % every_min
+            t = first
+            count = 0
+            while t < 1440 and count < 96:  # cap dense schedules
+                add(t)
+                t += every_min
+                count += 1
+    elif trigger_kind == "oneoff":
+        raw = spec.get("fire_at")
+        if raw:
+            try:
+                fire = datetime.fromisoformat(str(raw))
+                if fire.weekday() == weekday:  # preview on the matching weekday
+                    add(fire.hour * 60 + fire.minute)
+            except (ValueError, TypeError):
+                pass
+    # "always" and anything else → no segments
+    return out
+
+
 def prev_fire_at(trigger: dict | None, now: datetime) -> datetime | None:
     """Most recent fire instant at/before ``now``, or None.
 

@@ -222,12 +222,34 @@ async def schedule_timeline(request: Request, day: int | None = None):
     """
     db: aiosqlite.Connection = request.app.state.db
     from franklinwh_bridge.gateway.scheduler import entry_date, parse_when
+    from franklinwh_bridge.gateway.scheduler_triggers import day_segments
 
     now = datetime.now()
     weekday = now.weekday() if day is None else max(0, min(int(day), 6))
     segments = []
+
+    def _emit(e, start_min, end_min, is_trigger):
+        segments.append({
+            "schedule_id": e["id"],
+            "name": e["name"],
+            "action": e["action"],
+            "target_type": e["target_type"],
+            "target_id": e.get("target_id"),
+            "start_min": start_min,
+            "end_min": end_min,
+            "wraps_midnight": end_min <= start_min,
+            "trigger": is_trigger,
+        })
+
     for e in await get_schedules(db):
         if not e.get("enabled"):
+            continue
+        if e.get("trigger_kind"):
+            # Fire-based (v2) entry: derive segments from its trigger + duration.
+            for start_min, end_min in day_segments(
+                e["trigger_kind"], e.get("trigger_spec") or {}, e.get("duration_s"), weekday
+            ):
+                _emit(e, start_min, end_min, True)
             continue
         when = e.get("when_spec", {})
         days, windows = parse_when(when)
@@ -240,16 +262,7 @@ async def schedule_timeline(request: Request, day: int | None = None):
         elif days and weekday not in days:
             continue
         for start_min, end_min in windows:
-            segments.append({
-                "schedule_id": e["id"],
-                "name": e["name"],
-                "action": e["action"],
-                "target_type": e["target_type"],
-                "target_id": e.get("target_id"),
-                "start_min": start_min,
-                "end_min": end_min,
-                "wraps_midnight": end_min <= start_min,
-            })
+            _emit(e, start_min, end_min, False)
     return {"weekday": weekday, "now_min": now.hour * 60 + now.minute, "segments": segments}
 
 
