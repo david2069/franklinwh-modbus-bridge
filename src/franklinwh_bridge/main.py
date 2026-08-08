@@ -405,6 +405,14 @@ async def lifespan(app: FastAPI):
             logger.error("Schedule engine start failed: %s", exc)
 
         try:
+            # Startup catch-up: if the Bridge was down across a gap (persisted
+            # last-good-poll per gateway), record the downtime and catch up any
+            # fires missed while offline. Runs after the engine has loaded entries.
+            await connectivity.startup_catchup(schedule_engine)
+        except Exception as exc:
+            logger.warning("Startup catch-up failed: %s", exc)
+
+        try:
             await log_metrics_snapshot(db, "metrics_snapshot_startup")
         except Exception as exc:
             logger.warning("Metrics snapshot (startup) failed: %s", exc)

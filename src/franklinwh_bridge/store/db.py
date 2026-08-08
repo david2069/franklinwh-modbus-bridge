@@ -1078,6 +1078,29 @@ async def get_schedule_log(
         db.row_factory = aiosqlite.Row
 
 
+# ── Generic app_config key/value ─────────────────────────────
+
+
+async def set_app_config(db: aiosqlite.Connection, key: str, value: str) -> None:
+    """Upsert a value into the generic app_config key/value store."""
+    await db.execute(
+        "INSERT INTO app_config (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    await db.commit()
+
+
+async def get_app_config(
+    db: aiosqlite.Connection, key: str, default: str | None = None
+) -> str | None:
+    """Read a value from the app_config key/value store, or ``default``."""
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT value FROM app_config WHERE key = ?", (key,)) as cur:
+        row = await cur.fetchone()
+        return row["value"] if row else default
+
+
 # ── Connectivity outages (scheduler v2 Phase 2) ──────────────
 
 _OUTAGE_JSON_FIELDS = ("missed_job_ids", "catchup_run_ids")

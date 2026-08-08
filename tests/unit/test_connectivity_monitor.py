@@ -179,3 +179,78 @@ async def test_recovery_runs_catchup_and_links_outage(db):
     outage = await get_outage(db, open_row["id"])
     assert outage["end_ts"] == recover_ts
     assert outage["missed_job_ids"] == [row["id"]]
+
+
+# ── persisted last-ok + startup catch-up (Phase 2 follow-up) ──
+
+
+async def test_app_config_set_get_roundtrip(db):
+    from franklinwh_bridge.store.db import get_app_config, set_app_config
+
+    await set_app_config(db, "k", "v1")
+    assert await get_app_config(db, "k") == "v1"
+    await set_app_config(db, "k", "v2")  # upsert
+    assert await get_app_config(db, "k") == "v2"
+    assert await get_app_config(db, "missing", "def") == "def"
+
+
+async def test_monitor_persists_and_loads_last_ok(db):
+    mon = ConnectivityMonitor(db, outage_threshold_s=60)
+    await mon.on_sample(sample("default", 1000.0))  # first ok persists (1000-0 >= 60)
+    assert await mon.load_persisted() == {"default": 1000.0}
+
+
+async def test_startup_catchup_runs_for_downtime_gap(db):
+    import json
+    import time as _time
+    from datetime import datetime
+
+    from franklinwh_bridge.gateway.scheduler import ScheduleEngine
+    from franklinwh_bridge.store.db import (
+        create_schedule,
+        get_recent_outages,
+        set_app_config,
+    )
+
+    now_dt = datetime(2026, 6, 15, 10, 30)
+    last_ok = _time.mktime(datetime(2026, 6, 15, 9, 0).timetuple())  # down since 09:00
+    now_ts = _time.mktime(now_dt.timetuple())
+
+    await set_app_config(db, "conn_last_ok", json.dumps({"default": last_ok}))
+    # oneoff that fired at 09:30 for 30 min → fully passed (missed) by 10:30.
+    row = await create_schedule(
+        db, name="peak", when_spec={}, action="force_discharge",
+        target_type="gateway", target_id="default",
+    )
+    await db.execute(
+        "UPDATE schedules SET trigger_kind='oneoff', "
+        "trigger_spec='{\"fire_at\": \"2026-06-15T09:30:00\"}', duration_s=1800 WHERE id=?",
+        (row["id"],),
+    )
+    await db.commit()
+
+    engine = ScheduleEngine(
+        db, resolver=lambda tt, tid: [("default", object())], now_fn=lambda: now_dt
+    )
+    await engine.load()
+
+    mon = ConnectivityMonitor(db, outage_threshold_s=60, now_fn=lambda: now_ts)
+    summary = await mon.startup_catchup(engine)
+
+    assert summary["default"]["missed"] == [row["id"]]
+    outages = await get_recent_outages(db, gateway_id="default")
+    assert outages and outages[0]["reason"] == "restart_downtime"
+    assert outages[0]["missed_job_ids"] == [row["id"]]
+
+
+async def test_startup_catchup_skips_quick_restart(db):
+    import json
+
+    from franklinwh_bridge.gateway.scheduler import ScheduleEngine
+    from franklinwh_bridge.store.db import set_app_config
+
+    await set_app_config(db, "conn_last_ok", json.dumps({"default": 1980.0}))  # 20s gap
+    engine = ScheduleEngine(db, resolver=lambda tt, tid: [("default", object())])
+    await engine.load()
+    mon = ConnectivityMonitor(db, outage_threshold_s=60, now_fn=lambda: 2000.0)
+    assert await mon.startup_catchup(engine) == {}
