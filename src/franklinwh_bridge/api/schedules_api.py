@@ -181,10 +181,36 @@ async def add_schedule(body: ScheduleCreate, request: Request):
 
 
 @router.get("/schedules/log")
-async def schedule_log(request: Request, limit: int = 100):
-    """Recent schedule dispatch/audit events (newest first)."""
+async def schedule_log(
+    request: Request,
+    limit: int = 100,
+    schedule_id: str | None = None,
+    status: str | None = None,
+):
+    """Recent schedule dispatch/audit events (newest first).
+
+    Optional filters: ``schedule_id`` (one entry's runs) and ``status`` (the
+    audit result: fired/gated/missed/executed/exit_condition_met/…) — this backs
+    the FWHAI audit + history views.
+    """
     db: aiosqlite.Connection = request.app.state.db
-    return {"events": await get_schedule_log(db, limit=min(max(limit, 1), 500))}
+    events = await get_schedule_log(
+        db, limit=min(max(limit, 1), 500), schedule_id=schedule_id, status=status
+    )
+    return {"events": events}
+
+
+@router.post("/schedules/{schedule_id}/execute")
+async def execute_schedule(schedule_id: str, request: Request, force: bool = False):
+    """Fire a schedule entry's action now (respects entry_conditions unless
+    ``?force=true``). The dispatch auto-releases after the entry's duration."""
+    engine = getattr(request.app.state, "schedule_engine", None)
+    if engine is None:
+        raise HTTPException(503, "Schedule engine not available")
+    result = await engine.execute(schedule_id, force=force)
+    if result.get("status") == "not_found":
+        raise HTTPException(404, f"Schedule '{schedule_id}' not found")
+    return result
 
 
 @router.get("/schedules/timeline")

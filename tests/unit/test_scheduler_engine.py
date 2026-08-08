@@ -436,3 +436,73 @@ async def test_catchup_ignores_other_gateway_targets():
     eng._entries = [e]
     missed = await eng.catchup("default", _SINCE, now=MON)  # recovered gw ≠ gwX
     assert missed == []
+
+
+# ── execute (fire-now) ────────────────────────────────────────
+
+
+async def test_execute_fires_now(tmp_path):
+    from franklinwh_bridge.store.db import create_schedule, init_db
+
+    db = await init_db(tmp_path / "exec.db")
+    try:
+        row = await create_schedule(db, name="x", when_spec={}, action="force_standby")
+        h = FakeHandler()
+        eng = ScheduleEngine(db, resolver=lambda tt, tid: [("default", h)])
+        result = await eng.execute(row["id"])
+        assert result["status"] == "fired"
+        assert result["dispatched"] == ["default"]
+        assert ("battery_command", "Force Standby") in h.calls
+    finally:
+        await db.close()
+
+
+async def test_execute_respects_entry_conditions_unless_forced(tmp_path):
+    from franklinwh_bridge.store.db import create_schedule, init_db
+
+    db = await init_db(tmp_path / "exec2.db")
+    try:
+        row = await create_schedule(
+            db, name="x", when_spec={}, action="force_charge",
+            entry_conditions={"conditions": [GT]},  # soc > 50
+        )
+        h = FakeHandler()
+        eng = ScheduleEngine(
+            db, resolver=lambda tt, tid: [("default", h)], points_fn=lambda gw: {"soc": 30}
+        )
+        gated = await eng.execute(row["id"])
+        assert gated["status"] == "gated"
+        assert not any(c[0] == "battery_command" for c in h.calls)
+
+        forced = await eng.execute(row["id"], force=True)
+        assert forced["status"] == "fired"
+        assert h.state.action == "Force Charge"
+    finally:
+        await db.close()
+
+
+async def test_execute_not_found(tmp_path):
+    from franklinwh_bridge.store.db import init_db
+
+    db = await init_db(tmp_path / "exec3.db")
+    try:
+        eng = ScheduleEngine(db, resolver=lambda tt, tid: [("default", FakeHandler())])
+        result = await eng.execute("sch_nope")
+        assert result["status"] == "not_found"
+    finally:
+        await db.close()
+
+
+async def test_audit_target_is_stringified(tmp_path):
+    # Regression: internal audits pass a (ttype, tid, gw_id) tuple; it must reach
+    # the sink as a string (a raw tuple binding would drop the row).
+    seen = []
+
+    async def on_audit(sid, action, target, result, detail):
+        seen.append(target)
+
+    h = FakeHandler()
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("default", h)], on_audit=on_audit)
+    eng._entries = [entry()]
+    await eng.tick(MON)
+    assert seen and all(isinstance(t, str) for t in seen)

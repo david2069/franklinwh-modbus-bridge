@@ -1047,14 +1047,29 @@ async def log_schedule_event(
     await db.commit()
 
 
-async def get_schedule_log(db: aiosqlite.Connection, limit: int = 100) -> list[dict]:
-    """Return the most recent schedule_log rows, newest first."""
+async def get_schedule_log(
+    db: aiosqlite.Connection,
+    limit: int = 100,
+    schedule_id: str | None = None,
+    status: str | None = None,
+) -> list[dict]:
+    """Return the most recent schedule_log rows, newest first, optionally
+    filtered by ``schedule_id`` and/or ``status`` (the audit ``result``)."""
     db.row_factory = aiosqlite.Row
+    clauses, args = [], []
+    if schedule_id is not None:
+        clauses.append("schedule_id = ?")
+        args.append(schedule_id)
+    if status is not None:
+        clauses.append("result = ?")
+        args.append(status)
+    where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
+    args.append(limit)
     try:
         rows = []
         async with db.execute(
-            "SELECT * FROM schedule_log ORDER BY ts DESC, id DESC LIMIT ?",
-            (limit,),
+            f"SELECT * FROM schedule_log {where}ORDER BY ts DESC, id DESC LIMIT ?",  # noqa: S608
+            args,
         ) as cur:
             async for row in cur:
                 rows.append(dict(row))

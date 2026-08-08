@@ -391,6 +391,66 @@ class ScheduleEngine:
             )
         return missed_ids
 
+    async def execute(
+        self, schedule_id: str, *, force: bool = False, now: datetime | None = None
+    ) -> dict:
+        """Fire an entry's action immediately (manual "fire now"), regardless of
+        its trigger/window. Respects ``entry_conditions`` unless ``force``.
+
+        Dispatches with the entry's ``duration_s`` as the command watchdog so the
+        handler auto-releases — this is a deliberate override that does NOT take
+        engine ownership (the periodic tick won't manage or release it).
+        Serialised against the tick so the snapshot can't race a reconcile.
+        """
+        from franklinwh_bridge.store.db import get_schedule
+
+        if self._db is None:
+            return {"status": "no_store", "schedule_id": schedule_id}
+        entry = await get_schedule(self._db, schedule_id)
+        if entry is None:
+            return {"status": "not_found", "schedule_id": schedule_id}
+
+        action = entry.get("action")
+        params = dict(entry.get("params") or {})
+        if entry.get("duration_s"):
+            params.setdefault("duration_s", entry["duration_s"])
+        ttype = entry.get("target_type", "gateway")
+        tid = entry.get("target_id")
+
+        async with self._tick_lock:
+            self._snap_cache = {}  # fresh reads for this manual fire
+            now_dt = now or self._now()
+            pairs = self._resolver(ttype, tid)
+            if not pairs:
+                return {"status": "no_target", "schedule_id": schedule_id}
+
+            dispatched: list[str] = []
+            gated: list[str] = []
+            entry_tree = entry.get("entry_conditions")
+            for gw_id, handler in pairs:
+                target = f"{ttype}:{tid or ''}:{gw_id}"
+                if not force and entry_tree is not None:
+                    ok, trace = eval_conditions(entry_tree, self._snapshot(gw_id, now_dt))
+                    if not ok:
+                        gated.append(gw_id)
+                        await self._audit(
+                            schedule_id, action, target, "gated",
+                            _condition_reason("execute gated", trace),
+                        )
+                        continue
+                cmds = action_to_commands(action, params)
+                if not cmds:
+                    return {"status": "unknown_action", "action": action}
+                await self._send(handler, cmds)
+                dispatched.append(gw_id)
+                await self._audit(
+                    schedule_id, action, target, "executed",
+                    f"manual execute{' (forced)' if force else ''}",
+                )
+
+        status = "fired" if dispatched else ("gated" if gated else "noop")
+        return {"status": status, "dispatched": dispatched, "gated": gated}
+
     async def start(self) -> None:
         await self.load()
         self._task = asyncio.create_task(self._loop())
@@ -700,6 +760,9 @@ class ScheduleEngine:
         if self._on_audit is None:
             return
         try:
-            await self._on_audit(schedule_id, action, target, result, detail)
+            # target is often a (ttype, tid, gw_id) tuple internally; the audit
+            # sink stores it in a TEXT column, so stringify (a raw tuple binding
+            # would raise and silently drop the row — a pre-v2 latent bug).
+            await self._on_audit(schedule_id, action, str(target), result, detail)
         except Exception as exc:
             logger.debug("Schedule audit failed: %s", exc)
