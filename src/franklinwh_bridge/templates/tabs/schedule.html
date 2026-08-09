@@ -26,12 +26,20 @@
   <div class="card mb-4">
     <div class="flex items-center justify-between mb-3">
       <div class="card-label">24-Hour Visual Timeline <span class="text-slate-600 normal-case">(schedules &amp; automations)</span></div>
-      <div class="flex gap-1">
-        <template x-for="(d, i) in weekdays" :key="i">
-          <button class="text-[11px] px-2 py-0.5 rounded transition"
-                  :class="previewDay === i ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:text-slate-300'"
-                  @click="setPreviewDay(i)" x-text="d"></button>
-        </template>
+      <div class="flex items-center gap-3">
+        <select x-model="timelineGateway" class="form-control !py-0.5 !text-[11px] w-auto">
+          <option value="all">All gateways</option>
+          <template x-for="gw in $store.app.gatewayList" :key="gw.id">
+            <option :value="gw.id" x-text="gw.name"></option>
+          </template>
+        </select>
+        <div class="flex gap-1">
+          <template x-for="(d, i) in weekdays" :key="i">
+            <button class="text-[11px] px-2 py-0.5 rounded transition"
+                    :class="previewDay === i ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:text-slate-300'"
+                    @click="setPreviewDay(i)" x-text="d"></button>
+          </template>
+        </div>
       </div>
     </div>
 
@@ -189,16 +197,25 @@
       </div>
     </div>
     <div x-show="audit.length === 0" class="text-center py-4 text-slate-500 text-xs">No activity yet.</div>
-    <div x-show="audit.length" class="space-y-0.5 max-h-64 overflow-y-auto">
-      <template x-for="(ev, i) in audit" :key="i">
-        <div class="flex items-center gap-2 text-xs border-b border-white/[0.03] py-1">
-          <span class="font-mono text-slate-500 w-20 shrink-0" x-text="fmtTs(ev.ts)"></span>
-          <span class="w-36 truncate text-slate-300 shrink-0" x-text="scheduleName(ev.schedule_id)"></span>
-          <span class="w-28 uppercase text-[10px] font-semibold shrink-0" :class="auditClass(ev.result)"
-                x-text="(ev.result || '').replace(/_/g, ' ')"></span>
-          <span class="flex-1 truncate text-slate-500" x-text="ev.detail" :title="ev.detail"></span>
-        </div>
-      </template>
+    <div x-show="audit.length">
+      <!-- column headers -->
+      <div class="flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500 border-b border-white/[0.06] pb-1 mb-1">
+        <span class="w-32 shrink-0">Time</span>
+        <span class="w-36 shrink-0">Entry</span>
+        <span class="w-28 shrink-0">Status</span>
+        <span class="flex-1">Detail</span>
+      </div>
+      <div class="space-y-0.5 max-h-64 overflow-y-auto">
+        <template x-for="(ev, i) in audit" :key="i">
+          <div class="flex items-center gap-2 text-xs border-b border-white/[0.03] py-1">
+            <span class="font-mono text-slate-500 w-32 shrink-0" x-text="fmtTs(ev.ts)"></span>
+            <span class="w-36 truncate text-slate-300 shrink-0" x-text="scheduleName(ev.schedule_id)"></span>
+            <span class="w-28 uppercase text-[10px] font-semibold shrink-0" :class="auditClass(ev.result)"
+                  x-text="(ev.result || '').replace(/_/g, ' ')"></span>
+            <span class="flex-1 truncate text-slate-500" x-text="ev.detail" :title="ev.detail"></span>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 

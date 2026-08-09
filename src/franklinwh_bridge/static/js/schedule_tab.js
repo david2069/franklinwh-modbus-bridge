@@ -68,6 +68,7 @@ function scheduleTab() {
     conn: { connected: true, gateways: {}, recent_outages: [] },
     expandedId: null,
     previewDay: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, // Mon=0
+    timelineGateway: 'all',  // 'all' | '<gateway_id>' — paints the bar for one or all
     loading: false,
     _interval: null,
 
@@ -129,7 +130,9 @@ function scheduleTab() {
     fmtTs(ts) {
       if (!ts) return '—';
       const d = new Date(ts * 1000);
-      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+      const p = (n) => String(n).padStart(2, '0');
+      // dd/mm prefix so the audit trail is unambiguous across days
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
     },
 
     auditClass(r) {
@@ -253,10 +256,20 @@ function scheduleTab() {
       return `${dt.toISOString().slice(0, 10)} ${t}`;
     },
 
+    // A segment belongs to the selected gateway view? 'site' targets paint on
+    // every gateway; a 'gateway' target only on its own; 'service' shows in All.
+    _segForGateway(seg) {
+      if (this.timelineGateway === 'all') return true;
+      if (seg.target_type === 'site') return true;
+      if (seg.target_type === 'gateway') return (seg.target_id || 'default') === this.timelineGateway;
+      return false;
+    },
+
     // ── timeline geometry ────────────────────────────────────
     get visualSegments() {
       const out = [];
       for (const seg of this.timeline.segments) {
+        if (!this._segForGateway(seg)) continue;
         const colour = this.actionMeta(seg.action).colour;
         if (seg.end_min <= seg.start_min) {
           out.push({ ...seg, colour, _l: seg.start_min, _w: 1440 - seg.start_min });
