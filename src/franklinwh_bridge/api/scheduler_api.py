@@ -23,12 +23,17 @@ router = APIRouter(prefix="/api", tags=["scheduler"])
 
 
 def _gateway_points(request: Request, gateway: str) -> dict:
-    """Latest cached points for a gateway (no Modbus call), or {} if unknown."""
+    """Latest cached points for a gateway (no Modbus call) + period energy totals,
+    or {} if unknown — same view the engine evaluates conditions against."""
     registry = getattr(request.app.state, "registry", None)
     if registry is None:
         return {}
     inst = registry.get(gateway)
-    return inst.latest_points() if inst else {}
+    pts = inst.latest_points() if inst else {}
+    energy = getattr(request.app.state, "energy_totals", None)
+    if energy is not None:
+        pts = {**pts, **energy.current_totals(gateway)}
+    return pts
 
 
 @router.get("/sensors")

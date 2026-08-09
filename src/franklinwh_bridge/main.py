@@ -26,6 +26,7 @@ from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
+from franklinwh_bridge.gateway.energy_totals import EnergyTotals
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
@@ -312,11 +313,18 @@ async def lifespan(app: FastAPI):
     ) -> None:
         await log_schedule_event(db, schedule_id, action, target, result, detail)
 
+    # ── Energy totals — period (today/week/month/YTD) kWh from Modbus counters ──
+    energy_totals = EnergyTotals(db)
+    sample_bus.subscribe(energy_totals.on_sample)
+    app.state.energy_totals = energy_totals
+
     def _schedule_points(gw_id: str) -> dict:
-        """Latest cached points for a gateway (no Modbus call) — feeds the sensor
-        snapshot the engine evaluates entry/exit condition trees against."""
+        """Latest cached points for a gateway (no Modbus call) + the computed
+        period energy totals — feeds the sensor snapshot the engine and
+        /api/sensors evaluate condition trees against."""
         inst = registry.get(gw_id)
-        return inst.latest_points() if inst else {}
+        pts = inst.latest_points() if inst else {}
+        return {**pts, **energy_totals.current_totals(gw_id)}
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────
     connectivity = ConnectivityMonitor(db)

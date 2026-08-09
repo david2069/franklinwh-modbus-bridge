@@ -166,6 +166,35 @@ SENSORS: list[SensorDef] = [
     ),  # stub until a price source is wired
 ]
 
+# ── Period energy totals (today/week/month/YTD, kWh) ──────────
+# Values come from the EnergyTotals component as `energy_<source>_<period>_kwh`
+# points merged into the gateway's points (see main.py); mapped 1:1 to sensors.
+_ENERGY_SOURCES = {
+    "grid_import": "Grid Import",
+    "grid_export": "Grid Export",
+    "solar": "Solar",
+    "battery_charge": "Battery Charged",
+    "battery_discharge": "Battery Discharged",
+}
+_ENERGY_PERIODS = {"today": "today", "this_week": "this week", "this_month": "this month", "ytd": "YTD"}
+
+
+def _energy_getter(point_key: str):
+    return lambda p, _n: _num(p, point_key)
+
+
+for _src, _slabel in _ENERGY_SOURCES.items():
+    for _per, _plabel in _ENERGY_PERIODS.items():
+        SENSORS.append(
+            SensorDef(
+                f"energy.{_src}.{_per}_kwh",
+                f"{_slabel} — {_plabel} (kWh)",
+                "kWh",
+                "number",
+                _energy_getter(f"energy_{_src}_{_per}_kwh"),
+            )
+        )
+
 def snapshot(points: Points, now: datetime | None = None) -> dict[str, Any]:
     """Evaluate every sensor against ``points`` + clock into a flat id→value dict.
 
