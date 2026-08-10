@@ -252,7 +252,7 @@
                       x-text="h.has_token ? 'set' : 'none'"></span></div>
               <div class="flex justify-between"><span class="text-slate-500">Status</span>
                 <span class="font-mono" :class="h.status?.connected ? 'text-emerald-400' : 'text-red-400'"
-                      x-text="h.status ? (h.status.connected ? 'connected' : 'offline') : '--'"></span></div>
+                      x-text="h.status ? (h.status.connected ? ('connected · ' + (h.status.transport === 'ws' ? 'live' : 'poll')) : 'offline') : '--'"></span></div>
               <div class="flex justify-between"><span class="text-slate-500">Entities</span>
                 <span class="font-mono text-slate-300" x-text="h.status?.entity_count ?? '--'"></span></div>
             </div>
