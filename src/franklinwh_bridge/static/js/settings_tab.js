@@ -42,6 +42,13 @@ function settingsTab() {
     services: [],
     serviceEditId: null,   // service id being edited, or 'new', or null
     serviceEdit: {},
+    // Home Assistant instances (inbound entity access)
+    haInstances: [],
+    haEditId: null,        // instance id being edited, or 'new', or null
+    haEdit: {},
+    haTesting: false,
+    haTestResult: null,
+    haSaving: false,
     // Gateway management
     gwList: [],
     gwBusy: false,
@@ -75,9 +82,13 @@ function settingsTab() {
       await this.loadSiteConfig();
       await this.loadServices();
       await this.loadGateways();
+      await this.loadHaInstances();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
+          // Refresh HA connection status/entity counts, but not while editing
+          // (would clobber the in-progress form).
+          if (this.haEditId === null) this.loadHaInstances();
         }
       }, 15000);
     },
@@ -249,6 +260,95 @@ function settingsTab() {
         Alpine.store('app').toast('Service deleted', 'info');
       } else {
         Alpine.store('app').toast('Delete failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    // ── Home Assistant instances ──────────────────────────────
+    async loadHaInstances() {
+      const data = await fetchJSON('api/ha/instances');
+      if (Array.isArray(data)) this.haInstances = data;
+    },
+
+    addHa() {
+      this.haEdit = { name: 'Home', base_url: '', token: '', is_default: this.haInstances.length === 0, enabled: true };
+      this.haTestResult = null;
+      this.haEditId = 'new';
+    },
+
+    editHa(h) {
+      this.haEdit = {
+        name: h.name, base_url: h.base_url, token: '',
+        has_token: h.has_token, is_default: h.is_default, enabled: h.enabled,
+      };
+      this.haTestResult = null;
+      this.haEditId = h.id;
+    },
+
+    cancelHaEdit() {
+      this.haEditId = null;
+      this.haEdit = {};
+      this.haTestResult = null;
+    },
+
+    async saveHa() {
+      const isNew = this.haEditId === 'new';
+      // Build payload: on edit, omit token when left blank so it's preserved.
+      const body = {
+        name: this.haEdit.name,
+        base_url: this.haEdit.base_url,
+        is_default: !!this.haEdit.is_default,
+        enabled: !!this.haEdit.enabled,
+      };
+      if (this.haEdit.token) body.token = this.haEdit.token;
+      else if (isNew) body.token = null;
+
+      this.haSaving = true;
+      try {
+        const url = isNew ? 'api/ha/instances' : `api/ha/instances/${this.haEditId}`;
+        const data = await fetchJSON(url, {
+          method: isNew ? 'POST' : 'PATCH',
+          body: JSON.stringify(body),
+        });
+        if (data && !data.error) {
+          await this.loadHaInstances();
+          this.cancelHaEdit();
+          Alpine.store('app').toast(isNew ? 'HA instance added' : 'HA instance saved', 'info');
+        } else {
+          Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.haSaving = false;
+      }
+    },
+
+    async deleteHa(h) {
+      if (!confirm(`Delete Home Assistant instance "${h.name}"?`)) return;
+      const data = await fetchJSON(`api/ha/instances/${h.id}`, { method: 'DELETE' });
+      if (data && !data.error) {
+        await this.loadHaInstances();
+        Alpine.store('app').toast('HA instance deleted', 'info');
+      } else {
+        Alpine.store('app').toast('Delete failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    async testHa() {
+      this.haTesting = true;
+      this.haTestResult = null;
+      try {
+        const data = await fetchJSON('api/ha/test', {
+          method: 'POST',
+          body: JSON.stringify({ base_url: this.haEdit.base_url, token: this.haEdit.token || null }),
+        });
+        if (data && data.connected) {
+          this.haTestResult = { ok: true, msg: `Connected — ${data.entity_count} entities` };
+        } else {
+          this.haTestResult = { ok: false, msg: data?.last_error || 'Connection failed' };
+        }
+      } catch (e) {
+        this.haTestResult = { ok: false, msg: String(e) };
+      } finally {
+        this.haTesting = false;
       }
     },
 

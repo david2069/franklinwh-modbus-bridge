@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 26
+CURRENT_SCHEMA_VERSION = 27
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -436,6 +436,22 @@ MIGRATIONS: dict[int, str] = {
         catchup_run_ids TEXT NOT NULL DEFAULT '[]'
     );
     CREATE INDEX IF NOT EXISTS idx_outages_gw_start ON outages(gateway_id, start_ts);
+    """,
+    27: """
+    -- Multiple Home Assistant instances → one Bridge. Each row is an HA
+    -- instance the Bridge reads entity states from (inbound), exposed as
+    -- `ha:<id>:<entity_id>` automation condition sensors. token = long-lived
+    -- access token (NULL → use the Supervisor token for the co-hosted addon).
+    CREATE TABLE IF NOT EXISTS ha_instances (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        base_url   TEXT NOT NULL,
+        token      TEXT,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        enabled    INTEGER NOT NULL DEFAULT 1,
+        created_at REAL NOT NULL DEFAULT 0,
+        updated_at REAL NOT NULL DEFAULT 0
+    );
     """,
 }
 
@@ -1099,6 +1115,88 @@ async def get_app_config(
     async with db.execute("SELECT value FROM app_config WHERE key = ?", (key,)) as cur:
         row = await cur.fetchone()
         return row["value"] if row else default
+
+
+# ── HA instances (multi-HA entity access) ────────────────────
+
+_HA_FIELDS = ("name", "base_url", "token", "is_default", "enabled")
+
+
+def _decode_ha(row: dict) -> dict:
+    d = dict(row)
+    d["is_default"] = bool(d.get("is_default", 0))
+    d["enabled"] = bool(d.get("enabled", 1))
+    return d
+
+
+async def get_ha_instances(db: aiosqlite.Connection) -> list[dict]:
+    db.row_factory = aiosqlite.Row
+    rows = []
+    async with db.execute("SELECT * FROM ha_instances ORDER BY is_default DESC, name") as cur:
+        async for row in cur:
+            rows.append(_decode_ha(dict(row)))
+    return rows
+
+
+async def get_ha_instance(db: aiosqlite.Connection, ha_id: str) -> dict | None:
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT * FROM ha_instances WHERE id = ?", (ha_id,)) as cur:
+        row = await cur.fetchone()
+        return _decode_ha(dict(row)) if row else None
+
+
+async def create_ha_instance(
+    db: aiosqlite.Connection,
+    name: str,
+    base_url: str,
+    token: str | None = None,
+    is_default: bool = False,
+    enabled: bool = True,
+) -> dict:
+    import uuid
+
+    ha_id = f"ha_{uuid.uuid4().hex[:8]}"
+    now = time.time()
+    if is_default:  # only one default
+        await db.execute("UPDATE ha_instances SET is_default = 0")
+    await db.execute(
+        "INSERT INTO ha_instances "
+        "(id, name, base_url, token, is_default, enabled, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (ha_id, name, base_url.rstrip("/"), token, int(is_default), int(enabled), now, now),
+    )
+    await db.commit()
+    return await get_ha_instance(db, ha_id)  # type: ignore[return-value]
+
+
+async def update_ha_instance(
+    db: aiosqlite.Connection, ha_id: str, **kwargs: object
+) -> dict | None:
+    existing = await get_ha_instance(db, ha_id)
+    if existing is None:
+        return None
+    updates = {k: v for k, v in kwargs.items() if k in _HA_FIELDS}
+    if not updates:
+        return existing
+    if "base_url" in updates and isinstance(updates["base_url"], str):
+        updates["base_url"] = updates["base_url"].rstrip("/")
+    for f in ("is_default", "enabled"):
+        if f in updates:
+            updates[f] = int(bool(updates[f]))
+    if updates.get("is_default"):
+        await db.execute("UPDATE ha_instances SET is_default = 0")
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = [*updates.values(), ha_id]
+    await db.execute(f"UPDATE ha_instances SET {set_clause} WHERE id = ?", values)  # noqa: S608
+    await db.commit()
+    return await get_ha_instance(db, ha_id)
+
+
+async def delete_ha_instance(db: aiosqlite.Connection, ha_id: str) -> bool:
+    cur = await db.execute("DELETE FROM ha_instances WHERE id = ?", (ha_id,))
+    await db.commit()
+    return cur.rowcount > 0
 
 
 # ── Connectivity outages (scheduler v2 Phase 2) ──────────────

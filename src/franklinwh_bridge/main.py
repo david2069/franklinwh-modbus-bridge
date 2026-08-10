@@ -17,6 +17,7 @@ from franklinwh_bridge import __version__
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.gateways_api import router as gateways_router
 from franklinwh_bridge.api.groups_api import router as groups_router
+from franklinwh_bridge.api.ha_api import router as ha_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
@@ -27,6 +28,7 @@ from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
 from franklinwh_bridge.gateway.energy_totals import EnergyTotals
+from franklinwh_bridge.gateway.ha import HaRegistry
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
@@ -318,13 +320,18 @@ async def lifespan(app: FastAPI):
     sample_bus.subscribe(energy_totals.on_sample)
     app.state.energy_totals = energy_totals
 
+    # ── Multi-HA entity access — inbound HA entity states as condition sensors ──
+    ha_registry = HaRegistry(db)
+    app.state.ha_registry = ha_registry
+
     def _schedule_points(gw_id: str) -> dict:
         """Latest cached points for a gateway (no Modbus call) + the computed
-        period energy totals — feeds the sensor snapshot the engine and
-        /api/sensors evaluate condition trees against."""
+        period energy totals + any HA entity values (``ha:<inst>:<entity>``) —
+        feeds the sensor snapshot the engine and /api/sensors evaluate condition
+        trees against."""
         inst = registry.get(gw_id)
         pts = inst.latest_points() if inst else {}
-        return {**pts, **energy_totals.current_totals(gw_id)}
+        return {**pts, **energy_totals.current_totals(gw_id), **ha_registry.entity_values()}
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────
     connectivity = ConnectivityMonitor(db)
@@ -413,6 +420,12 @@ async def lifespan(app: FastAPI):
             logger.error("Schedule engine start failed: %s", exc)
 
         try:
+            # Multi-HA: start polling configured HA instances (no-op if none).
+            await ha_registry.start()
+        except Exception as exc:
+            logger.warning("HA registry start failed: %s", exc)
+
+        try:
             # Startup catch-up: if the Bridge was down across a gap (persisted
             # last-good-poll per gateway), record the downtime and catch up any
             # fires missed while offline. Runs after the engine has loaded entries.
@@ -461,6 +474,7 @@ async def lifespan(app: FastAPI):
     #    then the health checker.
     await schedule_engine.stop()
     await health_checker.stop()
+    await ha_registry.stop()
 
     # 2. Stop all gateways (releases commands, stops pollers, disconnects)
     await registry.stop_all()
@@ -519,6 +533,7 @@ app.include_router(groups_router)
 app.include_router(gateways_router)
 app.include_router(schedules_router)
 app.include_router(scheduler_router)
+app.include_router(ha_router)
 
 # UI router (serves GET / and POST /api/command)
 app.include_router(ui_router)

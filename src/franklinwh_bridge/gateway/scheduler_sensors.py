@@ -139,24 +139,39 @@ SENSORS: list[SensorDef] = [
     SensorDef("pv.is_generating", "PV Generating", None, "bool", _pv_generating),
     # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
     SensorDef(
-        "energy.grid_import.total_kwh", "Grid Import — lifetime (kWh)", "kWh", "number",
+        "energy.grid_import.total_kwh",
+        "Grid Import — lifetime (kWh)",
+        "kWh",
+        "number",
         lambda p, _n: _kwh(p, "grid_import_wh"),
     ),
     SensorDef(
-        "energy.grid_export.total_kwh", "Grid Export — lifetime (kWh)", "kWh", "number",
+        "energy.grid_export.total_kwh",
+        "Grid Export — lifetime (kWh)",
+        "kWh",
+        "number",
         lambda p, _n: _kwh(p, "grid_export_wh"),
     ),
     SensorDef(
-        "energy.solar.total_kwh", "Solar — lifetime (kWh)", "kWh", "number",
+        "energy.solar.total_kwh",
+        "Solar — lifetime (kWh)",
+        "kWh",
+        "number",
         lambda p, _n: _kwh(p, "pv_energy_total_wh"),
     ),
     SensorDef(
-        "energy.battery_charge.total_kwh", "Battery Charged — lifetime (kWh)", "kWh", "number",
+        "energy.battery_charge.total_kwh",
+        "Battery Charged — lifetime (kWh)",
+        "kWh",
+        "number",
         lambda p, _n: _kwh(p, "dc_energy_charged_wh"),
     ),
     SensorDef(
-        "energy.battery_discharge.total_kwh", "Battery Discharged — lifetime (kWh)", "kWh",
-        "number", lambda p, _n: _kwh(p, "dc_energy_discharged_wh"),
+        "energy.battery_discharge.total_kwh",
+        "Battery Discharged — lifetime (kWh)",
+        "kWh",
+        "number",
+        lambda p, _n: _kwh(p, "dc_energy_discharged_wh"),
     ),
     SensorDef("time.hour", "Hour of day (0..23, local)", None, "number", lambda _p, n: n.hour),
     SensorDef("time.dow", "Day of week (0=Mon..6=Sun)", None, "number", lambda _p, n: n.weekday()),
@@ -176,7 +191,12 @@ _ENERGY_SOURCES = {
     "battery_charge": "Battery Charged",
     "battery_discharge": "Battery Discharged",
 }
-_ENERGY_PERIODS = {"today": "today", "this_week": "this week", "this_month": "this month", "ytd": "YTD"}
+_ENERGY_PERIODS = {
+    "today": "today",
+    "this_week": "this week",
+    "this_month": "this month",
+    "ytd": "YTD",
+}
 
 
 def _energy_getter(point_key: str):
@@ -195,14 +215,21 @@ for _src, _slabel in _ENERGY_SOURCES.items():
             )
         )
 
+
 def snapshot(points: Points, now: datetime | None = None) -> dict[str, Any]:
     """Evaluate every sensor against ``points`` + clock into a flat id→value dict.
 
-    Every sensor id is always present; an unavailable value is ``None`` (which
-    the condition evaluator treats as fail-closed).
+    Every static sensor id is always present; an unavailable value is ``None``
+    (which the condition evaluator treats as fail-closed). External sensor values
+    already keyed as sensor ids in ``points`` — HA entities ``ha:<inst>:<entity>``
+    merged in by the app — pass through unchanged so conditions can reference them.
     """
     now = now or datetime.now()
-    return {s.id: s.getter(points, now) for s in SENSORS}
+    snap = {s.id: s.getter(points, now) for s in SENSORS}
+    for k, v in points.items():
+        if isinstance(k, str) and k.startswith("ha:"):
+            snap[k] = v
+    return snap
 
 
 def sensor_catalog(points: Points | None = None, now: datetime | None = None) -> list[dict]:

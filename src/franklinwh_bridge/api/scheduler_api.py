@@ -23,8 +23,9 @@ router = APIRouter(prefix="/api", tags=["scheduler"])
 
 
 def _gateway_points(request: Request, gateway: str) -> dict:
-    """Latest cached points for a gateway (no Modbus call) + period energy totals,
-    or {} if unknown — same view the engine evaluates conditions against."""
+    """Latest cached points for a gateway (no Modbus call) + period energy totals
+    + HA entity values, or {} if unknown — same view the engine evaluates
+    conditions against."""
     registry = getattr(request.app.state, "registry", None)
     if registry is None:
         return {}
@@ -33,13 +34,24 @@ def _gateway_points(request: Request, gateway: str) -> dict:
     energy = getattr(request.app.state, "energy_totals", None)
     if energy is not None:
         pts = {**pts, **energy.current_totals(gateway)}
+    ha = getattr(request.app.state, "ha_registry", None)
+    if ha is not None:
+        pts = {**pts, **ha.entity_values()}
     return pts
 
 
 @router.get("/sensors")
 async def list_sensors(request: Request, gateway: str = "default"):
-    """Sensor namespace + current values for the condition-builder dropdowns."""
-    return {"gateway": gateway, "sensors": sensor_catalog(_gateway_points(request, gateway))}
+    """Sensor namespace + current values for the condition-builder dropdowns.
+
+    Includes the static Bridge sensors plus any HA entities (``ha:<inst>:<entity>``)
+    so the Automation Builder can condition on Home Assistant state."""
+    points = _gateway_points(request, gateway)
+    sensors = sensor_catalog(points)
+    ha = getattr(request.app.state, "ha_registry", None)
+    if ha is not None:
+        sensors = [*sensors, *ha.catalog()]
+    return {"gateway": gateway, "sensors": sensors}
 
 
 class ConditionTreeBody(BaseModel):

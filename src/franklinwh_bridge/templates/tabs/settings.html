@@ -210,6 +210,107 @@
       </div>
     </template>
 
+    <!-- Home Assistant instances (inbound entity access) -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-1">
+        <div class="card-label !mb-0">Home Assistant</div>
+        <span class="text-[10px] uppercase tracking-wide text-slate-500">entity access</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">
+        Read entities from one or more Home Assistant instances. Their states become
+        <span class="font-mono text-slate-400">ha:&lt;instance&gt;:&lt;entity&gt;</span>
+        sensors you can use as Automation conditions.
+      </p>
+
+      <!-- Instance list -->
+      <div class="space-y-2">
+        <template x-for="h in haInstances" :key="h.id">
+          <div class="rounded border border-white/[0.06] p-2.5">
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="flex items-center gap-2">
+                <span class="font-medium text-slate-200 text-sm" x-text="h.name"></span>
+                <span x-show="h.is_default"
+                      class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300 border border-sky-500/30">default</span>
+                <span x-show="!h.enabled"
+                      class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 border border-white/10">disabled</span>
+              </span>
+              <div class="flex gap-2.5 items-center">
+                <button @click="editHa(h)" class="btn btn-sm btn-secondary">Edit</button>
+                <button @click="deleteHa(h)" title="Delete instance"
+                        class="text-red-400/60 hover:text-red-400 transition-colors">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div class="flex justify-between"><span class="text-slate-500">URL</span>
+                <span class="font-mono text-slate-400 truncate ml-2" x-text="h.base_url"></span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Token</span>
+                <span class="font-mono" :class="h.has_token ? 'text-emerald-400' : 'text-slate-500'"
+                      x-text="h.has_token ? 'set' : 'none'"></span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Status</span>
+                <span class="font-mono" :class="h.status?.connected ? 'text-emerald-400' : 'text-red-400'"
+                      x-text="h.status ? (h.status.connected ? 'connected' : 'offline') : '--'"></span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Entities</span>
+                <span class="font-mono text-slate-300" x-text="h.status?.entity_count ?? '--'"></span></div>
+            </div>
+            <div x-show="h.status && !h.status.connected && h.status.last_error"
+                 class="mt-1 text-[11px] font-mono text-red-400/80 truncate" x-text="h.status?.last_error"></div>
+          </div>
+        </template>
+        <template x-if="haInstances.length === 0">
+          <div class="text-xs text-slate-500 py-2">No Home Assistant instances configured.</div>
+        </template>
+      </div>
+
+      <!-- Add button / edit form -->
+      <div class="mt-3 pt-3 border-t border-white/[0.06]">
+        <template x-if="haEditId === null">
+          <button @click="addHa()" class="btn btn-sm btn-secondary">+ Add Home Assistant</button>
+        </template>
+        <template x-if="haEditId !== null">
+          <div class="space-y-2">
+            <div class="text-[11px] uppercase text-slate-500 font-semibold tracking-wide"
+                 x-text="haEditId === 'new' ? 'New Instance' : 'Edit Instance'"></div>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <label class="flex flex-col gap-1"><span class="text-slate-500">Name</span>
+                <input type="text" x-model="haEdit.name" class="form-control !py-1 !text-xs"
+                       placeholder="Home"></label>
+              <label class="flex flex-col gap-1"><span class="text-slate-500">Base URL</span>
+                <input type="text" x-model="haEdit.base_url" class="form-control !py-1 !text-xs font-mono"
+                       placeholder="http://homeassistant.local:8123"></label>
+              <label class="flex flex-col gap-1 col-span-2"><span class="text-slate-500">Long-Lived Access Token</span>
+                <input type="password" x-model="haEdit.token" class="form-control !py-1 !text-xs font-mono"
+                       :placeholder="haEditId !== 'new' && haEdit.has_token ? '(unchanged)' : 'paste token'"></label>
+            </div>
+            <div class="flex items-center gap-4 text-xs pt-0.5">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" x-model="haEdit.is_default" class="accent-sky-500"><span class="text-slate-400">Default</span></label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" x-model="haEdit.enabled" class="accent-sky-500"><span class="text-slate-400">Enabled</span></label>
+            </div>
+
+            <!-- Test result -->
+            <div x-show="haTestResult" class="text-xs font-mono px-2 py-1 rounded border"
+                 :class="haTestResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+                 x-text="haTestResult?.msg"></div>
+
+            <div class="flex gap-2 pt-1">
+              <button @click="testHa()" class="btn btn-sm btn-secondary" :disabled="haTesting">
+                <span x-text="haTesting ? 'Testing…' : 'Test Connection'"></span>
+              </button>
+              <button @click="saveHa()" class="btn btn-sm btn-primary" :disabled="haSaving">
+                <span x-text="haSaving ? 'Saving…' : 'Save'"></span>
+              </button>
+              <button @click="cancelHaEdit()" class="btn btn-sm btn-secondary">Cancel</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- Electricity Utility Service(s) -->
     <div class="card">
       <div class="card-label mb-3">Electricity Utility Service(s)</div>
