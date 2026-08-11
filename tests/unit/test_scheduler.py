@@ -376,6 +376,62 @@ async def test_ha_actions_skipped_when_gated():
     assert calls == [] and h.state.active is False
 
 
+async def test_ha_actions_fire_and_exit_phases():
+    h = FakeHandler()
+    calls = []
+
+    async def ha(inst, eid, svc, data):
+        calls.append((eid, svc))
+        return {"ok": True}
+
+    # entry action turns Boost ON; exit action turns it OFF when the window closes
+    acts = [
+        {"instance_id": "ha1", "entity_id": "switch.boost", "service": "turn_on", "when": "fire"},
+        {"instance_id": "ha1", "entity_id": "switch.boost", "service": "turn_off", "when": "exit"},
+    ]
+    e = _entry(action="none", params={}, ha_actions=acts, when_spec=_ALLDAY)
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("default", h)], ha_action_fn=ha)
+    eng._entries = [e]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))  # window enter → fire ON only
+    assert calls == [("switch.boost", "turn_on")]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 15))  # still open → no repeat
+    assert len(calls) == 1
+    await eng.tick(datetime(2026, 6, 15, 19, 0, 0))  # window closed → exit OFF
+    assert calls == [("switch.boost", "turn_on"), ("switch.boost", "turn_off")]
+    await eng.tick(datetime(2026, 6, 15, 19, 0, 15))  # still closed → no repeat exit
+    assert len(calls) == 2
+
+
+async def test_exit_ha_action_on_exit_condition_met():
+    h = FakeHandler()
+    calls = []
+
+    async def ha(inst, eid, svc, data):
+        calls.append((eid, svc))
+        return {"ok": True}
+
+    acts = [
+        {"instance_id": "ha1", "entity_id": "switch.boost", "service": "turn_on", "when": "fire"},
+        {"instance_id": "ha1", "entity_id": "switch.boost", "service": "turn_off", "when": "exit"},
+    ]
+    # force_charge with an exit condition soc >= 60 (fires exit when met)
+    exit_tree = {"match": "ALL", "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 60}]}
+    soc = {"v": 40}
+    e = _entry(action="force_charge", ha_actions=acts, when_spec=_ALLDAY, exit_conditions=exit_tree)
+    eng = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", h)],
+        points_fn=lambda gw: {"soc": soc["v"]},
+        ha_action_fn=ha,
+    )
+    eng._entries = [e]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))  # fire → ON, battery charging
+    assert calls == [("switch.boost", "turn_on")]
+    soc["v"] = 65  # exit condition now met
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 15))  # exit → OFF
+    assert ("switch.boost", "turn_off") in calls
+
+
 async def test_none_action_fires_ha_only():
     h = FakeHandler()
     calls = []

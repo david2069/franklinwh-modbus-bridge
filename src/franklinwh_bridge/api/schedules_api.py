@@ -59,12 +59,14 @@ _MISSED_POLICY = r"^(late_fire_remaining|skip|late_fire_always)$"
 
 
 class HaActionItem(BaseModel):
-    """One one-shot HA-entity action fired when the entry activates."""
+    """One one-shot HA-entity action. ``when`` selects the edge it runs on:
+    ``fire`` (activation) or ``exit`` (when the window/activation ends)."""
 
     instance_id: str = Field(..., min_length=1)
     entity_id: str = Field(..., min_length=1)
     service: str = Field(..., min_length=1)
     data: dict = Field(default_factory=dict)
+    when: str = Field(default="fire", pattern=r"^(fire|exit)$")
 
 
 class ScheduleCreate(BaseModel):

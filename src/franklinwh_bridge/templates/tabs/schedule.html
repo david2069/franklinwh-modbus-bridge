@@ -560,6 +560,10 @@
                     </optgroup>
                   </template>
                 </select>
+                <select x-model="a.when" class="form-control !py-1 !text-xs w-24" title="Run on fire (activation) or on exit (window end)">
+                  <option value="fire">on fire</option>
+                  <option value="exit">on exit</option>
+                </select>
                 <template x-if="haControlKind(a) === 'toggle'">
                   <select x-model="a.service" class="form-control !py-1 !text-xs w-28">
                     <option value="turn_on">Turn On</option>

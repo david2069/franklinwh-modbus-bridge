@@ -350,6 +350,9 @@ class ScheduleEngine:
         # run actions for this activation. Cleared on window exit so re-entry
         # re-fires. Prevents re-running on a battery re-dispatch (sig change).
         self._ha_fired: dict[tuple, str] = {}
+        # tkey -> the entry that fired, kept so its exit-tagged HA actions can run
+        # when the activation ends (window/trigger inactive, exit condition, etc.).
+        self._exit_entry: dict[tuple, dict] = {}
 
     # ---- lifecycle ----
 
@@ -579,6 +582,8 @@ class ScheduleEngine:
                 self._deferred.discard(tkey)
                 self._expired.pop(tkey, None)
                 self._gated.discard(tkey)
+                self._ha_fired.pop(tkey, None)
+                self._exit_entry.pop(tkey, None)
 
     async def _reconcile(self, tkey: tuple, handler: Any, win: dict | None, now: datetime) -> None:
         own = self._owned.get(tkey)
@@ -590,6 +595,7 @@ class ScheduleEngine:
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
             self._dwelling.discard(tkey)
             self._ha_fired.pop(tkey, None)  # re-entry re-fires one-shot HA actions
+            await self._fire_exit_ha_actions(tkey)  # exit-tagged HA actions on window close
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
                     await self._dispatch(handler, "force_standby", {}, label="hold")
@@ -653,6 +659,7 @@ class ScheduleEngine:
                         "exit_condition_met",
                         _condition_reason("exit conditions met", trace),
                     )
+                    await self._fire_exit_ha_actions(tkey)
                     return
 
         # ── our sustained dispatch ended in-window (watchdog or external
@@ -676,6 +683,7 @@ class ScheduleEngine:
                 "expired",
                 "dispatch ended in-window (watchdog/release) — not re-firing until next window",
             )
+            await self._fire_exit_ha_actions(tkey)
             return
 
         # Already completed this entry's current window — hold off.
@@ -759,7 +767,10 @@ class ScheduleEngine:
         # One-shot HA actions on this activation edge (after the battery action).
         if self._ha_fired.get(tkey) != win["id"]:
             self._ha_fired[tkey] = win["id"]
-            await self._run_ha_actions(win, tkey)
+            await self._run_ha_actions(win, tkey, "fire")
+            # Remember the entry so its exit-tagged actions run when it ends.
+            if any((a.get("when") == "exit") for a in (win.get("ha_actions") or [])):
+                self._exit_entry[tkey] = win
         self._owned[tkey] = {
             "entry_id": win["id"],
             "signature": sig,
@@ -777,19 +788,19 @@ class ScheduleEngine:
         }
         await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
 
-    async def _run_ha_actions(self, win: dict, tkey: tuple) -> None:
-        """Fire an entry's one-shot HA-entity actions (turn a switch/select/…).
-        Runs after the battery action, in order; each is best-effort and audited
-        so one failure (HA offline) can't abort the rest or the dispatch."""
-        actions = win.get("ha_actions") or []
+    async def _run_ha_actions(self, win: dict, tkey: tuple, phase: str = "fire") -> None:
+        """Run an entry's one-shot HA-entity actions for the given ``phase`` —
+        ``fire`` (on the activation edge, after the battery action) or ``exit``
+        (when the window/activation ends). Each is best-effort and audited so one
+        failure (HA offline) can't abort the rest or the dispatch."""
+        actions = [a for a in (win.get("ha_actions") or []) if (a.get("when") or "fire") == phase]
         if not actions:
             return
         if self._ha_action_fn is None:
-            if actions:
-                await self._audit(
-                    win["id"], "ha_action", tkey, "failed",
-                    f"{len(actions)} HA action(s) skipped — no HA configured",
-                )
+            await self._audit(
+                win["id"], "ha_action", tkey, "failed",
+                f"{len(actions)} HA action(s) skipped — no HA configured",
+            )
             return
         for a in actions:
             inst = a.get("instance_id")
@@ -803,12 +814,18 @@ class ScheduleEngine:
             except Exception as exc:  # defensive — call_service already soft-fails
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
             ok = bool(res.get("ok"))
-            detail = f"{eid} → {svc}" + (f" {data}" if data else "")
+            detail = f"[{phase}] {eid} → {svc}" + (f" {data}" if data else "")
             if not ok:
                 detail += f" — {res.get('error')}"
             await self._audit(
                 win["id"], "ha_action", tkey, "ha_action" if ok else "failed", detail
             )
+
+    async def _fire_exit_ha_actions(self, tkey: tuple) -> None:
+        """Run any exit-tagged HA actions for a just-ended activation, then forget it."""
+        entry = self._exit_entry.pop(tkey, None)
+        if entry is not None:
+            await self._run_ha_actions(entry, tkey, "exit")
 
     async def _dispatch(self, handler: Any, action: str, params: dict, label: str) -> None:
         if action == "none":

@@ -154,7 +154,7 @@ function scheduleTab() {
     },
 
     addHaAction() {
-      this.form.ha_actions.push({ instance_id: '', entity_id: '', service: 'turn_on', data: {} });
+      this.form.ha_actions.push({ instance_id: '', entity_id: '', service: 'turn_on', data: {}, when: 'fire' });
     },
     removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
 
@@ -660,7 +660,7 @@ function scheduleTab() {
           .filter((a) => a.instance_id && a.entity_id && a.service)
           .map((a) => ({
             instance_id: a.instance_id, entity_id: a.entity_id,
-            service: a.service, data: a.data || {},
+            service: a.service, data: a.data || {}, when: a.when || 'fire',
           })),
         entry_conditions: this._buildTree(f.entry_conditions),
         exit_conditions: this._buildTree(f.exit_conditions),
