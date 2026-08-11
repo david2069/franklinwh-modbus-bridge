@@ -133,8 +133,12 @@ def test_sensor_catalog_shape_without_points():
     assert "battery.soc_pct" in ids
     assert "price.export_c_per_kwh" in ids
     first = cat[0]
-    assert set(first) == {"id", "label", "unit", "kind"}  # no getter, no value
+    assert set(first) == {"id", "label", "unit", "kind", "group"}  # no getter, no value
     assert "getter" not in first
+    # group is derived from the id prefix for the dropdown <optgroup>s
+    by_id = {row["id"]: row for row in cat}
+    assert by_id["battery.soc_pct"]["group"] == "Battery"
+    assert by_id["energy.grid_import.total_kwh"]["group"] == "Energy"
 
 
 def test_sensor_catalog_includes_values_when_points_given():

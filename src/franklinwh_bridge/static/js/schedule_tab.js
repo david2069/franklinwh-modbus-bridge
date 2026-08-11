@@ -63,6 +63,20 @@ function scheduleTab() {
     timeline: { segments: [], now_min: 0, weekday: 0 },
     services: [],
     sensors: [],
+
+    // Sensors grouped by their `group` label for the condition-picker <optgroup>s,
+    // preserving first-seen order (native metrics first, then HA · <instance>).
+    get sensorGroups() {
+      const groups = [];
+      const idx = {};
+      for (const s of this.sensors) {
+        const g = s.group || 'Other';
+        if (!(g in idx)) { idx[g] = groups.length; groups.push({ label: g, items: [] }); }
+        groups[idx[g]].items.push(s);
+      }
+      return groups;
+    },
+
     audit: [],
     auditFilter: '',
     conn: { connected: true, gateways: {}, recent_outages: [] },

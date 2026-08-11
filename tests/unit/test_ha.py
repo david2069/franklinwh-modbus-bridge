@@ -14,9 +14,12 @@ from franklinwh_bridge.gateway.ha import HaAuthError, HaInstance, HaRegistry, co
 from franklinwh_bridge.store.db import (
     create_ha_instance,
     delete_ha_instance,
+    get_all_exposed_entities,
+    get_exposed_entities,
     get_ha_instance,
     get_ha_instances,
     init_db,
+    set_entity_exposed,
     update_ha_instance,
 )
 
@@ -46,7 +49,7 @@ def test_coerce_state():
 # ── instance values + catalog (cache set directly) ────────────
 
 
-def _inst(id_, name):
+def _inst(id_, name, *, expose_all=True):
     inst = HaInstance({"id": id_, "name": name, "base_url": "http://h", "token": "t"})
     inst._states = {
         "sensor.amber_price": {
@@ -56,6 +59,8 @@ def _inst(id_, name):
         "binary_sensor.grid": {"state": "on", "attributes": {"friendly_name": "Grid"}},
         "sensor.dead": {"state": "unavailable", "attributes": {}},
     }
+    if expose_all:
+        inst.exposed = set(inst._states)
     return inst
 
 
@@ -109,6 +114,9 @@ async def test_refresh_pulls_states():
     inst = HaInstance({"id": "home", "name": "Home", "base_url": "http://ha.local", "token": "abc"})
     await inst.refresh()
     assert inst.connected is True
+    # refresh seeds the full cache (browse sees all); values() honors the allowlist.
+    assert {e["entity_id"] for e in inst.browse()} == {"sensor.temp", "sensor.na"}
+    inst.exposed = {"sensor.temp", "sensor.na"}
     assert inst.values()["ha:home:sensor.temp"] == 21.4
     assert inst.values()["ha:home:sensor.na"] is None
 
@@ -173,6 +181,7 @@ def test_ws_url_derivation():
 
 def test_seed_and_apply_state_changed():
     inst = HaInstance({"id": "home", "name": "Home", "base_url": "http://h"})
+    inst.exposed = {"sensor.temp"}
     inst._seed_states(
         [
             {
@@ -267,6 +276,7 @@ async def test_ws_live_seeds_then_applies_events():
                 "token": "testtoken",
             }
         )
+        inst.exposed = {"sensor.temp"}
         task = asyncio.create_task(inst.run_live())
         try:
             for _ in range(50):  # up to ~5s
@@ -294,3 +304,66 @@ async def test_ws_auth_invalid_raises():
         )
         with pytest.raises(HaAuthError):
             await inst._live_session()
+
+
+# ── Exposed-entity allowlist ──────────────────────────────────
+
+
+def test_allowlist_filters_values_and_catalog_but_not_browse():
+    inst = _inst("home", "Home", expose_all=False)
+    # nothing exposed → no sensors, but browse() still lists everything
+    assert inst.values() == {}
+    assert inst.catalog() == []
+    rows = {r["entity_id"]: r for r in inst.browse()}
+    assert set(rows) == {"sensor.amber_price", "binary_sensor.grid", "sensor.dead"}
+    assert rows["sensor.amber_price"]["domain"] == "sensor"
+    assert rows["binary_sensor.grid"]["domain"] == "binary_sensor"
+    assert all(r["exposed"] is False for r in rows.values())
+
+    # expose one → it appears in values/catalog and its browse row flips
+    inst.set_exposed("sensor.amber_price", True)
+    assert inst.values() == {"ha:home:sensor.amber_price": 31.2}
+    assert [c["id"] for c in inst.catalog()] == ["ha:home:sensor.amber_price"]
+    assert inst.catalog()[0]["group"] == "HA · Home"
+    assert {r["entity_id"] for r in inst.browse() if r["exposed"]} == {"sensor.amber_price"}
+
+    inst.set_exposed("sensor.amber_price", False)
+    assert inst.values() == {}
+
+
+async def test_exposed_db_crud_and_cascade(db):
+    inst = await create_ha_instance(db, "Home", "http://h:8123")
+    iid = inst["id"]
+    assert await get_exposed_entities(db, iid) == set()
+
+    await set_entity_exposed(db, iid, "sensor.a", True)
+    await set_entity_exposed(db, iid, "sensor.b", True)
+    await set_entity_exposed(db, iid, "sensor.a", True)  # idempotent
+    assert await get_exposed_entities(db, iid) == {"sensor.a", "sensor.b"}
+    assert await get_all_exposed_entities(db) == {iid: {"sensor.a", "sensor.b"}}
+
+    await set_entity_exposed(db, iid, "sensor.a", False)
+    assert await get_exposed_entities(db, iid) == {"sensor.b"}
+
+    # deleting the instance cascades its allowlist away
+    await delete_ha_instance(db, iid)
+    assert await get_exposed_entities(db, iid) == set()
+
+
+async def test_registry_browse_domains_and_set_exposed(db):
+    a = await create_ha_instance(db, "A", "http://a")
+    await set_entity_exposed(db, a["id"], "sensor.pre", True)  # pre-existing allowlist
+    reg = HaRegistry(db)
+    await reg.load()  # picks up the pre-existing exposed set
+    # give the loaded instance a live cache
+    reg._instances[a["id"]]._states = {
+        "sensor.pre": {"state": "1", "attributes": {}},
+        "light.lamp": {"state": "on", "attributes": {}},
+    }
+    assert reg.domains() == ["light", "sensor"]
+    assert reg.entity_values() == {f"ha:{a['id']}:sensor.pre": 1.0}  # only pre-exposed
+
+    # toggle via the registry — persists + applies in-memory
+    await reg.set_exposed(a["id"], "light.lamp", True)
+    assert await get_exposed_entities(db, a["id"]) == {"sensor.pre", "light.lamp"}
+    assert f"ha:{a['id']}:light.lamp" in reg.entity_values()

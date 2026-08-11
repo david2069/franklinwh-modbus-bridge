@@ -379,7 +379,7 @@
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
                   <select x-model="c.sensor" class="form-control !py-1 !text-xs">
-                    <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                    <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
                   </select>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
                     <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
@@ -406,7 +406,7 @@
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap">
                       <select x-model="cc.sensor" class="form-control !py-1 !text-xs">
-                        <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                        <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
                       </select>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
                         <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
@@ -448,7 +448,7 @@
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
                   <select x-model="c.sensor" class="form-control !py-1 !text-xs">
-                    <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                    <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
                   </select>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
                     <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
@@ -475,7 +475,7 @@
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap">
                       <select x-model="cc.sensor" class="form-control !py-1 !text-xs">
-                        <template x-for="s in sensors" :key="s.id"><option :value="s.id" x-text="s.label"></option></template>
+                        <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
                       </select>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
                         <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>

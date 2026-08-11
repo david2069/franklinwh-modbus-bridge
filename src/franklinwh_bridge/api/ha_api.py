@@ -48,6 +48,12 @@ class HaTestBody(BaseModel):
     token: str | None = None
 
 
+class HaExposeBody(BaseModel):
+    instance_id: str = Field(min_length=1)
+    entity_id: str = Field(min_length=1)
+    exposed: bool
+
+
 def _registry(request: Request):
     return getattr(request.app.state, "ha_registry", None)
 
@@ -72,10 +78,7 @@ async def list_instances(request: Request):
     rows = await get_ha_instances(db)
     reg = _registry(request)
     status = {s["id"]: s for s in reg.status()} if reg is not None else {}
-    return [
-        {**_redact(r), "status": status.get(r["id"])}
-        for r in rows
-    ]
+    return [{**_redact(r), "status": status.get(r["id"])} for r in rows]
 
 
 @router.post("/instances", status_code=201)
@@ -133,8 +136,62 @@ async def test_connection(body: HaTestBody):
 
 
 @router.get("/entities")
-async def list_entities(request: Request):
-    """All HA entities across instances as sensor-catalog rows (for the condition
-    dropdown). Empty list if multi-HA isn't running or nothing is connected."""
+async def browse_entities(
+    request: Request,
+    instance: str | None = None,
+    domain: str | None = None,
+    search: str | None = None,
+    exposed: bool | None = None,
+    page: int = 1,
+    page_size: int = 50,
+):
+    """Browse ALL HA entities across instances (with an ``exposed`` flag),
+    filtered + paginated — backs the HA Entities tab.
+
+    Filters: ``instance`` (id), ``domain``, ``search`` (substring of entity_id or
+    friendly name), ``exposed`` (true/false). Returns
+    ``{total, page, page_size, exposed_count, entities:[...]}``.
+    """
     reg = _registry(request)
-    return reg.catalog() if reg is not None else []
+    rows = reg.browse() if reg is not None else []
+    exposed_count = sum(1 for r in rows if r["exposed"])
+
+    if instance:
+        rows = [r for r in rows if r["instance"] == instance]
+    if domain:
+        rows = [r for r in rows if r["domain"] == domain]
+    if exposed is not None:
+        rows = [r for r in rows if r["exposed"] is exposed]
+    if search:
+        q = search.lower()
+        rows = [r for r in rows if q in r["entity_id"].lower() or q in r["friendly_name"].lower()]
+
+    rows.sort(key=lambda r: (r["instance_name"], r["entity_id"]))
+    total = len(rows)
+    page = max(1, page)
+    page_size = max(1, min(page_size, 500))
+    start = (page - 1) * page_size
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "exposed_count": exposed_count,
+        "entities": rows[start : start + page_size],
+    }
+
+
+@router.get("/domains")
+async def list_domains(request: Request):
+    """Distinct entity domains across all instances (for the filter dropdown)."""
+    reg = _registry(request)
+    return reg.domains() if reg is not None else []
+
+
+@router.post("/entities/expose")
+async def expose_entity(body: HaExposeBody, request: Request):
+    """Add/remove an entity from an instance's allowlist (persists + applies live)."""
+    reg = _registry(request)
+    if reg is None:
+        raise HTTPException(status_code=503, detail="multi-HA not running")
+    await reg.set_exposed(body.instance_id, body.entity_id, body.exposed)
+    return {"instance_id": body.instance_id, "entity_id": body.entity_id, "exposed": body.exposed}

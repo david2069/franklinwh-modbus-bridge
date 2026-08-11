@@ -33,6 +33,7 @@
   <script src="static/js/explorer_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/logs_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/settings_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/ha_entities_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/sequencer_panel.js?v={{ cache_bust }}"></script>
   <script src="static/js/sequencer_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/live_points_panel.js?v={{ cache_bust }}"></script>
@@ -79,6 +80,11 @@
         <!-- Sequencer Tab -->
         <div x-show="$store.app.activeTab === 'sequencer'" x-cloak>
           {% include "tabs/sequencer.html" %}
+        </div>
+
+        <!-- HA Entities Tab -->
+        <div x-show="$store.app.activeTab === 'ha_entities'" x-cloak>
+          {% include "tabs/ha_entities.html" %}
         </div>
 
         <!-- Settings Tab -->

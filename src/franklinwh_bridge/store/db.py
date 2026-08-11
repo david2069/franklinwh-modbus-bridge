@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 27
+CURRENT_SCHEMA_VERSION = 28
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -452,6 +452,19 @@ MIGRATIONS: dict[int, str] = {
         created_at REAL NOT NULL DEFAULT 0,
         updated_at REAL NOT NULL DEFAULT 0
     );
+    """,
+    28: """
+    -- Allowlist of HA entities exposed as `ha:<inst>:<entity>` condition
+    -- sensors. An HA can have thousands of entities; only rows here reach the
+    -- Automation condition namespace. Empty for an instance → nothing exposed.
+    CREATE TABLE IF NOT EXISTS ha_exposed_entities (
+        instance_id TEXT NOT NULL,
+        entity_id   TEXT NOT NULL,
+        added_at    REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (instance_id, entity_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ha_exposed_instance
+        ON ha_exposed_entities (instance_id);
     """,
 }
 
@@ -1169,9 +1182,7 @@ async def create_ha_instance(
     return await get_ha_instance(db, ha_id)  # type: ignore[return-value]
 
 
-async def update_ha_instance(
-    db: aiosqlite.Connection, ha_id: str, **kwargs: object
-) -> dict | None:
+async def update_ha_instance(db: aiosqlite.Connection, ha_id: str, **kwargs: object) -> dict | None:
     existing = await get_ha_instance(db, ha_id)
     if existing is None:
         return None
@@ -1195,8 +1206,54 @@ async def update_ha_instance(
 
 async def delete_ha_instance(db: aiosqlite.Connection, ha_id: str) -> bool:
     cur = await db.execute("DELETE FROM ha_instances WHERE id = ?", (ha_id,))
+    # Cascade: drop the instance's exposed-entity allowlist too.
+    await db.execute("DELETE FROM ha_exposed_entities WHERE instance_id = ?", (ha_id,))
     await db.commit()
     return cur.rowcount > 0
+
+
+# ── HA exposed-entity allowlist (which entities become ha:* sensors) ──
+
+
+async def get_exposed_entities(db: aiosqlite.Connection, instance_id: str) -> set[str]:
+    """Entity ids exposed for one instance."""
+    db.row_factory = aiosqlite.Row
+    out: set[str] = set()
+    async with db.execute(
+        "SELECT entity_id FROM ha_exposed_entities WHERE instance_id = ?", (instance_id,)
+    ) as cur:
+        async for row in cur:
+            out.add(row["entity_id"])
+    return out
+
+
+async def get_all_exposed_entities(db: aiosqlite.Connection) -> dict[str, set[str]]:
+    """All allowlists keyed by instance_id → {entity_id, ...}."""
+    db.row_factory = aiosqlite.Row
+    out: dict[str, set[str]] = {}
+    async with db.execute("SELECT instance_id, entity_id FROM ha_exposed_entities") as cur:
+        async for row in cur:
+            out.setdefault(row["instance_id"], set()).add(row["entity_id"])
+    return out
+
+
+async def set_entity_exposed(
+    db: aiosqlite.Connection, instance_id: str, entity_id: str, exposed: bool
+) -> bool:
+    """Add/remove one entity from an instance's allowlist. Returns the new state."""
+    if exposed:
+        await db.execute(
+            "INSERT OR IGNORE INTO ha_exposed_entities (instance_id, entity_id, added_at) "
+            "VALUES (?, ?, ?)",
+            (instance_id, entity_id, time.time()),
+        )
+    else:
+        await db.execute(
+            "DELETE FROM ha_exposed_entities WHERE instance_id = ? AND entity_id = ?",
+            (instance_id, entity_id),
+        )
+    await db.commit()
+    return exposed
 
 
 # ── Connectivity outages (scheduler v2 Phase 2) ──────────────

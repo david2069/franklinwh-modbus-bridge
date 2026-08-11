@@ -232,15 +232,41 @@ def snapshot(points: Points, now: datetime | None = None) -> dict[str, Any]:
     return snap
 
 
+#: Dropdown group label per sensor-id prefix (for the grouped condition picker).
+_GROUP_LABELS = {
+    "battery": "Battery",
+    "solar": "Solar / PV",
+    "pv": "Solar / PV",
+    "grid": "Grid",
+    "load": "Load",
+    "mode": "Mode",
+    "energy": "Energy",
+    "time": "Time",
+    "price": "Price",
+}
+
+
+def _group_for(sensor_id: str) -> str:
+    return _GROUP_LABELS.get(sensor_id.split(".", 1)[0], "Other")
+
+
 def sensor_catalog(points: Points | None = None, now: datetime | None = None) -> list[dict]:
     """Registry metadata for the UI dropdowns (``/api/sensors``).
 
-    When ``points`` is given, each entry also carries its current ``value``.
+    Each entry carries a ``group`` label so the condition picker can render
+    ``<optgroup>``s. When ``points`` is given, each entry also carries its
+    current ``value``.
     """
     now = now or datetime.now()
     out = []
     for s in SENSORS:
-        row = {"id": s.id, "label": s.label, "unit": s.unit, "kind": s.kind}
+        row = {
+            "id": s.id,
+            "label": s.label,
+            "unit": s.unit,
+            "kind": s.kind,
+            "group": _group_for(s.id),
+        }
         if points is not None:
             row["value"] = s.getter(points, now)
         out.append(row)

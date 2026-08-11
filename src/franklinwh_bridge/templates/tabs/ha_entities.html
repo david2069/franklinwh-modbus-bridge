@@ -1,0 +1,131 @@
+<div x-data="haEntitiesTab()" x-init="init()">
+
+  <!-- Header -->
+  <div class="flex items-start justify-between mb-4">
+    <div>
+      <h1 class="text-lg font-semibold text-slate-100">HA Entities</h1>
+      <p class="text-xs text-slate-500">Browse Home Assistant entities and choose which to expose as
+        <span class="font-mono text-slate-400">ha:&lt;instance&gt;:&lt;entity&gt;</span> Automation conditions.</p>
+    </div>
+    <button @click="reload()" class="btn btn-sm btn-secondary" :disabled="loading">
+      <span x-text="loading ? 'Loading…' : 'Refresh'"></span>
+    </button>
+  </div>
+
+  <!-- No instances state -->
+  <template x-if="instances.length === 0">
+    <div class="card text-center py-10">
+      <p class="text-sm text-slate-400">No Home Assistant instances configured.</p>
+      <p class="text-xs text-slate-500 mt-1">Add one in
+        <button @click="$store.app.setTab('settings')" class="text-cyan-400 hover:underline">Settings → Home Assistant</button>,
+        then its entities appear here.</p>
+    </div>
+  </template>
+
+  <template x-if="instances.length > 0">
+    <div>
+      <!-- Stat cards -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="card !p-3">
+          <div class="text-[10px] uppercase tracking-wide text-slate-500">Total Entities</div>
+          <div class="text-xl font-semibold text-slate-100" x-text="total.toLocaleString()"></div>
+        </div>
+        <div class="card !p-3">
+          <div class="text-[10px] uppercase tracking-wide text-slate-500">Exposed</div>
+          <div class="text-xl font-semibold text-emerald-400" x-text="exposedCount"></div>
+        </div>
+        <div class="card !p-3">
+          <div class="text-[10px] uppercase tracking-wide text-slate-500">Instances</div>
+          <div class="text-xl font-semibold text-slate-100" x-text="instances.length"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <!-- Toolbar -->
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <input type="text" x-model="search" @input.debounce.300ms="page=1; load()"
+                 placeholder="Search entities…"
+                 class="form-control !py-1 !text-xs flex-1 min-w-[180px] font-mono">
+          <select x-model="instance" @change="page=1; load()" class="form-control !py-1 !text-xs w-auto">
+            <option value="">All instances</option>
+            <template x-for="i in instances" :key="i.id">
+              <option :value="i.id" x-text="i.name"></option>
+            </template>
+          </select>
+          <select x-model="domain" @change="page=1; load()" class="form-control !py-1 !text-xs w-auto">
+            <option value="">All domains</option>
+            <template x-for="d in domains" :key="d"><option :value="d" x-text="d"></option></template>
+          </select>
+          <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer whitespace-nowrap">
+            <input type="checkbox" x-model="exposedOnly" @change="page=1; load()" class="accent-emerald-500">
+            Exposed only
+          </label>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-left text-[10px] uppercase tracking-wide text-slate-500 border-b border-white/[0.08]">
+                <th class="py-2 pr-2 font-semibold w-8">#</th>
+                <th class="py-2 pr-2 font-semibold">Entity</th>
+                <th class="py-2 pr-2 font-semibold w-28">Domain</th>
+                <th class="py-2 pr-2 font-semibold w-28">State</th>
+                <th class="py-2 pr-2 font-semibold w-32">Instance</th>
+                <th class="py-2 pr-2 font-semibold w-24 text-right">Expose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(e, idx) in entities" :key="e.instance + ':' + e.entity_id">
+                <tr class="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                  <td class="py-1.5 pr-2 text-slate-600 font-mono" x-text="(page-1)*pageSize + idx + 1"></td>
+                  <td class="py-1.5 pr-2">
+                    <div class="font-mono text-slate-300" x-text="e.entity_id"></div>
+                    <div class="text-slate-500" x-text="e.friendly_name"></div>
+                  </td>
+                  <td class="py-1.5 pr-2">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 font-mono text-[10px]" x-text="e.domain"></span>
+                  </td>
+                  <td class="py-1.5 pr-2 font-mono text-slate-300">
+                    <span x-text="e.state ?? '--'"></span>
+                    <span class="text-slate-500" x-show="e.unit" x-text="' ' + (e.unit || '')"></span>
+                  </td>
+                  <td class="py-1.5 pr-2 text-slate-400" x-text="e.instance_name"></td>
+                  <td class="py-1.5 pr-2 text-right">
+                    <button @click="toggleExpose(e)"
+                            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                            :class="e.exposed ? 'bg-emerald-500' : 'bg-slate-600'"
+                            :title="e.exposed ? 'Exposed — click to hide' : 'Not exposed — click to expose'">
+                      <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                            :class="e.exposed ? 'translate-x-4' : 'translate-x-1'"></span>
+                    </button>
+                  </td>
+                </tr>
+              </template>
+              <template x-if="entities.length === 0 && !loading">
+                <tr><td colspan="6" class="py-6 text-center text-slate-500">No entities match the filters.</td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06] text-xs text-slate-400">
+          <div>
+            <span x-show="total > 0" x-text="`${(page-1)*pageSize+1}–${Math.min(page*pageSize, total)} of ${total.toLocaleString()}`"></span>
+            <span x-show="total === 0">0 entities</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <select x-model.number="pageSize" @change="page=1; load()" class="form-control !py-0.5 !text-[11px] w-auto">
+              <option :value="25">25</option><option :value="50">50</option>
+              <option :value="100">100</option><option :value="200">200</option>
+            </select>
+            <button @click="prevPage()" :disabled="page <= 1" class="btn btn-sm btn-secondary disabled:opacity-40">Prev</button>
+            <span x-text="`${page} / ${totalPages}`"></span>
+            <button @click="nextPage()" :disabled="page >= totalPages" class="btn btn-sm btn-secondary disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

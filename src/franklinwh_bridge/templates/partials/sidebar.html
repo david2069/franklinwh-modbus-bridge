@@ -105,6 +105,21 @@
       <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Schedule</span>
     </button>
 
+    <!-- HA Entities -->
+    <button @click="$store.app.setTab('ha_entities')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'HA Entities'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'ha_entities' ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-cyan-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M3 9.5L12 3l9 6.5"/><path d="M5 10v10h14V10"/><rect x="9" y="13" width="6" height="7"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>HA Entities</span>
+    </button>
+
     <!-- Settings -->
     <button @click="$store.app.setTab('settings')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Settings'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"

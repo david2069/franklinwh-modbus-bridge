@@ -26,6 +26,7 @@ async def client(tmp_path):
     app.state.ha_registry = HaRegistry(db)
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        ac.app = app  # let tests reach app.state.ha_registry to seed entity caches
         yield ac
     await db.close()
 
@@ -103,11 +104,76 @@ async def test_test_connection_failure(client):
     assert resp.json()["last_error"] is not None
 
 
-async def test_entities_reflects_registry(client):
-    # create + reload happens inside the POST handler; entities come from the
-    # registry's live cache. With no reachable HA the catalog is empty (connection
-    # fails), but the endpoint must still return a list, not error.
-    await client.post("/api/ha/instances", json={"name": "H", "base_url": "http://127.0.0.1:1/"})
-    resp = await client.get("/api/ha/entities")
-    assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+async def _make_instance_with_cache(client):
+    """Create an instance via the API, then seed its live cache directly so the
+    browser has entities to return (no reachable HA in tests)."""
+    created = (
+        await client.post("/api/ha/instances", json={"name": "Home", "base_url": "http://h:8123"})
+    ).json()
+    inst = client.app.state.ha_registry._instances[created["id"]]
+    inst._states = {
+        "sensor.amber_price": {
+            "state": "31.2",
+            "attributes": {"unit_of_measurement": "c/kWh", "friendly_name": "Amber Price"},
+        },
+        "binary_sensor.grid": {"state": "on", "attributes": {"friendly_name": "Grid OK"}},
+        "light.lamp": {"state": "off", "attributes": {"friendly_name": "Lamp"}},
+    }
+    return created["id"]
+
+
+async def test_browse_entities_shape_and_filters(client):
+    iid = await _make_instance_with_cache(client)
+
+    # unfiltered: all 3 entities, none exposed yet
+    body = (await client.get("/api/ha/entities")).json()
+    assert body["total"] == 3
+    assert body["exposed_count"] == 0
+    assert {e["entity_id"] for e in body["entities"]} == {
+        "sensor.amber_price",
+        "binary_sensor.grid",
+        "light.lamp",
+    }
+    row = next(e for e in body["entities"] if e["entity_id"] == "sensor.amber_price")
+    assert row["domain"] == "sensor" and row["value"] == 31.2 and row["exposed"] is False
+
+    # domain filter
+    assert (await client.get("/api/ha/entities?domain=light")).json()["total"] == 1
+    # search filter (matches friendly name)
+    assert (await client.get("/api/ha/entities?search=amber")).json()["total"] == 1
+    # instance filter + domains endpoint
+    assert (await client.get(f"/api/ha/entities?instance={iid}")).json()["total"] == 3
+    assert (await client.get("/api/ha/domains")).json() == ["binary_sensor", "light", "sensor"]
+
+
+async def test_pagination(client):
+    await _make_instance_with_cache(client)
+    p1 = (await client.get("/api/ha/entities?page=1&page_size=2")).json()
+    assert p1["total"] == 3 and len(p1["entities"]) == 2 and p1["page"] == 1
+    p2 = (await client.get("/api/ha/entities?page=2&page_size=2")).json()
+    assert len(p2["entities"]) == 1  # remainder
+
+
+async def test_expose_toggle_persists_and_filters(client):
+    iid = await _make_instance_with_cache(client)
+    # expose one entity
+    resp = await client.post(
+        "/api/ha/entities/expose",
+        json={"instance_id": iid, "entity_id": "sensor.amber_price", "exposed": True},
+    )
+    assert resp.status_code == 200 and resp.json()["exposed"] is True
+
+    body = (await client.get("/api/ha/entities?exposed=true")).json()
+    assert body["total"] == 1
+    assert body["entities"][0]["entity_id"] == "sensor.amber_price"
+    assert (await client.get("/api/ha/entities")).json()["exposed_count"] == 1
+
+    # it now flows into the sensor namespace (values)
+    assert f"ha:{iid}:sensor.amber_price" in client.app.state.ha_registry.entity_values()
+
+    # un-expose
+    await client.post(
+        "/api/ha/entities/expose",
+        json={"instance_id": iid, "entity_id": "sensor.amber_price", "exposed": False},
+    )
+    assert (await client.get("/api/ha/entities?exposed=true")).json()["total"] == 0

@@ -30,9 +30,19 @@ from typing import Any
 import httpx
 from websockets.asyncio.client import connect as ws_connect
 
-from franklinwh_bridge.store.db import get_ha_instances
+from franklinwh_bridge.store.db import (
+    get_all_exposed_entities,
+    get_ha_instances,
+    set_entity_exposed,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _domain(entity_id: str) -> str:
+    """HA entity domain — the part before the first dot (``sensor.foo`` → ``sensor``)."""
+    return entity_id.split(".", 1)[0] if "." in entity_id else ""
+
 
 DEFAULT_POLL_INTERVAL_S = 30
 #: WebSocket reconnect backoff bounds (seconds).
@@ -83,8 +93,16 @@ class HaInstance:
         self.last_error: str | None = None
         #: "ws" once a live subscription is established, else "rest"/"init".
         self.transport = "init"
+        #: Allowlist — only these entity_ids surface as ha:* condition sensors.
+        self.exposed: set[str] = set()
         # entity_id -> {"state": str, "attributes": {...}}
         self._states: dict[str, dict] = {}
+
+    def set_exposed(self, entity_id: str, exposed: bool) -> None:
+        if exposed:
+            self.exposed.add(entity_id)
+        else:
+            self.exposed.discard(entity_id)
 
     # ── URLs / headers ────────────────────────────────────────
     def _headers(self) -> dict[str, str]:
@@ -204,15 +222,19 @@ class HaInstance:
 
     # ── views ─────────────────────────────────────────────────
     def values(self) -> dict[str, Any]:
-        """Cached entity states as `ha:<id>:<entity_id>` → coerced value."""
+        """Exposed entity states as `ha:<id>:<entity_id>` → coerced value."""
         return {
-            f"ha:{self.id}:{eid}": coerce_state(s.get("state")) for eid, s in self._states.items()
+            f"ha:{self.id}:{eid}": coerce_state(s.get("state"))
+            for eid, s in self._states.items()
+            if eid in self.exposed
         }
 
     def catalog(self) -> list[dict]:
-        """Sensor metadata for each cached entity (for /api/sensors dropdowns)."""
+        """Sensor metadata for each EXPOSED entity (for /api/sensors dropdowns)."""
         out = []
         for eid, s in self._states.items():
+            if eid not in self.exposed:
+                continue
             attrs = s.get("attributes") or {}
             val = coerce_state(s.get("state"))
             kind = (
@@ -229,7 +251,29 @@ class HaInstance:
                     "kind": kind,
                     "value": val,
                     "source": "ha",
+                    "group": f"HA · {self.name}",
                     "instance": self.id,
+                }
+            )
+        return out
+
+    def browse(self) -> list[dict]:
+        """ALL cached entities (ignores the allowlist) with an ``exposed`` flag —
+        backs the HA Entities browser."""
+        out = []
+        for eid, s in self._states.items():
+            attrs = s.get("attributes") or {}
+            out.append(
+                {
+                    "instance": self.id,
+                    "instance_name": self.name,
+                    "entity_id": eid,
+                    "friendly_name": attrs.get("friendly_name") or eid,
+                    "domain": _domain(eid),
+                    "state": s.get("state"),
+                    "value": coerce_state(s.get("state")),
+                    "unit": attrs.get("unit_of_measurement"),
+                    "exposed": eid in self.exposed,
                 }
             )
         return out
@@ -246,9 +290,13 @@ class HaRegistry:
         self._tasks: dict[str, asyncio.Task] = {}
 
     async def load(self) -> None:
-        """(Re)build the instance set from the ha_instances table (enabled only)."""
+        """(Re)build the instance set from the ha_instances table (enabled only),
+        seeding each instance's exposed-entity allowlist."""
         rows = await get_ha_instances(self._db)
         self._instances = {r["id"]: HaInstance(r) for r in rows if r.get("enabled")}
+        exposed = await get_all_exposed_entities(self._db)
+        for iid, inst in self._instances.items():
+            inst.exposed = exposed.get(iid, set())
 
     def _spawn_tasks(self) -> None:
         for inst in self._instances.values():
@@ -296,6 +344,24 @@ class HaRegistry:
         for inst in self._instances.values():
             out.extend(inst.catalog())
         return out
+
+    def browse(self) -> list[dict]:
+        """All entities across all instances (with exposed flags) for the browser."""
+        out: list[dict] = []
+        for inst in self._instances.values():
+            out.extend(inst.browse())
+        return out
+
+    def domains(self) -> list[str]:
+        return sorted({r["domain"] for r in self.browse() if r["domain"]})
+
+    async def set_exposed(self, instance_id: str, entity_id: str, exposed: bool) -> bool:
+        """Persist an allowlist change and apply it in-memory immediately."""
+        await set_entity_exposed(self._db, instance_id, entity_id, exposed)
+        inst = self._instances.get(instance_id)
+        if inst is not None:
+            inst.set_exposed(entity_id, exposed)
+        return exposed
 
     def status(self) -> list[dict]:
         return [
