@@ -109,7 +109,7 @@ function scheduleTab() {
     loading: false,
     _interval: null,
 
-    auditStatuses: ['fired', 'executed', 'gated', 'missed', 'exit_condition_met'],
+    auditStatuses: ['fired', 'executed', 'gated', 'waiting', 'missed', 'exit_condition_met'],
 
     // edit form ('null' = closed)
     form: null,
@@ -176,6 +176,7 @@ function scheduleTab() {
       return ({
         fired: 'text-emerald-300', executed: 'text-emerald-300',
         gated: 'text-amber-300', deferred: 'text-amber-300', hold: 'text-amber-300',
+        waiting: 'text-sky-300',
         missed: 'text-red-300', failed: 'text-red-300',
         exit_condition_met: 'text-cyan-300', duration_elapsed: 'text-slate-400',
         release: 'text-slate-400', ok: 'text-emerald-300',
@@ -347,9 +348,25 @@ function scheduleTab() {
         missed_policy: 'late_fire_remaining',
         priority: 0,
         enabled: true,
+        entry_hold_s: 0,
         entry_conditions: emptyTree(),
         exit_conditions: emptyTree(),
       }, overrides || {});
+    },
+
+    // HH:MM:SS <-> seconds for the dwell/duration field.
+    secToHms(s) {
+      const n = Math.max(0, parseInt(s, 10) || 0);
+      const p = (x) => String(x).padStart(2, '0');
+      return `${p(Math.floor(n / 3600))}:${p(Math.floor((n % 3600) / 60))}:${p(n % 60)}`;
+    },
+    hmsToSec(str) {
+      const parts = String(str).split(':').map((x) => parseInt(x, 10) || 0);
+      let h = 0, m = 0, s = 0;
+      if (parts.length >= 3) [h, m, s] = parts;
+      else if (parts.length === 2) [m, s] = parts;
+      else [s] = parts;
+      return Math.max(0, h * 3600 + m * 60 + s);
     },
 
     newEntry() {
@@ -390,6 +407,7 @@ function scheduleTab() {
         missed_policy: e.missed_policy || 'late_fire_remaining',
         priority: e.priority,
         enabled: e.enabled,
+        entry_hold_s: e.entry_hold_s || 0,
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
@@ -529,6 +547,7 @@ function scheduleTab() {
         missed_policy: f.missed_policy,
         priority: Number(f.priority) || 0,
         enabled: f.enabled,
+        entry_hold_s: Number(f.entry_hold_s) || 0,
         entry_conditions: this._buildTree(f.entry_conditions),
         exit_conditions: this._buildTree(f.exit_conditions),
       };

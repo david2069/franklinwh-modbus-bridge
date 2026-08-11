@@ -334,6 +334,13 @@ class ScheduleEngine:
         # gateway's points are read at most once per tick and every tree sees a
         # consistent view.
         self._snap_cache: dict[str, dict] = {}
+        # Condition-dwell timers: tkey -> (entry_id, first_eligible_at). An entry
+        # with entry_hold_s > 0 only fires once it's been eligible (window active
+        # + entry conditions passing) continuously for that long. Reset when the
+        # gate fails or the window exits. In-memory: on restart the timer restarts
+        # (the safe direction — never fires early). _dwelling audits the wait once.
+        self._dwell_since: dict[tuple, tuple[str, datetime]] = {}
+        self._dwelling: set[tuple] = set()
 
     # ---- lifecycle ----
 
@@ -571,6 +578,8 @@ class ScheduleEngine:
         if win is None:
             self._expired.pop(tkey, None)  # window over — next entry may re-fire
             self._gated.discard(tkey)  # gate resets; re-entry re-audits if gated
+            self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
+            self._dwelling.discard(tkey)
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
                     await self._dispatch(handler, "force_standby", {}, label="hold")
@@ -703,6 +712,8 @@ class ScheduleEngine:
         if entry_tree is not None:
             ok, trace = eval_conditions(entry_tree, self._snapshot(tkey[2], now))
             if not ok:
+                self._dwell_since.pop(tkey, None)  # gate failed → reset dwell timer
+                self._dwelling.discard(tkey)
                 if tkey not in self._gated:
                     self._gated.add(tkey)
                     await self._audit(
@@ -714,6 +725,24 @@ class ScheduleEngine:
                     )
                 return
         self._gated.discard(tkey)  # gate passed — clear any prior gated mark
+
+        # ── dwell: eligible (window active + gate passing) continuously for N? ──
+        hold_s = int(win.get("entry_hold_s") or 0)
+        if hold_s > 0:
+            rec = self._dwell_since.get(tkey)
+            if rec is None or rec[0] != win["id"]:
+                rec = (win["id"], now)
+                self._dwell_since[tkey] = rec
+            if (now - rec[1]).total_seconds() < hold_s:
+                if tkey not in self._dwelling:
+                    self._dwelling.add(tkey)
+                    await self._audit(
+                        win["id"], action, tkey, "waiting",
+                        f"conditions met — holding {hold_s}s before firing",
+                    )
+                return
+            self._dwell_since.pop(tkey, None)  # dwell satisfied → fire
+            self._dwelling.discard(tkey)
 
         self._expired.pop(tkey, None)  # fresh dispatch supersedes any old mark
         await self._dispatch(handler, action, params, label=win.get("name", action))

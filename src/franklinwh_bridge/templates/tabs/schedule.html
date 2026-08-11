@@ -466,6 +466,14 @@
             </div>
           </div>
 
+          <!-- ── Condition dwell / duration ── -->
+          <div class="rounded border border-white/[0.06] p-3 flex items-center gap-3 flex-wrap">
+            <label class="card-label !mb-0">Duration <span class="text-slate-500 normal-case">(HH:MM:SS)</span></label>
+            <input type="text" :value="secToHms(form.entry_hold_s)" @input="form.entry_hold_s = hmsToSec($event.target.value)"
+                   placeholder="00:00:00" class="form-control !py-1 !text-xs w-28 font-mono text-center">
+            <span class="text-xs text-slate-500">Conditions must remain true continuously for this long before firing (0 = immediate; checked ~every 15s).</span>
+          </div>
+
           <!-- ── Exit conditions ── -->
           <div class="rounded border border-white/[0.06] p-3 space-y-2">
             <div class="flex items-center justify-between">

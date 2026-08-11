@@ -77,6 +77,7 @@ class ScheduleCreate(BaseModel):
     duration_s: int | None = Field(default=None, ge=0)
     release_policy: str = Field(default="restore_prior_mode")
     missed_policy: str = Field(default="late_fire_remaining", pattern=_MISSED_POLICY)
+    entry_hold_s: int = Field(default=0, ge=0, le=86400)
 
 
 class ScheduleUpdate(BaseModel):
@@ -97,6 +98,7 @@ class ScheduleUpdate(BaseModel):
     duration_s: int | None = Field(default=None, ge=0)
     release_policy: str | None = None
     missed_policy: str | None = Field(default=None, pattern=_MISSED_POLICY)
+    entry_hold_s: int | None = Field(default=None, ge=0, le=86400)
 
 
 def _validate_action(action: str, params: dict) -> None:
@@ -174,6 +176,7 @@ async def add_schedule(body: ScheduleCreate, request: Request):
         exit_conditions=body.exit_conditions,
         duration_s=body.duration_s,
         release_policy=body.release_policy,
+        entry_hold_s=body.entry_hold_s,
         missed_policy=body.missed_policy,
     )
     await _reload_engine(request)

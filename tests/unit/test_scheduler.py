@@ -5,7 +5,7 @@ the engine drives fake command handlers and an in-memory store.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -261,6 +261,72 @@ async def test_dispatch_on_window_enter():
     await eng.tick(MON)
     assert ("battery_command", "Force Charge") in h.calls
     assert h.state.action == "Force Charge"
+
+
+# ── condition dwell (entry_hold_s) ────────────────────────────
+
+_SOC_LT_30 = {"match": "ALL", "conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 30}]}
+_ALLDAY = {"windows": [{"start": "09:00", "end": "18:00"}]}  # contains the 10:00 test time
+
+
+def _dwell_engine(handler, points, entry_hold_s=60):
+    e = _entry(entry_hold_s=entry_hold_s, entry_conditions=_SOC_LT_30, when_spec=_ALLDAY)
+    eng = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", handler)],
+        points_fn=lambda gw: points(),
+    )
+    eng._entries = [e]
+    return eng
+
+
+async def test_dwell_holds_then_fires():
+    h = FakeHandler()
+    eng = _dwell_engine(h, lambda: {"soc": 25}, entry_hold_s=60)
+    t0 = datetime(2026, 6, 15, 10, 0, 0)
+    await eng.tick(t0)  # conditions pass, but dwell not yet met
+    assert h.state.active is False
+    await eng.tick(t0 + timedelta(seconds=30))  # still dwelling
+    assert h.state.active is False
+    await eng.tick(t0 + timedelta(seconds=61))  # dwell satisfied → fire
+    assert h.state.action == "Force Charge"
+
+
+async def test_dwell_resets_when_conditions_flap():
+    h = FakeHandler()
+    soc = {"v": 25}
+    eng = _dwell_engine(h, lambda: {"soc": soc["v"]}, entry_hold_s=60)
+    t0 = datetime(2026, 6, 15, 10, 0, 0)
+    await eng.tick(t0)  # dwell starts
+    soc["v"] = 50  # conditions fail → timer resets
+    await eng.tick(t0 + timedelta(seconds=40))
+    assert h.state.active is False
+    soc["v"] = 25  # pass again → dwell restarts at this tick (t0+50)
+    await eng.tick(t0 + timedelta(seconds=50))
+    assert h.state.active is False
+    await eng.tick(t0 + timedelta(seconds=105))  # 55s since restart < 60 → not yet
+    assert h.state.active is False
+    await eng.tick(t0 + timedelta(seconds=115))  # 65s since restart → fire
+    assert h.state.action == "Force Charge"
+
+
+async def test_zero_dwell_fires_immediately():
+    h = FakeHandler()
+    eng = _dwell_engine(h, lambda: {"soc": 25}, entry_hold_s=0)
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))
+    assert h.state.action == "Force Charge"  # no dwell → fire same tick
+
+
+async def test_entry_hold_s_persists(tmp_path):
+    db = await init_db(tmp_path / "dwell.db")
+    try:
+        e = await create_schedule(db, "dwell", _ALLDAY, "force_charge", entry_hold_s=90)
+        assert e["entry_hold_s"] == 90
+        upd = await update_schedule(db, e["id"], entry_hold_s=120)
+        assert upd["entry_hold_s"] == 120
+        assert (await get_schedule(db, e["id"]))["entry_hold_s"] == 120
+    finally:
+        await db.close()
 
 
 async def test_idempotent_no_redispatch():

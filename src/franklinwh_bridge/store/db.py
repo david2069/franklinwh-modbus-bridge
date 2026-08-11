@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 28
+CURRENT_SCHEMA_VERSION = 29
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -466,6 +466,11 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX IF NOT EXISTS idx_ha_exposed_instance
         ON ha_exposed_entities (instance_id);
     """,
+    29: """
+    -- Condition dwell: entry conditions must hold continuously for this many
+    -- seconds before the entry fires (0 = fire immediately). Like HA's `for:`.
+    ALTER TABLE schedules ADD COLUMN entry_hold_s INTEGER NOT NULL DEFAULT 0;
+    """,
 }
 
 
@@ -905,6 +910,7 @@ _SCHEDULE_FIELDS = (
     "duration_s",
     "release_policy",
     "missed_policy",
+    "entry_hold_s",
 )
 # Columns stored as JSON text but always surfaced as dicts (default {} when absent).
 _SCHEDULE_JSON_FIELDS = ("when_spec", "params", "trigger_spec")
@@ -981,6 +987,7 @@ async def create_schedule(
     duration_s: int | None = None,
     release_policy: str = "restore_prior_mode",
     missed_policy: str = "late_fire_remaining",
+    entry_hold_s: int = 0,
 ) -> dict:
     """Create a schedule entry. Returns the created (decoded) row."""
     import uuid
@@ -992,8 +999,8 @@ async def create_schedule(
         "(id, name, enabled, when_spec, action, params, target_type, target_id, "
         " release, conflict, priority, created_at, updated_at, "
         " trigger_kind, trigger_spec, entry_conditions, exit_conditions, "
-        " duration_s, release_policy, missed_policy) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " duration_s, release_policy, missed_policy, entry_hold_s) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             schedule_id,
             name,
@@ -1015,6 +1022,7 @@ async def create_schedule(
             duration_s,
             release_policy,
             missed_policy,
+            int(entry_hold_s or 0),
         ),
     )
     await db.commit()
