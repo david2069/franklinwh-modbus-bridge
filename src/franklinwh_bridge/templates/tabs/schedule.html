@@ -377,7 +377,7 @@
             <template x-for="(c, i) in form.entry_conditions.conditions" :key="i">
               <div>
                 <!-- leaf row -->
-                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
+                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condFailed(c) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
                   <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                             class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -404,6 +404,7 @@
                   </select>
                   <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
                   <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                  <span x-show="condTested(c)" class="text-[10px] font-mono" :class="condFailed(c) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(c)"></span>
                   <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
                 </div>
                 <!-- nested group -->
@@ -422,7 +423,7 @@
                     </div>
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
-                    <div class="flex items-center gap-1.5 flex-wrap">
+                    <div class="flex items-center gap-1.5 flex-wrap" :class="condFailed(cc) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
                       <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                 class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -449,6 +450,7 @@
                       </select>
                       <input x-model="cc.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
                       <input x-show="cc.op === 'between'" x-model="cc.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                      <span x-show="condTested(cc)" class="text-[10px] font-mono" :class="condFailed(cc) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(cc)"></span>
                       <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
                     </div>
                   </template>
@@ -535,7 +537,7 @@
             <template x-for="(c, i) in form.exit_conditions.conditions" :key="i">
               <div>
                 <!-- leaf row -->
-                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
+                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condFailed(c) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
                   <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                             class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -562,6 +564,7 @@
                   </select>
                   <input x-model="c.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
                   <input x-show="c.op === 'between'" x-model="c.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                  <span x-show="condTested(c)" class="text-[10px] font-mono" :class="condFailed(c) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(c)"></span>
                   <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
                 </div>
                 <!-- nested group -->
@@ -580,7 +583,7 @@
                     </div>
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
-                    <div class="flex items-center gap-1.5 flex-wrap">
+                    <div class="flex items-center gap-1.5 flex-wrap" :class="condFailed(cc) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
                       <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                 class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -607,6 +610,7 @@
                       </select>
                       <input x-model="cc.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
                       <input x-show="cc.op === 'between'" x-model="cc.value2" class="form-control !py-1 !text-xs w-24" placeholder="and">
+                      <span x-show="condTested(cc)" class="text-[10px] font-mono" :class="condFailed(cc) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(cc)"></span>
                       <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
                     </div>
                   </template>
@@ -614,6 +618,14 @@
                 </div>
               </div>
             </template>
+            <div class="flex items-center gap-3 pt-1">
+              <button type="button" class="btn btn-sm btn-secondary !py-1 !text-xs" @click="testVerification('exit_conditions')"
+                      x-show="form.exit_conditions.conditions.length">Test Verification</button>
+              <template x-if="exitTestResult !== null">
+                <span class="text-xs" :class="exitTestResult.result === true ? 'text-amber-300' : 'text-emerald-300'"
+                      x-text="exitTestResult.msg ? exitTestResult.msg : (exitTestResult.result ? '⚠ exit WOULD fire now' : '✓ exit would NOT fire')"></span>
+              </template>
+            </div>
           </div>
 
           <!-- target -->

@@ -35,6 +35,20 @@ def test_none_tree_is_true_no_trace():
     assert trace == []
 
 
+def test_trace_echoes_cid_for_row_highlighting():
+    # A leaf carrying a `cid` echoes it in its trace row (UI maps failures→rows).
+    tree = {
+        "match": "ALL",
+        "conditions": [
+            {"sensor": "battery.soc_pct", "op": ">", "value": 90, "cid": 7},  # 55 > 90 → fail
+            {"sensor": "battery.soc_pct", "op": "<", "value": 90},  # no cid
+        ],
+    }
+    _, trace = evaluate(tree, SNAP)
+    assert trace[0]["cid"] == 7 and trace[0]["result"] is False
+    assert "cid" not in trace[1]  # absent when the leaf has none
+
+
 # ── operator matrix ───────────────────────────────────────────
 
 

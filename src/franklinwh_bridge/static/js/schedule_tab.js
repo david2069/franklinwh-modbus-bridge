@@ -180,7 +180,10 @@ function scheduleTab() {
 
     // edit form ('null' = closed)
     form: null,
-    testResult: null,
+    testResult: null,       // entry-conditions Test Verification result
+    exitTestResult: null,   // exit-conditions Test Verification result
+    traceByCid: {},         // leaf _cid -> {result, live_value} from last test
+    _cidSeq: 0,
 
     actions: SCHEDULE_ACTIONS,
     weekdays: WEEKDAYS,
@@ -439,12 +442,12 @@ function scheduleTab() {
     },
 
     newEntry() {
-      this.testResult = null;
       this.form = this._blankForm();
+      this._clearTrace();
     },
 
     editEntry(e) {
-      this.testResult = null;
+      this._clearTrace();
       const p = e.params || {};
       const s = e.trigger_spec || {};
       let trigger_type = 'window';
@@ -491,7 +494,7 @@ function scheduleTab() {
       return clone(t);
     },
 
-    closeForm() { this.form = null; this.testResult = null; },
+    closeForm() { this.form = null; this._clearTrace(); },
 
     // ── which sections are visible for the chosen trigger type ──
     get isTrigger() { return !['window', 'once'].includes(this.form.trigger_type); },
@@ -524,14 +527,27 @@ function scheduleTab() {
     // ── condition rows + nested groups ───────────────────────
     _newLeaf() {
       const s = this.sensors[0] ? this.sensors[0].id : 'battery.soc_pct';
-      return { sensor: s, op: '<', value: 0, value2: 0 };
+      return { sensor: s, op: '<', value: 0, value2: 0, _cid: ++this._cidSeq };
     },
     isGroup(c) { return !!(c && c.conditions); },
-    addCond(which) { this.form[which].conditions.push(this._newLeaf()); },
-    addCondGroup(which) { this.form[which].conditions.push({ match: 'ALL', conditions: [] }); },
-    removeCond(which, i) { this.form[which].conditions.splice(i, 1); },
-    addToGroup(group) { group.conditions.push(this._newLeaf()); },
-    removeFromGroup(group, j) { group.conditions.splice(j, 1); },
+    addCond(which) { this.form[which].conditions.push(this._newLeaf()); this._clearTrace(); },
+    addCondGroup(which) { this.form[which].conditions.push({ match: 'ALL', conditions: [] }); this._clearTrace(); },
+    removeCond(which, i) { this.form[which].conditions.splice(i, 1); this._clearTrace(); },
+    addToGroup(group) { group.conditions.push(this._newLeaf()); this._clearTrace(); },
+    removeFromGroup(group, j) { group.conditions.splice(j, 1); this._clearTrace(); },
+
+    // Verification trace helpers (per-condition highlight).
+    _clearTrace() { this.traceByCid = {}; this.testResult = null; this.exitTestResult = null; },
+    _ensureCids(tree) {
+      const walk = (node) => (node.conditions || []).forEach((c) => {
+        if (c.conditions) walk(c);
+        else if (c._cid == null) c._cid = ++this._cidSeq;
+      });
+      if (tree) walk(tree);
+    },
+    condFailed(c) { const t = this.traceByCid[c._cid]; return !!t && t.result === false; },
+    condTested(c) { return this.traceByCid[c._cid] !== undefined; },
+    condLive(c) { const t = this.traceByCid[c._cid]; return t ? t.live_value : undefined; },
 
     formActionMeta() { return this.actionMeta(this.form.action); },
 
@@ -558,7 +574,7 @@ function scheduleTab() {
 
     // Build a condition tree for the API (recursively), or null when empty.
     // Empty nested groups are pruned so they don't skew ALL/ANY evaluation.
-    _buildTree(tree) {
+    _buildTree(tree, withCid = false) {
       if (!tree || !tree.conditions.length) return null;
       const build = (node) => {
         const conds = [];
@@ -568,6 +584,7 @@ function scheduleTab() {
           } else {
             const row = { sensor: c.sensor, op: c.op, value: this._coerceVal(c.value) };
             if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
+            if (withCid && c._cid != null) row.cid = c._cid;  // UI-only, for highlight
             conds.push(row);
           }
         }
@@ -589,14 +606,25 @@ function scheduleTab() {
       return {};
     },
 
-    async testVerification() {
-      const tree = this._buildTree(this.form.entry_conditions);
-      if (!tree) { this.testResult = { result: null, msg: 'No entry conditions to test.' }; return; }
+    async testVerification(which = 'entry_conditions') {
+      const isExit = which === 'exit_conditions';
+      this._ensureCids(this.form[which]);
+      const tree = this._buildTree(this.form[which], true);
+      const setResult = (r) => { if (isExit) this.exitTestResult = r; else this.testResult = r; };
+      if (!tree) {
+        setResult({ result: null, msg: `No ${isExit ? 'exit' : 'entry'} conditions to test.` });
+        return;
+      }
       const gw = this.form.target_type === 'gateway' ? (this.form.target_id || 'default') : 'default';
       const res = await fetchJSON(`api/scheduler/evaluate?gateway=${encodeURIComponent(gw)}`, {
         method: 'POST', body: JSON.stringify(tree),
       });
-      this.testResult = res && !res.error ? res : { result: null, msg: res?.error || 'Evaluation failed' };
+      const out = res && !res.error ? res : { result: null, msg: res?.error || 'Evaluation failed' };
+      setResult(out);
+      // Map the trace back to rows (by cid) for per-condition highlighting.
+      (out.per_condition || []).forEach((t) => {
+        if (t.cid != null) this.traceByCid[t.cid] = { result: t.result, live_value: t.live_value };
+      });
     },
 
     async saveEntry() {

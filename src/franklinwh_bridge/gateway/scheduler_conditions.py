@@ -124,6 +124,11 @@ def _eval_node(node: Any, snapshot: Snapshot, trace: Trace) -> bool:
     }
     if op == "between":
         item["value2"] = value2
+    # Echo a caller-supplied leaf id so the UI can map this trace row back to the
+    # specific condition row it came from (per-condition failure highlighting).
+    cid = node.get("cid") if isinstance(node, dict) else None
+    if cid is not None:
+        item["cid"] = cid
     trace.append(item)
     return result
 
