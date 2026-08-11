@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api", tags=["schedules"])
 _ACTIONS = frozenset({
     "force_charge", "force_discharge", "force_standby", "release",
     "reserve_self", "reserve_tou", "mode",
+    "none",  # no battery command — HA-actions-only automation
 })
 
 
@@ -57,6 +58,15 @@ _TRIGGER_KIND = r"^(oneoff|daily|weekly|interval|always)$"
 _MISSED_POLICY = r"^(late_fire_remaining|skip|late_fire_always)$"
 
 
+class HaActionItem(BaseModel):
+    """One one-shot HA-entity action fired when the entry activates."""
+
+    instance_id: str = Field(..., min_length=1)
+    entity_id: str = Field(..., min_length=1)
+    service: str = Field(..., min_length=1)
+    data: dict = Field(default_factory=dict)
+
+
 class ScheduleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     # Optional so a pure fire-based (trigger) entry needn't send a window spec.
@@ -78,6 +88,7 @@ class ScheduleCreate(BaseModel):
     release_policy: str = Field(default="restore_prior_mode")
     missed_policy: str = Field(default="late_fire_remaining", pattern=_MISSED_POLICY)
     entry_hold_s: int = Field(default=0, ge=0, le=86400)
+    ha_actions: list[HaActionItem] = Field(default_factory=list)
 
 
 class ScheduleUpdate(BaseModel):
@@ -99,6 +110,7 @@ class ScheduleUpdate(BaseModel):
     release_policy: str | None = None
     missed_policy: str | None = Field(default=None, pattern=_MISSED_POLICY)
     entry_hold_s: int | None = Field(default=None, ge=0, le=86400)
+    ha_actions: list[HaActionItem] | None = None
 
 
 def _validate_action(action: str, params: dict) -> None:
@@ -177,6 +189,7 @@ async def add_schedule(body: ScheduleCreate, request: Request):
         duration_s=body.duration_s,
         release_policy=body.release_policy,
         entry_hold_s=body.entry_hold_s,
+        ha_actions=[a.model_dump() for a in body.ha_actions],
         missed_policy=body.missed_policy,
     )
     await _reload_engine(request)
@@ -323,6 +336,8 @@ async def list_schedule_actions():
              "params": ["pct"]},
             {"id": "mode", "label": "Operating Mode", "sustained": False,
              "params": ["mode"]},
+            {"id": "none", "label": "No battery action (HA only)", "sustained": False,
+             "params": []},
         ],
         # a quick echo so the UI can preview what a given action expands to
         "example_expansion": action_to_commands("force_charge", {"power_w": 1000}),

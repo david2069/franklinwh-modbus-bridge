@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 29
+CURRENT_SCHEMA_VERSION = 30
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -471,6 +471,12 @@ MIGRATIONS: dict[int, str] = {
     -- seconds before the entry fires (0 = fire immediately). Like HA's `for:`.
     ALTER TABLE schedules ADD COLUMN entry_hold_s INTEGER NOT NULL DEFAULT 0;
     """,
+    30: """
+    -- One-shot HA-entity actions run when the entry fires (after the battery
+    -- action): JSON list of {instance_id, entity_id, service, data}. NULL/[] =
+    -- none. Edge-triggered; no revert (see docs/automations-ha-actions...).
+    ALTER TABLE schedules ADD COLUMN ha_actions TEXT;
+    """,
 }
 
 
@@ -911,9 +917,12 @@ _SCHEDULE_FIELDS = (
     "release_policy",
     "missed_policy",
     "entry_hold_s",
+    "ha_actions",
 )
 # Columns stored as JSON text but always surfaced as dicts (default {} when absent).
 _SCHEDULE_JSON_FIELDS = ("when_spec", "params", "trigger_spec")
+# JSON columns surfaced as lists (default [] when absent/NULL).
+_SCHEDULE_LIST_JSON_FIELDS = ("ha_actions",)
 # JSON columns that are meaningfully nullable: NULL decodes to None (not {}),
 # because for a condition tree "no gate / disabled" differs from "empty tree".
 _SCHEDULE_NULLABLE_JSON_FIELDS = ("entry_conditions", "exit_conditions")
@@ -938,6 +947,15 @@ def _decode_schedule(row: dict) -> dict:
                 d[f] = json.loads(raw)
             except (ValueError, TypeError):
                 d[f] = None
+    for f in _SCHEDULE_LIST_JSON_FIELDS:
+        raw = d.get(f)
+        if raw in (None, ""):
+            d[f] = []
+        else:
+            try:
+                d[f] = json.loads(raw)
+            except (ValueError, TypeError):
+                d[f] = []
     return d
 
 
@@ -988,6 +1006,7 @@ async def create_schedule(
     release_policy: str = "restore_prior_mode",
     missed_policy: str = "late_fire_remaining",
     entry_hold_s: int = 0,
+    ha_actions: list | None = None,
 ) -> dict:
     """Create a schedule entry. Returns the created (decoded) row."""
     import uuid
@@ -999,8 +1018,8 @@ async def create_schedule(
         "(id, name, enabled, when_spec, action, params, target_type, target_id, "
         " release, conflict, priority, created_at, updated_at, "
         " trigger_kind, trigger_spec, entry_conditions, exit_conditions, "
-        " duration_s, release_policy, missed_policy, entry_hold_s) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " duration_s, release_policy, missed_policy, entry_hold_s, ha_actions) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             schedule_id,
             name,
@@ -1023,6 +1042,7 @@ async def create_schedule(
             release_policy,
             missed_policy,
             int(entry_hold_s or 0),
+            json.dumps(ha_actions or []),
         ),
     )
     await db.commit()
@@ -1042,6 +1062,9 @@ async def update_schedule(
     for f in _SCHEDULE_JSON_FIELDS:
         if f in updates and not isinstance(updates[f], str):
             updates[f] = json.dumps(updates[f])
+    for f in _SCHEDULE_LIST_JSON_FIELDS:
+        if f in updates and not isinstance(updates[f], str):
+            updates[f] = json.dumps(updates[f] or [])
     # Nullable JSON (condition trees): encode dicts, but leave None as SQL NULL.
     for f in _SCHEDULE_NULLABLE_JSON_FIELDS:
         if f in updates and updates[f] is not None and not isinstance(updates[f], str):

@@ -306,6 +306,51 @@ async def test_ws_auth_invalid_raises():
             await inst._live_session()
 
 
+# ── call_service (outbound automation actions) ────────────────
+
+
+@respx.mock
+async def test_call_service_switch_turn_on():
+    route = respx.post("http://ha.local/api/services/switch/turn_on").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    inst = HaInstance({"id": "home", "name": "Home", "base_url": "http://ha.local", "token": "t"})
+    res = await inst.call_service("switch.pool_pump", "turn_on")
+    assert res["ok"] is True and res["error"] is None
+    assert route.called
+    assert json.loads(route.calls.last.request.content) == {"entity_id": "switch.pool_pump"}
+
+
+@respx.mock
+async def test_call_service_select_option_carries_data():
+    route = respx.post("http://ha.local/api/services/select/select_option").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    inst = HaInstance({"id": "home", "name": "Home", "base_url": "http://ha.local"})
+    res = await inst.call_service("select.mode", "select_option", {"option": "Eco"})
+    assert res["ok"] is True
+    assert json.loads(route.calls.last.request.content) == {
+        "entity_id": "select.mode",
+        "option": "Eco",
+    }
+
+
+@respx.mock
+async def test_call_service_soft_fails_on_error():
+    respx.post("http://ha.local/api/services/switch/turn_off").mock(
+        return_value=httpx.Response(500)
+    )
+    inst = HaInstance({"id": "home", "name": "Home", "base_url": "http://ha.local"})
+    res = await inst.call_service("switch.x", "turn_off")
+    assert res["ok"] is False and res["error"]
+
+
+async def test_registry_call_service_unknown_instance(db):
+    reg = HaRegistry(db)
+    res = await reg.call_service("nope", "switch.x", "turn_on")
+    assert res["ok"] is False and "not found" in res["error"]
+
+
 # ── Exposed-entity allowlist ──────────────────────────────────
 
 

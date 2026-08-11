@@ -341,6 +341,7 @@ async def lifespan(app: FastAPI):
     schedule_engine = ScheduleEngine(
         db, _schedule_resolver, on_audit=_schedule_audit,
         points_fn=_schedule_points, connectivity=connectivity,
+        ha_action_fn=ha_registry.call_service,
     )
     app.state.schedule_engine = schedule_engine
 

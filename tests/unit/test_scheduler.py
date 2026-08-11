@@ -329,6 +329,90 @@ async def test_entry_hold_s_persists(tmp_path):
         await db.close()
 
 
+# ── one-shot HA actions ───────────────────────────────────────
+
+_HA_ACT = [{"instance_id": "ha1", "entity_id": "switch.pool", "service": "turn_on", "data": {}}]
+
+
+async def test_ha_actions_fire_once_per_activation():
+    h = FakeHandler()
+    calls = []
+
+    async def ha(inst, eid, svc, data):
+        calls.append((inst, eid, svc))
+        return {"ok": True}
+
+    e = _entry(ha_actions=_HA_ACT, when_spec=_ALLDAY)
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("default", h)], ha_action_fn=ha)
+    eng._entries = [e]
+    t = datetime(2026, 6, 15, 10, 0, 0)
+    await eng.tick(t)  # window enter → fire battery + HA action once
+    assert calls == [("ha1", "switch.pool", "turn_on")]
+    await eng.tick(t + timedelta(seconds=15))  # idempotent → no re-fire
+    assert len(calls) == 1
+    await eng.tick(datetime(2026, 6, 15, 19, 0, 0))  # window closed → release, reset edge
+    await eng.tick(datetime(2026, 6, 16, 10, 0, 0))  # next day re-enter → fire again
+    assert len(calls) == 2
+
+
+async def test_ha_actions_skipped_when_gated():
+    h = FakeHandler()
+    calls = []
+
+    async def ha(inst, eid, svc, data):
+        calls.append(eid)
+        return {"ok": True}
+
+    # gate fails (soc 50 !< 30) → neither battery nor HA action fires
+    e = _entry(ha_actions=_HA_ACT, when_spec=_ALLDAY, entry_conditions=_SOC_LT_30)
+    eng = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", h)],
+        points_fn=lambda gw: {"soc": 50},
+        ha_action_fn=ha,
+    )
+    eng._entries = [e]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))
+    assert calls == [] and h.state.active is False
+
+
+async def test_none_action_fires_ha_only():
+    h = FakeHandler()
+    calls = []
+
+    async def ha(inst, eid, svc, data):
+        calls.append(eid)
+        return {"ok": True}
+
+    e = _entry(action="none", params={}, ha_actions=_HA_ACT, when_spec=_ALLDAY)
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("default", h)], ha_action_fn=ha)
+    eng._entries = [e]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))
+    assert calls == ["switch.pool"]  # HA action fired
+    assert h.calls == [] and h.state.active is False  # no battery command at all
+
+
+async def test_ha_actions_no_dispatcher_is_safe():
+    h = FakeHandler()
+    e = _entry(ha_actions=_HA_ACT, when_spec=_ALLDAY)  # ha_action_fn=None
+    eng = ScheduleEngine(db=None, resolver=lambda tt, tid: [("default", h)])
+    eng._entries = [e]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))
+    assert h.state.action == "Force Charge"  # battery still fires; HA no-ops
+
+
+async def test_ha_actions_persist(tmp_path):
+    db = await init_db(tmp_path / "ha_act.db")
+    try:
+        e = await create_schedule(db, "act", _ALLDAY, "force_charge", ha_actions=_HA_ACT)
+        assert e["ha_actions"] == _HA_ACT
+        assert (await get_schedule(db, e["id"]))["ha_actions"] == _HA_ACT
+        upd = await update_schedule(db, e["id"], ha_actions=[])
+        assert upd["ha_actions"] == []
+    finally:
+        await db.close()
+
+
 async def test_idempotent_no_redispatch():
     h = FakeHandler()
     eng = _engine([_entry()], h)

@@ -361,6 +361,51 @@
             </div>
           </div>
 
+          <!-- ── HA Actions (one-shot, run when this fires) ── -->
+          <div class="rounded border border-white/[0.06] p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="card-label !mb-0">HA Actions <span class="text-slate-500 normal-case">(optional — run when this fires)</span></label>
+              <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addHaAction()" x-show="haControllable.length">+ add action</button>
+            </div>
+            <template x-if="!haControllable.length">
+              <div class="text-[11px] text-slate-500">No controllable HA entities exposed. Expose switches / selects / lights in
+                <button type="button" class="text-cyan-400 hover:underline" @click="$store.app.setTab('ha_entities')">HA Entities</button>.</div>
+            </template>
+            <template x-for="(a, ai) in form.ha_actions" :key="ai">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <select :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs">
+                  <option value="::">— entity —</option>
+                  <template x-for="grp in haControllableGroups" :key="grp.label">
+                    <optgroup :label="grp.label">
+                      <template x-for="ent in grp.items" :key="ent.instance_id + ent.entity_id">
+                        <option :value="ent.instance_id + '::' + ent.entity_id" x-text="ent.label"></option>
+                      </template>
+                    </optgroup>
+                  </template>
+                </select>
+                <template x-if="haControlKind(a) === 'toggle'">
+                  <select x-model="a.service" class="form-control !py-1 !text-xs w-28">
+                    <option value="turn_on">Turn On</option>
+                    <option value="turn_off">Turn Off</option>
+                    <option value="toggle">Toggle</option>
+                  </select>
+                </template>
+                <template x-if="haControlKind(a) === 'select'">
+                  <select x-model="a.data.option" class="form-control !py-1 !text-xs">
+                    <option value="">— option —</option>
+                    <template x-for="opt in (haEntityMeta(a)?.options || [])" :key="opt"><option :value="opt" x-text="opt"></option></template>
+                  </select>
+                </template>
+                <template x-if="haControlKind(a) === 'number'">
+                  <input type="number" x-model.number="a.data.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                </template>
+                <template x-if="haControlKind(a) === 'press'"><span class="text-[11px] text-slate-500 px-1">press button</span></template>
+                <template x-if="haControlKind(a) === 'run'"><span class="text-[11px] text-slate-500 px-1">run</span></template>
+                <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeHaAction(ai)">✕</button>
+              </div>
+            </template>
+          </div>
+
           <!-- ── Entry conditions (gate) ── -->
           <div class="rounded border border-white/[0.06] p-3 space-y-2">
             <div class="flex items-center justify-between">

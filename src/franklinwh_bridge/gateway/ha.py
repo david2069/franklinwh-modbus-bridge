@@ -141,6 +141,33 @@ class HaInstance:
                 "attributes": new.get("attributes", {}),
             }
 
+    # ── outbound control (automation actions) ─────────────────
+    async def call_service(
+        self, entity_id: str, service: str, data: dict | None = None
+    ) -> dict:
+        """Call an HA service on ``entity_id`` via REST
+        (``POST /api/services/{domain}/{service}``). ``service`` is a bare name
+        in the entity's domain (e.g. ``turn_on``, ``select_option``); ``data``
+        carries extra fields (``{"option": ...}`` / ``{"value": ...}``).
+
+        Returns ``{"ok": bool, "error": str|None}`` — never raises, so one bad
+        action can't abort a schedule's dispatch."""
+        domain = _domain(entity_id)
+        if not domain or not service:
+            return {"ok": False, "error": f"bad entity/service: {entity_id!r}/{service!r}"}
+        url = f"{self.base_url}/api/services/{domain}/{service}"
+        payload = {"entity_id": entity_id, **(data or {})}
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(url, headers=self._headers(), json=payload)
+                resp.raise_for_status()
+            return {"ok": True, "error": None}
+        except Exception as exc:
+            err = str(exc) or type(exc).__name__
+            logger.warning("HA %s call_service %s.%s(%s) failed: %s",
+                           self.name, domain, service, entity_id, err)
+            return {"ok": False, "error": err}
+
     # ── REST (seed / fallback / test-connection) ──────────────
     async def refresh(self) -> None:
         """Pull /api/states into the cache over REST. Sets connected/last_error."""
@@ -273,6 +300,8 @@ class HaInstance:
                     "state": s.get("state"),
                     "value": coerce_state(s.get("state")),
                     "unit": attrs.get("unit_of_measurement"),
+                    # For select/input_select: the pickable options (for actions).
+                    "options": attrs.get("options"),
                     "exposed": eid in self.exposed,
                 }
             )
@@ -362,6 +391,16 @@ class HaRegistry:
         if inst is not None:
             inst.set_exposed(entity_id, exposed)
         return exposed
+
+    async def call_service(
+        self, instance_id: str, entity_id: str, service: str, data: dict | None = None
+    ) -> dict:
+        """Route an automation action to the right HA instance. Returns
+        ``{"ok": bool, "error": str|None}`` (never raises)."""
+        inst = self._instances.get(instance_id)
+        if inst is None:
+            return {"ok": False, "error": f"HA instance {instance_id!r} not found"}
+        return await inst.call_service(entity_id, service, data)
 
     def status(self) -> list[dict]:
         return [

@@ -296,9 +296,14 @@ class ScheduleEngine:
         on_audit: Callable[..., Awaitable[None]] | None = None,
         points_fn: Callable[[str], dict] | None = None,
         connectivity: Any | None = None,
+        ha_action_fn: Callable[[str, str, str, dict], Awaitable[dict]] | None = None,
     ) -> None:
         self._db = db
         self._resolver = resolver
+        # Optional HA-action dispatcher: (instance_id, entity_id, service, data)
+        # -> {"ok": bool, ...}. Wired to HaRegistry.call_service in main.py. None
+        # → HA actions are skipped (no HA configured).
+        self._ha_action_fn = ha_action_fn
         self._now = now_fn or datetime.now
         self._tick_s = tick_s
         self._on_audit = on_audit
@@ -341,6 +346,10 @@ class ScheduleEngine:
         # (the safe direction — never fires early). _dwelling audits the wait once.
         self._dwell_since: dict[tuple, tuple[str, datetime]] = {}
         self._dwelling: set[tuple] = set()
+        # One-shot HA actions are edge-triggered: tkey -> entry_id we've already
+        # run actions for this activation. Cleared on window exit so re-entry
+        # re-fires. Prevents re-running on a battery re-dispatch (sig change).
+        self._ha_fired: dict[tuple, str] = {}
 
     # ---- lifecycle ----
 
@@ -580,6 +589,7 @@ class ScheduleEngine:
             self._gated.discard(tkey)  # gate resets; re-entry re-audits if gated
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
             self._dwelling.discard(tkey)
+            self._ha_fired.pop(tkey, None)  # re-entry re-fires one-shot HA actions
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
                     await self._dispatch(handler, "force_standby", {}, label="hold")
@@ -746,6 +756,10 @@ class ScheduleEngine:
 
         self._expired.pop(tkey, None)  # fresh dispatch supersedes any old mark
         await self._dispatch(handler, action, params, label=win.get("name", action))
+        # One-shot HA actions on this activation edge (after the battery action).
+        if self._ha_fired.get(tkey) != win["id"]:
+            self._ha_fired[tkey] = win["id"]
+            await self._run_ha_actions(win, tkey)
         self._owned[tkey] = {
             "entry_id": win["id"],
             "signature": sig,
@@ -763,7 +777,42 @@ class ScheduleEngine:
         }
         await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
 
+    async def _run_ha_actions(self, win: dict, tkey: tuple) -> None:
+        """Fire an entry's one-shot HA-entity actions (turn a switch/select/…).
+        Runs after the battery action, in order; each is best-effort and audited
+        so one failure (HA offline) can't abort the rest or the dispatch."""
+        actions = win.get("ha_actions") or []
+        if not actions:
+            return
+        if self._ha_action_fn is None:
+            if actions:
+                await self._audit(
+                    win["id"], "ha_action", tkey, "failed",
+                    f"{len(actions)} HA action(s) skipped — no HA configured",
+                )
+            return
+        for a in actions:
+            inst = a.get("instance_id")
+            eid = a.get("entity_id")
+            svc = a.get("service")
+            data = a.get("data") or {}
+            if not (inst and eid and svc):
+                continue
+            try:
+                res = await self._ha_action_fn(inst, eid, svc, data)
+            except Exception as exc:  # defensive — call_service already soft-fails
+                res = {"ok": False, "error": str(exc) or type(exc).__name__}
+            ok = bool(res.get("ok"))
+            detail = f"{eid} → {svc}" + (f" {data}" if data else "")
+            if not ok:
+                detail += f" — {res.get('error')}"
+            await self._audit(
+                win["id"], "ha_action", tkey, "ha_action" if ok else "failed", detail
+            )
+
     async def _dispatch(self, handler: Any, action: str, params: dict, label: str) -> None:
+        if action == "none":
+            return  # HA-actions-only entry: no battery command
         cmds = action_to_commands(action, params)
         if not cmds:
             logger.warning("Schedule: unknown action %r — skipped", action)

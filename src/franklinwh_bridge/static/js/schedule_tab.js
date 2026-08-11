@@ -17,6 +17,7 @@ const SCHEDULE_ACTIONS = [
   { id: 'reserve_self',    label: 'Self Reserve %',  colour: '#3b82f6', sustained: false, params: ['pct'] },
   { id: 'reserve_tou',     label: 'TOU Reserve %',   colour: '#6366f1', sustained: false, params: ['pct'] },
   { id: 'mode',            label: 'Operating Mode',  colour: '#14b8a6', sustained: false, params: ['mode'] },
+  { id: 'none',            label: 'No battery action (HA only)', colour: '#64748b', sustained: false, params: [] },
 ];
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -63,6 +64,7 @@ function scheduleTab() {
     timeline: { segments: [], now_min: 0, weekday: 0 },
     services: [],
     sensors: [],
+    haControllable: [],   // exposed HA entities in controllable domains (for actions)
 
     // Sensors grouped by their `group` label for the condition-picker,
     // preserving first-seen order (native metrics first, then HA · <instance>).
@@ -100,6 +102,71 @@ function scheduleTab() {
       return out;
     },
 
+    // ── HA actions (one-shot) ──────────────────────────────────
+    async loadHaControllable() {
+      const CTRL = ['switch', 'input_boolean', 'light', 'select', 'input_select',
+                    'number', 'input_number', 'button', 'scene', 'script'];
+      const data = await fetchJSON('api/ha/entities?exposed=true&page_size=500');
+      const rows = (data && data.entities) || [];
+      this.haControllable = rows
+        .filter((e) => CTRL.includes(e.domain))
+        .map((e) => ({
+          instance_id: e.instance, instance_name: e.instance_name,
+          entity_id: e.entity_id, domain: e.domain, options: e.options || [],
+          label: `${e.friendly_name} (${e.entity_id})`,
+        }));
+    },
+
+    get haControllableGroups() {
+      const groups = [];
+      const idx = {};
+      for (const e of this.haControllable) {
+        const g = e.instance_name || 'HA';
+        if (!(g in idx)) { idx[g] = groups.length; groups.push({ label: g, items: [] }); }
+        groups[idx[g]].items.push(e);
+      }
+      return groups;
+    },
+
+    haEntityMeta(a) {
+      return this.haControllable.find(
+        (e) => e.instance_id === a.instance_id && e.entity_id === a.entity_id);
+    },
+
+    haControlKind(a) {
+      const m = this.haEntityMeta(a);
+      if (!m) return '';
+      const d = m.domain;
+      if (['switch', 'input_boolean', 'light'].includes(d)) return 'toggle';
+      if (['select', 'input_select'].includes(d)) return 'select';
+      if (['number', 'input_number'].includes(d)) return 'number';
+      if (d === 'button') return 'press';
+      if (['scene', 'script'].includes(d)) return 'run';
+      return 'toggle';
+    },
+
+    _defaultServiceFor(domain) {
+      if (['select', 'input_select'].includes(domain)) return 'select_option';
+      if (['number', 'input_number'].includes(domain)) return 'set_value';
+      if (domain === 'button') return 'press';
+      if (['scene', 'script'].includes(domain)) return 'turn_on';
+      return 'turn_on';  // switch/input_boolean/light
+    },
+
+    addHaAction() {
+      this.form.ha_actions.push({ instance_id: '', entity_id: '', service: 'turn_on', data: {} });
+    },
+    removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
+
+    onHaEntityPick(a, composite) {
+      const sep = composite.indexOf('::');
+      a.instance_id = composite.slice(0, sep);
+      a.entity_id = composite.slice(sep + 2);
+      a.data = {};
+      const m = this.haEntityMeta(a);
+      a.service = this._defaultServiceFor(m ? m.domain : '');
+    },
+
     audit: [],
     auditFilter: '',
     conn: { connected: true, gateways: {}, recent_outages: [] },
@@ -109,7 +176,7 @@ function scheduleTab() {
     loading: false,
     _interval: null,
 
-    auditStatuses: ['fired', 'executed', 'gated', 'waiting', 'missed', 'exit_condition_met'],
+    auditStatuses: ['fired', 'executed', 'ha_action', 'gated', 'waiting', 'missed', 'exit_condition_met'],
 
     // edit form ('null' = closed)
     form: null,
@@ -150,6 +217,7 @@ function scheduleTab() {
       if (sen && sen.sensors) this.sensors = sen.sensors;
       if (log && log.events) this.audit = log.events;
       if (conn) this.conn = conn;
+      this.loadHaControllable();  // exposed controllable HA entities for actions
     },
 
     async setAuditFilter(f) {
@@ -179,7 +247,7 @@ function scheduleTab() {
         waiting: 'text-sky-300',
         missed: 'text-red-300', failed: 'text-red-300',
         exit_condition_met: 'text-cyan-300', duration_elapsed: 'text-slate-400',
-        release: 'text-slate-400', ok: 'text-emerald-300',
+        release: 'text-slate-400', ok: 'text-emerald-300', ha_action: 'text-emerald-300',
       })[r] || 'text-slate-300';
     },
 
@@ -349,6 +417,7 @@ function scheduleTab() {
         priority: 0,
         enabled: true,
         entry_hold_s: 0,
+        ha_actions: [],
         entry_conditions: emptyTree(),
         exit_conditions: emptyTree(),
       }, overrides || {});
@@ -408,6 +477,7 @@ function scheduleTab() {
         priority: e.priority,
         enabled: e.enabled,
         entry_hold_s: e.entry_hold_s || 0,
+        ha_actions: (e.ha_actions || []).map((a) => ({ ...a, data: { ...(a.data || {}) } })),
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
@@ -548,6 +618,12 @@ function scheduleTab() {
         priority: Number(f.priority) || 0,
         enabled: f.enabled,
         entry_hold_s: Number(f.entry_hold_s) || 0,
+        ha_actions: (f.ha_actions || [])
+          .filter((a) => a.instance_id && a.entity_id && a.service)
+          .map((a) => ({
+            instance_id: a.instance_id, entity_id: a.entity_id,
+            service: a.service, data: a.data || {},
+          })),
         entry_conditions: this._buildTree(f.entry_conditions),
         exit_conditions: this._buildTree(f.exit_conditions),
       };
