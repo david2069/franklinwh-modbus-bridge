@@ -31,8 +31,9 @@ passes those points in; this module stays pure and unit-testable.
 All of the above were confirmed against a live aGate sample (see
 ``tests/hardware/test_scheduler_sensors_live.py``), not just the mock.
 
-- ``price.export_c_per_kwh`` — kept as a stub returning ``None`` (fails closed in
-  conditions) until a price source is wired.
+There is intentionally **no price.* sensor** yet: a price source isn't wired, and
+a stub that always returns ``None`` just clutters the condition picker. Add one
+(mapped to a real point) when the pricing integration lands.
 """
 
 from __future__ import annotations
@@ -176,9 +177,10 @@ SENSORS: list[SensorDef] = [
     SensorDef("time.hour", "Hour of day (0..23, local)", None, "number", lambda _p, n: n.hour),
     SensorDef("time.dow", "Day of week (0=Mon..6=Sun)", None, "number", lambda _p, n: n.weekday()),
     SensorDef("time.month", "Month (1..12)", None, "number", lambda _p, n: n.month),
-    SensorDef(
-        "price.export_c_per_kwh", "Export Price (c/kWh)", "c/kWh", "number", lambda _p, _n: None
-    ),  # stub until a price source is wired
+    # NOTE: no price.* sensor yet — a price source isn't wired. Re-add a
+    # ``price.export_c_per_kwh`` SensorDef (mapped to a real point) when the
+    # pricing integration lands, rather than shipping a stub that's always None
+    # and misleads the condition picker.
 ]
 
 # ── Period energy totals (today/week/month/YTD, kWh) ──────────
@@ -242,7 +244,6 @@ _GROUP_LABELS = {
     "mode": "Mode",
     "energy": "Energy",
     "time": "Time",
-    "price": "Price",
 }
 
 

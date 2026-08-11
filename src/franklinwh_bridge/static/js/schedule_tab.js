@@ -64,7 +64,7 @@ function scheduleTab() {
     services: [],
     sensors: [],
 
-    // Sensors grouped by their `group` label for the condition-picker <optgroup>s,
+    // Sensors grouped by their `group` label for the condition-picker,
     // preserving first-seen order (native metrics first, then HA · <instance>).
     get sensorGroups() {
       const groups = [];
@@ -75,6 +75,29 @@ function scheduleTab() {
         groups[idx[g]].items.push(s);
       }
       return groups;
+    },
+
+    // Display label for a selected sensor id (searchable combobox button text).
+    sensorLabel(id) {
+      if (!id) return 'Select sensor…';
+      const s = this.sensors.find((x) => x.id === id);
+      return s ? s.label : id;
+    },
+
+    // Groups filtered by a query (matches label, id, or group name); drops empties.
+    // Powers the type-to-filter condition picker (FWHAI-style).
+    filterGroups(q) {
+      const query = (q || '').trim().toLowerCase();
+      if (!query) return this.sensorGroups;
+      const out = [];
+      for (const g of this.sensorGroups) {
+        const gm = g.label.toLowerCase().includes(query);
+        const items = g.items.filter(
+          (s) => gm || s.label.toLowerCase().includes(query) || s.id.toLowerCase().includes(query),
+        );
+        if (items.length) out.push({ label: g.label, items });
+      }
+      return out;
     },
 
     audit: [],

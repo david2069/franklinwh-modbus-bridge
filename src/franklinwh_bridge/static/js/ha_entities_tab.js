@@ -8,6 +8,7 @@ function haEntitiesTab() {
     domains: [],
     entities: [],
     total: 0,
+    grandTotal: 0,
     exposedCount: 0,
     page: 1,
     pageSize: 50,
@@ -43,7 +44,17 @@ function haEntitiesTab() {
       if (Array.isArray(data)) this.domains = data;
     },
 
+    resetFilters() {
+      this.search = '';
+      this.domain = '';
+      this.instance = '';
+      this.exposedOnly = false;
+      this.page = 1;
+    },
+
+    // Refresh + re-entering the tab both give a clean slate (no stale filters).
     async reload() {
+      this.resetFilters();
       await this.loadInstances();
       if (this.instances.length) await this.loadDomains();
       await this.load();
@@ -61,6 +72,7 @@ function haEntitiesTab() {
         if (data && !data.error) {
           this.entities = data.entities || [];
           this.total = data.total || 0;
+          this.grandTotal = data.grand_total ?? data.total ?? 0;
           this.exposedCount = data.exposed_count || 0;
         }
       } finally {

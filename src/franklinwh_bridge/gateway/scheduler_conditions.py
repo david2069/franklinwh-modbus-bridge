@@ -18,9 +18,9 @@ Two deliberate semantics, both chosen so a scheduler never drives the battery on
 missing/indeterminate data:
 
 - **Absent or ``None`` live value → the condition is ``False``** for every
-  operator (including ``!=``). The stubbed ``price.export_c_per_kwh`` sensor
-  returns ``None`` until a price source is wired, so any price condition simply
-  fails closed rather than firing.
+  operator (including ``!=``). A sensor with no live value (e.g. a not-yet-wired
+  external source, or an HA entity that is ``unavailable``) simply fails closed
+  rather than firing.
 - **Vacuous truth follows the match mode**: an empty ``ALL`` is ``True``, an
   empty ``ANY`` is ``False`` (standard).
 

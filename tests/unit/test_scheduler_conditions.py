@@ -15,7 +15,7 @@ SNAP = {
     "grid.connected": True,
     "mode.name": "tou",
     "mode.raw": 3,
-    "price.export_c_per_kwh": None,  # stub sensor, always None for now
+    "unmapped.sensor": None,  # a sensor with no live value (fails closed)
 }
 
 
@@ -107,7 +107,7 @@ def test_numeric_string_value_coerced():
 
 @pytest.mark.parametrize("op", ["<", "<=", "==", "!=", ">=", ">", "between"])
 def test_none_live_value_fails_closed_all_ops(op):
-    tree = {"conditions": [cond("price.export_c_per_kwh", op, 10, 20)]}
+    tree = {"conditions": [cond("unmapped.sensor", op, 10, 20)]}
     result, trace = evaluate(tree, SNAP)
     assert result is False
     assert trace[0]["live_value"] is None

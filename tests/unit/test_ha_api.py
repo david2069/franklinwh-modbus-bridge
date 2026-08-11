@@ -137,8 +137,10 @@ async def test_browse_entities_shape_and_filters(client):
     row = next(e for e in body["entities"] if e["entity_id"] == "sensor.amber_price")
     assert row["domain"] == "sensor" and row["value"] == 31.2 and row["exposed"] is False
 
-    # domain filter
-    assert (await client.get("/api/ha/entities?domain=light")).json()["total"] == 1
+    assert body["grand_total"] == 3
+    # domain filter narrows `total` but grand_total (unfiltered) stays 3
+    light = (await client.get("/api/ha/entities?domain=light")).json()
+    assert light["total"] == 1 and light["grand_total"] == 3
     # search filter (matches friendly name)
     assert (await client.get("/api/ha/entities?search=amber")).json()["total"] == 1
     # instance filter + domains endpoint

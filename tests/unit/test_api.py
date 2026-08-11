@@ -159,7 +159,7 @@ async def test_sensors_endpoint(client):
     data = resp.json()
     ids = {s["id"] for s in data["sensors"]}
     assert "battery.soc_pct" in ids
-    assert "price.export_c_per_kwh" in ids
+    assert "price.export_c_per_kwh" not in ids  # stub removed
     # each entry carries id/label/unit/kind/value
     first = data["sensors"][0]
     assert {"id", "label", "unit", "kind", "value"} <= set(first)

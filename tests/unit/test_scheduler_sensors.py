@@ -103,11 +103,13 @@ def test_time_sensors():
     assert snap["time.month"] == 8
 
 
-# ── price stub ────────────────────────────────────────────────
+# ── price sensor intentionally absent (no source wired) ───────
 
 
-def test_price_is_stubbed_none():
-    assert snapshot({"price.export_c_per_kwh": 25}, NOW)["price.export_c_per_kwh"] is None
+def test_no_price_sensor():
+    # The always-None price stub was removed; it must not appear as a sensor.
+    assert "price.export_c_per_kwh" not in snapshot({}, NOW)
+    assert "price.export_c_per_kwh" not in {row["id"] for row in sensor_catalog()}
 
 
 # ── realistic sample from the mock ────────────────────────────
@@ -131,7 +133,7 @@ def test_sensor_catalog_shape_without_points():
     cat = sensor_catalog()
     ids = {row["id"] for row in cat}
     assert "battery.soc_pct" in ids
-    assert "price.export_c_per_kwh" in ids
+    assert "price.export_c_per_kwh" not in ids  # stub removed
     first = cat[0]
     assert set(first) == {"id", "label", "unit", "kind", "group"}  # no getter, no value
     assert "getter" not in first
@@ -145,7 +147,6 @@ def test_sensor_catalog_includes_values_when_points_given():
     cat = sensor_catalog(POINTS, NOW)
     by_id = {row["id"]: row for row in cat}
     assert by_id["battery.soc_pct"]["value"] == 62.5
-    assert by_id["price.export_c_per_kwh"]["value"] is None
 
 
 # ── lifetime energy sensors (Wh counter → kWh) ────────────────

@@ -378,9 +378,27 @@
               <div>
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
-                  <select x-model="c.sensor" class="form-control !py-1 !text-xs">
-                    <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
-                  </select>
+                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                    <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
+                            class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
+                      <span class="truncate" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" x-text="sensorLabel(c.sensor)"></span>
+                      <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
+                    </button>
+                    <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                      <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
+                        <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
+                      </div>
+                      <template x-for="g in filterGroups(q)" :key="g.label">
+                        <div>
+                          <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
+                          <template x-for="s in g.items" :key="s.id">
+                            <button type="button" @click="c.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="c.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                          </template>
+                        </div>
+                      </template>
+                      <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                    </div>
+                  </div>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
                     <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
                   </select>
@@ -405,9 +423,27 @@
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap">
-                      <select x-model="cc.sensor" class="form-control !py-1 !text-xs">
-                        <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
-                      </select>
+                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                        <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
+                                class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
+                          <span class="truncate" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" x-text="sensorLabel(cc.sensor)"></span>
+                          <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
+                        </button>
+                        <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                          <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
+                            <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
+                          </div>
+                          <template x-for="g in filterGroups(q)" :key="g.label">
+                            <div>
+                              <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
+                              <template x-for="s in g.items" :key="s.id">
+                                <button type="button" @click="cc.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="cc.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                              </template>
+                            </div>
+                          </template>
+                          <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                        </div>
+                      </div>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
                         <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
                       </select>
@@ -447,9 +483,27 @@
               <div>
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap">
-                  <select x-model="c.sensor" class="form-control !py-1 !text-xs">
-                    <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
-                  </select>
+                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                    <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
+                            class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
+                      <span class="truncate" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" x-text="sensorLabel(c.sensor)"></span>
+                      <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
+                    </button>
+                    <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                      <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
+                        <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
+                      </div>
+                      <template x-for="g in filterGroups(q)" :key="g.label">
+                        <div>
+                          <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
+                          <template x-for="s in g.items" :key="s.id">
+                            <button type="button" @click="c.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="c.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                          </template>
+                        </div>
+                      </template>
+                      <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                    </div>
+                  </div>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
                     <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
                   </select>
@@ -474,9 +528,27 @@
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap">
-                      <select x-model="cc.sensor" class="form-control !py-1 !text-xs">
-                        <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
-                      </select>
+                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                        <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
+                                class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
+                          <span class="truncate" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" x-text="sensorLabel(cc.sensor)"></span>
+                          <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
+                        </button>
+                        <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                          <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
+                            <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
+                          </div>
+                          <template x-for="g in filterGroups(q)" :key="g.label">
+                            <div>
+                              <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
+                              <template x-for="s in g.items" :key="s.id">
+                                <button type="button" @click="cc.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="cc.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                              </template>
+                            </div>
+                          </template>
+                          <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                        </div>
+                      </div>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
                         <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
                       </select>

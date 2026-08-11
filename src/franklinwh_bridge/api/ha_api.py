@@ -154,6 +154,7 @@ async def browse_entities(
     """
     reg = _registry(request)
     rows = reg.browse() if reg is not None else []
+    grand_total = len(rows)
     exposed_count = sum(1 for r in rows if r["exposed"])
 
     if instance:
@@ -173,6 +174,7 @@ async def browse_entities(
     start = (page - 1) * page_size
     return {
         "total": total,
+        "grand_total": grand_total,
         "page": page,
         "page_size": page_size,
         "exposed_count": exposed_count,
