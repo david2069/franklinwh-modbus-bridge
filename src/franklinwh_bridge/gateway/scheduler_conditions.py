@@ -111,17 +111,32 @@ def _eval_node(node: Any, snapshot: Snapshot, trace: Trace) -> bool:
         return _eval_tree(node, snapshot, trace)
     sensor = node.get("sensor") if isinstance(node, dict) else None
     op = node.get("op") if isinstance(node, dict) else None
-    value = node.get("value") if isinstance(node, dict) else None
     value2 = node.get("value2") if isinstance(node, dict) else None
     live = snapshot.get(sensor)
-    result = _apply_op(op, live, value, value2)
+
+    # RHS is a literal Value by default, or a Lookup of another sensor's live
+    # value ("value_kind":"sensor" + "value_sensor":<id>) for sensor-to-sensor
+    # comparisons (e.g. import_price > export_price). A Lookup whose RHS sensor is
+    # unavailable (None) fails closed, like a None LHS.
+    value_kind = (node.get("value_kind") if isinstance(node, dict) else None) or "value"
+    rhs_sensor = node.get("value_sensor") if isinstance(node, dict) else None
+    if value_kind == "sensor":
+        value = snapshot.get(rhs_sensor)
+        result = False if value is None else _apply_op(op, live, value, value2)
+    else:
+        value = node.get("value") if isinstance(node, dict) else None
+        result = _apply_op(op, live, value, value2)
+
     item: dict[str, Any] = {
         "sensor": sensor,
         "op": op,
-        "value": value,
+        "value": value,  # for a Lookup this is the resolved live RHS value
         "live_value": live,
         "result": result,
     }
+    if value_kind == "sensor":
+        item["value_kind"] = "sensor"
+        item["value_sensor"] = rhs_sensor
     if op == "between":
         item["value2"] = value2
     # Echo a caller-supplied leaf id so the UI can map this trace row back to the

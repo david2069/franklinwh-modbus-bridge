@@ -35,6 +35,55 @@ def test_none_tree_is_true_no_trace():
     assert trace == []
 
 
+def test_lookup_rhs_compares_two_sensors():
+    snap = {"price.import": 30.0, "price.export": 8.0, "battery.soc_pct": 55}
+    # import (30) > export (8) → True
+    tree = {
+        "match": "ALL",
+        "conditions": [
+            {
+                "sensor": "price.import",
+                "op": ">",
+                "value_kind": "sensor",
+                "value_sensor": "price.export",
+            }
+        ],
+    }
+    result, trace = evaluate(tree, snap)
+    assert result is True
+    assert trace[0]["value"] == 8.0  # resolved live RHS
+    assert trace[0]["value_sensor"] == "price.export"
+
+
+def test_lookup_rhs_unavailable_fails_closed():
+    snap = {"battery.soc_pct": 55}  # value_sensor missing → None
+    tree = {
+        "match": "ALL",
+        "conditions": [
+            {
+                "sensor": "battery.soc_pct",
+                "op": ">",
+                "value_kind": "sensor",
+                "value_sensor": "ha:x:missing",
+            }
+        ],
+    }
+    # Also for != — must still fail closed (not silently True)
+    tree_ne = {
+        "match": "ALL",
+        "conditions": [
+            {
+                "sensor": "battery.soc_pct",
+                "op": "!=",
+                "value_kind": "sensor",
+                "value_sensor": "ha:x:missing",
+            }
+        ],
+    }
+    assert evaluate(tree, snap)[0] is False
+    assert evaluate(tree_ne, snap)[0] is False
+
+
 def test_trace_echoes_cid_for_row_highlighting():
     # A leaf carrying a `cid` echoes it in its trace row (UI maps failures→rows).
     tree = {

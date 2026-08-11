@@ -527,7 +527,11 @@ function scheduleTab() {
     // ── condition rows + nested groups ───────────────────────
     _newLeaf() {
       const s = this.sensors[0] ? this.sensors[0].id : 'battery.soc_pct';
-      return { sensor: s, op: '<', value: 0, value2: 0, _cid: ++this._cidSeq };
+      return {
+        sensor: s, op: '<', value: 0, value2: 0,
+        value_kind: 'value', value_sensor: '',  // RHS: literal Value or Lookup(sensor)
+        _cid: ++this._cidSeq,
+      };
     },
     isGroup(c) { return !!(c && c.conditions); },
     addCond(which) { this.form[which].conditions.push(this._newLeaf()); this._clearTrace(); },
@@ -582,8 +586,14 @@ function scheduleTab() {
           if (c.conditions) {
             if (c.conditions.length) conds.push(build(c));  // skip empty groups
           } else {
-            const row = { sensor: c.sensor, op: c.op, value: this._coerceVal(c.value) };
-            if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
+            const row = { sensor: c.sensor, op: c.op };
+            if (c.value_kind === 'sensor') {
+              row.value_kind = 'sensor';
+              row.value_sensor = c.value_sensor || '';
+            } else {
+              row.value = this._coerceVal(c.value);
+              if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
+            }
             if (withCid && c._cid != null) row.cid = c._cid;  // UI-only, for highlight
             conds.push(row);
           }
