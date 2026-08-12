@@ -595,7 +595,7 @@ class ScheduleEngine:
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
             self._dwelling.discard(tkey)
             self._ha_fired.pop(tkey, None)  # re-entry re-fires one-shot HA actions
-            await self._fire_exit_ha_actions(tkey)  # exit-tagged HA actions on window close
+            await self._fire_exit_ha_actions(tkey, now)  # exit-tagged HA actions on window close
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
                     await self._dispatch(handler, "force_standby", {}, label="hold")
@@ -659,7 +659,7 @@ class ScheduleEngine:
                         "exit_condition_met",
                         _condition_reason("exit conditions met", trace),
                     )
-                    await self._fire_exit_ha_actions(tkey)
+                    await self._fire_exit_ha_actions(tkey, now)
                     return
 
         # ── our sustained dispatch ended in-window (watchdog or external
@@ -683,7 +683,7 @@ class ScheduleEngine:
                 "expired",
                 "dispatch ended in-window (watchdog/release) — not re-firing until next window",
             )
-            await self._fire_exit_ha_actions(tkey)
+            await self._fire_exit_ha_actions(tkey, now)
             return
 
         # Already completed this entry's current window — hold off.
@@ -767,7 +767,7 @@ class ScheduleEngine:
         # One-shot HA actions on this activation edge (after the battery action).
         if self._ha_fired.get(tkey) != win["id"]:
             self._ha_fired[tkey] = win["id"]
-            await self._run_ha_actions(win, tkey, "fire")
+            await self._run_ha_actions(win, tkey, "fire", now)
             # Remember the entry so its exit-tagged actions run when it ends.
             if any((a.get("when") == "exit") for a in (win.get("ha_actions") or [])):
                 self._exit_entry[tkey] = win
@@ -788,11 +788,20 @@ class ScheduleEngine:
         }
         await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
 
-    async def _run_ha_actions(self, win: dict, tkey: tuple, phase: str = "fire") -> None:
+    def _guard_ok(self, guard: dict, gw_id: str, now: datetime | None) -> bool:
+        """Evaluate an HA action's optional guard leaf against the snapshot."""
+        snap = self._snapshot(gw_id, now or self._now())
+        ok, _ = eval_conditions({"match": "ALL", "conditions": [guard]}, snap)
+        return ok
+
+    async def _run_ha_actions(
+        self, win: dict, tkey: tuple, phase: str = "fire", now: datetime | None = None
+    ) -> None:
         """Run an entry's one-shot HA-entity actions for the given ``phase`` —
         ``fire`` (on the activation edge, after the battery action) or ``exit``
         (when the window/activation ends). Each is best-effort and audited so one
-        failure (HA offline) can't abort the rest or the dispatch."""
+        failure (HA offline) can't abort the rest or the dispatch. An action with
+        an optional ``guard`` leaf runs only if that guard is currently true."""
         actions = [a for a in (win.get("ha_actions") or []) if (a.get("when") or "fire") == phase]
         if not actions:
             return
@@ -809,6 +818,14 @@ class ScheduleEngine:
             data = a.get("data") or {}
             if not (inst and eid and svc):
                 continue
+            guard = a.get("guard")
+            if guard and not self._guard_ok(guard, tkey[2], now):
+                await self._audit(
+                    win["id"], "ha_action", tkey, "gated",
+                    f"[{phase}] {eid} skipped — guard "
+                    f"{guard.get('sensor')}{guard.get('op')}{guard.get('value')} not met",
+                )
+                continue
             try:
                 res = await self._ha_action_fn(inst, eid, svc, data)
             except Exception as exc:  # defensive — call_service already soft-fails
@@ -821,11 +838,11 @@ class ScheduleEngine:
                 win["id"], "ha_action", tkey, "ha_action" if ok else "failed", detail
             )
 
-    async def _fire_exit_ha_actions(self, tkey: tuple) -> None:
+    async def _fire_exit_ha_actions(self, tkey: tuple, now: datetime | None = None) -> None:
         """Run any exit-tagged HA actions for a just-ended activation, then forget it."""
         entry = self._exit_entry.pop(tkey, None)
         if entry is not None:
-            await self._run_ha_actions(entry, tkey, "exit")
+            await self._run_ha_actions(entry, tkey, "exit", now)
 
     async def _dispatch(self, handler: Any, action: str, params: dict, label: str) -> None:
         if action == "none":

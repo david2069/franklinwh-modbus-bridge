@@ -549,7 +549,8 @@
                 <button type="button" class="text-cyan-400 hover:underline" @click="$store.app.setTab('ha_entities')">HA Entities</button>.</div>
             </template>
             <template x-for="(a, ai) in form.ha_actions" :key="ai">
-              <div class="flex items-center gap-1.5 flex-wrap">
+              <div class="rounded border border-white/[0.04] p-1.5 space-y-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
                 <select :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs">
                   <option value="::">— entity —</option>
                   <template x-for="grp in haControllableGroups" :key="grp.label">
@@ -582,7 +583,22 @@
                 </template>
                 <template x-if="haControlKind(a) === 'press'"><span class="text-[11px] text-slate-500 px-1">press button</span></template>
                 <template x-if="haControlKind(a) === 'run'"><span class="text-[11px] text-slate-500 px-1">run</span></template>
+                <button type="button" x-show="!a.guard" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
                 <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeHaAction(ai)">✕</button>
+                </div>
+                <template x-if="a.guard">
+                  <div class="flex items-center gap-1.5 flex-wrap pl-4">
+                    <span class="text-[11px] text-slate-500">only if</span>
+                    <select x-model="a.guard.sensor" class="form-control !py-1 !text-xs">
+                      <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
+                    </select>
+                    <select x-model="a.guard.op" class="form-control !py-1 !text-xs w-20">
+                      <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                    </select>
+                    <input x-model="a.guard.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
+                    <button type="button" class="text-[11px] text-red-400 hover:text-red-300 px-1" @click="removeGuard(a)">remove guard</button>
+                  </div>
+                </template>
               </div>
             </template>
           </div>

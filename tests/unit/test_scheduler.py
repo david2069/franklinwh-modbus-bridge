@@ -239,11 +239,17 @@ class FakeHandler:
 
 def _entry(**kw):
     base = {
-        "id": "e1", "name": "e1", "enabled": True,
+        "id": "e1",
+        "name": "e1",
+        "enabled": True,
         "when_spec": {"windows": [{"start": "10:00", "end": "11:00"}]},
-        "action": "force_charge", "params": {"power_w": 1000},
-        "target_type": "gateway", "target_id": "default",
-        "release": "release", "conflict": "defer", "priority": 0,
+        "action": "force_charge",
+        "params": {"power_w": 1000},
+        "target_type": "gateway",
+        "target_id": "default",
+        "release": "release",
+        "conflict": "defer",
+        "priority": 0,
     }
     base.update(kw)
     return base
@@ -415,7 +421,10 @@ async def test_exit_ha_action_on_exit_condition_met():
         {"instance_id": "ha1", "entity_id": "switch.boost", "service": "turn_off", "when": "exit"},
     ]
     # force_charge with an exit condition soc >= 60 (fires exit when met)
-    exit_tree = {"match": "ALL", "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 60}]}
+    exit_tree = {
+        "match": "ALL",
+        "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 60}],
+    }
     soc = {"v": 40}
     e = _entry(action="force_charge", ha_actions=acts, when_spec=_ALLDAY, exit_conditions=exit_tree)
     eng = ScheduleEngine(
@@ -430,6 +439,51 @@ async def test_exit_ha_action_on_exit_condition_met():
     soc["v"] = 65  # exit condition now met
     await eng.tick(datetime(2026, 6, 15, 10, 0, 15))  # exit → OFF
     assert ("switch.boost", "turn_off") in calls
+
+
+async def test_ha_action_guard_gates_the_action():
+    h = FakeHandler()
+    calls = []
+
+    async def ha(inst, eid, svc, data):
+        calls.append(eid)
+        return {"ok": True}
+
+    # action guarded by "battery.soc_pct > 50": only runs when SoC is high
+    acts = [
+        {
+            "instance_id": "ha1",
+            "entity_id": "switch.boost",
+            "service": "turn_off",
+            "when": "fire",
+            "guard": {"sensor": "battery.soc_pct", "op": ">", "value": 50},
+        }
+    ]
+    e = _entry(action="none", params={}, ha_actions=acts, when_spec=_ALLDAY)
+
+    def _eng(soc):
+        eng = ScheduleEngine(
+            db=None,
+            resolver=lambda tt, tid: [("default", h)],
+            points_fn=lambda gw: {"soc": soc},
+            ha_action_fn=ha,
+        )
+        eng._entries = [e]
+        return eng
+
+    await _eng(30).tick(datetime(2026, 6, 15, 10, 0, 0))  # 30 !> 50 → guard blocks
+    assert calls == []
+    h2 = FakeHandler()  # fresh engine/handler, SoC now high
+    calls.clear()
+    eng = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", h2)],
+        points_fn=lambda gw: {"soc": 70},
+        ha_action_fn=ha,
+    )
+    eng._entries = [e]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))  # 70 > 50 → runs
+    assert calls == ["switch.boost"]
 
 
 async def test_none_action_fires_ha_only():
@@ -547,14 +601,14 @@ async def test_watchdog_release_does_not_refire_within_window():
     engine must NOT re-fire until the window is re-entered (LT-10)."""
     h = FakeHandler()
     eng = _engine([_entry()], h)
-    await eng.tick(MON)                       # dispatch Force Charge
+    await eng.tick(MON)  # dispatch Force Charge
     assert h.state.action == "Force Charge"
-    h.state.active = False                    # simulate watchdog release
+    h.state.active = False  # simulate watchdog release
     h.state.action = ""
-    await eng.tick(MON)                        # still in-window…
+    await eng.tick(MON)  # still in-window…
     n = len(h.calls)
-    await eng.tick(MON)                        # …and again
-    assert len(h.calls) == n                   # no re-dispatch
+    await eng.tick(MON)  # …and again
+    assert len(h.calls) == n  # no re-dispatch
     assert h.state.active is False
 
 
@@ -564,10 +618,11 @@ async def test_refires_after_window_re_enter():
     h = FakeHandler()
     eng = _engine([_entry()], h)
     await eng.tick(MON)
-    h.state.active = False; h.state.action = ""   # watchdog release
-    await eng.tick(MON)                            # marks window expired
+    h.state.active = False
+    h.state.action = ""  # watchdog release
+    await eng.tick(MON)  # marks window expired
     await eng.tick(datetime(2026, 6, 15, 12, 0))  # window exit clears it
-    await eng.tick(MON)                            # re-enter → dispatch again
+    await eng.tick(MON)  # re-enter → dispatch again
     assert h.state.action == "Force Charge"
 
 
@@ -586,11 +641,13 @@ async def test_deleted_entry_releases_owned_target():
 def _fanout_engine(entries, members):
     """members: dict gw_id -> FakeHandler. Resolver fans a service/site target
     out to all of them; a gateway target resolves just that one."""
+
     def resolver(ttype, tid):
         if ttype == "gateway":
             h = members.get(tid)
             return [(tid, h)] if h else []
         return [(gid, h) for gid, h in members.items()]
+
     eng = ScheduleEngine(db=None, resolver=resolver)
     eng._entries = entries
     return eng
@@ -622,14 +679,14 @@ async def test_fanout_ownership_is_per_gateway():
     members = {"gwA": a, "gwB": b}
     e = _entry(target_type="site", target_id=None)
     eng = _fanout_engine([e], members)
-    await eng.tick(MON)                      # both owned + charging
-    members.pop("gwA")                        # gwA leaves the group
+    await eng.tick(MON)  # both owned + charging
+    members.pop("gwA")  # gwA leaves the group
     await eng.tick(MON)
     # gwB stays charging on its own key; gwA untouched after leaving
     assert b.state.action == "Force Charge"
     nb = len(b.calls)
     await eng.tick(MON)
-    assert len(b.calls) == nb                 # idempotent for the survivor
+    assert len(b.calls) == nb  # idempotent for the survivor
 
 
 # ── store CRUD round-trip ─────────────────────────────────────
@@ -644,11 +701,16 @@ async def db(tmp_path):
 
 async def test_store_create_and_decode(db):
     row = await create_schedule(
-        db, name="Peak charge",
+        db,
+        name="Peak charge",
         when_spec={"days": [0, 1], "windows": [{"start": "14:00", "end": "19:00"}]},
-        action="force_charge", params={"power_w": 2000},
-        target_type="gateway", target_id="default",
-        release="hold", conflict="override", priority=5,
+        action="force_charge",
+        params={"power_w": 2000},
+        target_type="gateway",
+        target_id="default",
+        release="hold",
+        conflict="override",
+        priority=5,
     )
     assert row["id"].startswith("sch_")
     assert row["when_spec"]["windows"][0]["start"] == "14:00"
@@ -659,11 +721,16 @@ async def test_store_create_and_decode(db):
 
 async def test_store_update_json_field(db):
     row = await create_schedule(
-        db, name="x", when_spec={"windows": [{"start": "01:00", "end": "02:00"}]},
+        db,
+        name="x",
+        when_spec={"windows": [{"start": "01:00", "end": "02:00"}]},
         action="force_standby",
     )
     updated = await update_schedule(
-        db, row["id"], params={"duration_s": 600}, enabled=False,
+        db,
+        row["id"],
+        params={"duration_s": 600},
+        enabled=False,
     )
     assert updated["params"]["duration_s"] == 600
     assert updated["enabled"] is False

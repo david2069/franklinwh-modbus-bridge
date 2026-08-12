@@ -157,6 +157,11 @@ function scheduleTab() {
       this.form.ha_actions.push({ instance_id: '', entity_id: '', service: 'turn_on', data: {}, when: 'fire' });
     },
     removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
+    addGuard(a) {
+      const s = this.sensors[0] ? this.sensors[0].id : 'battery.soc_pct';
+      a.guard = { sensor: s, op: '==', value: '' };
+    },
+    removeGuard(a) { a.guard = null; },
 
     onHaEntityPick(a, composite) {
       const sep = composite.indexOf('::');
@@ -480,7 +485,9 @@ function scheduleTab() {
         priority: e.priority,
         enabled: e.enabled,
         entry_hold_s: e.entry_hold_s || 0,
-        ha_actions: (e.ha_actions || []).map((a) => ({ ...a, data: { ...(a.data || {}) } })),
+        ha_actions: (e.ha_actions || []).map((a) => ({
+          ...a, data: { ...(a.data || {}) }, guard: a.guard ? { ...a.guard } : null,
+        })),
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
@@ -658,10 +665,16 @@ function scheduleTab() {
         entry_hold_s: Number(f.entry_hold_s) || 0,
         ha_actions: (f.ha_actions || [])
           .filter((a) => a.instance_id && a.entity_id && a.service)
-          .map((a) => ({
-            instance_id: a.instance_id, entity_id: a.entity_id,
-            service: a.service, data: a.data || {}, when: a.when || 'fire',
-          })),
+          .map((a) => {
+            const o = {
+              instance_id: a.instance_id, entity_id: a.entity_id,
+              service: a.service, data: a.data || {}, when: a.when || 'fire',
+            };
+            if (a.guard && a.guard.sensor) {
+              o.guard = { sensor: a.guard.sensor, op: a.guard.op, value: this._coerceVal(a.guard.value) };
+            }
+            return o;
+          }),
         entry_conditions: this._buildTree(f.entry_conditions),
         exit_conditions: this._buildTree(f.exit_conditions),
       };

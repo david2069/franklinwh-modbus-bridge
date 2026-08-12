@@ -67,6 +67,8 @@ class HaActionItem(BaseModel):
     service: str = Field(..., min_length=1)
     data: dict = Field(default_factory=dict)
     when: str = Field(default="fire", pattern=r"^(fire|exit)$")
+    # Optional guard leaf {sensor, op, value}: run only if currently true.
+    guard: dict | None = None
 
 
 class ScheduleCreate(BaseModel):
