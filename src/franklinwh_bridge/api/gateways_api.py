@@ -495,6 +495,16 @@ async def test_gateway_tcp(gw_id: str, request: Request):
     if row is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
 
+    # A mock gateway has no socket — a real TCP probe would time out against its
+    # synthetic host. Report a synthetic OK instead.
+    if row.get("mock"):
+        return {
+            "gateway_id": gw_id,
+            "ok": True,
+            "detail": "mock gateway — no TCP connection (synthetic)",
+            "latency_ms": 0,
+        }
+
     result = await tcp_probe(row["host"], row["port"])
     return {"gateway_id": gw_id, **result.to_dict()}
 
@@ -514,6 +524,20 @@ async def diagnose_gateway(gw_id: str, request: Request):
     inst = registry.get(gw_id) if registry else None
     if inst is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found or not running")
+
+    # A mock has no socket/Modbus session to diagnose — report it synthetically.
+    if inst.config.mock:
+        polling = inst.status.polling
+        return {
+            "gateway_id": gw_id,
+            "mock": True,
+            "overall": "ok" if polling else "degraded",
+            "summary": (
+                "Mock gateway — synthetic samples, no Modbus/TCP. "
+                + ("Poller running." if polling else "Poller not running.")
+            ),
+            "checks": [],
+        }
 
     log_buffer = getattr(request.app.state, "log_buffer", None)
     return await diagnostics_mod.run_diagnostics(inst, log_buffer=log_buffer)

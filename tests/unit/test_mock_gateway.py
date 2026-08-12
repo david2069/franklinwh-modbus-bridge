@@ -141,3 +141,40 @@ async def test_mock_instance_emits_without_hardware(db):
         assert bus.last_sample.gateway_id == "mock1"
     finally:
         await inst.stop()
+
+
+async def test_health_checker_skips_tcp_probe_for_mock(monkeypatch):
+    """A mock gateway must NOT be TCP-probed — that would time out against its
+    synthetic host and mislabel it 'unreachable' though the mock polls fine."""
+    from types import SimpleNamespace
+
+    from franklinwh_bridge.gateway.health import HealthChecker
+
+    def _inst(mock, host):
+        return SimpleNamespace(
+            config=SimpleNamespace(enabled=True, mock=mock, host=host, port=502),
+            status=SimpleNamespace(health="unknown", connected=True, polling=True),
+        )
+
+    mock_inst = _inst(True, "192.168.0.250")
+    real_inst = _inst(False, "10.255.255.1")
+    reg = SimpleNamespace(
+        instances={"m": mock_inst, "r": real_inst},
+        get=lambda gid: {"m": mock_inst, "r": real_inst}.get(gid),
+    )
+    hc = HealthChecker(reg)
+    probed = []
+
+    async def fake_probe(host, port):
+        probed.append(host)
+        return False  # every real probe fails → unreachable
+
+    monkeypatch.setattr(hc, "_tcp_probe", fake_probe)
+    await hc._check_all()
+
+    assert mock_inst.status.health == "connected"  # reflects polling, never probed
+    assert real_inst.status.health == "unreachable"  # probed + failed
+    assert "192.168.0.250" not in probed  # mock host never TCP-probed
+    assert "10.255.255.1" in probed
+    # check_one honours mock too
+    assert await hc.check_one("m") == "connected"

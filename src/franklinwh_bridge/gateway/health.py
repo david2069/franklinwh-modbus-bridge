@@ -70,14 +70,19 @@ class HealthChecker:
             port = inst.config.port
             old_health = inst.status.health
 
-            tcp_ok = await self._tcp_probe(host, port)
-
-            if not tcp_ok:
-                inst.status.health = "unreachable"
-            elif inst.status.connected and inst.status.polling:
-                inst.status.health = "connected"
+            # A mock gateway has no socket — never TCP-probe it (that would time
+            # out against its synthetic host and mislabel it "unreachable").
+            # Reflect the in-process mock poller's state instead.
+            if inst.config.mock:
+                inst.status.health = "connected" if inst.status.polling else "unknown"
             else:
-                inst.status.health = "tcp_only"
+                tcp_ok = await self._tcp_probe(host, port)
+                if not tcp_ok:
+                    inst.status.health = "unreachable"
+                elif inst.status.connected and inst.status.polling:
+                    inst.status.health = "connected"
+                else:
+                    inst.status.health = "tcp_only"
 
             if inst.status.health != old_health:
                 logger.info(
@@ -97,6 +102,9 @@ class HealthChecker:
         if inst is None:
             return "unknown"
 
+        if inst.config.mock:  # no socket to probe — see _check_all
+            inst.status.health = "connected" if inst.status.polling else "unknown"
+            return inst.status.health
         tcp_ok = await self._tcp_probe(inst.config.host, inst.config.port)
         if not tcp_ok:
             inst.status.health = "unreachable"
