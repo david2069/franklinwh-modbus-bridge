@@ -24,6 +24,13 @@ services:
       - APP_ENV=${APP_ENV:-docker}
       - DATA_DIR=/data
       - PYTHONPATH=/app/src
+      # ── Auth (multi-user) ─────────────────────────────────────
+      # LAN/localhost dev over plain HTTP: allow login without TLS. Put this
+      # Bridge behind TLS (Caddy/Tailscale) and drop ALLOW_INSECURE_AUTH +
+      # set SESSION_COOKIE_SECURE=1 for real deployments.
+      - ALLOW_INSECURE_AUTH=${ALLOW_INSECURE_AUTH:-1}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
       # ── MQTT broker ───────────────────────────────────────────
       - MQTT_HOST=${MQTT_HOST:-mosquitto}
       - MQTT_PORT=${MQTT_PORT:-1883}

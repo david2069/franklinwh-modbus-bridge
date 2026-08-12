@@ -5,10 +5,12 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+
+from franklinwh_bridge.api.auth import get_current_user, require_auth
 
 # Cache-bust token — changes on each server restart
 _CACHE_BUST = str(int(time.time()))
@@ -24,12 +26,17 @@ class CommandRequest(BaseModel):
     value: str
 
 
-@router.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Serve the main SPA shell."""
-    # Support HA ingress path
+def _base_path(request: Request) -> str:
     ingress_path = request.headers.get("X-Ingress-Path", "")
-    base_path = ingress_path.rstrip("/") if ingress_path else ""
+    return ingress_path.rstrip("/") if ingress_path else ""
+
+
+@router.get("/", response_class=HTMLResponse)
+async def index(request: Request, user: dict | None = Depends(get_current_user)):
+    """Serve the main SPA shell — or redirect to /login when unauthenticated."""
+    base_path = _base_path(request)
+    if user is None:
+        return RedirectResponse(f"{base_path}/login", status_code=302)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -37,8 +44,21 @@ async def index(request: Request):
     )
 
 
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, user: dict | None = Depends(get_current_user)):
+    """The login form. Already-authenticated users go straight to the app."""
+    base_path = _base_path(request)
+    if user is not None:
+        return RedirectResponse(f"{base_path}/", status_code=302)
+    return templates.TemplateResponse(
+        request, "login.html", {"base_path": base_path, "cache_bust": _CACHE_BUST}
+    )
+
+
 @router.post("/api/command")
-async def send_command(body: CommandRequest, request: Request):
+async def send_command(
+    body: CommandRequest, request: Request, _user: dict = Depends(require_auth)
+):
     """Dispatch a control command (same path as MQTT commands).
 
     Defaults to the "default" gateway. Use POST /api/gateways/{gw_id}/command

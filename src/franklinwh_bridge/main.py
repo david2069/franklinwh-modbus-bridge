@@ -6,15 +6,19 @@ import asyncio
 import collections
 import contextlib
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from franklinwh_bridge import __version__
 from franklinwh_bridge.api.admin import router as admin_router
+from franklinwh_bridge.api.auth import require_auth
+from franklinwh_bridge.api.auth import router as auth_router
 from franklinwh_bridge.api.gateways_api import router as gateways_router
 from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.ha_api import router as ha_router
@@ -36,6 +40,7 @@ from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
+from franklinwh_bridge.security import seed_admin, session_secret_key
 from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
@@ -124,6 +129,7 @@ async def lifespan(app: FastAPI):
 
     db = await init_db(config.db_path)
     await log_startup_event(db, "startup", f"v{__version__} env={config.environment}")
+    await seed_admin(db)  # first-run admin (no lockout); logs a generated pw once
 
     # Ensure the default gateway exists in the DB
     gateway_id = "default"
@@ -576,22 +582,40 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Signed-cookie sessions (Starlette). `Secure` when SESSION_COOKIE_SECURE=1
+# (set it behind TLS); SameSite=Lax mitigates CSRF on cookie-auth'd writes.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret_key(),
+    same_site="lax",
+    https_only=os.environ.get("SESSION_COOKIE_SECURE") == "1",
+)
+
 # Mount static files
 _static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
-# API routers (before UI catch-all)
+# Open routers: health/status probes + auth (login is how you get a session).
 app.include_router(health_router)
-app.include_router(admin_router)
-app.include_router(mqtt_router)
-app.include_router(groups_router)
-app.include_router(gateways_router)
-app.include_router(modules_router)
-# Feature routers gated by their module's enabled flag (defense-in-depth; the UI
-# also hides disabled modules). Automations = schedules + scheduler sensors.
-app.include_router(schedules_router, dependencies=[require_module("automations")])
-app.include_router(scheduler_router, dependencies=[require_module("automations")])
-app.include_router(ha_router, dependencies=[require_module("ha_entities")])
+app.include_router(auth_router)
 
-# UI router (serves GET / and POST /api/command)
+# Authenticated routers — require a logged-in user (401 otherwise). Under HA
+# ingress the Supervisor already authed, so require_auth returns a synthetic
+# admin. Feature routers ALSO carry their module's enabled gate.
+_AUTH = [Depends(require_auth)]
+app.include_router(admin_router, dependencies=_AUTH)
+app.include_router(mqtt_router, dependencies=_AUTH)
+app.include_router(groups_router, dependencies=_AUTH)
+app.include_router(gateways_router, dependencies=_AUTH)
+app.include_router(modules_router, dependencies=_AUTH)
+app.include_router(
+    schedules_router, dependencies=[require_module("automations"), Depends(require_auth)]
+)
+app.include_router(
+    scheduler_router, dependencies=[require_module("automations"), Depends(require_auth)]
+)
+app.include_router(ha_router, dependencies=[require_module("ha_entities"), Depends(require_auth)])
+
+# UI router (serves GET / and POST /api/command). GET / redirects to /login when
+# unauthenticated; /api/command guards itself.
 app.include_router(ui_router)

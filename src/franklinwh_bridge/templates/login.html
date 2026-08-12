@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <base href="{{ base_path }}/">
+  <title>Sign in · FranklinWH Bridge</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(1200px 600px at 50% -10%, #16233b 0%, #0b1220 60%, #090e18 100%);
+      color: #e2e8f0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 360px; background: rgba(30, 41, 59, .6);
+      border: 1px solid rgba(255, 255, 255, .08); border-radius: 16px; padding: 28px 26px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .45); backdrop-filter: blur(6px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+    .logo {
+      width: 40px; height: 40px; border-radius: 11px; flex: 0 0 auto; display: grid; place-items: center;
+      background: linear-gradient(135deg, #22d3ee, #0891b2); color: #fff;
+    }
+    .brand h1 { font-size: 15px; margin: 0; font-weight: 700; color: #f1f5f9; }
+    .brand p { font-size: 11px; margin: 0; color: #64748b; }
+    label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; margin: 14px 0 5px; }
+    input {
+      width: 100%; padding: 10px 12px; border-radius: 9px; font-size: 14px;
+      background: rgba(15, 23, 42, .7); border: 1px solid rgba(255, 255, 255, .1); color: #e2e8f0;
+    }
+    input:focus { outline: none; border-color: #22d3ee; box-shadow: 0 0 0 2px rgba(34, 211, 238, .18); }
+    button {
+      width: 100%; margin-top: 20px; padding: 11px; border: 0; border-radius: 9px; cursor: pointer;
+      font-size: 14px; font-weight: 600; color: #06121b;
+      background: linear-gradient(135deg, #22d3ee, #06b6d4);
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    .err { margin-top: 14px; font-size: 13px; color: #f87171; min-height: 18px; }
+    .hint { margin-top: 16px; font-size: 11px; color: #475569; text-align: center; }
+  </style>
+</head>
+<body>
+  <form class="card" id="loginForm" autocomplete="on">
+    <div class="brand">
+      <div class="logo">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <div><h1>FranklinWH Bridge</h1><p>Sign in to continue</p></div>
+    </div>
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" autofocus>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password">
+    <button type="submit" id="btn">Sign in</button>
+    <div class="err" id="err"></div>
+    <div class="hint">FranklinWH Modbus Bridge</div>
+  </form>
+  <script>
+    const base = document.querySelector('base').getAttribute('href').replace(/\/$/, '');
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('btn');
+    const err = document.getElementById('err');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.textContent = ''; btn.disabled = true; btn.textContent = 'Signing in…';
+      try {
+        const res = await fetch(`${base}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: document.getElementById('u').value, password: document.getElementById('p').value }),
+        });
+        if (res.ok) { window.location.href = `${base}/`; return; }
+        const body = await res.json().catch(() => ({}));
+        err.textContent = body.detail || 'Sign-in failed';
+      } catch (ex) {
+        err.textContent = 'Network error — ' + ex;
+      }
+      btn.disabled = false; btn.textContent = 'Sign in';
+    });
+  </script>
+</body>
+</html>

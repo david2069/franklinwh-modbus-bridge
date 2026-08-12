@@ -46,6 +46,26 @@ def generate_password(nbytes: int = 12) -> str:
     return secrets.token_urlsafe(nbytes)
 
 
+def session_secret_key() -> str:
+    """Session-signing secret for SessionMiddleware (needed synchronously at
+    app-creation time): ``SECURITY_SECRET_KEY`` env, else a key persisted in a
+    file under the data dir (stable across restarts), else an ephemeral key."""
+    env = os.environ.get("SECURITY_SECRET_KEY")
+    if env:
+        return env
+    try:
+        from franklinwh_bridge.config.environment import get_data_dir
+
+        path = get_data_dir() / ".session_secret"
+        if path.exists():
+            return path.read_text().strip()
+        key = secrets.token_hex(32)
+        path.write_text(key)
+        return key
+    except Exception:  # read-only fs / tests → ephemeral (fine; sessions still sign)
+        return secrets.token_hex(32)
+
+
 async def get_or_create_secret_key(db: Any) -> str:
     """Session-signing secret: ``SECURITY_SECRET_KEY`` env, else a generated key
     persisted in app_config (stable across restarts)."""
