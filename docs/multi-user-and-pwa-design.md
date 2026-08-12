@@ -1,14 +1,71 @@
-# Multi-User, Roles & PWA — Design (Backlog)
+# Modularisation, Multi-User, Roles & PWA — Design
 
-**Status:** Backlog / design-for-review — **not scheduled.** Scoped 2026-08-08
-against the current codebase; decisions below are locked with the owner. Nothing
-is built yet.
+**Status:** **PRIORITISED (owner, 2026-08-12)** — above the unified action pipeline /
+RateRudder / pricing polish. Scoped 2026-08-08, extended 2026-08-12 with a
+**modularisation layer** (below) and a re-sequenced roadmap. Not built yet.
 
-**One-line goal:** add real user accounts + roles (admin / user / viewer) with a
-simplified, mobile-first, view-only household dashboard, deliver both dashboards
-as installable PWAs, and do it with vetted auth libraries behind mandatory TLS —
-without breaking existing open deployments or double-authenticating under Home
-Assistant ingress.
+**One-line goal:** make every feature an **optional, capability-gated module**
+(admin can turn scheduling / HA Entities / RateRudder / etc. on or off), add real
+user accounts + roles (admin / user / viewer) with a simplified, mobile-first,
+view-only household dashboard, and deliver both dashboards as installable PWAs —
+with vetted auth libraries behind mandatory TLS, without breaking open
+deployments or double-authenticating under Home Assistant ingress.
+
+**Since first scoped (2026-08-08), a lot shipped** — HA Entities/multi-HA,
+Scheduler v2 (dwell, HA actions v1/v2 + guard, Value|Lookup, verification),
+persistent logs — so the schema is now **v31** (the users table below becomes
+migration **v32**, superseding the "v27" references further down). The
+modularisation layer (§M) is **Phase 0** and ships first, standalone, before auth.
+
+---
+
+## M. Modularisation — capability-gated module registry (Phase 0, ships FIRST)
+
+**Decisions (owner, 2026-08-12):** gating is **BOTH** a global admin enable-flag
+AND a role capability; build the registry **standalone first** (before auth), so
+"turn features off" ships immediately and roles slot in at Phase 2 with no rework.
+
+Every feature is a **module**: `{ id, label, icon, routers[], required_capability,
+enabled (global) }`. A module's nav item + routes are available **iff** `enabled`
+(admin's global switch) **AND** the principal holds `required_capability`. Before
+auth (Phase 0) there is a single implicit **admin** principal with all
+capabilities, so only the global `enabled` flags apply — delivering feature
+on/off now; roles slot in at Phase 2 unchanged.
+
+**Module inventory (initial):**
+
+| Module | id | capability | default |
+|---|---|---|---|
+| Dashboard | `dashboard` | `view` | on (core, not disableable) |
+| Settings + Gateways | `settings` | `settings` | on (admin) |
+| Automations (Scheduler v2 incl. HA actions + future unified pipeline) | `automations` | `automations` | on |
+| HA Entities (multi-HA) | `ha_entities` | `ha_entities` | on |
+| Sequencer | `sequencer` | `sequencer` | on |
+| SunSpec Explorer | `explorer` | `explorer` | on |
+| Logs | `logs` | `logs` | on |
+| Terminal (backlog) | `terminal` | `terminal` | off |
+| RateRudder (backlog) | `raterudder` | `raterudder` | off |
+| Pricing (backlog) | `pricing` | `pricing` | off |
+
+- **Store:** module enabled-flags in `app_config` (JSON) — `get_app_config`/
+  `set_app_config` already exist; **no new table** for Phase 0. The capability map
+  lives in code (single source, shared with §3 roles).
+- **Backend:** `api/modules.py` — `GET /api/modules` (each module + `enabled` +
+  whether the caller may access) and `PATCH /api/modules/{id}` (admin toggles
+  `enabled`). A dependency `require_module(id)` = `enabled AND capability`, applied
+  to each feature router in `main.py` (composes with the later `require_role`).
+  Pre-auth, `require_module` checks only `enabled`.
+- **Frontend:** `$store.app` loads `/api/modules` (and later `/api/auth/me`) into
+  `modules` + `caps`, with a `canSee(id)` helper. Sidebar nav buttons and tab
+  `x-show` gate on `canSee('automations')` etc. An admin **Settings → Modules**
+  panel toggles the enabled flags.
+- **The unified action pipeline is NOT its own module** — it lives inside
+  `automations`; disabling that module hides the whole builder incl. the pipeline.
+  **RateRudder / pricing** are their own off-by-default modules. This is exactly
+  how the "some users won't want scheduling / HA / RateRudder" requirement is met.
+
+This registry is the substrate roles plug into: role→capabilities sets `caps`;
+module `enabled` is orthogonal.
 
 ---
 
@@ -144,22 +201,29 @@ mirrors the compact `services` template. Sessions ride signed cookies (no table)
 unless server-side revocation is later required, in which case add a `sessions`
 table. `secret_key` lives in `app_config` (generated) or `SECURITY_SECRET_KEY` env.
 
-## 8. Phasing
+## 8. Phasing (re-sequenced 2026-08-12 — modules first)
 
-1. **A1 — Auth core** (largest / highest risk): deps (`argon2-cffi`,
-   `itsdangerous`); migration v27 + user CRUD + admin seed; `secret_key`;
+0. **Phase 0 — Module registry + capability gating** (§M, ships FIRST, standalone,
+   no auth): module inventory + capability map; `app_config` enabled-flags;
+   `api/modules.py` (`GET /api/modules`, `PATCH /api/modules/{id}`);
+   `require_module(id)` on each feature router; `$store.app` `modules`/`caps` +
+   `canSee()` gating the sidebar/tabs; admin **Settings → Modules** toggle panel.
+   Delivers "turn features off" immediately; single implicit admin until Phase 1.
+1. **Phase 1 — Auth core** (was A1; largest / highest risk): deps (`argon2-cffi`,
+   `itsdangerous`); migration **v32** + user CRUD + admin seed; `secret_key`;
    `api/auth.py` + `get_current_user`/`require_role`; `main.py`
    `SessionMiddleware` + `--proxy-headers`/forwarded-proto + HSTS + router gating
-   + ingress bypass + `ALLOW_INSECURE_AUTH` guard; `ui.py` `/login` +
-   redirect-if-unauthenticated. Ships enforcing (docker/dev), seeded (no lockout).
-2. **A2 — Roles + user dashboard:** role→capability map; admin-only gates;
-   `GET /user` mobile-first shell + trimmed `user_app.js`; role-based login
-   redirect; admin Users tab.
-3. **C — PWA:** icons + manifest + service worker for `/user` (ingress-aware),
-   registration, offline shell. Admin manifest optional later.
+   (compose with `require_module`) + ingress bypass + `ALLOW_INSECURE_AUTH` guard;
+   `ui.py` `/login`. Ships enforcing (docker/dev), seeded (no lockout).
+2. **Phase 2 — Roles + dashboards** (was A2): role→capability map wired to the
+   module caps; admin Users tab; `GET /user` mobile-first shell + trimmed
+   `user_app.js` showing only permitted modules; role-based login redirect.
+3. **Phase 3 — PWA** (was C): icons + manifest + service worker for `/user`
+   (ingress-aware), registration, offline shell. Admin manifest optional later.
 
-Each phase is independently shippable; rebuild the container + browser-verify via
-the Playwright harness per the deploy workflow.
+Then (unchanged priority order, AFTER the above): unified action pipeline,
+RateRudder, pricing — each a gated module per §M. Each phase is independently
+shippable; rebuild + Playwright-verify per the deploy workflow.
 
 ## 9. Risks & back-compat
 
