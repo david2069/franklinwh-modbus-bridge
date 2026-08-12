@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 31
+CURRENT_SCHEMA_VERSION = 32
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -491,6 +491,21 @@ MIGRATIONS: dict[int, str] = {
     );
     CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs (ts);
     CREATE INDEX IF NOT EXISTS idx_logs_level ON logs (level);
+    """,
+    32: """
+    -- User accounts + roles (multi-user Phase 1). Sessions ride signed cookies
+    -- (no table). password_hash = argon2id. An admin is seeded on first startup.
+    CREATE TABLE IF NOT EXISTS users (
+        id            TEXT PRIMARY KEY,
+        username      TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role          TEXT NOT NULL DEFAULT 'viewer'
+                        CHECK (role IN ('admin','user','viewer')),
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        created_at    REAL NOT NULL DEFAULT 0,
+        updated_at    REAL NOT NULL DEFAULT 0,
+        last_login_at REAL
+    );
     """,
 }
 
@@ -1293,7 +1308,8 @@ async def insert_logs(db: aiosqlite.Connection, rows: list[dict]) -> int:
     await db.executemany(
         "INSERT INTO logs (ts, level, name, message, gateway_id) VALUES (?, ?, ?, ?, ?)",
         [
-            (r.get("ts"), r.get("level"), r.get("name"), r.get("message"), r.get("gateway_id") or "")
+            (r.get("ts"), r.get("level"), r.get("name"), r.get("message"),
+             r.get("gateway_id") or "")
             for r in rows
         ],
     )
@@ -1361,10 +1377,96 @@ async def log_sources(db: aiosqlite.Connection) -> list[str]:
     """Distinct logger names present (for the Source filter dropdown)."""
     db.row_factory = aiosqlite.Row
     out = []
-    async with db.execute("SELECT DISTINCT name FROM logs WHERE name IS NOT NULL ORDER BY name") as cur:
+    sql = "SELECT DISTINCT name FROM logs WHERE name IS NOT NULL ORDER BY name"
+    async with db.execute(sql) as cur:
         async for row in cur:
             out.append(row["name"])
     return out
+
+
+# ── Users (multi-user Phase 1) ───────────────────────────────
+
+_USER_FIELDS = ("username", "password_hash", "role", "enabled")
+
+
+def _decode_user(row: dict) -> dict:
+    d = dict(row)
+    d["enabled"] = bool(d.get("enabled", 1))
+    return d
+
+
+async def count_users(db: aiosqlite.Connection) -> int:
+    async with db.execute("SELECT COUNT(*) AS n FROM users") as cur:
+        return (await cur.fetchone())[0]
+
+
+async def get_users(db: aiosqlite.Connection) -> list[dict]:
+    db.row_factory = aiosqlite.Row
+    rows = []
+    async with db.execute("SELECT * FROM users ORDER BY username") as cur:
+        async for row in cur:
+            rows.append(_decode_user(dict(row)))
+    return rows
+
+
+async def get_user(db: aiosqlite.Connection, user_id: str) -> dict | None:
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cur:
+        row = await cur.fetchone()
+        return _decode_user(dict(row)) if row else None
+
+
+async def get_user_by_username(db: aiosqlite.Connection, username: str) -> dict | None:
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT * FROM users WHERE username = ?", (username,)) as cur:
+        row = await cur.fetchone()
+        return _decode_user(dict(row)) if row else None
+
+
+async def create_user(
+    db: aiosqlite.Connection,
+    username: str,
+    password_hash: str,
+    role: str = "viewer",
+    enabled: bool = True,
+) -> dict:
+    import uuid
+
+    user_id = f"user_{uuid.uuid4().hex[:8]}"
+    now = time.time()
+    await db.execute(
+        "INSERT INTO users (id, username, password_hash, role, enabled, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, username, password_hash, role, int(enabled), now, now),
+    )
+    await db.commit()
+    return await get_user(db, user_id)  # type: ignore[return-value]
+
+
+async def update_user(db: aiosqlite.Connection, user_id: str, **kwargs: object) -> dict | None:
+    existing = await get_user(db, user_id)
+    if existing is None:
+        return None
+    allowed = (*_USER_FIELDS, "last_login_at")
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return existing
+    if "enabled" in updates:
+        updates["enabled"] = int(bool(updates["enabled"]))
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    await db.execute(
+        f"UPDATE users SET {set_clause} WHERE id = ?",  # noqa: S608
+        [*updates.values(), user_id],
+    )
+    await db.commit()
+    return await get_user(db, user_id)
+
+
+async def delete_user(db: aiosqlite.Connection, user_id: str) -> bool:
+    cur = await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    await db.commit()
+    return cur.rowcount > 0
 
 
 async def set_entity_exposed(
