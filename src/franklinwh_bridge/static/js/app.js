@@ -233,13 +233,34 @@ document.addEventListener('alpine:init', () => {
     // Refresh interval handle
     _interval: null,
 
+    // Feature modules: tab id -> {enabled, can_access}. Gates nav + tabs.
+    modulesByTab: {},
+
     init() {
       // Apply saved theme
       document.documentElement.setAttribute('data-theme', this.theme);
       this.refresh();
+      this.loadModules();
       this._interval = setInterval(() => this.refresh(), 10000);
       // Load battery label from site config (one-shot at startup)
       fetchJSON('api/site').then(d => { if (d && d.battery_label) this.batteryLabel = d.battery_label; });
+    },
+
+    async loadModules() {
+      const data = await fetchJSON('api/modules');
+      if (data && data.modules) {
+        const byTab = {};
+        for (const m of data.modules) byTab[m.tab] = { enabled: m.enabled, can_access: m.can_access };
+        this.modulesByTab = byTab;
+        // If the active tab's module is now hidden, fall back to the dashboard.
+        if (!this.canSee(this.activeTab)) this.setTab('dashboard');
+      }
+    },
+
+    /** Is a tab's module both enabled and accessible? Unknown tabs show (defensive). */
+    canSee(tab) {
+      const m = this.modulesByTab[tab];
+      return m ? (m.enabled && m.can_access) : true;
     },
 
     toggleTheme() {

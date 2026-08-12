@@ -20,6 +20,8 @@ from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.ha_api import router as ha_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
+from franklinwh_bridge.api.modules_api import require_module
+from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
@@ -584,9 +586,12 @@ app.include_router(admin_router)
 app.include_router(mqtt_router)
 app.include_router(groups_router)
 app.include_router(gateways_router)
-app.include_router(schedules_router)
-app.include_router(scheduler_router)
-app.include_router(ha_router)
+app.include_router(modules_router)
+# Feature routers gated by their module's enabled flag (defense-in-depth; the UI
+# also hides disabled modules). Automations = schedules + scheduler sensors.
+app.include_router(schedules_router, dependencies=[require_module("automations")])
+app.include_router(scheduler_router, dependencies=[require_module("automations")])
+app.include_router(ha_router, dependencies=[require_module("ha_entities")])
 
 # UI router (serves GET / and POST /api/command)
 app.include_router(ui_router)

@@ -23,7 +23,7 @@
   <nav class="flex-1 overflow-y-auto py-4 space-y-1" :class="$store.app.sidebarCollapsed ? 'px-1.5' : 'px-3'">
 
     <!-- Dashboard -->
-    <button @click="$store.app.setTab('dashboard')"
+    <button x-show="$store.app.canSee('dashboard')" @click="$store.app.setTab('dashboard')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Dashboard'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
@@ -39,7 +39,7 @@
     </button>
 
     <!-- SunSpec Explorer -->
-    <button @click="$store.app.setTab('explorer')"
+    <button x-show="$store.app.canSee('explorer')" @click="$store.app.setTab('explorer')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'SunSpec Explorer'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
@@ -55,7 +55,7 @@
     </button>
 
     <!-- Logs -->
-    <button @click="$store.app.setTab('logs')"
+    <button x-show="$store.app.canSee('logs')" @click="$store.app.setTab('logs')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Logs'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
@@ -73,7 +73,7 @@
     </button>
 
     <!-- Sequencer -->
-    <button @click="$store.app.setTab('sequencer')"
+    <button x-show="$store.app.canSee('sequencer')" @click="$store.app.setTab('sequencer')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Sequencer'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
@@ -89,7 +89,7 @@
     </button>
 
     <!-- Schedule -->
-    <button @click="$store.app.setTab('schedule')"
+    <button x-show="$store.app.canSee('schedule')" @click="$store.app.setTab('schedule')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Schedule'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
@@ -106,7 +106,7 @@
     </button>
 
     <!-- HA Entities -->
-    <button @click="$store.app.setTab('ha_entities')"
+    <button x-show="$store.app.canSee('ha_entities')" @click="$store.app.setTab('ha_entities')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'HA Entities'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
@@ -121,7 +121,7 @@
     </button>
 
     <!-- Settings -->
-    <button @click="$store.app.setTab('settings')"
+    <button x-show="$store.app.canSee('settings')" @click="$store.app.setTab('settings')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Settings'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"

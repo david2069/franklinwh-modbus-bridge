@@ -42,6 +42,8 @@ function settingsTab() {
     services: [],
     serviceEditId: null,   // service id being edited, or 'new', or null
     serviceEdit: {},
+    // Feature modules (admin enable/disable)
+    modules: [],
     // Home Assistant instances (inbound entity access)
     haInstances: [],
     haEditId: null,        // instance id being edited, or 'new', or null
@@ -83,6 +85,7 @@ function settingsTab() {
       await this.loadServices();
       await this.loadGateways();
       await this.loadHaInstances();
+      await this.loadModules();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -260,6 +263,26 @@ function settingsTab() {
         Alpine.store('app').toast('Service deleted', 'info');
       } else {
         Alpine.store('app').toast('Delete failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    // ── Feature modules ───────────────────────────────────────
+    async loadModules() {
+      const data = await fetchJSON('api/modules');
+      if (data && data.modules) this.modules = data.modules;
+    },
+    async toggleModule(m) {
+      if (m.core) return;  // core modules can't be disabled
+      const next = !m.enabled;
+      const data = await fetchJSON(`api/modules/${m.id}`, {
+        method: 'PATCH', body: JSON.stringify({ enabled: next }),
+      });
+      if (data && !data.error) {
+        m.enabled = next;
+        Alpine.store('app').loadModules();  // update the sidebar/nav immediately
+        Alpine.store('app').toast(`${m.label} ${next ? 'enabled' : 'disabled'}`, 'info');
+      } else {
+        Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
       }
     },
 
