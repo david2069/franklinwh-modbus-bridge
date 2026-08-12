@@ -41,8 +41,10 @@ from franklinwh_bridge.store.db import (
     get_gateways,
     get_mqtt_config,
     init_db,
+    insert_logs,
     log_schedule_event,
     log_startup_event,
+    purge_logs,
     set_outage_catchup,
 )
 from franklinwh_bridge.store.metrics import (
@@ -58,14 +60,26 @@ from franklinwh_bridge.store.stats import OperationalStats
 logger = logging.getLogger(__name__)
 
 LOG_BUFFER_SIZE = 500
+LOG_PERSIST_QUEUE_MAX = 10000  # pending log rows awaiting a flush to SQLite
+LOG_FLUSH_INTERVAL_S = 5
+LOG_RETENTION_DAYS = 30  # persisted logs older than this are purged
 
 
 class LogBufferHandler(logging.Handler):
-    """In-memory ring buffer for the /api/logs endpoint."""
+    """In-memory ring buffer for the recent-logs view, plus an optional persist
+    queue (drained to SQLite by a background flusher) so logs survive restarts
+    and can be filtered by time span."""
 
-    def __init__(self, buffer: collections.deque):
+    def __init__(
+        self,
+        buffer: collections.deque,
+        persist_queue: collections.deque | None = None,
+        persist_level: int = logging.INFO,
+    ):
         super().__init__()
         self._buffer = buffer
+        self._persist = persist_queue
+        self._persist_level = persist_level
 
     def emit(self, record: logging.LogRecord) -> None:
         # Extract gateway_id from record extra dict (set by LoggerAdapter)
@@ -77,15 +91,17 @@ class LogBufferHandler(logging.Handler):
                 gw_id = msg.split(":")[0].replace("Gateway ", "").strip()
         else:
             msg = self.format(record)
-        self._buffer.append(
-            {
-                "ts": record.created,
-                "level": record.levelname,
-                "name": record.name,
-                "message": msg,
-                "gateway_id": gw_id,
-            }
-        )
+        entry = {
+            "ts": record.created,
+            "level": record.levelname,
+            "name": record.name,
+            "message": msg,
+            "gateway_id": gw_id,
+        }
+        self._buffer.append(entry)
+        # Persist INFO+ (deque append is thread-safe; the flusher drains it).
+        if self._persist is not None and record.levelno >= self._persist_level:
+            self._persist.append(entry)
 
 
 @asynccontextmanager
@@ -94,7 +110,10 @@ async def lifespan(app: FastAPI):
     config.ensure_dirs()
 
     log_buffer: collections.deque = collections.deque(maxlen=LOG_BUFFER_SIZE)
-    handler = LogBufferHandler(log_buffer)
+    # Persist queue drained to SQLite by _log_flush_loop (bounded so a stalled
+    # flusher can't grow unbounded — worst case we drop the oldest pending).
+    log_persist_queue: collections.deque = collections.deque(maxlen=LOG_PERSIST_QUEUE_MAX)
+    handler = LogBufferHandler(log_buffer, log_persist_queue)
     handler.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger("franklinwh_bridge").addHandler(handler)
     logging.getLogger("franklinwh_bridge").setLevel(
@@ -278,6 +297,27 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(3600)
 
     purge_task = asyncio.create_task(_metrics_purge_loop())
+
+    # ── Log persistence: drain the queue to SQLite + retention ──
+    async def _log_flush_loop() -> None:
+        purge_ticks = 0
+        while True:
+            await asyncio.sleep(LOG_FLUSH_INTERVAL_S)
+            try:
+                rows = []
+                while log_persist_queue:
+                    rows.append(log_persist_queue.popleft())
+                if rows:
+                    await insert_logs(db, rows)
+            except Exception as exc:
+                logger.debug("Log flush failed: %s", exc)
+            purge_ticks += 1
+            if purge_ticks >= max(1, 3600 // LOG_FLUSH_INTERVAL_S):  # ~hourly
+                purge_ticks = 0
+                with contextlib.suppress(Exception):
+                    await purge_logs(db, time.time() - LOG_RETENTION_DAYS * 86400)
+
+    log_flush_task = asyncio.create_task(_log_flush_loop())
 
     # ── Schedule Engine (SCH1) ────────────────────────────────
     # Resolver maps a schedule target to live (gateway_id, command-handler)
@@ -485,6 +525,18 @@ async def lifespan(app: FastAPI):
         purge_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await purge_task
+
+    # 2b. Stop the log flusher, then do a final drain so shutdown logs persist.
+    if log_flush_task and not log_flush_task.done():
+        log_flush_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await log_flush_task
+    with contextlib.suppress(Exception):
+        final_rows = []
+        while log_persist_queue:
+            final_rows.append(log_persist_queue.popleft())
+        if final_rows:
+            await insert_logs(db, final_rows)
 
     # 3. Stop MQTT
     await mqtt_publisher.stop()

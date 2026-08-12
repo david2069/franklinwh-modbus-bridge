@@ -14,6 +14,12 @@ function logsTab() {
     sourceFilter: '',
     gatewayFilter: '',
 
+    // Time range (server-side, over persisted logs)
+    rangePreset: '24h',   // 1h | 6h | 24h | 7d | 30d | all | custom
+    customStart: '',      // datetime-local
+    customEnd: '',
+    _rangeSeconds: { '1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800, '30d': 2592000 },
+
     // Pagination
     page: 0,
     pageSize: 100,
@@ -55,9 +61,26 @@ function logsTab() {
       }
     },
 
+    _rangeParams() {
+      const p = {};
+      if (this.rangePreset === 'all') return p;
+      if (this.rangePreset === 'custom') {
+        if (this.customStart) p.start_ts = new Date(this.customStart).getTime() / 1000;
+        if (this.customEnd) p.end_ts = new Date(this.customEnd).getTime() / 1000;
+        return p;
+      }
+      const secs = this._rangeSeconds[this.rangePreset];
+      if (secs) p.start_ts = Math.floor(Date.now() / 1000) - secs;
+      return p;
+    },
+
+    setRange(preset) { this.rangePreset = preset; this.page = 0; this.loadLogs(); },
+    applyCustomRange() { this.rangePreset = 'custom'; this.page = 0; this.loadLogs(); },
+
     async loadLogs() {
       this.loading = this.logs.length === 0; // only show spinner on first load
-      const data = await fetchJSON('api/logs?limit=2000');
+      const params = new URLSearchParams({ limit: '2000', ...this._rangeParams() });
+      const data = await fetchJSON(`api/logs?${params.toString()}`);
       if (data && data.logs) {
         this.logs = data.logs;
         this.computeSummary();
@@ -136,10 +159,12 @@ function logsTab() {
     formatTs(ts) {
       if (!ts) return '--';
       const d = new Date(ts * 1000);
-      const h = String(d.getHours()).padStart(2, '0');
-      const m = String(d.getMinutes()).padStart(2, '0');
-      const s = String(d.getSeconds()).padStart(2, '0');
-      return `${h}:${m}:${s}`;
+      const p = (x) => String(x).padStart(2, '0');
+      const time = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      // Show a date prefix for anything not from today (persisted logs span days).
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      return sameDay ? time : `${p(d.getDate())}/${p(d.getMonth() + 1)} ${time}`;
     },
 
     levelChipClass(level) {

@@ -26,6 +26,7 @@ from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_catalog_points,
     get_pics_compliance,
+    query_logs,
     set_pics_status,
 )
 from franklinwh_bridge.store.metrics import (
@@ -542,12 +543,34 @@ async def get_stats(request: Request):
 
 
 @router.get("/logs")
-async def get_logs(request: Request, limit: int = 100):
+async def get_logs(
+    request: Request,
+    limit: int = 2000,
+    start_ts: float | None = None,
+    end_ts: float | None = None,
+    level: str | None = None,
+    gateway: str | None = None,
+    source: str | None = None,
+    search: str | None = None,
+):
+    """Persisted log history, filterable by time span (start_ts/end_ts) + level/
+    gateway/source/search. Returned oldest-first (the UI reverses for display).
+    Falls back to the in-memory buffer on a fresh DB (default, no-range view)."""
+    db = getattr(request.app.state, "db", None)
+    if db is not None:
+        result = await query_logs(
+            db, start_ts=start_ts, end_ts=end_ts, level=level,
+            gateway_id=gateway, source=source, search=search, limit=limit,
+        )
+        # A given time range (even if empty) is authoritative — only fall back to
+        # the buffer for the default view on a not-yet-flushed DB.
+        if result["logs"] or start_ts is not None or end_ts is not None:
+            return {"logs": list(reversed(result["logs"])), "total": result["total"]}
     log_buffer = getattr(request.app.state, "log_buffer", None)
     if log_buffer is None:
-        return {"logs": []}
+        return {"logs": [], "total": 0}
     entries = list(log_buffer)[-limit:]
-    return {"logs": entries}
+    return {"logs": entries, "total": len(log_buffer)}
 
 
 # ── Sequencer endpoints ──────────────────────────────────────────

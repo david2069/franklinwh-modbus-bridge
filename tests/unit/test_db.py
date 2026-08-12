@@ -8,7 +8,10 @@ from franklinwh_bridge.store.db import (
     get_pics_compliance,
     get_schema_version,
     init_db,
+    insert_logs,
     log_startup_event,
+    purge_logs,
+    query_logs,
     set_pics_status,
 )
 
@@ -152,3 +155,42 @@ async def test_pics_upsert(db):
 async def test_pics_invalid_status(db):
     with pytest.raises(ValueError, match="Invalid PICS status"):
         await set_pics_status(db, 701, "W", "Z")
+
+
+async def test_logs_persist_query_filter_purge(db):
+    now = 1_800_000_000.0
+    await insert_logs(
+        db,
+        [
+            {
+                "ts": now - 100,
+                "level": "INFO",
+                "name": "a",
+                "message": "hello world",
+                "gateway_id": "",
+            },
+            {
+                "ts": now - 50,
+                "level": "WARNING",
+                "name": "b",
+                "message": "warn here",
+                "gateway_id": "gw1",
+            },
+            {"ts": now - 10, "level": "ERROR", "name": "a", "message": "boom", "gateway_id": ""},
+        ],
+    )
+    r = await query_logs(db)
+    assert r["total"] == 3
+    assert r["logs"][0]["message"] == "boom"  # newest first
+    assert (await query_logs(db, level="warning"))["total"] == 1  # case-insensitive
+    assert (await query_logs(db, source="a"))["total"] == 2
+    assert (await query_logs(db, search="warn"))["total"] == 1
+    assert (await query_logs(db, gateway_id="gw1"))["total"] == 1
+    assert (await query_logs(db, start_ts=now - 60))["total"] == 2  # time range
+    assert (await query_logs(db, end_ts=now - 60))["total"] == 1
+    # pagination
+    page = await query_logs(db, limit=2, offset=0)
+    assert len(page["logs"]) == 2 and page["total"] == 3
+    # retention purge
+    assert await purge_logs(db, now - 60) == 1  # drops the oldest (ts=now-100)
+    assert (await query_logs(db))["total"] == 2

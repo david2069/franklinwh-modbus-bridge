@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 30
+CURRENT_SCHEMA_VERSION = 31
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -476,6 +476,21 @@ MIGRATIONS: dict[int, str] = {
     -- action): JSON list of {instance_id, entity_id, service, data}. NULL/[] =
     -- none. Edge-triggered; no revert (see docs/automations-ha-actions...).
     ALTER TABLE schedules ADD COLUMN ha_actions TEXT;
+    """,
+    31: """
+    -- Persisted application logs (INFO+), so the Logs tab survives restarts and
+    -- can be filtered by time span. The in-memory ring buffer stays the fast
+    -- "recent" view; this table is the searchable history (with retention).
+    CREATE TABLE IF NOT EXISTS logs (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts         REAL NOT NULL,
+        level      TEXT NOT NULL,
+        name       TEXT,
+        message    TEXT,
+        gateway_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs (ts);
+    CREATE INDEX IF NOT EXISTS idx_logs_level ON logs (level);
     """,
 }
 
@@ -1265,6 +1280,90 @@ async def get_all_exposed_entities(db: aiosqlite.Connection) -> dict[str, set[st
     async with db.execute("SELECT instance_id, entity_id FROM ha_exposed_entities") as cur:
         async for row in cur:
             out.setdefault(row["instance_id"], set()).add(row["entity_id"])
+    return out
+
+
+# ── Persisted application logs ───────────────────────────────
+
+
+async def insert_logs(db: aiosqlite.Connection, rows: list[dict]) -> int:
+    """Batch-insert log rows (dicts: ts, level, name, message, gateway_id)."""
+    if not rows:
+        return 0
+    await db.executemany(
+        "INSERT INTO logs (ts, level, name, message, gateway_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            (r.get("ts"), r.get("level"), r.get("name"), r.get("message"), r.get("gateway_id") or "")
+            for r in rows
+        ],
+    )
+    await db.commit()
+    return len(rows)
+
+
+async def query_logs(
+    db: aiosqlite.Connection,
+    *,
+    start_ts: float | None = None,
+    end_ts: float | None = None,
+    level: str | None = None,
+    gateway_id: str | None = None,
+    source: str | None = None,
+    search: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> dict:
+    """Filtered log history (newest first) + total match count for pagination."""
+    db.row_factory = aiosqlite.Row
+    where: list[str] = []
+    params: list = []
+    if start_ts is not None:
+        where.append("ts >= ?")
+        params.append(start_ts)
+    if end_ts is not None:
+        where.append("ts <= ?")
+        params.append(end_ts)
+    if level:
+        where.append("level = ?")
+        params.append(level.upper())
+    if gateway_id:
+        where.append("gateway_id = ?")
+        params.append(gateway_id)
+    if source:
+        where.append("name = ?")
+        params.append(source)
+    if search:
+        where.append("message LIKE ?")
+        params.append(f"%{search}%")
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+
+    async with db.execute(f"SELECT COUNT(*) AS n FROM logs{clause}", params) as cur:  # noqa: S608
+        total = (await cur.fetchone())["n"]
+    rows = []
+    async with db.execute(
+        f"SELECT ts, level, name, message, gateway_id FROM logs{clause} "  # noqa: S608
+        "ORDER BY ts DESC LIMIT ? OFFSET ?",
+        [*params, max(1, min(limit, 2000)), max(0, offset)],
+    ) as cur:
+        async for row in cur:
+            rows.append(dict(row))
+    return {"logs": rows, "total": total}
+
+
+async def purge_logs(db: aiosqlite.Connection, older_than_ts: float) -> int:
+    """Delete log rows older than a cutoff (retention). Returns rows removed."""
+    cur = await db.execute("DELETE FROM logs WHERE ts < ?", (older_than_ts,))
+    await db.commit()
+    return cur.rowcount
+
+
+async def log_sources(db: aiosqlite.Connection) -> list[str]:
+    """Distinct logger names present (for the Source filter dropdown)."""
+    db.row_factory = aiosqlite.Row
+    out = []
+    async with db.execute("SELECT DISTINCT name FROM logs WHERE name IS NOT NULL ORDER BY name") as cur:
+        async for row in cur:
+            out.append(row["name"])
     return out
 
 

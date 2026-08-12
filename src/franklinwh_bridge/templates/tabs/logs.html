@@ -47,6 +47,25 @@
           <option :value="s" x-text="shortSource(s)"></option>
         </template>
       </select>
+      <!-- Time range (server-side, over persisted logs) -->
+      <select x-model="rangePreset" @change="rangePreset === 'custom' ? null : setRange(rangePreset)"
+              class="form-control !py-1.5 !text-xs w-32" title="Time span">
+        <option value="1h">Last 1h</option>
+        <option value="6h">Last 6h</option>
+        <option value="24h">Last 24h</option>
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="all">All time</option>
+        <option value="custom">Custom…</option>
+      </select>
+      <template x-if="rangePreset === 'custom'">
+        <span class="flex items-center gap-1.5">
+          <input type="datetime-local" x-model="customStart" class="form-control !py-1 !text-xs">
+          <span class="text-slate-500 text-xs">→</span>
+          <input type="datetime-local" x-model="customEnd" class="form-control !py-1 !text-xs">
+          <button @click="applyCustomRange()" class="px-2 py-1 text-xs rounded bg-cyan-600 text-white hover:bg-cyan-500">Apply</button>
+        </span>
+      </template>
       <!-- Auto-refresh toggle -->
       <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none">
         <input type="checkbox" x-model="autoRefresh" class="accent-cyan-500"
