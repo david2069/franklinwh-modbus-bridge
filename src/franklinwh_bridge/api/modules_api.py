@@ -26,9 +26,14 @@ class ModuleToggle(BaseModel):
 
 @router.get("/modules")
 async def list_modules(request: Request):
-    """All feature modules with resolved enabled state (+ can_access — always true
-    pre-auth). Drives the UI nav/tab gating and the admin Modules panel."""
-    return {"modules": await get_modules(request.app.state.db)}
+    """All feature modules with resolved enabled state + ``can_access`` for the
+    current user's role. Drives the UI nav/tab gating and the admin Modules
+    panel."""
+    from franklinwh_bridge.api.auth import capabilities_for, get_current_user
+
+    user = await get_current_user(request)
+    caps = set(capabilities_for(user["role"])) if user else None
+    return {"modules": await get_modules(request.app.state.db, capabilities=caps)}
 
 
 @router.patch("/modules/{module_id}")

@@ -44,6 +44,10 @@ function settingsTab() {
     serviceEdit: {},
     // Feature modules (admin enable/disable)
     modules: [],
+    // Users (admin)
+    users: [],
+    newUser: { username: '', password: '', role: 'user' },
+    showAddUser: false,
     // Home Assistant instances (inbound entity access)
     haInstances: [],
     haEditId: null,        // instance id being edited, or 'new', or null
@@ -86,6 +90,7 @@ function settingsTab() {
       await this.loadGateways();
       await this.loadHaInstances();
       await this.loadModules();
+      if (Alpine.store('app').isAdmin) await this.loadUsers();
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -284,6 +289,44 @@ function settingsTab() {
       } else {
         Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
       }
+    },
+
+    // ── Users (admin) ─────────────────────────────────────────
+    async loadUsers() {
+      const data = await fetchJSON('api/users');
+      if (Array.isArray(data)) this.users = data;
+    },
+    async createUser() {
+      if (!this.newUser.username.trim() || !this.newUser.password) {
+        Alpine.store('app').toast('Username and password required', 'error'); return;
+      }
+      const data = await fetchJSON('api/users', { method: 'POST', body: JSON.stringify(this.newUser) });
+      if (data && !data.error) {
+        await this.loadUsers();
+        this.newUser = { username: '', password: '', role: 'user' };
+        this.showAddUser = false;
+        Alpine.store('app').toast('User created', 'info');
+      } else {
+        Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+    async patchUser(u, body, ok) {
+      const data = await fetchJSON(`api/users/${u.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      if (data && !data.error) { await this.loadUsers(); if (ok) Alpine.store('app').toast(ok, 'info'); }
+      else { await this.loadUsers(); Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error'); }
+    },
+    setUserRole(u, role) { this.patchUser(u, { role }, `${u.username} → ${role}`); },
+    toggleUserEnabled(u) { this.patchUser(u, { enabled: !u.enabled }, `${u.username} ${u.enabled ? 'disabled' : 'enabled'}`); },
+    async resetUserPassword(u) {
+      const pw = prompt(`New password for ${u.username}:`);
+      if (!pw) return;
+      this.patchUser(u, { password: pw }, `Password reset for ${u.username}`);
+    },
+    async deleteUser(u) {
+      if (!confirm(`Delete user "${u.username}"?`)) return;
+      const data = await fetchJSON(`api/users/${u.id}`, { method: 'DELETE' });
+      if (data && !data.error) { await this.loadUsers(); Alpine.store('app').toast('User deleted', 'info'); }
+      else { Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error'); }
     },
 
     // ── Home Assistant instances ──────────────────────────────

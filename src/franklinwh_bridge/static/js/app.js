@@ -235,10 +235,14 @@ document.addEventListener('alpine:init', () => {
 
     // Feature modules: tab id -> {enabled, can_access}. Gates nav + tabs.
     modulesByTab: {},
+    // Current user + capabilities (from /api/auth/me).
+    me: null,
+    capabilities: [],
 
     init() {
       // Apply saved theme
       document.documentElement.setAttribute('data-theme', this.theme);
+      this.loadMe();
       this.refresh();
       this.loadModules();
       this._interval = setInterval(() => this.refresh(), 10000);
@@ -261,6 +265,17 @@ document.addEventListener('alpine:init', () => {
     canSee(tab) {
       const m = this.modulesByTab[tab];
       return m ? (m.enabled && m.can_access) : true;
+    },
+
+    async loadMe() {
+      const data = await fetchJSON('api/auth/me');
+      if (data) { this.me = data.user; this.capabilities = data.capabilities || []; }
+    },
+    get isAdmin() { return this.me?.role === 'admin'; },
+    async logout() {
+      await fetchJSON('api/auth/logout', { method: 'POST' });
+      const base = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
+      window.location.href = `${base}/login`;
     },
 
     toggleTheme() {

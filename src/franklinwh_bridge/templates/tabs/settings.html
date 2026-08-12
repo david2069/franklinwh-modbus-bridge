@@ -27,6 +27,55 @@
     </div>
   </div>
 
+  <!-- Users (admin only) -->
+  <div class="card mb-4" x-show="$store.app.isAdmin" x-cloak>
+    <div class="flex items-center justify-between mb-1">
+      <div class="card-label !mb-0">Users</div>
+      <button type="button" class="btn btn-sm btn-secondary" @click="showAddUser = !showAddUser" x-text="showAddUser ? 'Cancel' : '+ Add User'"></button>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">Who can sign in and what they can do. <span class="text-slate-400">admin</span> = full access; <span class="text-slate-400">user</span>/<span class="text-slate-400">viewer</span> = view-only (Dashboard).</p>
+    <template x-if="showAddUser">
+      <div class="flex items-end gap-2 flex-wrap mb-3 pb-3 border-b border-white/[0.06]">
+        <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Username</span>
+          <input x-model="newUser.username" class="form-control !py-1 !text-xs"></label>
+        <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Password</span>
+          <input type="password" x-model="newUser.password" class="form-control !py-1 !text-xs"></label>
+        <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Role</span>
+          <select x-model="newUser.role" class="form-control !py-1 !text-xs w-24">
+            <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option>
+          </select></label>
+        <button type="button" class="btn btn-sm btn-primary" @click="createUser()">Create</button>
+      </div>
+    </template>
+    <div class="space-y-2">
+      <template x-for="u in users" :key="u.id">
+        <div class="flex items-center justify-between rounded border border-white/[0.06] px-3 py-2 gap-3 flex-wrap">
+          <div class="flex items-center gap-2 min-w-[150px]">
+            <span class="w-7 h-7 rounded-full bg-cyan-500/15 text-cyan-300 grid place-items-center text-xs font-semibold uppercase" x-text="u.username.slice(0,1)"></span>
+            <div>
+              <div class="text-sm text-slate-200" x-text="u.username"></div>
+              <div class="text-[10px] text-slate-500" x-show="u.last_login_at" x-text="'last login ' + new Date(u.last_login_at*1000).toLocaleString()"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <select :value="u.role" @change="setUserRole(u, $event.target.value)" class="form-control !py-1 !text-xs w-24">
+              <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option>
+            </select>
+            <button type="button" @click="toggleUserEnabled(u)"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                    :class="u.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="u.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
+              <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="u.enabled ? 'translate-x-4' : 'translate-x-1'"></span>
+            </button>
+            <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="resetUserPassword(u)">reset pw</button>
+            <button type="button" @click="deleteUser(u)" title="Delete user" class="text-red-400/60 hover:text-red-400 transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
     <!-- MQTT Broker Configuration -->

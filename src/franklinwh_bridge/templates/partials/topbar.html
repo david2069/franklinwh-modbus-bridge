@@ -149,6 +149,25 @@
       <span x-text="$store.app.showSources ? 'SunSpec' : 'SunSpec'">SunSpec</span>
     </button>
 
+    <!-- User menu -->
+    <div class="relative" x-data="{ open: false }" @click.away="open = false" x-show="$store.app.me">
+      <button @click="open = !open"
+              class="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-700 transition text-slate-300"
+              :title="'Signed in as ' + ($store.app.me?.username || '')">
+        <span class="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-300 grid place-items-center text-[11px] font-semibold uppercase"
+              x-text="($store.app.me?.username || '?').slice(0,1)"></span>
+        <span class="text-xs hidden sm:inline" x-text="$store.app.me?.username"></span>
+      </button>
+      <div x-show="open" x-cloak x-transition
+           class="absolute right-0 mt-1 w-44 rounded-md border border-white/10 bg-slate-800 shadow-2xl py-1 z-[80]">
+        <div class="px-3 py-2 text-xs text-slate-400 border-b border-white/10">
+          Signed in as <span class="text-slate-200" x-text="$store.app.me?.username"></span>
+          <span class="ml-1 text-[10px] uppercase tracking-wide text-cyan-400" x-text="$store.app.me?.role"></span>
+        </div>
+        <button @click="$store.app.logout()" class="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-white/[0.05]">Sign out</button>
+      </div>
+    </div>
+
     <!-- Theme toggle -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='theme')?.visible !== false"
             @click="$store.app.toggleTheme()"

@@ -30,6 +30,7 @@ from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.ui import router as ui_router
+from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
@@ -608,6 +609,7 @@ app.include_router(mqtt_router, dependencies=_AUTH)
 app.include_router(groups_router, dependencies=_AUTH)
 app.include_router(gateways_router, dependencies=_AUTH)
 app.include_router(modules_router, dependencies=_AUTH)
+app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(
     schedules_router, dependencies=[require_module("automations"), Depends(require_auth)]
 )
