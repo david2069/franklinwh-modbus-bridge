@@ -748,5 +748,41 @@ function scheduleTab() {
       if (res && res.deleted) { Alpine.store('app').toast('Schedule deleted', 'info'); this.load(); }
       else Alpine.store('app').toast('Delete failed', 'error');
     },
+
+    // Duplicate an entry: POST a clone with a "(copy)" name. Copies start
+    // DISABLED so a clone can't silently start dispatching before it's reviewed.
+    async copyEntry(e) {
+      const body = {
+        name: `${e.name} (copy)`,
+        action: e.action,
+        params: { ...(e.params || {}) },
+        target_type: e.target_type,
+        target_id: e.target_type === 'site' ? null : (e.target_id || 'default'),
+        enabled: false,
+        release: e.release,
+        conflict: e.conflict,
+        priority: e.priority || 0,
+        release_policy: e.release_policy || 'restore_prior_mode',
+        missed_policy: e.missed_policy || 'late_fire_remaining',
+        entry_hold_s: e.entry_hold_s || 0,
+        ha_actions: (e.ha_actions || []).map((a) => ({ ...a, data: { ...(a.data || {}) } })),
+        entry_conditions: e.entry_conditions || null,
+        exit_conditions: e.exit_conditions || null,
+      };
+      if (e.trigger_kind) {
+        body.trigger_kind = e.trigger_kind;
+        body.trigger_spec = { ...(e.trigger_spec || {}) };
+        if (e.duration_s) body.duration_s = e.duration_s;
+      } else {
+        body.when_spec = e.when_spec || { days: [], windows: [] };
+      }
+      const res = await fetchJSON('api/schedules', { method: 'POST', body: JSON.stringify(body) });
+      if (res && !res.error) {
+        Alpine.store('app').toast(`Copied "${e.name}" (disabled)`, 'info');
+        this.load();
+      } else {
+        Alpine.store('app').toast(`Copy failed: ${res?.error || 'unknown'}`, 'error');
+      }
+    },
   };
 }

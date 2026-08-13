@@ -149,11 +149,42 @@
               <td class="py-2 pr-3 text-slate-400 text-xs" x-text="targetLabel(e)"></td>
               <td class="py-2 pr-3 text-xs text-slate-400" x-text="nextFireLabel(e)"></td>
               <td class="py-2 pr-3 text-right whitespace-nowrap">
-                <button class="btn btn-sm btn-secondary !py-1 !text-xs" @click="toggleExpand(e.id)"
-                        :title="expandedId === e.id ? 'Hide detail' : 'Show detail'" x-text="expandedId === e.id ? '▴' : '▾'"></button>
-                <button class="btn btn-sm btn-secondary !py-1 !text-xs" @click="executeEntry(e)" title="Fire now">⚡</button>
-                <button class="btn btn-sm btn-secondary !py-1 !text-xs" @click="editEntry(e)">Edit</button>
-                <button class="btn btn-sm bg-red-600 hover:bg-red-500 text-white border-0 !py-1 !text-xs" @click="deleteEntry(e)">⌫</button>
+                <div class="inline-flex items-center gap-1">
+                  <!-- Most-common actions inline; rest in the ⋯ menu. Icons are
+                       plain monochrome (no multi-colour) — see row-actions QA. -->
+                  <button class="btn btn-sm btn-secondary !py-1 !px-2 !text-xs" @click="editEntry(e)" title="Edit">Edit</button>
+                  <button class="btn btn-sm btn-secondary !py-1 !px-2" @click="executeEntry(e)" title="Run now">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z"/></svg>
+                  </button>
+                  <div class="inline-block" x-data="{ open: false, mx: 0, my: 0 }" @click.outside="open = false" @keydown.escape="open = false">
+                    <button class="btn btn-sm btn-secondary !py-1 !px-2" title="More" :aria-expanded="open"
+                            @click="open = !open; if (open) { const r = $el.getBoundingClientRect(); const h = 132; my = (r.bottom + h > window.innerHeight) ? Math.max(8, r.top - h - 4) : r.bottom + 4; mx = r.right; }">
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                    </button>
+                    <!-- position:fixed so the menu escapes the table's overflow-x-auto
+                         clip (which would otherwise cut off the last row's menu). -->
+                    <div x-show="open" x-cloak x-transition.opacity.duration.100ms
+                         :style="`top:${my}px; left:${mx}px; transform: translateX(-100%);`"
+                         class="fixed z-[9999] min-w-[150px] rounded-md border border-white/10 bg-slate-800 shadow-2xl py-1 text-left">
+                      <button class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06] flex items-center gap-2"
+                              @click="toggleExpand(e.id); open = false">
+                        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5M12 8h.01"/></svg>
+                        <span x-text="expandedId === e.id ? 'Hide details' : 'Details'"></span>
+                      </button>
+                      <button class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06] flex items-center gap-2"
+                              @click="copyEntry(e); open = false">
+                        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+                        Duplicate
+                      </button>
+                      <div class="my-1 border-t border-white/10"></div>
+                      <button class="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2"
+                              @click="deleteEntry(e); open = false">
+                        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12"/></svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </td>
             </tr>
           </template>
