@@ -203,6 +203,7 @@
         <span class="w-32 shrink-0">Time</span>
         <span class="w-36 shrink-0">Entry</span>
         <span class="w-28 shrink-0">Status</span>
+        <span class="w-32 shrink-0">Target</span>
         <span class="flex-1">Detail</span>
       </div>
       <div class="space-y-0.5 max-h-64 overflow-y-auto">
@@ -212,6 +213,9 @@
             <span class="w-36 truncate text-slate-300 shrink-0" x-text="scheduleName(ev.schedule_id)"></span>
             <span class="w-28 uppercase text-[10px] font-semibold shrink-0" :class="auditClass(ev.result)"
                   x-text="(ev.result || '').replace(/_/g, ' ')"></span>
+            <span class="w-32 truncate shrink-0" :title="ev.target"
+                  :class="(ev.target || '').includes('(mock)') ? 'text-amber-400' : 'text-slate-400'"
+                  x-text="ev.target"></span>
             <span class="flex-1 truncate text-slate-500" x-text="ev.detail" :title="ev.detail"></span>
           </div>
         </template>

@@ -237,14 +237,46 @@ def action_signature(action: str, params: dict) -> str:
     )
 
 
+def _leaf_str(t: dict) -> str:
+    """Readable `sensor op value (live=…)` for one condition-trace leaf."""
+    val = t.get("value")
+    if t.get("op") == "between" and t.get("value2") is not None:
+        val = f"{t.get('value')}..{t.get('value2')}"
+    return f"{t.get('sensor')} {t.get('op')} {val} (live={t.get('live_value')})"
+
+
 def _condition_reason(prefix: str, trace: list[dict]) -> str:
-    """One-line audit detail listing the failing conditions from a trace."""
-    fails = [
-        f"{t.get('sensor')}{t.get('op')}{t.get('value')} (live={t.get('live_value')})"
-        for t in trace
-        if not t.get("result")
-    ]
+    """One-line audit detail listing the FAILING conditions (with live values)."""
+    fails = [_leaf_str(t) for t in trace if not t.get("result")]
     return f"{prefix}: " + "; ".join(fails[:4]) if fails else prefix
+
+
+def _action_summary(action: str, params: dict) -> str:
+    """Human one-liner for an action + its resolved power/pct, e.g.
+    ``Force Discharge @ 100%`` / ``Force Charge @ 1000W`` / ``Self-Reserve 20%``."""
+    labels = {
+        "force_charge": "Force Charge",
+        "force_discharge": "Force Discharge",
+        "force_standby": "Force Standby",
+        "release": "Release",
+        "reserve_self": "Self-Consumption Reserve",
+        "reserve_tou": "TOU Reserve",
+        "mode": "Operating Mode",
+        "none": "No battery action",
+    }
+    lbl = labels.get(action, action)
+    p = params or {}
+    if action in ("force_charge", "force_discharge"):
+        if p.get("power_pct"):
+            return f"{lbl} @ {p['power_pct']}%"
+        if p.get("power_w"):
+            return f"{lbl} @ {p['power_w']}W"
+        return lbl
+    if action in ("reserve_self", "reserve_tou") and "pct" in p:
+        return f"{lbl} {p['pct']}%"
+    if action == "mode" and p.get("mode"):
+        return f"{lbl}: {p['mode']}"
+    return lbl
 
 
 def action_to_commands(action: str, params: dict) -> list[tuple[str, str]]:
@@ -297,9 +329,13 @@ class ScheduleEngine:
         points_fn: Callable[[str], dict] | None = None,
         connectivity: Any | None = None,
         ha_action_fn: Callable[[str, str, str, dict], Awaitable[dict]] | None = None,
+        gw_label_fn: Callable[[str], str] | None = None,
     ) -> None:
         self._db = db
         self._resolver = resolver
+        # Optional gw_id -> human label ("Default Gateway", "FHP 2 (mock)") for
+        # readable audit targets. None → the raw gateway id is shown.
+        self._gw_label_fn = gw_label_fn
         # Optional HA-action dispatcher: (instance_id, entity_id, service, data)
         # -> {"ok": bool, ...}. Wired to HaRegistry.call_service in main.py. None
         # → HA actions are skipped (no HA configured).
@@ -485,7 +521,7 @@ class ScheduleEngine:
             gated: list[str] = []
             entry_tree = entry.get("entry_conditions")
             for gw_id, handler in pairs:
-                target = f"{ttype}:{tid or ''}:{gw_id}"
+                target = (ttype, tid, gw_id)
                 if not force and entry_tree is not None:
                     ok, trace = eval_conditions(entry_tree, self._snapshot(gw_id, now_dt))
                     if not ok:
@@ -502,7 +538,8 @@ class ScheduleEngine:
                 dispatched.append(gw_id)
                 await self._audit(
                     schedule_id, action, target, "executed",
-                    f"manual execute{' (forced)' if force else ''}",
+                    f"manual execute{' (forced)' if force else ''} — "
+                    f"{_action_summary(action, params)}",
                 )
 
         status = "fired" if dispatched else ("gated" if gated else "noop")
@@ -786,7 +823,10 @@ class ScheduleEngine:
             "is_v2": _is_v2(win),
             "release_policy": win.get("release_policy") or "restore_prior_mode",
         }
-        await self._audit(win["id"], action, tkey, "ok", f"dispatched {win.get('name', action)}")
+        await self._audit(
+            win["id"], action, tkey, "ok",
+            f"dispatched {win.get('name', action)} — {_action_summary(action, params)}",
+        )
 
     def _guard_ok(self, guard: dict, gw_id: str, now: datetime | None) -> bool:
         """Evaluate an HA action's optional guard leaf against the snapshot."""
@@ -910,9 +950,20 @@ class ScheduleEngine:
         if self._on_audit is None:
             return
         try:
-            # target is often a (ttype, tid, gw_id) tuple internally; the audit
-            # sink stores it in a TEXT column, so stringify (a raw tuple binding
-            # would raise and silently drop the row — a pre-v2 latent bug).
-            await self._on_audit(schedule_id, action, str(target), result, detail)
+            await self._on_audit(schedule_id, action, self._target_label(target), result, detail)
         except Exception as exc:
             logger.debug("Schedule audit failed: %s", exc)
+
+    def _target_label(self, target: Any) -> str:
+        """Readable target for the audit column. A ``(ttype, tid, gw_id)`` tuple
+        renders as the resolved gateway's human name (+ "(mock)" flag) so a
+        simulator target is obvious; anything else is stringified as-is."""
+        if isinstance(target, (tuple, list)) and len(target) == 3:
+            gw_id = target[2]
+            if self._gw_label_fn is not None:
+                try:
+                    return self._gw_label_fn(gw_id)
+                except Exception:
+                    pass
+            return str(gw_id)
+        return str(target)

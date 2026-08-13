@@ -387,10 +387,18 @@ async def lifespan(app: FastAPI):
     sample_bus.subscribe(connectivity.on_sample)
     app.state.connectivity = connectivity
 
+    def _gw_label(gw_id: str) -> str:
+        """Human label for a gateway id in audit targets: name + "(mock)" flag."""
+        inst = registry.get(gw_id)
+        cfg = getattr(inst, "config", None) if inst else None
+        name = getattr(cfg, "name", None) or gw_id
+        return f"{name} (mock)" if cfg is not None and getattr(cfg, "mock", False) else str(name)
+
     schedule_engine = ScheduleEngine(
         db, _schedule_resolver, on_audit=_schedule_audit,
         points_fn=_schedule_points, connectivity=connectivity,
         ha_action_fn=ha_registry.call_service,
+        gw_label_fn=_gw_label,
     )
     app.state.schedule_engine = schedule_engine
 

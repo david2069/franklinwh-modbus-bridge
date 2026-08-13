@@ -91,6 +91,23 @@ def _mode_name(points: Points, _now: datetime) -> str | None:
     return str(v) if v is not None else None
 
 
+def _reserve_current(points: Points, _now: datetime) -> float | None:
+    """The reserve-SOC floor that applies to the CURRENT operating mode.
+
+    TOU mode → tou_reserve_pct; anything else (Self-Consumption / Backup) →
+    self_reserve_pct, each with a fallback to the other. Today the aGate keeps
+    both at the same value over Modbus, so this is effectively either; it becomes
+    meaningful if/when they diverge — so an automation can just track "the reserve
+    in force right now" without caring about the mode.
+    """
+    self_r = _num(points, "self_reserve_pct")
+    tou_r = _num(points, "tou_reserve_pct")
+    mode = str(points.get("mode_name") or "").lower()
+    if "tou" in mode or "time of use" in mode or "time-of-use" in mode:
+        return tou_r if tou_r is not None else self_r
+    return self_r if self_r is not None else tou_r
+
+
 def _pv_generating(points: Points, _now: datetime) -> bool | None:
     solar = _num(points, "total_solar")
     if solar is None:
@@ -112,6 +129,32 @@ def _kwh(points: Points, key: str) -> float | None:
 
 SENSORS: list[SensorDef] = [
     SensorDef("battery.soc_pct", "Battery SOC (%)", "%", "number", lambda p, _n: _num(p, "soc")),
+    # Reserve-SOC setpoints (the "floor" the aGate holds). Exposed so an
+    # automation can compare live SOC against the reserve — e.g. force-charge
+    # when battery.soc_pct < battery.reserve_pct (Lookup RHS). `reserve_pct`
+    # follows the active mode; the mode-specific ones are also exposed. Points:
+    # self_reserve_pct = ext.15508, tou_reserve_pct = ext.15509.
+    SensorDef(
+        "battery.reserve_pct",
+        "Reserve SOC — current mode (%)",
+        "%",
+        "number",
+        _reserve_current,
+    ),
+    SensorDef(
+        "battery.reserve_self_pct",
+        "Reserve SOC — Self-Consumption (%)",
+        "%",
+        "number",
+        lambda p, _n: _num(p, "self_reserve_pct"),
+    ),
+    SensorDef(
+        "battery.reserve_tou_pct",
+        "Reserve SOC — TOU (%)",
+        "%",
+        "number",
+        lambda p, _n: _num(p, "tou_reserve_pct"),
+    ),
     SensorDef(
         "battery.power_w",
         "Battery Power (W, signed)",
