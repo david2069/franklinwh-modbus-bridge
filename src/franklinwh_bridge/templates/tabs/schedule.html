@@ -784,17 +784,24 @@
             </div>
             <div x-show="form.target_type === 'gateway'">
               <label class="card-label">Gateway</label>
-              <select x-model="form.target_id" class="form-control w-full">
+              <!-- Drive `selected` per-option from form.target_id via @change (NOT
+                   x-model): x-model on a <select> whose <option>s come from x-for
+                   shows the first option instead of the saved value when options
+                   render after the model is set (or when the list refreshes on
+                   the poll) — that silently masked a mock target. -->
+              <select @change="form.target_id = $event.target.value" class="form-control w-full">
                 <template x-for="gw in $store.app.gatewayList" :key="gw.id">
-                  <option :value="gw.id" x-text="gw.name"></option>
+                  <option :value="gw.id" :selected="gw.id === form.target_id" x-text="gw.name"></option>
                 </template>
               </select>
+              <p x-show="(($store.app.gatewayList.find(g => g.id === form.target_id) || {}).mock)"
+                 class="text-[11px] text-amber-400 mt-1">⚠ Mock gateway — commands won't reach real hardware.</p>
             </div>
             <div x-show="form.target_type === 'service'">
               <label class="card-label">Service</label>
-              <select x-model="form.target_id" class="form-control w-full">
+              <select @change="form.target_id = $event.target.value" class="form-control w-full">
                 <template x-for="s in services" :key="s.id">
-                  <option :value="s.id" x-text="s.name"></option>
+                  <option :value="s.id" :selected="s.id === form.target_id" x-text="s.name"></option>
                 </template>
               </select>
             </div>
