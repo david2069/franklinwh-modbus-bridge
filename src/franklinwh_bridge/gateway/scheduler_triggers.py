@@ -29,9 +29,22 @@ math is deferred to the Phase-2 catchup work, which resolves fires against
 
 from __future__ import annotations
 
+import calendar
+import logging
 from datetime import datetime, time, timedelta
 
-VALID_KINDS = frozenset({"oneoff", "daily", "weekly", "interval", "always"})
+logger = logging.getLogger(__name__)
+
+VALID_KINDS = frozenset(
+    {"oneoff", "daily", "weekly", "interval", "monthly", "cron", "always"}
+)
+
+#: Monthly variants are all the ``monthly`` kind with a months-set:
+#:   Every Month  → months = None (all 12)
+#:   Quarterly    → [1, 4, 7, 10]
+#:   Six-Monthly  → [1, 7]
+#:   Annually     → [1]
+#: plus ``day`` (1..31, clamped to the month's length) and ``time_of_day``.
 
 
 def _parse_hhmm(raw: object) -> tuple[int, int] | None:
@@ -124,6 +137,98 @@ def _interval(trigger: dict, now: datetime) -> datetime | None:
     return cand
 
 
+def _month_set(trigger: dict) -> set[int]:
+    """Months (1..12) a monthly trigger fires in; empty spec → all 12."""
+    months = {int(m) for m in (trigger.get("months") or []) if 1 <= int(m) <= 12}
+    return months or set(range(1, 13))
+
+
+def _month_fire(year: int, month: int, day: int, h: int, m: int, ref: datetime) -> datetime:
+    """A fire datetime in (year, month), clamping ``day`` to the month's length
+    (so day=31 lands on Feb 28/29, Apr 30, …), carrying ref's tzinfo."""
+    last = calendar.monthrange(year, month)[1]
+    return datetime(year, month, min(day, last), h, m, tzinfo=ref.tzinfo)
+
+
+def _monthly(trigger: dict, now: datetime) -> datetime | None:
+    hm = _parse_hhmm(trigger.get("time_of_day")) or (0, 0)
+    try:
+        day = int(trigger.get("day") or 1)
+    except (ValueError, TypeError):
+        return None
+    if not 1 <= day <= 31:
+        return None
+    months = _month_set(trigger)
+    y, mo = now.year, now.month
+    for _ in range(24):  # scan up to 2 years ahead
+        if mo in months:
+            cand = _month_fire(y, mo, day, hm[0], hm[1], now)
+            if cand >= now:
+                return cand
+        mo += 1
+        if mo > 12:
+            mo, y = 1, y + 1
+    return None
+
+
+def _prev_monthly(trigger: dict, now: datetime) -> datetime | None:
+    hm = _parse_hhmm(trigger.get("time_of_day")) or (0, 0)
+    try:
+        day = int(trigger.get("day") or 1)
+    except (ValueError, TypeError):
+        return None
+    if not 1 <= day <= 31:
+        return None
+    months = _month_set(trigger)
+    y, mo = now.year, now.month
+    for _ in range(24):  # scan up to 2 years back
+        if mo in months:
+            cand = _month_fire(y, mo, day, hm[0], hm[1], now)
+            if cand <= now:
+                return cand
+        mo -= 1
+        if mo < 1:
+            mo, y = 12, y - 1
+    return None
+
+
+def _croniter(expr: str, base: datetime):
+    """Return a configured croniter, or None if the lib is missing / expr invalid.
+
+    Lazy import so a missing optional dep degrades gracefully (cron triggers just
+    never fire + are rejected at save) instead of breaking the whole engine."""
+    try:
+        from croniter import croniter
+    except ImportError:
+        logger.warning("cron trigger requires the 'croniter' package — not installed")
+        return None
+    if not croniter.is_valid(expr):
+        return None
+    return croniter(expr, base)
+
+
+def _cron(trigger: dict, now: datetime) -> datetime | None:
+    expr = str(trigger.get("expr") or "").strip()
+    it = _croniter(expr, now) if expr else None  # None if invalid / lib missing
+    if it is None:
+        return None
+    from croniter import croniter
+    if croniter.match(expr, now):  # now lands exactly on a cron minute
+        return now
+    return it.get_next(datetime)
+
+
+def _prev_cron(trigger: dict, now: datetime) -> datetime | None:
+    expr = str(trigger.get("expr") or "").strip()
+    it = _croniter(expr, now) if expr else None
+    if it is None:
+        return None
+    from croniter import croniter
+    if croniter.match(expr, now):
+        return now
+    return it.get_prev(datetime)
+
+
 def next_fire_at(trigger: dict | None, now: datetime) -> datetime | None:
     """Next fire instant at/after ``now`` for a trigger spec, or None.
 
@@ -145,6 +250,10 @@ def next_fire_at(trigger: dict | None, now: datetime) -> datetime | None:
         return _weekly(trigger, now)
     if kind == "interval":
         return _interval(trigger, now)
+    if kind == "monthly":
+        return _monthly(trigger, now)
+    if kind == "cron":
+        return _cron(trigger, now)
     # "always" and anything unrecognised
     return None
 
@@ -295,4 +404,8 @@ def prev_fire_at(trigger: dict | None, now: datetime) -> datetime | None:
         return _prev_weekly(trigger, now)
     if kind == "interval":
         return _prev_interval(trigger, now)
+    if kind == "monthly":
+        return _prev_monthly(trigger, now)
+    if kind == "cron":
+        return _prev_cron(trigger, now)
     return None

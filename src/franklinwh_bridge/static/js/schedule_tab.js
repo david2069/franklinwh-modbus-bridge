@@ -30,26 +30,36 @@ const TRIGGER_TYPES = [
   { id: 'daily',    label: 'Daily at time',       kind: 'daily' },
   { id: 'weekly',   label: 'Weekly at time',      kind: 'weekly' },
   { id: 'interval', label: 'Every N minutes',     kind: 'interval' },
+  { id: 'monthly',  label: 'Monthly / calendar',  kind: 'monthly' },
+  { id: 'cron',     label: 'Custom cron',         kind: 'cron' },
   { id: 'always',   label: 'Always evaluate (sensor-driven)', kind: 'always' },
 ];
 
 const OPERATORS = ['<', '<=', '==', '!=', '>=', '>', 'between'];
 
-// FWHAI-style quick presets that map onto existing engine trigger kinds
-// (interval/daily/weekly). Selecting one fills the real fields below, which stay
-// editable. Calendar presets (monthly/quarterly/annually) + custom cron need new
-// engine kinds and are a separate backlog item.
+// FWHAI-parity quick presets. Selecting one fills the real fields below, which
+// stay editable. Sub-day/daily/weekly map onto interval/daily/weekly; the
+// calendar ones map onto the `monthly` engine kind (day + months-set); Custom
+// Cron switches to the `cron` kind for a free-form expression.
 const TRIGGER_PRESETS = [
-  { id: 'min_1',          label: 'Every minute',              type: 'interval', interval_min: 1 },
-  { id: 'min_5',          label: 'Every 5 minutes',           type: 'interval', interval_min: 5 },
-  { id: 'min_10',         label: 'Every 10 minutes',          type: 'interval', interval_min: 10 },
-  { id: 'min_15',         label: 'Every 15 minutes',          type: 'interval', interval_min: 15 },
-  { id: 'min_30',         label: 'Every 30 minutes',          type: 'interval', interval_min: 30 },
-  { id: 'hourly',         label: 'Every hour',                type: 'interval', interval_min: 60 },
-  { id: 'daily_midnight', label: 'Every day (midnight)',      type: 'daily',    time_of_day: '00:00' },
-  { id: 'daily_8am',      label: 'Every day (8:00 am)',       type: 'daily',    time_of_day: '08:00' },
-  { id: 'weekly_sun',     label: 'Every week (Sun midnight)', type: 'weekly',   time_of_day: '00:00', days: [6] },
+  { id: 'min_5',          label: 'Every 5 minutes',            type: 'interval', interval_min: 5 },
+  { id: 'min_10',         label: 'Every 10 minutes',           type: 'interval', interval_min: 10 },
+  { id: 'min_15',         label: 'Every 15 minutes',           type: 'interval', interval_min: 15 },
+  { id: 'min_30',         label: 'Every 30 minutes',           type: 'interval', interval_min: 30 },
+  { id: 'min_1',          label: 'Every minute',               type: 'interval', interval_min: 1 },
+  { id: 'hourly',         label: 'Every hour',                 type: 'interval', interval_min: 60 },
+  { id: 'daily_midnight', label: 'Every day (midnight)',       type: 'daily',    time_of_day: '00:00' },
+  { id: 'daily_8am',      label: 'Every day (morning 8am)',    type: 'daily',    time_of_day: '08:00' },
+  { id: 'weekly_sun',     label: 'Every week (Sun midnight)',  type: 'weekly',   time_of_day: '00:00', days: [6] },
+  { id: 'monthly_1st',    label: 'Every month (1st day)',      type: 'monthly',  month_day: 1, months: [] },
+  { id: 'quarterly',      label: 'Quarterly (Jan, Apr, Jul, Oct)', type: 'monthly', month_day: 1, months: [1, 4, 7, 10] },
+  { id: 'six_monthly',    label: 'Six monthly (Jan, Jul)',     type: 'monthly',  month_day: 1, months: [1, 7] },
+  { id: 'annually',       label: 'Annually (Jan 1st)',         type: 'monthly',  month_day: 1, months: [1] },
+  { id: 'custom_cron',    label: 'Custom cron expression…',    type: 'cron' },
 ];
+
+// Month labels for the monthly-trigger month picker (Jan=1..Dec=12).
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function todayISO() {
   const d = new Date();
@@ -332,6 +342,12 @@ function scheduleTab() {
         if (e.trigger_kind === 'daily')    return `Daily ${s.time_of_day || ''}`;
         if (e.trigger_kind === 'weekly')   return `Weekly ${(s.days_of_week || []).map(i => WEEKDAYS[i]).join(' ')} ${s.time_of_day || ''}`;
         if (e.trigger_kind === 'interval') return `Every ${Math.round((s.every_seconds || 0) / 60)} min`;
+        if (e.trigger_kind === 'monthly') {
+          const mos = (s.months || []);
+          const when = mos.length ? mos.map(m => MONTH_LABELS[m - 1]).join(',') : 'monthly';
+          return `Day ${s.day || 1} ${when} ${s.time_of_day || ''}`.trim();
+        }
+        if (e.trigger_kind === 'cron')     return `Cron ${s.expr || ''}`;
         if (e.trigger_kind === 'oneoff')   return `Once ${(s.fire_at || '').replace('T', ' ')}`;
         if (e.trigger_kind === 'always')   return 'Always (conditions)';
       }
@@ -413,6 +429,9 @@ function scheduleTab() {
         time_of_day: '18:00',
         interval_min: 60,
         anchor_time: '',
+        month_day: 1,          // monthly: day-of-month (1..31, clamped)
+        months: [],            // monthly: month numbers (1..12); empty = every month
+        cron_expr: '0 0 1 * *', // cron: free-form expression
         duration_min: 0,
         action: 'force_charge',
         power_w: 1000,
@@ -474,6 +493,9 @@ function scheduleTab() {
         time_of_day: s.time_of_day || '18:00',
         interval_min: s.every_seconds ? Math.round(s.every_seconds / 60) : 60,
         anchor_time: s.anchor_time || '',
+        month_day: s.day || 1,
+        months: (s.months || []).slice(),
+        cron_expr: s.expr || '0 0 1 * *',
         duration_min: e.duration_s ? Math.round(e.duration_s / 60) : 0,
         action: e.action,
         power_w: p.power_w ?? 1000,
@@ -519,6 +541,8 @@ function scheduleTab() {
     get showTimeOfDay() { return ['daily', 'weekly'].includes(this.form?.trigger_type); },
     get showInterval() { return this.form?.trigger_type === 'interval'; },
     get showDate() { return this.form?.trigger_type === 'once'; },
+    get showMonthly() { return this.form?.trigger_type === 'monthly'; },
+    get showCron() { return this.form?.trigger_type === 'cron'; },
 
     // Apply a quick preset → sets the trigger type + fills its spec fields
     // (which remain editable). No-op for the placeholder option.
@@ -529,12 +553,21 @@ function scheduleTab() {
       if (p.interval_min != null) this.form.interval_min = p.interval_min;
       if (p.time_of_day) this.form.time_of_day = p.time_of_day;
       this.form.days = p.days ? p.days.slice() : [];
+      if (p.month_day != null) this.form.month_day = p.month_day;
+      if (p.months != null) this.form.months = p.months.slice();
     },
 
     toggleDay(i) {
       const idx = this.form.days.indexOf(i);
       if (idx >= 0) this.form.days.splice(idx, 1);
       else this.form.days.push(i);
+    },
+
+    monthLabels: MONTH_LABELS,
+    toggleMonth(m) {
+      const idx = this.form.months.indexOf(m);
+      if (idx >= 0) this.form.months.splice(idx, 1);
+      else this.form.months.push(m);
     },
 
     addWindow() { this.form.windows.push({ start: '00:00', end: '06:00' }); },
@@ -629,6 +662,14 @@ function scheduleTab() {
         if (f.anchor_time) spec.anchor_time = f.anchor_time;
         return spec;
       }
+      if (f.trigger_type === 'monthly') {
+        return {
+          day: Math.min(31, Math.max(1, Number(f.month_day) || 1)),
+          months: (f.months || []).slice().sort((a, b) => a - b),
+          time_of_day: f.time_of_day,
+        };
+      }
+      if (f.trigger_type === 'cron') return { expr: (f.cron_expr || '').trim() };
       return {};
     },
 

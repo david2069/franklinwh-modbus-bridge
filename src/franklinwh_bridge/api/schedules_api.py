@@ -61,7 +61,7 @@ class WhenSpec(BaseModel):
     date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
-_TRIGGER_KIND = r"^(oneoff|daily|weekly|interval|always)$"
+_TRIGGER_KIND = r"^(oneoff|daily|weekly|interval|monthly|cron|always)$"
 _MISSED_POLICY = r"^(late_fire_remaining|skip|late_fire_always)$"
 
 
@@ -124,6 +124,34 @@ class ScheduleUpdate(BaseModel):
     ha_actions: list[HaActionItem] | None = None
 
 
+def _validate_trigger(kind: str | None, spec: dict | None) -> None:
+    """Reject a trigger whose spec would never fire, so the user gets feedback
+    at save time instead of a silently dead entry. Only checks the fields a kind
+    actually needs (the engine is otherwise defensive)."""
+    spec = spec or {}
+    if kind == "cron":
+        expr = str(spec.get("expr") or "").strip()
+        if not expr:
+            raise HTTPException(400, "cron trigger requires trigger_spec.expr")
+        try:
+            from croniter import croniter
+        except ImportError as exc:  # pragma: no cover - dep is declared
+            raise HTTPException(500, "cron support unavailable (croniter missing)") from exc
+        if not croniter.is_valid(expr):
+            raise HTTPException(400, f"invalid cron expression: {expr!r}")
+    elif kind == "monthly":
+        day = spec.get("day", 1)
+        try:
+            day = int(day)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, "monthly trigger day must be 1..31") from exc
+        if not 1 <= day <= 31:
+            raise HTTPException(400, "monthly trigger day must be 1..31")
+        for m in spec.get("months") or []:
+            if not (isinstance(m, int) and 1 <= m <= 12):
+                raise HTTPException(400, "monthly trigger months must be 1..12")
+
+
 def _validate_action(action: str, params: dict) -> None:
     if action not in _ACTIONS:
         raise HTTPException(400, f"Unknown action '{action}'. One of {sorted(_ACTIONS)}")
@@ -181,6 +209,7 @@ async def add_schedule(body: ScheduleCreate, request: Request):
     """Create a schedule entry."""
     db: aiosqlite.Connection = request.app.state.db
     _validate_action(body.action, body.params)
+    _validate_trigger(body.trigger_kind, body.trigger_spec)
     entry = await create_schedule(
         db,
         name=body.name,
@@ -319,6 +348,11 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
     updates = body.model_dump(exclude_unset=True)
     if "action" in updates and updates["action"] is not None:
         _validate_action(updates["action"], updates.get("params") or body.params or {})
+    if "trigger_kind" in updates or "trigger_spec" in updates:
+        existing = await get_schedule(db, schedule_id)
+        kind = updates.get("trigger_kind", (existing or {}).get("trigger_kind"))
+        spec = updates.get("trigger_spec", (existing or {}).get("trigger_spec"))
+        _validate_trigger(kind, spec)
     result = await update_schedule(db, schedule_id, **updates)
     if result is None:
         raise HTTPException(404, f"Schedule '{schedule_id}' not found")

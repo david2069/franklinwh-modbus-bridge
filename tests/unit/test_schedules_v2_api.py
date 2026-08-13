@@ -210,3 +210,40 @@ async def test_switch_to_window_clears_trigger_kind(client):
     })).json()
     assert patched["trigger_kind"] is None
     assert patched["when_spec"]["windows"][0]["start"] == "14:00"
+
+
+async def test_create_monthly_trigger(client):
+    resp = await client.post("/api/schedules", json={
+        "name": "quarterly reset", "action": "force_standby",
+        "trigger_kind": "monthly",
+        "trigger_spec": {"day": 1, "months": [1, 4, 7, 10], "time_of_day": "00:00"},
+    })
+    assert resp.status_code == 201, resp.text
+    d = resp.json()
+    assert d["trigger_kind"] == "monthly"
+    assert d["trigger_spec"]["months"] == [1, 4, 7, 10]
+    assert d["next_fire"] is not None
+
+
+async def test_create_cron_trigger_and_reject_invalid(client):
+    ok = await client.post("/api/schedules", json={
+        "name": "cron ok", "action": "force_standby",
+        "trigger_kind": "cron", "trigger_spec": {"expr": "*/15 * * * *"},
+    })
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["trigger_kind"] == "cron"
+
+    bad = await client.post("/api/schedules", json={
+        "name": "cron bad", "action": "force_standby",
+        "trigger_kind": "cron", "trigger_spec": {"expr": "not a cron"},
+    })
+    assert bad.status_code == 400
+    assert "cron" in bad.json()["detail"].lower()
+
+
+async def test_reject_monthly_bad_day(client):
+    bad = await client.post("/api/schedules", json={
+        "name": "bad day", "action": "force_standby",
+        "trigger_kind": "monthly", "trigger_spec": {"day": 40},
+    })
+    assert bad.status_code == 400
