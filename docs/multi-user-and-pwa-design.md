@@ -203,6 +203,9 @@ table. `secret_key` lives in `app_config` (generated) or `SECURITY_SECRET_KEY` e
 
 ## 8. Phasing (re-sequenced 2026-08-12 — modules first)
 
+**Status (2026-08-13):** Phase 0 ✅, Phase 1 ✅ (1a/1b/1c), Phase 2 ✅ SHIPPED
+(`17b24dc`). Phase 3 (PWA) is the remaining item.
+
 0. **Phase 0 — Module registry + capability gating** (§M, ships FIRST, standalone,
    no auth): module inventory + capability map; `app_config` enabled-flags;
    `api/modules.py` (`GET /api/modules`, `PATCH /api/modules/{id}`);
@@ -215,9 +218,14 @@ table. `secret_key` lives in `app_config` (generated) or `SECURITY_SECRET_KEY` e
    `SessionMiddleware` + `--proxy-headers`/forwarded-proto + HSTS + router gating
    (compose with `require_module`) + ingress bypass + `ALLOW_INSECURE_AUTH` guard;
    `ui.py` `/login`. Ships enforcing (docker/dev), seeded (no lockout).
-2. **Phase 2 — Roles + dashboards** (was A2): role→capability map wired to the
-   module caps; admin Users tab; `GET /user` mobile-first shell + trimmed
-   `user_app.js` showing only permitted modules; role-based login redirect.
+2. **Phase 2 — Roles + dashboards** (was A2) ✅: role→capability map wired to the
+   module caps (Phase 1c); admin Users tab (Phase 1c); `GET /user` standalone
+   mobile-first board (`user.html` + `user_app.js`) — SOC ring, power flow,
+   operating mode + reserve SOC, today's energy, connectivity badge — polling the
+   shared read-only APIs (`/api/points`, `/api/health/connectivity`, optional
+   `/api/sensors`); role-based landing (`_home_for`: admin → `/`, user/viewer →
+   `/user`, applied in login + `GET /`). Verified live (viewer, real aGate data,
+   0 console errors).
 3. **Phase 3 — PWA** (was C): icons + manifest + service worker for `/user`
    (ingress-aware), registration, offline shell. Admin manifest optional later.
 
