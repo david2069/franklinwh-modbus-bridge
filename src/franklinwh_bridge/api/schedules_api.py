@@ -31,11 +31,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["schedules"])
 
-_ACTIONS = frozenset({
-    "force_charge", "force_discharge", "force_standby", "release",
-    "reserve_self", "reserve_tou", "mode",
-    "none",  # no battery command — HA-actions-only automation
-})
+_ACTIONS = frozenset(
+    {
+        "force_charge",
+        "force_discharge",
+        "force_standby",
+        "release",
+        "reserve_self",
+        "reserve_tou",
+        "mode",
+        "none",  # no battery command — HA-actions-only automation
+    }
+)
 
 
 # ── request models ────────────────────────────────────────────
@@ -249,17 +256,19 @@ async def schedule_timeline(request: Request, day: int | None = None):
     segments = []
 
     def _emit(e, start_min, end_min, is_trigger):
-        segments.append({
-            "schedule_id": e["id"],
-            "name": e["name"],
-            "action": e["action"],
-            "target_type": e["target_type"],
-            "target_id": e.get("target_id"),
-            "start_min": start_min,
-            "end_min": end_min,
-            "wraps_midnight": end_min <= start_min,
-            "trigger": is_trigger,
-        })
+        segments.append(
+            {
+                "schedule_id": e["id"],
+                "name": e["name"],
+                "action": e["action"],
+                "target_type": e["target_type"],
+                "target_id": e.get("target_id"),
+                "start_min": start_min,
+                "end_min": end_min,
+                "wraps_midnight": end_min <= start_min,
+                "trigger": is_trigger,
+            }
+        )
 
     for e in await get_schedules(db):
         if not e.get("enabled"):
@@ -298,13 +307,18 @@ async def get_single_schedule(schedule_id: str, request: Request):
 
 @router.patch("/schedules/{schedule_id}")
 async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Request):
-    """Update a schedule entry."""
+    """Update a schedule entry.
+
+    Uses ``exclude_unset`` so we apply exactly the fields the client sent —
+    including explicit nulls. A previous ``if v is not None`` filter silently
+    dropped nulls, which made it impossible to CLEAR a field: deleting all
+    exit_conditions (client sends ``exit_conditions: null``) never persisted.
+    ``update_schedule`` stores None as SQL NULL for the nullable JSON columns.
+    """
     db: aiosqlite.Connection = request.app.state.db
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    if "when_spec" in updates and body.when_spec is not None:
-        updates["when_spec"] = body.when_spec.model_dump()
-    if "action" in updates:
-        _validate_action(updates["action"], updates.get("params", body.params or {}))
+    updates = body.model_dump(exclude_unset=True)
+    if "action" in updates and updates["action"] is not None:
+        _validate_action(updates["action"], updates.get("params") or body.params or {})
     result = await update_schedule(db, schedule_id, **updates)
     if result is None:
         raise HTTPException(404, f"Schedule '{schedule_id}' not found")
@@ -327,21 +341,39 @@ async def list_schedule_actions():
     """The command vocabulary a schedule entry can dispatch (for the UI form)."""
     return {
         "actions": [
-            {"id": "force_charge", "label": "Force Charge", "sustained": True,
-             "params": ["power_w", "power_pct", "duration_s", "target_soc"]},
-            {"id": "force_discharge", "label": "Force Discharge", "sustained": True,
-             "params": ["power_w", "power_pct", "duration_s", "target_soc"]},
-            {"id": "force_standby", "label": "Force Standby", "sustained": True,
-             "params": ["duration_s"]},
+            {
+                "id": "force_charge",
+                "label": "Force Charge",
+                "sustained": True,
+                "params": ["power_w", "power_pct", "duration_s", "target_soc"],
+            },
+            {
+                "id": "force_discharge",
+                "label": "Force Discharge",
+                "sustained": True,
+                "params": ["power_w", "power_pct", "duration_s", "target_soc"],
+            },
+            {
+                "id": "force_standby",
+                "label": "Force Standby",
+                "sustained": True,
+                "params": ["duration_s"],
+            },
             {"id": "release", "label": "Release", "sustained": True, "params": []},
-            {"id": "reserve_self", "label": "Self-Consumption Reserve %",
-             "sustained": False, "params": ["pct"]},
-            {"id": "reserve_tou", "label": "TOU Reserve %", "sustained": False,
-             "params": ["pct"]},
-            {"id": "mode", "label": "Operating Mode", "sustained": False,
-             "params": ["mode"]},
-            {"id": "none", "label": "No battery action (HA only)", "sustained": False,
-             "params": []},
+            {
+                "id": "reserve_self",
+                "label": "Self-Consumption Reserve %",
+                "sustained": False,
+                "params": ["pct"],
+            },
+            {"id": "reserve_tou", "label": "TOU Reserve %", "sustained": False, "params": ["pct"]},
+            {"id": "mode", "label": "Operating Mode", "sustained": False, "params": ["mode"]},
+            {
+                "id": "none",
+                "label": "No battery action (HA only)",
+                "sustained": False,
+                "params": [],
+            },
         ],
         # a quick echo so the UI can preview what a given action expands to
         "example_expansion": action_to_commands("force_charge", {"power_w": 1000}),

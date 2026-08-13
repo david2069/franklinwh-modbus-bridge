@@ -122,3 +122,48 @@ async def test_log_filter_by_status(client):
     assert resp.status_code == 200
     events = resp.json()["events"]
     assert all(e["result"] == "executed" for e in events)
+
+
+async def test_patch_can_clear_exit_conditions(client):
+    """Regression: deleting all exit_conditions (client sends null) must persist.
+
+    The old PATCH filtered `if v is not None`, silently dropping the null so a
+    cleared exit condition never saved. exclude_unset now honours explicit nulls.
+    """
+    created = (await client.post("/api/schedules", json={
+        "name": "clearable", "action": "force_discharge", "trigger_kind": "daily",
+        "trigger_spec": {"time_of_day": "18:00"}, "duration_s": 3600,
+        "exit_conditions": {
+            "match": "ALL",
+            "conditions": [{"sensor": "battery.soc_pct", "op": "<=", "value": 20}],
+        },
+    })).json()
+    sid = created["id"]
+    assert created["exit_conditions"]["conditions"], "precondition: has an exit cond"
+
+    # Clear it — the frontend sends exit_conditions: null when the last row is removed.
+    patched = await client.patch(f"/api/schedules/{sid}", json={"exit_conditions": None})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["exit_conditions"] is None, "exit_conditions should be cleared"
+
+    # And it stays cleared on a fresh GET.
+    got = (await client.get(f"/api/schedules/{sid}")).json()
+    assert got["exit_conditions"] is None
+
+
+async def test_patch_partial_leaves_other_fields_untouched(client):
+    """exclude_unset: a partial PATCH (e.g. just `enabled`) must not wipe other
+    fields — only what the client sent is applied."""
+    created = (await client.post("/api/schedules", json={
+        "name": "keep", "action": "force_discharge", "trigger_kind": "daily",
+        "trigger_spec": {"time_of_day": "18:00"}, "duration_s": 3600,
+        "exit_conditions": {
+            "match": "ALL",
+            "conditions": [{"sensor": "battery.soc_pct", "op": "<=", "value": 20}],
+        },
+    })).json()
+    sid = created["id"]
+    patched = (await client.patch(f"/api/schedules/{sid}", json={"enabled": False})).json()
+    assert patched["enabled"] is False
+    assert patched["exit_conditions"]["conditions"][0]["value"] == 20  # untouched
+    assert patched["duration_s"] == 3600

@@ -183,8 +183,11 @@ function scheduleTab() {
 
     auditStatuses: ['fired', 'executed', 'ha_action', 'gated', 'waiting', 'missed', 'exit_condition_met'],
 
-    // edit form ('null' = closed)
+    // Edit form. `formOpen` drives modal visibility; `form` holds the data and
+    // is NEVER set back to null while the modal could still be evaluating it —
+    // nulling it mid-teardown is what threw "form.id is null" floods in Alpine.
     form: null,
+    formOpen: false,
     testResult: null,       // entry-conditions Test Verification result
     exitTestResult: null,   // exit-conditions Test Verification result
     traceByCid: {},         // leaf _cid -> {result, live_value} from last test
@@ -448,6 +451,7 @@ function scheduleTab() {
 
     newEntry() {
       this.form = this._blankForm();
+      this.formOpen = true;
       this._clearTrace();
     },
 
@@ -491,6 +495,7 @@ function scheduleTab() {
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
+      this.formOpen = true;
     },
 
     _cloneTree(t) {
@@ -501,15 +506,19 @@ function scheduleTab() {
       return clone(t);
     },
 
-    closeForm() { this.form = null; this._clearTrace(); },
+    // Hide via formOpen; keep `form` intact so no `form.X` binding evaluates
+    // against null during Alpine's x-if teardown tick.
+    closeForm() { this.formOpen = false; this._clearTrace(); },
 
     // ── which sections are visible for the chosen trigger type ──
-    get isTrigger() { return !['window', 'once'].includes(this.form.trigger_type); },
-    get showWindows() { return ['window', 'once'].includes(this.form.trigger_type); },
-    get showDays() { return this.form.trigger_type === 'window' || this.form.trigger_type === 'weekly'; },
-    get showTimeOfDay() { return ['daily', 'weekly'].includes(this.form.trigger_type); },
-    get showInterval() { return this.form.trigger_type === 'interval'; },
-    get showDate() { return this.form.trigger_type === 'once'; },
+    // All guard on `this.form?.` so they never throw during the modal's
+    // open/close teardown tick (form is null while the modal is closed).
+    get isTrigger() { return !['window', 'once'].includes(this.form?.trigger_type); },
+    get showWindows() { return ['window', 'once'].includes(this.form?.trigger_type); },
+    get showDays() { return this.form?.trigger_type === 'window' || this.form?.trigger_type === 'weekly'; },
+    get showTimeOfDay() { return ['daily', 'weekly'].includes(this.form?.trigger_type); },
+    get showInterval() { return this.form?.trigger_type === 'interval'; },
+    get showDate() { return this.form?.trigger_type === 'once'; },
 
     // Apply a quick preset → sets the trigger type + fills its spec fields
     // (which remain editable). No-op for the placeholder option.

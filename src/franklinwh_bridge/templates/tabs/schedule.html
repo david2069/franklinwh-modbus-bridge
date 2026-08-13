@@ -220,10 +220,10 @@
   </div>
 
   <!-- ── Add / Edit Modal ─────────────────────────────────── -->
-  <div x-show="form !== null" x-cloak class="fixed inset-0 z-[9998] flex items-center justify-center p-4">
+  <div x-show="formOpen" x-cloak class="fixed inset-0 z-[9998] flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeForm()"></div>
     <div class="relative w-full max-w-2xl rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto">
-      <template x-if="form !== null">
+      <template x-if="formOpen && form">
         <div class="p-5 space-y-4">
           <div class="flex items-center justify-between">
             <h3 class="text-lg font-bold" x-text="form.id ? 'Edit Entry' : 'New Entry'"></h3>
