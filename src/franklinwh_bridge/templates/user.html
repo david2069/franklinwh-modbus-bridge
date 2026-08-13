@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <base href="{{ base_path }}/">
+  <title>My System · FranklinWH Bridge</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090e18; --panel: rgba(30, 41, 59, .55); --border: rgba(255, 255, 255, .08);
+      --text: #e2e8f0; --muted: #64748b; --dim: #94a3b8;
+      --ok: #34d399; --warn: #fbbf24; --danger: #f87171; --accent: #22d3ee; --solar: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      background: radial-gradient(1200px 600px at 50% -10%, #16233b 0%, #0b1220 60%, #090e18 100%);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 0 0 40px;
+    }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 16px; }
+    /* Topbar */
+    .topbar { display: flex; align-items: center; gap: 10px; padding: 6px 2px 18px; }
+    .logo {
+      width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto; display: grid; place-items: center;
+      background: linear-gradient(135deg, #22d3ee, #0891b2); color: #fff;
+    }
+    .title { flex: 1 1 auto; min-width: 0; }
+    .title h1 { font-size: 14px; margin: 0; font-weight: 700; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title p { font-size: 11px; margin: 0; color: var(--muted); }
+    .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.off { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+    .userbtn {
+      flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px 4px 4px;
+      color: var(--text); font-size: 12px;
+    }
+    .avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+      background: linear-gradient(135deg, #6366f1, #22d3ee); color: #fff; font-size: 11px; font-weight: 700; }
+    /* Cards */
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 18px; margin-bottom: 14px; backdrop-filter: blur(6px); }
+    .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
+      margin: 0 0 12px; font-weight: 600; }
+    /* SOC ring */
+    .ring-card { display: flex; flex-direction: column; align-items: center; padding-top: 24px; padding-bottom: 22px; }
+    .ring { position: relative; width: 180px; height: 180px; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring .val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .ring .pct { font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+    .ring .pct small { font-size: 20px; font-weight: 600; color: var(--dim); }
+    .ring .lbl { font-size: 12px; color: var(--dim); margin-top: 6px; }
+    .flow-state { margin-top: 16px; font-size: 13px; font-weight: 600; }
+    /* Power tiles */
+    .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tile { background: rgba(15, 23, 42, .5); border: 1px solid var(--border); border-radius: 13px; padding: 13px 14px; }
+    .tile .t-lbl { font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+    .tile .t-val { font-size: 22px; font-weight: 700; margin-top: 5px; letter-spacing: -.01em; }
+    .tile .t-val small { font-size: 12px; font-weight: 600; color: var(--muted); margin-left: 3px; }
+    .tile .t-sub { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 15px; }
+    .ico { width: 14px; height: 14px; }
+    /* Mode + energy rows */
+    .row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-top: 1px solid var(--border); }
+    .row:first-of-type { border-top: 0; }
+    .row .k { color: var(--dim); font-size: 13px; }
+    .row .v { font-weight: 600; font-size: 13px; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      background: rgba(34, 211, 238, .12); color: var(--accent); border: 1px solid rgba(34, 211, 238, .25); }
+    .foot { text-align: center; color: var(--muted); font-size: 11px; margin-top: 8px; }
+    .menu { position: relative; }
+    .dropdown { position: absolute; right: 0; top: 40px; background: #131c2e; border: 1px solid var(--border);
+      border-radius: 11px; padding: 6px; min-width: 150px; box-shadow: 0 14px 40px rgba(0,0,0,.5); z-index: 20; display: none; }
+    .dropdown.open { display: block; }
+    .dropdown .who { padding: 8px 10px 6px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+    .dropdown .who b { color: var(--text); }
+    .dropdown a, .dropdown button.link { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px;
+      color: var(--text); font-size: 13px; text-decoration: none; background: none; border: 0; cursor: pointer; }
+    .dropdown a:hover, .dropdown button.link:hover { background: rgba(255,255,255,.06); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="logo">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <div class="title">
+        <h1 id="siteName">My System</h1>
+        <span class="conn"><span class="dot" id="connDot"></span><span id="connText">Checking…</span></span>
+      </div>
+      <div class="menu">
+        <button class="userbtn" id="userBtn" aria-haspopup="true">
+          <span class="avatar" id="avatar">–</span>
+          <span id="userName">…</span>
+        </button>
+        <div class="dropdown" id="userMenu">
+          <div class="who">Signed in as <b id="menuUser">…</b><br><span id="menuRole" style="text-transform:capitalize"></span></div>
+          <a id="adminLink" href="./" style="display:none">Admin view</a>
+          <button class="link" id="logoutBtn">Sign out</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SOC ring -->
+    <div class="card ring-card">
+      <div class="ring">
+        <svg width="180" height="180" viewBox="0 0 180 180">
+          <circle cx="90" cy="90" r="78" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="12"/>
+          <circle id="socArc" cx="90" cy="90" r="78" fill="none" stroke="var(--accent)" stroke-width="12"
+            stroke-linecap="round" stroke-dasharray="490.1" stroke-dashoffset="490.1"
+            style="transition: stroke-dashoffset .6s ease, stroke .4s"/>
+        </svg>
+        <div class="val">
+          <div class="pct"><span id="socVal">--</span><small>%</small></div>
+          <div class="lbl">Battery</div>
+        </div>
+      </div>
+      <div class="flow-state" id="battState">—</div>
+    </div>
+
+    <!-- Power flow -->
+    <div class="card">
+      <h2>Power Flow</h2>
+      <div class="tiles">
+        <div class="tile">
+          <div class="t-lbl"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="var(--solar)" stroke-width="2"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg> Solar</div>
+          <div class="t-val" id="solarVal">--</div>
+          <div class="t-sub" id="solarSub"></div>
+        </div>
+        <div class="tile">
+          <div class="t-lbl"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v4M15 3v4M6 7h12l-1 6a3 3 0 01-3 2.5h-4A3 3 0 017 13L6 7zM12 15.5V21"/></svg> Grid</div>
+          <div class="t-val" id="gridVal">--</div>
+          <div class="t-sub" id="gridSub"></div>
+        </div>
+        <div class="tile">
+          <div class="t-lbl"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg> Home</div>
+          <div class="t-val" id="homeVal">--</div>
+          <div class="t-sub" id="homeSub"></div>
+        </div>
+        <div class="tile">
+          <div class="t-lbl"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="16" rx="2"/><path stroke-linecap="round" d="M10 2h4"/></svg> Battery</div>
+          <div class="t-val" id="battVal">--</div>
+          <div class="t-sub" id="battSub"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Operating mode -->
+    <div class="card">
+      <h2>Operating Mode</h2>
+      <div class="row"><span class="k">Mode</span><span class="v"><span class="badge" id="modeVal">—</span></span></div>
+      <div class="row"><span class="k">Grid</span><span class="v" id="gridModeVal">—</span></div>
+      <div class="row" id="reserveRow" style="display:none"><span class="k">Reserve SOC</span><span class="v" id="reserveVal">—</span></div>
+    </div>
+
+    <!-- Today's energy (optional; hidden until data arrives) -->
+    <div class="card" id="energyCard" style="display:none">
+      <h2>Today</h2>
+      <div class="row"><span class="k">Solar produced</span><span class="v" id="enSolar">—</span></div>
+      <div class="row"><span class="k">Grid imported</span><span class="v" id="enImport">—</span></div>
+      <div class="row"><span class="k">Grid exported</span><span class="v" id="enExport">—</span></div>
+    </div>
+
+    <div class="foot" id="foot">—</div>
+  </div>
+
+  <script src="static/js/user_app.js?v={{ cache_bust }}"></script>
+</body>
+</html>

@@ -73,7 +73,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: document.getElementById('u').value, password: document.getElementById('p').value }),
         });
-        if (res.ok) { window.location.href = `${base}/`; return; }
+        if (res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const role = body.user && body.user.role;
+          const dest = (role === 'user' || role === 'viewer') ? '/user' : '/';
+          window.location.href = `${base}${dest}`;
+          return;
+        }
         const body = await res.json().catch(() => ({}));
         err.textContent = body.detail || 'Sign-in failed';
       } catch (ex) {

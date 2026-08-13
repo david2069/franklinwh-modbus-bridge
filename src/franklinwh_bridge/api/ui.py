@@ -31,12 +31,22 @@ def _base_path(request: Request) -> str:
     return ingress_path.rstrip("/") if ingress_path else ""
 
 
+def _home_for(base_path: str, user: dict) -> str:
+    """Role-based landing page. Admins get the full SPA; user/viewer roles get
+    the simplified mobile-first end-user dashboard at /user."""
+    if user.get("role") in ("user", "viewer"):
+        return f"{base_path}/user"
+    return f"{base_path}/"
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, user: dict | None = Depends(get_current_user)):
-    """Serve the main SPA shell — or redirect to /login when unauthenticated."""
+    """Serve the main SPA shell. Unauthenticated → /login; non-admin → /user."""
     base_path = _base_path(request)
     if user is None:
         return RedirectResponse(f"{base_path}/login", status_code=302)
+    if user.get("role") in ("user", "viewer"):
+        return RedirectResponse(f"{base_path}/user", status_code=302)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -44,21 +54,33 @@ async def index(request: Request, user: dict | None = Depends(get_current_user))
     )
 
 
+@router.get("/user", response_class=HTMLResponse)
+async def user_dashboard(request: Request, user: dict | None = Depends(get_current_user)):
+    """The simplified, mobile-first end-user dashboard. Any signed-in role may
+    view it (admins can preview it here); unauthenticated → /login."""
+    base_path = _base_path(request)
+    if user is None:
+        return RedirectResponse(f"{base_path}/login", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "user.html",
+        {"base_path": base_path, "cache_bust": _CACHE_BUST},
+    )
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, user: dict | None = Depends(get_current_user)):
-    """The login form. Already-authenticated users go straight to the app."""
+    """The login form. Already-authenticated users go to their role's home."""
     base_path = _base_path(request)
     if user is not None:
-        return RedirectResponse(f"{base_path}/", status_code=302)
+        return RedirectResponse(_home_for(base_path, user), status_code=302)
     return templates.TemplateResponse(
         request, "login.html", {"base_path": base_path, "cache_bust": _CACHE_BUST}
     )
 
 
 @router.post("/api/command")
-async def send_command(
-    body: CommandRequest, request: Request, _user: dict = Depends(require_auth)
-):
+async def send_command(body: CommandRequest, request: Request, _user: dict = Depends(require_auth)):
     """Dispatch a control command (same path as MQTT commands).
 
     Defaults to the "default" gateway. Use POST /api/gateways/{gw_id}/command
