@@ -688,14 +688,24 @@ function scheduleTab() {
         exit_conditions: this._buildTree(f.exit_conditions),
       };
 
+      // Always write BOTH the window spec AND the trigger fields, explicitly
+      // clearing whichever the chosen type doesn't use. Otherwise switching an
+      // entry from windowed→trigger (or back) leaves the old spec behind — e.g.
+      // a daily entry keeping a stale one-time `when_spec.date`, which renders
+      // as a broken When/timeline. (Relies on the PATCH honouring explicit nulls.)
       if (f.trigger_type === 'window') {
         body.when_spec = { days: f.days, windows: f.windows };
+        body.trigger_kind = null;
+        body.trigger_spec = {};
       } else if (f.trigger_type === 'once') {
         body.when_spec = { date: f.date, windows: f.windows };
+        body.trigger_kind = null;
+        body.trigger_spec = {};
       } else {
         body.trigger_kind = f.trigger_type;
         body.trigger_spec = this._buildTriggerSpec();
-        if (Number(f.duration_min) > 0) body.duration_s = Number(f.duration_min) * 60;
+        body.when_spec = { days: [], windows: [] };  // drop stale windows/date
+        body.duration_s = Number(f.duration_min) > 0 ? Number(f.duration_min) * 60 : null;
       }
 
       this.loading = true;

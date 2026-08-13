@@ -110,7 +110,9 @@ async def test_execute_gated_by_entry_conditions(client):
     # gate path without hanging on a connection timeout.
     created = (await client.post("/api/schedules", json={
         "name": "exec", "action": "force_standby", "trigger_kind": "always",
-        "entry_conditions": {"conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 200}]},
+        "entry_conditions": {
+            "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 200}]
+        },
     })).json()
     resp = await client.post(f"/api/schedules/{created['id']}/execute")
     assert resp.status_code == 200
@@ -167,3 +169,44 @@ async def test_patch_partial_leaves_other_fields_untouched(client):
     assert patched["enabled"] is False
     assert patched["exit_conditions"]["conditions"][0]["value"] == 20  # untouched
     assert patched["duration_s"] == 3600
+
+
+async def test_switch_trigger_type_clears_stale_when_spec(client):
+    """Switching a one-time windowed entry to a daily trigger must drop the stale
+    when_spec.date/windows — else the entry renders as a broken mixed state
+    (daily trigger + leftover one-time date). The editor now sends both fields."""
+    created = (await client.post("/api/schedules", json={
+        "name": "was one-time", "action": "force_discharge",
+        "when_spec": {"date": "2026-08-07", "windows": [{"start": "05:00", "end": "06:00"}]},
+    })).json()
+    sid = created["id"]
+    assert created["when_spec"]["date"] == "2026-08-07"
+
+    # Switch to a daily trigger + clear the window spec (what saveEntry now sends).
+    patched = (await client.patch(f"/api/schedules/{sid}", json={
+        "action": "force_charge",
+        "trigger_kind": "daily", "trigger_spec": {"time_of_day": "06:00"},
+        "when_spec": {"days": [], "windows": []},
+    })).json()
+    assert patched["action"] == "force_charge"
+    assert patched["trigger_kind"] == "daily"
+    assert patched["when_spec"].get("date") in (None, "")
+    assert patched["when_spec"]["windows"] == []
+    assert patched["next_fire"] is not None  # daily trigger previews a next fire
+
+
+async def test_switch_to_window_clears_trigger_kind(client):
+    """The reverse: window/once entries send trigger_kind: null to drop a stale
+    trigger so the entry doesn't keep firing on the old daily/interval cadence."""
+    created = (await client.post("/api/schedules", json={
+        "name": "was daily", "action": "force_charge",
+        "trigger_kind": "daily", "trigger_spec": {"time_of_day": "06:00"},
+    })).json()
+    sid = created["id"]
+    assert created["trigger_kind"] == "daily"
+    patched = (await client.patch(f"/api/schedules/{sid}", json={
+        "trigger_kind": None, "trigger_spec": {},
+        "when_spec": {"days": [1], "windows": [{"start": "14:00", "end": "19:00"}]},
+    })).json()
+    assert patched["trigger_kind"] is None
+    assert patched["when_spec"]["windows"][0]["start"] == "14:00"
