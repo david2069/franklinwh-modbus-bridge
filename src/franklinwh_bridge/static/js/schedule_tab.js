@@ -767,7 +767,9 @@ function scheduleTab() {
     },
 
     async executeEntry(e) {
-      if (!confirm(`Fire "${e.name}" now?`)) return;
+      if (!await Alpine.store('app').confirm({
+        title: 'Fire now?', message: `Run "${e.name}" immediately?`, confirmLabel: 'Fire',
+      })) return;
       const res = await fetchJSON(`api/schedules/${e.id}/execute`, { method: 'POST' });
       if (res && res.status === 'fired') Alpine.store('app').toast(`Fired ${e.name}`, 'info');
       else if (res && res.status === 'gated') Alpine.store('app').toast('Skipped — entry conditions not met', 'error');
@@ -784,7 +786,10 @@ function scheduleTab() {
     },
 
     async deleteEntry(e) {
-      if (!confirm(`Delete schedule "${e.name}"?`)) return;
+      if (!await Alpine.store('app').confirm({
+        title: 'Delete schedule?', message: `"${e.name}" will be removed.`,
+        confirmLabel: 'Delete', danger: true,
+      })) return;
       const res = await fetchJSON(`api/schedules/${e.id}`, { method: 'DELETE' });
       if (res && res.deleted) { Alpine.store('app').toast('Schedule deleted', 'info'); this.load(); }
       else Alpine.store('app').toast('Delete failed', 'error');

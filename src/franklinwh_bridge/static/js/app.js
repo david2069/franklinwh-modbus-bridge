@@ -226,6 +226,13 @@ document.addEventListener('alpine:init', () => {
     // Toast notifications
     toasts: [],
 
+    // Styled confirm/prompt dialog (replaces native window.confirm/prompt).
+    // `confirm()` resolves true/false; `promptText()` resolves the string or null.
+    confirmState: {
+      open: false, title: '', message: '', confirmLabel: 'Confirm',
+      cancelLabel: 'Cancel', danger: false, input: null, inputValue: '', _resolve: null,
+    },
+
     // Release modal
     showReleaseModal: false,
     releasing: false,
@@ -367,6 +374,50 @@ document.addEventListener('alpine:init', () => {
       setTimeout(() => {
         this.toasts = this.toasts.filter(t => t.id !== id);
       }, 4000);
+    },
+
+    // Styled confirm — returns a Promise<boolean>. Drop-in for window.confirm:
+    //   if (!await Alpine.store('app').confirm({ message: '…' })) return;
+    confirm(opts = {}) {
+      return new Promise((resolve) => {
+        this.confirmState = {
+          open: true,
+          title: opts.title || 'Are you sure?',
+          message: opts.message || '',
+          confirmLabel: opts.confirmLabel || 'Confirm',
+          cancelLabel: opts.cancelLabel || 'Cancel',
+          danger: !!opts.danger,
+          input: null, inputValue: '',
+          _resolve: resolve,
+        };
+      });
+    },
+
+    // Styled prompt — returns a Promise<string|null> (null = cancelled).
+    promptText(opts = {}) {
+      return new Promise((resolve) => {
+        this.confirmState = {
+          open: true,
+          title: opts.title || 'Enter a value',
+          message: opts.message || '',
+          confirmLabel: opts.confirmLabel || 'OK',
+          cancelLabel: 'Cancel',
+          danger: false,
+          input: opts.inputType || 'text',   // 'text' | 'password'
+          inputValue: opts.value || '',
+          _resolve: resolve,
+        };
+      });
+    },
+
+    // Resolve the open dialog. For a prompt, OK yields the typed value.
+    _confirmResolve(ok) {
+      const st = this.confirmState;
+      const done = st._resolve;
+      const result = st.input ? (ok ? st.inputValue : null) : ok;
+      st.open = false;
+      st._resolve = null;
+      if (done) done(result);
     },
 
     // ── Release control helpers ──────────────────────────

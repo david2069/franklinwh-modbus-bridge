@@ -196,7 +196,9 @@ function sequencerTab() {
     },
 
     async selectSequence(name) {
-      if (this.editorDirty && !confirm('Discard unsaved changes?')) return;
+      if (this.editorDirty && !await Alpine.store('app').confirm({
+        title: 'Discard changes?', message: 'You have unsaved changes.', confirmLabel: 'Discard', danger: true,
+      })) return;
       this.selectedName = name;
       this.editorDirty = false;
       this.validationError = null;
@@ -298,7 +300,10 @@ function sequencerTab() {
 
     async deleteSequence() {
       if (!this.selectedName) return;
-      if (!confirm(`Delete "${this.selectedName}"? This cannot be undone.`)) return;
+      if (!await Alpine.store('app').confirm({
+        title: 'Delete sequence?', message: `"${this.selectedName}" — this cannot be undone.`,
+        confirmLabel: 'Delete', danger: true,
+      })) return;
 
       const data = await fetchJSON('api/sequences/' + this.selectedName, {
         method: 'DELETE',

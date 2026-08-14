@@ -293,6 +293,37 @@
     </template>
   </div>
 
+  <!-- Styled confirm / prompt dialog (replaces native confirm/prompt) -->
+  <div x-show="$store.app.confirmState.open" x-cloak
+       class="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+       @keydown.escape.window="$store.app._confirmResolve(false)">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="$store.app._confirmResolve(false)"></div>
+    <div class="relative w-full max-w-sm rounded-lg border border-white/10 bg-slate-800 shadow-2xl overflow-hidden"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100">
+      <div class="px-5 pt-4 pb-3">
+        <h3 class="text-sm font-semibold text-slate-100" x-text="$store.app.confirmState.title"></h3>
+        <p class="text-sm text-slate-400 mt-1.5" x-show="$store.app.confirmState.message"
+           x-text="$store.app.confirmState.message"></p>
+        <input x-show="$store.app.confirmState.input"
+               :type="$store.app.confirmState.input || 'text'"
+               x-model="$store.app.confirmState.inputValue"
+               @keydown.enter="$store.app._confirmResolve(true)"
+               x-ref="confirmInput"
+               class="form-control w-full mt-3"
+               x-effect="if ($store.app.confirmState.open && $store.app.confirmState.input) $nextTick(() => $refs.confirmInput && $refs.confirmInput.focus())">
+      </div>
+      <div class="flex justify-end gap-2 px-5 py-3 bg-slate-800/60 border-t border-white/[0.06]">
+        <button class="btn btn-sm btn-secondary" @click="$store.app._confirmResolve(false)"
+                x-text="$store.app.confirmState.cancelLabel"></button>
+        <button class="btn btn-sm" @click="$store.app._confirmResolve(true)"
+                :class="$store.app.confirmState.danger ? 'bg-red-600 hover:bg-red-500 text-white border-0' : 'btn-primary'"
+                x-text="$store.app.confirmState.confirmLabel"></button>
+      </div>
+    </div>
+  </div>
+
   </div> <!-- closes x-data scope -->
 
 </body>

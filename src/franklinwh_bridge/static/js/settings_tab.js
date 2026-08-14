@@ -261,7 +261,10 @@ function settingsTab() {
     },
 
     async deleteService(svc) {
-      if (!confirm(`Delete service "${svc.name}"?`)) return;
+      if (!await Alpine.store('app').confirm({
+        title: 'Delete service?', message: `"${svc.name}" will be removed.`,
+        confirmLabel: 'Delete', danger: true,
+      })) return;
       const data = await fetchJSON(`api/services/${svc.id}`, { method: 'DELETE' });
       if (data && !data.error) {
         await this.loadServices();
@@ -318,12 +321,18 @@ function settingsTab() {
     setUserRole(u, role) { this.patchUser(u, { role }, `${u.username} → ${role}`); },
     toggleUserEnabled(u) { this.patchUser(u, { enabled: !u.enabled }, `${u.username} ${u.enabled ? 'disabled' : 'enabled'}`); },
     async resetUserPassword(u) {
-      const pw = prompt(`New password for ${u.username}:`);
+      const pw = await Alpine.store('app').promptText({
+        title: `Reset password`, message: `New password for ${u.username}:`,
+        inputType: 'password', confirmLabel: 'Set password',
+      });
       if (!pw) return;
       this.patchUser(u, { password: pw }, `Password reset for ${u.username}`);
     },
     async deleteUser(u) {
-      if (!confirm(`Delete user "${u.username}"?`)) return;
+      if (!await Alpine.store('app').confirm({
+        title: 'Delete user?', message: `"${u.username}" will be removed.`,
+        confirmLabel: 'Delete', danger: true,
+      })) return;
       const data = await fetchJSON(`api/users/${u.id}`, { method: 'DELETE' });
       if (data && !data.error) { await this.loadUsers(); Alpine.store('app').toast('User deleted', 'info'); }
       else { Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error'); }
@@ -388,7 +397,10 @@ function settingsTab() {
     },
 
     async deleteHa(h) {
-      if (!confirm(`Delete Home Assistant instance "${h.name}"?`)) return;
+      if (!await Alpine.store('app').confirm({
+        title: 'Delete HA instance?', message: `"${h.name}" will be removed.`,
+        confirmLabel: 'Delete', danger: true,
+      })) return;
       const data = await fetchJSON(`api/ha/instances/${h.id}`, { method: 'DELETE' });
       if (data && !data.error) {
         await this.loadHaInstances();
