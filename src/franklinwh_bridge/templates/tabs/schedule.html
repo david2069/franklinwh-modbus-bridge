@@ -127,7 +127,8 @@
         </thead>
         <tbody>
           <template x-for="e in schedules" :key="e.id">
-            <tr class="border-b border-white/[0.04] hover:bg-white/[0.02]">
+            <tr class="border-b border-white/[0.04] hover:bg-white/[0.02]"
+                :class="{ 'opacity-45': !e.enabled }">
               <td class="py-2 pr-3">
                 <button @click="toggleEnabled(e)" :title="e.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
                   <span class="w-2.5 h-2.5 rounded-full inline-block"
@@ -135,8 +136,9 @@
                 </button>
               </td>
               <td class="py-2 pr-3 font-medium">
-                <span x-text="e.name"></span>
-                <span x-show="e.trigger_kind" class="ml-1 text-[9px] uppercase px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-300 align-middle">auto</span>
+                <span x-text="e.name" :class="{ 'line-through decoration-slate-600': !e.enabled }"></span>
+                <span x-show="!e.enabled" class="ml-1 text-[9px] uppercase px-1 py-0.5 rounded bg-slate-600/30 text-slate-400 border border-slate-500/30 align-middle">disabled</span>
+                <span x-show="e.trigger_kind && e.enabled" class="ml-1 text-[9px] uppercase px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-300 align-middle">auto</span>
               </td>
               <td class="py-2 pr-3 text-slate-400 text-xs" x-text="whenLabel(e)"></td>
               <td class="py-2 pr-3">
@@ -260,9 +262,26 @@
     <div class="relative w-full max-w-2xl rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto">
       <template x-if="formOpen && form">
         <div class="p-5 space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-3">
             <h3 class="text-lg font-bold" x-text="form.id ? 'Edit Entry' : 'New Entry'"></h3>
-            <button class="text-slate-500 hover:text-slate-300" @click="closeForm()">✕</button>
+            <div class="flex items-center gap-3">
+              <!-- Prominent enabled toggle (was buried in the footer) -->
+              <button type="button" @click="form.enabled = !form.enabled"
+                      class="flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-full border transition"
+                      :class="form.enabled ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-slate-600/20 text-slate-400 border-slate-500/40'"
+                      :title="form.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
+                <span class="w-2 h-2 rounded-full" :class="form.enabled ? 'bg-emerald-400' : 'bg-slate-500'"></span>
+                <span x-text="form.enabled ? 'Enabled' : 'Disabled'"></span>
+              </button>
+              <button class="text-slate-500 hover:text-slate-300" @click="closeForm()">✕</button>
+            </div>
+          </div>
+
+          <!-- disabled warning banner -->
+          <div x-show="!form.enabled"
+               class="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-3 py-2">
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.14A1.5 1.5 0 003.4 20h17.2a1.5 1.5 0 001.29-2L13.71 3.86a1.5 1.5 0 00-2.42 0z"/></svg>
+            This entry is <b>disabled</b> — it will not fire until you enable it.
           </div>
 
           <!-- name -->
@@ -926,11 +945,10 @@
             </select>
           </div>
 
-          <!-- footer -->
+          <!-- footer (enabled toggle lives at the top of the modal now) -->
           <div class="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-            <label class="flex items-center gap-2 text-sm text-slate-400">
-              <input type="checkbox" x-model="form.enabled" class="accent-cyan-500"> Enabled
-            </label>
+            <span class="text-xs" :class="form.enabled ? 'text-slate-500' : 'text-amber-400'"
+                  x-text="form.enabled ? 'Will run when saved' : 'Disabled — won\'t run until enabled'"></span>
             <div class="flex gap-2">
               <button class="btn btn-sm btn-secondary" @click="closeForm()">Cancel</button>
               <button class="btn btn-sm btn-primary" @click="saveEntry()" :disabled="loading"
