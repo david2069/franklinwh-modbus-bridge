@@ -762,6 +762,22 @@ function scheduleTab() {
       if (res && !res.error) {
         Alpine.store('app').toast(f.id ? 'Schedule updated' : 'Schedule created', 'info');
         this.closeForm();
+        // Saved but disabled → it won't run. Offer to enable it now rather than
+        // let a schedule silently sit inert (a common "why didn't it fire?" trap).
+        if (!body.enabled && res.id) {
+          const enable = await Alpine.store('app').confirm({
+            title: 'Enable now?',
+            message: `"${body.name}" is saved but disabled, so it won't run. Enable it?`,
+            confirmLabel: 'Enable',
+          });
+          if (enable) {
+            const upd = await fetchJSON(`api/schedules/${res.id}`, {
+              method: 'PATCH', body: JSON.stringify({ enabled: true }),
+            });
+            if (upd && !upd.error) Alpine.store('app').toast('Schedule enabled', 'info');
+            else Alpine.store('app').toast('Enable failed', 'error');
+          }
+        }
         this.load();
       } else {
         Alpine.store('app').toast(`Save failed: ${res?.error || 'unknown'}`, 'error');
