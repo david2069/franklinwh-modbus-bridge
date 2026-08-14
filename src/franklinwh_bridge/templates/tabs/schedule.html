@@ -160,7 +160,7 @@
                   </button>
                   <div class="inline-block" x-data="{ open: false, mx: 0, my: 0 }" @click.outside="open = false" @keydown.escape="open = false">
                     <button class="btn btn-sm btn-secondary !py-1 !px-2" title="More" :aria-expanded="open"
-                            @click="open = !open; if (open) { const r = $el.getBoundingClientRect(); const h = 132; my = (r.bottom + h > window.innerHeight) ? Math.max(8, r.top - h - 4) : r.bottom + 4; mx = r.right; }">
+                            @click="open = !open; if (open) { const r = $el.getBoundingClientRect(); const h = 172; my = (r.bottom + h > window.innerHeight) ? Math.max(8, r.top - h - 4) : r.bottom + 4; mx = r.right; }">
                       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
                     </button>
                     <!-- position:fixed so the menu escapes the table's overflow-x-auto
@@ -168,6 +168,14 @@
                     <div x-show="open" x-cloak x-transition.opacity.duration.100ms
                          :style="`top:${my}px; left:${mx}px; transform: translateX(-100%);`"
                          class="fixed z-[9999] min-w-[150px] rounded-md border border-white/10 bg-slate-800 shadow-2xl py-1 text-left">
+                      <button class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/[0.06] flex items-center gap-2"
+                              :class="e.enabled ? 'text-amber-300' : 'text-emerald-300'"
+                              @click="toggleEnabled(e); open = false">
+                        <svg x-show="e.enabled" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                        <svg x-show="!e.enabled" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z"/></svg>
+                        <span x-text="e.enabled ? 'Disable' : 'Enable'"></span>
+                      </button>
+                      <div class="my-1 border-t border-white/10"></div>
                       <button class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06] flex items-center gap-2"
                               @click="toggleExpand(e.id); open = false">
                         <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5M12 8h.01"/></svg>
@@ -264,17 +272,7 @@
         <div class="p-5 space-y-4">
           <div class="flex items-center justify-between gap-3">
             <h3 class="text-lg font-bold" x-text="form.id ? 'Edit Entry' : 'New Entry'"></h3>
-            <div class="flex items-center gap-3">
-              <!-- Prominent enabled toggle (was buried in the footer) -->
-              <button type="button" @click="form.enabled = !form.enabled"
-                      class="flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-full border transition"
-                      :class="form.enabled ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-slate-600/20 text-slate-400 border-slate-500/40'"
-                      :title="form.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
-                <span class="w-2 h-2 rounded-full" :class="form.enabled ? 'bg-emerald-400' : 'bg-slate-500'"></span>
-                <span x-text="form.enabled ? 'Enabled' : 'Disabled'"></span>
-              </button>
-              <button class="text-slate-500 hover:text-slate-300" @click="closeForm()">✕</button>
-            </div>
+            <button class="text-slate-500 hover:text-slate-300" @click="closeForm()">✕</button>
           </div>
 
           <!-- disabled warning banner -->
@@ -945,10 +943,21 @@
             </select>
           </div>
 
-          <!-- footer (enabled toggle lives at the top of the modal now) -->
-          <div class="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-            <span class="text-xs" :class="form.enabled ? 'text-slate-500' : 'text-amber-400'"
-                  x-text="form.enabled ? 'Will run when saved' : 'Disabled — won\'t run until enabled'"></span>
+          <!-- Sticky footer: Save is always reachable without scrolling; the
+               Enabled control is a clear toggle switch (not a label) next to it. -->
+          <div class="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex items-center justify-between gap-3 border-t"
+               style="background: var(--surface-0); border-color: var(--border);">
+            <button type="button" @click="form.enabled = !form.enabled"
+                    class="flex items-center gap-2 text-sm select-none"
+                    :title="form.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
+              <span class="relative inline-flex items-center w-9 h-5 rounded-full transition-colors shrink-0"
+                    :class="form.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+                <span class="inline-block w-4 h-4 bg-white rounded-full shadow transform transition-transform"
+                      :class="form.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
+              </span>
+              <span :class="form.enabled ? 'text-slate-300' : 'text-amber-400 font-medium'"
+                    x-text="form.enabled ? 'Enabled' : 'Disabled'"></span>
+            </button>
             <div class="flex gap-2">
               <button class="btn btn-sm btn-secondary" @click="closeForm()">Cancel</button>
               <button class="btn btn-sm btn-primary" @click="saveEntry()" :disabled="loading"

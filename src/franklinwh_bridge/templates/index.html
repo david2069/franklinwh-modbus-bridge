@@ -298,13 +298,14 @@
        class="fixed inset-0 z-[10000] flex items-center justify-center p-4"
        @keydown.escape.window="$store.app._confirmResolve(false)">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="$store.app._confirmResolve(false)"></div>
-    <div class="relative w-full max-w-sm rounded-lg border border-white/10 bg-slate-800 shadow-2xl overflow-hidden"
+    <div class="relative w-full max-w-sm rounded-lg shadow-2xl overflow-hidden border"
+         style="background: var(--surface-0); border-color: var(--border);"
          x-transition:enter="transition ease-out duration-150"
          x-transition:enter-start="opacity-0 scale-95"
          x-transition:enter-end="opacity-100 scale-100">
       <div class="px-5 pt-4 pb-3">
-        <h3 class="text-sm font-semibold text-slate-100" x-text="$store.app.confirmState.title"></h3>
-        <p class="text-sm text-slate-400 mt-1.5" x-show="$store.app.confirmState.message"
+        <h3 class="text-sm font-semibold" style="color: var(--text-primary);" x-text="$store.app.confirmState.title"></h3>
+        <p class="text-sm mt-1.5" style="color: var(--text-muted);" x-show="$store.app.confirmState.message"
            x-text="$store.app.confirmState.message"></p>
         <input x-show="$store.app.confirmState.input"
                :type="$store.app.confirmState.input || 'text'"
@@ -314,7 +315,8 @@
                class="form-control w-full mt-3"
                x-effect="if ($store.app.confirmState.open && $store.app.confirmState.input) $nextTick(() => $refs.confirmInput && $refs.confirmInput.focus())">
       </div>
-      <div class="flex justify-end gap-2 px-5 py-3 bg-slate-800/60 border-t border-white/[0.06]">
+      <div class="flex justify-end gap-2 px-5 py-3 border-t"
+           style="background: var(--surface-1); border-color: var(--border);">
         <button class="btn btn-sm btn-secondary" @click="$store.app._confirmResolve(false)"
                 x-text="$store.app.confirmState.cancelLabel"></button>
         <button class="btn btn-sm" @click="$store.app._confirmResolve(true)"
