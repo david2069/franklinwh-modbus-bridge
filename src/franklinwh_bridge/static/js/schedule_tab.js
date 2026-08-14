@@ -435,7 +435,8 @@ function scheduleTab() {
         duration_min: 0,
         action: 'force_charge',
         power_w: 1000,
-        power_pct: 0,
+        power_pct: 100,
+        power_unit: 'W',   // 'W' (watts) or 'pct' (% of max rate) — one or the other
         pct: 20,
         mode: 'TOU',
         target_type: (Alpine.store('app').activeGateway === 'site') ? 'site' : 'gateway',
@@ -499,7 +500,8 @@ function scheduleTab() {
         duration_min: e.duration_s ? Math.round(e.duration_s / 60) : 0,
         action: e.action,
         power_w: p.power_w ?? 1000,
-        power_pct: p.power_pct ?? 0,
+        power_pct: p.power_pct ?? 100,
+        power_unit: ('power_pct' in p) ? 'pct' : 'W',
         pct: p.pct ?? 20,
         mode: p.mode ?? 'TOU',
         target_type: e.target_type,
@@ -609,7 +611,7 @@ function scheduleTab() {
       const meta = this.actionMeta(f.action);
       const p = {};
       if (meta.params.includes('power')) {
-        if (Number(f.power_pct) > 0) p.power_pct = Number(f.power_pct);
+        if (f.power_unit === 'pct') p.power_pct = Number(f.power_pct);
         else p.power_w = Number(f.power_w);
       }
       if (meta.params.includes('pct')) p.pct = Number(f.pct);
