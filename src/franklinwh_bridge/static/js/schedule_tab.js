@@ -702,6 +702,21 @@ function scheduleTab() {
       if (this.showWindows && !f.windows.length) { Alpine.store('app').toast('Add at least one time window', 'error'); return; }
       if (f.trigger_type === 'once' && !f.date) { Alpine.store('app').toast('Pick a date', 'error'); return; }
 
+      // Editing an entry that is firing RIGHT NOW → warn before we alter a live
+      // battery command. The engine re-applies on save (re-dispatches if the
+      // action changed, else the new gates/exits take effect next tick), so make
+      // that explicit rather than silently changing a running dispatch.
+      const live = f.id ? this.schedules.find((s) => s.id === f.id) : null;
+      if (live && live.active_now) {
+        const go = await Alpine.store('app').confirm({
+          title: 'This automation is running now',
+          message: `"${f.name}" is active. Save and apply the new settings to the live run? `
+            + `It resumes immediately under the updated rules.`,
+          confirmLabel: 'Apply now',
+        });
+        if (!go) return;
+      }
+
       const body = {
         name: f.name.trim(),
         action: f.action,
