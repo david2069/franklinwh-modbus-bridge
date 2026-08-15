@@ -236,17 +236,36 @@ function settingsTab() {
       this.serviceEditId = 'new';
     },
 
+    monthLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    dayLabels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    _win(w, dStart, dEnd) {
+      return w
+        ? { months: [...(w.months || [])], days: [...(w.days || [])], start: w.start || dStart, end: w.end || dEnd }
+        : { months: [], days: [], start: dStart, end: dEnd };
+    },
+    toggleWinMonth(win, m) { const i = win.months.indexOf(m); if (i >= 0) win.months.splice(i, 1); else win.months.push(m); },
+    toggleWinDay(win, d) { const i = win.days.indexOf(d); if (i >= 0) win.days.splice(i, 1); else win.days.push(d); },
+
     editService(svc) {
       this.serviceEdit = {
         name: svc.name, meter_number: svc.meter_number, account: svc.account,
         ac_service: svc.ac_service, rated_amps: svc.rated_amps,
+        // billing / tariff
+        has_tou: !!svc.has_tou, has_peak_demand: !!svc.has_peak_demand,
+        has_export_bonus: !!svc.has_export_bonus,
+        min_monthly_bill: svc.min_monthly_bill || 0,
+        pricing_api: svc.pricing_api || 'none',
+        demand_window: this._win(svc.demand_window, '14:00', '20:00'),
+        bonus_window: this._win(svc.bonus_window, '00:00', '06:00'),
       };
       this.serviceEditId = svc.id;
     },
 
     cancelServiceEdit() {
+      // Hide via serviceEditId (the form's x-if); keep serviceEdit intact so the
+      // billing window x-for bindings don't read .months/.days off an emptied
+      // object during Alpine's teardown tick (edit/add overwrites it next time).
       this.serviceEditId = null;
-      this.serviceEdit = {};
     },
 
     async saveService() {

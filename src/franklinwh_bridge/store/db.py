@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 32
+CURRENT_SCHEMA_VERSION = 33
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -507,6 +507,19 @@ MIGRATIONS: dict[int, str] = {
         last_login_at REAL
     );
     """,
+    33: """
+    -- Utility-service billing/tariff parameters. Flags gate whether each applies;
+    -- demand_window/bonus_window are JSON {months:[1..12], days:[0..6 Mon=0],
+    -- start:"HH:MM", end:"HH:MM"}; pricing is a free-form JSON of rate params.
+    ALTER TABLE services ADD COLUMN has_tou INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE services ADD COLUMN has_peak_demand INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE services ADD COLUMN has_export_bonus INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE services ADD COLUMN min_monthly_bill REAL NOT NULL DEFAULT 0;
+    ALTER TABLE services ADD COLUMN pricing_api TEXT NOT NULL DEFAULT 'none';
+    ALTER TABLE services ADD COLUMN demand_window TEXT;
+    ALTER TABLE services ADD COLUMN bonus_window TEXT;
+    ALTER TABLE services ADD COLUMN pricing TEXT;
+    """,
 }
 
 
@@ -842,7 +855,25 @@ async def update_site_config(db: aiosqlite.Connection, **kwargs: object) -> dict
 
 # ── Electricity Utility Services (Layer 1) ────────────────────────
 
-_SERVICE_FIELDS = ("name", "meter_number", "account", "ac_service", "rated_amps")
+# Mutable service columns. Billing/tariff params added in migration 33.
+_SERVICE_FIELDS = (
+    "name", "meter_number", "account", "ac_service", "rated_amps",
+    "has_tou", "has_peak_demand", "has_export_bonus", "min_monthly_bill", "pricing_api",
+    "demand_window", "bonus_window", "pricing",
+)
+_SERVICE_JSON_FIELDS = ("demand_window", "bonus_window", "pricing")
+
+
+def _decode_service(row: dict) -> dict:
+    """Decode the JSON billing columns to objects (None stays None)."""
+    for f in _SERVICE_JSON_FIELDS:
+        raw = row.get(f)
+        if isinstance(raw, str) and raw:
+            try:
+                row[f] = json.loads(raw)
+            except (ValueError, TypeError):
+                row[f] = None
+    return row
 
 
 async def get_services(db: aiosqlite.Connection) -> list[dict]:
@@ -854,7 +885,7 @@ async def get_services(db: aiosqlite.Connection) -> list[dict]:
             "SELECT * FROM services ORDER BY display_order, created_at, id"
         ) as cur:
             async for row in cur:
-                rows.append(dict(row))
+                rows.append(_decode_service(dict(row)))
         return rows
     finally:
         db.row_factory = aiosqlite.Row
@@ -866,7 +897,7 @@ async def get_service(db: aiosqlite.Connection, service_id: str) -> dict | None:
     try:
         async with db.execute("SELECT * FROM services WHERE id = ?", (service_id,)) as cur:
             row = await cur.fetchone()
-            return dict(row) if row else None
+            return _decode_service(dict(row)) if row else None
     finally:
         db.row_factory = aiosqlite.Row
 
@@ -879,7 +910,7 @@ async def create_service(
     ac_service: int = 1,
     rated_amps: int = 0,
 ) -> dict:
-    """Create a new utility service. Returns the created row."""
+    """Create a new utility service (core fields; billing set via update)."""
     import uuid
 
     service_id = f"svc_{uuid.uuid4().hex[:8]}"
@@ -899,13 +930,17 @@ async def create_service(
 async def update_service(
     db: aiosqlite.Connection, service_id: str, **kwargs: object
 ) -> dict | None:
-    """Update a service. Only known columns are applied."""
+    """Update a service. Only known columns are applied; JSON billing fields are
+    encoded (None → SQL NULL)."""
     existing = await get_service(db, service_id)
     if existing is None:
         return None
     updates = {k: v for k, v in kwargs.items() if k in _SERVICE_FIELDS}
     if not updates:
         return existing
+    for f in _SERVICE_JSON_FIELDS:
+        if f in updates and updates[f] is not None and not isinstance(updates[f], str):
+            updates[f] = json.dumps(updates[f])
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values())
     values.append(service_id)

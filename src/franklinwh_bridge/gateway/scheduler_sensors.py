@@ -228,6 +228,46 @@ def _time_to_discharge_now_min(p: Points, n: datetime) -> float | None:
     )
 
 
+# ── Tariff windows (utility billing) ──────────────────────────
+def _hhmm(raw: object) -> tuple[int, int] | None:
+    """'HH:MM' → (hour, minute), or None if malformed/out of range."""
+    try:
+        h_str, m_str = str(raw).strip().split(":")
+        h, m = int(h_str), int(m_str)
+    except (ValueError, AttributeError):
+        return None
+    return (h, m) if 0 <= h <= 23 and 0 <= m <= 59 else None
+
+
+def _in_window(win: dict, now: datetime) -> bool:
+    """Is ``now`` inside a tariff window {months, days, start, end}? Empty
+    months/days = all. Supports a same-day range and an overnight wrap
+    (start > end, e.g. 22:00–06:00)."""
+    months = {int(m) for m in (win.get("months") or []) if 1 <= int(m) <= 12}
+    if months and now.month not in months:
+        return False
+    days = {int(d) for d in (win.get("days") or []) if 0 <= int(d) <= 6}
+    if days and now.weekday() not in days:
+        return False
+    hm_s = _hhmm(win.get("start"))
+    hm_e = _hhmm(win.get("end"))
+    if hm_s is None or hm_e is None:
+        return True  # no time bound → whole day (subject to month/day)
+    cur = now.hour * 60 + now.minute
+    start = hm_s[0] * 60 + hm_s[1]
+    end = hm_e[0] * 60 + hm_e[1]
+    if start <= end:
+        return start <= cur < end
+    return cur >= start or cur < end  # overnight wrap
+
+
+def _any_window_active(points: Points, key: str, now: datetime) -> bool:
+    wins = points.get(key)
+    if not isinstance(wins, list):
+        return False
+    return any(isinstance(w, dict) and _in_window(w, now) for w in wins)
+
+
 def _kwh(points: Points, key: str) -> float | None:
     """Lifetime cumulative energy in kWh from a Wh point, or None if absent.
 
@@ -338,6 +378,15 @@ SENSORS: list[SensorDef] = [
         "const.demand_charge_min_soc", "Demand-Charge Min SoC (%)", "%", "number",
         lambda p, _n: _num(p, "const_demand_charge_min_soc"),
     ),
+    # ── Tariff windows (from utility-service billing config) ──
+    SensorDef(
+        "tariff.demand_window_active", "In Peak-Demand Window", None, "bool",
+        lambda p, n: _any_window_active(p, "tariff_demand_windows", n),
+    ),
+    SensorDef(
+        "tariff.bonus_window_active", "In Battery-Export-Bonus Window", None, "bool",
+        lambda p, n: _any_window_active(p, "tariff_bonus_windows", n),
+    ),
     # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
     SensorDef(
         "energy.grid_import.total_kwh",
@@ -445,6 +494,7 @@ _GROUP_LABELS = {
     "mode": "Mode",
     "energy": "Energy",
     "const": "Constants",
+    "tariff": "Tariff",
     "time": "Time",
 }
 

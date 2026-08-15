@@ -104,12 +104,31 @@ class ServiceCreate(BaseModel):
     rated_amps: int = Field(default=0, ge=0, le=10000)
 
 
+class TariffWindow(BaseModel):
+    """A season/day/time window a tariff period applies in. Empty months/days
+    mean "all"; start/end are local HH:MM."""
+
+    months: list[int] = Field(default_factory=list)   # 1..12
+    days: list[int] = Field(default_factory=list)      # 0..6, Mon=0
+    start: str = Field(default="00:00", pattern=r"^\d{1,2}:\d{2}$")
+    end: str = Field(default="23:59", pattern=r"^\d{1,2}:\d{2}$")
+
+
 class ServiceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     meter_number: str | None = Field(default=None, max_length=120)
     account: str | None = Field(default=None, max_length=120)
     ac_service: int | None = Field(default=None, ge=1, le=3)
     rated_amps: int | None = Field(default=None, ge=0, le=10000)
+    # ── Billing / tariff (migration 33) ──
+    has_tou: bool | None = None
+    has_peak_demand: bool | None = None
+    has_export_bonus: bool | None = None
+    min_monthly_bill: float | None = Field(default=None, ge=0)
+    pricing_api: str | None = Field(default=None, pattern=r"^(none|ha|direct)$")
+    demand_window: TariffWindow | None = None
+    bonus_window: TariffWindow | None = None
+    pricing: dict | None = None
 
 
 @router.get("/services")
@@ -135,12 +154,17 @@ async def add_service(body: ServiceCreate, request: Request):
 
 @router.patch("/services/{service_id}")
 async def patch_service(service_id: str, body: ServiceUpdate, request: Request):
-    """Update a utility service."""
+    """Update a utility service. exclude_unset so booleans/windows can be set to
+    false/null explicitly (e.g. clearing a tariff window)."""
     db: aiosqlite.Connection = request.app.state.db
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates = body.model_dump(exclude_unset=True)
     result = await update_service(db, service_id, **updates)
     if result is None:
         raise HTTPException(404, f"Service '{service_id}' not found")
+    # Refresh the billing-window cache so demand.*/bonus.* sensors reflect the edit.
+    billing = getattr(request.app.state, "billing", None)
+    if billing is not None:
+        await billing.load()
     return result
 
 

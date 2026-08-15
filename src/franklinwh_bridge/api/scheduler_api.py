@@ -41,6 +41,9 @@ def _gateway_points(request: Request, gateway: str) -> dict:
     constants = getattr(request.app.state, "constants", None)
     if constants is not None:
         pts = {**pts, **constants.as_points()}
+    billing = getattr(request.app.state, "billing", None)
+    if billing is not None:
+        pts = {**pts, **billing.as_points()}
     return pts
 
 
