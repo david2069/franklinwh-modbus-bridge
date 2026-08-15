@@ -545,6 +545,53 @@ class ScheduleEngine:
         status = "fired" if dispatched else ("gated" if gated else "noop")
         return {"status": status, "dispatched": dispatched, "gated": gated}
 
+    async def stop_entry(self, schedule_id: str, now: datetime | None = None) -> dict:
+        """Gracefully stop an entry's CURRENT run: release any dispatch it owns
+        (honouring its release policy) and mark its current window completed so
+        it won't re-fire until the next scheduled window. The entry stays
+        ENABLED — this stops *this occurrence*, not the automation. (To stop
+        permanently, disable the entry.) Returns
+        ``{status, released: [gw_ids]}``."""
+        async with self._tick_lock:
+            now_dt = now or self._now()
+            entry = next((e for e in self._entries if e.get("id") == schedule_id), None)
+            released: list[str] = []
+            # Release every target this entry currently owns.
+            for tkey, own in list(self._owned.items()):
+                if own.get("entry_id") != schedule_id:
+                    continue
+                ttype, tid, gw_id = tkey
+                handler = next(
+                    (h for g, h in self._resolver(ttype, tid) if g == gw_id), None
+                )
+                if handler is not None:
+                    if own.get("is_v2"):
+                        await self._apply_release(
+                            handler,
+                            own.get("release_policy") or "restore_prior_mode",
+                            own.get("prior_mode"),
+                        )
+                    else:
+                        await self._send(handler, [("battery_command", "Release")])
+                    released.append(gw_id)
+                self._owned.pop(tkey, None)
+                self._expired[tkey] = schedule_id  # don't re-fire until next window
+                await self._fire_exit_ha_actions(tkey, now_dt)
+                await self._audit(
+                    schedule_id, own.get("action"), tkey, "stopped",
+                    "stopped by user — released; won't re-fire until the next window",
+                )
+            # Block the current window on any not-yet-owned target too, so a
+            # between-ticks fire can't slip through right after Stop.
+            if entry is not None:
+                ttype = entry.get("target_type", "gateway")
+                tid = entry.get("target_id")
+                for gw_id, _h in self._resolver(ttype, tid):
+                    self._expired.setdefault((ttype, tid, gw_id), schedule_id)
+            if released:
+                return {"status": "stopped", "released": released}
+            return {"status": "not_active" if entry is not None else "not_found", "released": []}
+
     async def start(self) -> None:
         await self.load()
         self._task = asyncio.create_task(self._loop())

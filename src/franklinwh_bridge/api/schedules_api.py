@@ -335,6 +335,20 @@ async def execute_schedule(schedule_id: str, request: Request, force: bool = Fal
     return result
 
 
+@router.post("/schedules/{schedule_id}/stop")
+async def stop_schedule(schedule_id: str, request: Request):
+    """Gracefully stop a schedule's CURRENT run: release the live dispatch it
+    owns and skip re-firing until the next scheduled window. The entry stays
+    enabled (disable it to stop permanently)."""
+    engine = getattr(request.app.state, "schedule_engine", None)
+    if engine is None:
+        raise HTTPException(503, "Schedule engine not available")
+    result = await engine.stop_entry(schedule_id)
+    if result.get("status") == "not_found":
+        raise HTTPException(404, f"Schedule '{schedule_id}' not found")
+    return result
+
+
 @router.get("/schedules/timeline")
 async def schedule_timeline(request: Request, day: int | None = None):
     """Return the day's windows per entry for the visual timeline.

@@ -269,6 +269,7 @@ function scheduleTab() {
         missed: 'text-red-300', failed: 'text-red-300',
         exit_condition_met: 'text-cyan-300', duration_elapsed: 'text-slate-400',
         release: 'text-slate-400', ok: 'text-emerald-300', ha_action: 'text-emerald-300',
+        stopped: 'text-red-300',
         // config-change (CRUD) rows
         created: 'text-emerald-300', enabled: 'text-emerald-300',
         updated: 'text-sky-300', disabled: 'text-amber-300', deleted: 'text-red-300',
@@ -810,6 +811,22 @@ function scheduleTab() {
       if (res && res.status === 'fired') Alpine.store('app').toast(`Fired ${e.name}`, 'info');
       else if (res && res.status === 'gated') Alpine.store('app').toast('Skipped — entry conditions not met', 'error');
       else Alpine.store('app').toast(`Execute: ${res?.status || 'failed'}`, 'error');
+      this.load();
+    },
+
+    // Gracefully stop the CURRENT run (release now, resume next window). The
+    // entry stays enabled; Disable is the permanent stop.
+    async stopEntry(e) {
+      if (!await Alpine.store('app').confirm({
+        title: 'Stop this run?',
+        message: `"${e.name}" is running now. Release control and let it resume at the next scheduled time? `
+          + `To stop it permanently, disable it instead.`,
+        confirmLabel: 'Stop now', danger: true,
+      })) return;
+      const res = await fetchJSON(`api/schedules/${e.id}/stop`, { method: 'POST' });
+      if (res && res.status === 'stopped') Alpine.store('app').toast(`Stopped ${e.name} — released`, 'info');
+      else if (res && res.status === 'not_active') Alpine.store('app').toast('Nothing active to stop', 'info');
+      else Alpine.store('app').toast(`Stop: ${res?.error || res?.status || 'failed'}`, 'error');
       this.load();
     },
 

@@ -539,3 +539,52 @@ async def test_audit_target_is_stringified(tmp_path):
     eng._entries = [entry()]
     await eng.tick(MON)
     assert seen and all(isinstance(t, str) for t in seen)
+
+
+# ── stop_entry (graceful per-entry Stop) ──────────────────────
+
+
+async def test_stop_entry_releases_and_blocks_refire():
+    """Stop releases the owned dispatch and marks the window completed so a
+    re-tick (same window) does NOT re-fire. The entry stays enabled."""
+    h = FakeHandler()
+    audits: list = []
+    e = entry(action="force_discharge", release="release")
+    eng = make_engine([e], h, audits=audits)
+
+    await eng.tick(MON)                    # dispatch → owns it
+    assert h.state.active is True
+    assert ("gateway", "default", "default") in eng._owned
+
+    res = await eng.stop_entry("e1", now=MON)
+    assert res["status"] == "stopped" and res["released"] == ["default"]
+    assert h.state.active is False         # released
+    assert ("battery_command", "Release") in h.calls
+    assert any(a["result"] == "stopped" for a in audits)
+    assert ("gateway", "default", "default") not in eng._owned
+
+    h.calls.clear()
+    await eng.tick(MON)                     # same window → must NOT re-fire
+    assert h.state.active is False
+    assert not any(c[0] == "battery_command" for c in h.calls)
+
+
+async def test_stop_entry_refires_next_window():
+    """After Stop, the next window (expired cleared on window exit) fires again."""
+    h = FakeHandler()
+    e = entry(action="force_discharge")
+    eng = make_engine([e], h)
+    await eng.tick(MON)
+    await eng.stop_entry("e1", now=MON)
+    await eng.tick(datetime(2026, 6, 15, 12, 0))   # window exit → clears expired
+    await eng.tick(datetime(2026, 6, 16, 10, 30))  # next day's window → re-fires
+    assert h.state.action == "Force Discharge"
+
+
+async def test_stop_entry_not_active():
+    h = FakeHandler()
+    eng = make_engine([entry()], h)
+    res = await eng.stop_entry("e1", now=MON)   # never dispatched
+    assert res["status"] == "not_active"
+    res2 = await eng.stop_entry("missing", now=MON)
+    assert res2["status"] == "not_found"

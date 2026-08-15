@@ -155,7 +155,12 @@
                   <!-- Most-common actions inline; rest in the ⋯ menu. Icons are
                        plain monochrome (no multi-colour) — see row-actions QA. -->
                   <button class="btn btn-sm btn-secondary !py-1 !px-2 !text-xs" @click="editEntry(e)" title="Edit">Edit</button>
-                  <button class="btn btn-sm btn-secondary !py-1 !px-2" @click="executeEntry(e)" title="Run now">
+                  <!-- Stop shows only while the entry is actively commanding -->
+                  <button x-show="e.active_now" class="btn btn-sm !py-1 !px-2 bg-red-600 hover:bg-red-500 text-white border-0"
+                          @click="stopEntry(e)" title="Stop this run (release now, resume next window)">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+                  </button>
+                  <button x-show="!e.active_now" class="btn btn-sm btn-secondary !py-1 !px-2" @click="executeEntry(e)" title="Run now">
                     <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z"/></svg>
                   </button>
                   <div class="inline-block" x-data="{ open: false, mx: 0, my: 0 }" @click.outside="open = false" @keydown.escape="open = false">
