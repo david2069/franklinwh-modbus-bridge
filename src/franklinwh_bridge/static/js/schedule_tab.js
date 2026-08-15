@@ -514,6 +514,10 @@ function scheduleTab() {
         desc: 'Discharge to cap grid import during the peak-demand window' },
       { id: 'export_bonus', label: 'Battery export bonus',
         desc: 'Discharge to grid during the export-bonus window' },
+      { id: 'ausgrid_evening', label: 'Ausgrid — Evening discharge (4–9pm)',
+        desc: 'Discharge for the peak/export-reward window (network 16:00–21:00 — check your retailer)' },
+      { id: 'ausgrid_sponge', label: 'Ausgrid — Solar sponge (10am–3pm)',
+        desc: 'Charge from solar to self-consume + avoid the export charge (10:00–15:00)' },
     ],
     _tleaf(sensor, op, value, kind) {
       const leaf = {
@@ -552,6 +556,30 @@ function scheduleTab() {
           this._tleaf('tariff.bonus_window_active', '==', 1),
           this._tleaf('battery.soc_pct', '>', 'const.min_discharge_soc', 'sensor'),
         ] } };
+      } else if (id === 'ausgrid_evening') {
+        // 4–9pm network peak / export-reward window — discharge (covers load,
+        // then exports). Uses a recurring window (works without tariff config).
+        over = {
+          name: 'Ausgrid — Evening discharge (4–9pm)',
+          trigger_type: 'window', days: [], windows: [{ start: '16:00', end: '21:00' }],
+          entry_conditions: { match: 'ALL', conditions: [
+            this._tleaf('battery.soc_pct', '>', 'const.min_discharge_soc', 'sensor'),
+          ] },
+        };
+      } else if (id === 'ausgrid_sponge') {
+        // 10am–3pm solar-sponge window — charge from solar to self-consume and
+        // avoid the export charge. Charges up to the Max-Charge SoC.
+        over = {
+          name: 'Ausgrid — Solar sponge (10am–3pm)',
+          trigger_type: 'window', days: [], windows: [{ start: '10:00', end: '15:00' }],
+          action: 'force_charge',
+          entry_conditions: { match: 'ALL', conditions: [
+            this._tleaf('battery.soc_pct', '<', 'const.max_charge_soc', 'sensor'),
+          ] },
+          exit_conditions: { match: 'ANY', conditions: [
+            this._tleaf('battery.soc_pct', '>=', 'const.max_charge_soc', 'sensor'),
+          ] },
+        };
       } else {
         return;
       }
