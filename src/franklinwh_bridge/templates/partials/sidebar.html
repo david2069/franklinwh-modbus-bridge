@@ -120,6 +120,22 @@
       <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>HA Entities</span>
     </button>
 
+    <!-- Energy Costs -->
+    <button x-show="$store.app.canSee('energy_costs')" @click="$store.app.setTab('energy_costs')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Energy Costs'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'energy_costs' ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-cyan-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <line x1="12" y1="1" x2="12" y2="23"/>
+        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Energy Costs</span>
+    </button>
+
     <!-- Settings -->
     <button x-show="$store.app.canSee('settings')" @click="$store.app.setTab('settings')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Settings'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"

@@ -201,6 +201,7 @@ class DemandTracker:
             "demand_peak_kw": peak_kw,
             "demand_interval_kw": interval_kw,
             "demand_days_in_period": days,
+            "demand_period_days": period_days,
             "bonus_export_kwh": round(self._s["bonus_export_wh"] / 1000.0, 3),
             "charge_export_kwh": round(self._s["charge_export_wh"] / 1000.0, 3),
             "charge_free_kwh": free_kwh,

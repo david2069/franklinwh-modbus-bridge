@@ -34,6 +34,7 @@
   <script src="static/js/logs_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/settings_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/ha_entities_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/energy_costs_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/sequencer_panel.js?v={{ cache_bust }}"></script>
   <script src="static/js/sequencer_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/live_points_panel.js?v={{ cache_bust }}"></script>
@@ -85,6 +86,11 @@
         <!-- HA Entities Tab -->
         <div x-show="$store.app.activeTab === 'ha_entities'" x-cloak>
           {% include "tabs/ha_entities.html" %}
+        </div>
+
+        <!-- Energy Costs Tab -->
+        <div x-show="$store.app.activeTab === 'energy_costs'" x-cloak>
+          {% include "tabs/energy_costs.html" %}
         </div>
 
         <!-- Settings Tab -->

@@ -33,6 +33,8 @@ MODULES: list[dict] = [
      "capability": "automations", "core": False, "default_enabled": True},
     {"id": "ha_entities", "label": "HA Entities", "tab": "ha_entities",
      "capability": "ha_entities", "core": False, "default_enabled": True},
+    {"id": "energy_costs", "label": "Energy Costs", "tab": "energy_costs",
+     "capability": "energy_costs", "core": False, "default_enabled": False},
     {"id": "settings", "label": "Settings", "tab": "settings",
      "capability": "settings", "core": True, "default_enabled": True},
 ]

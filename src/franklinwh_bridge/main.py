@@ -29,6 +29,7 @@ from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
+from franklinwh_bridge.api.tariff_api import router as tariff_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.manager import AppConfig
@@ -651,6 +652,9 @@ app.include_router(
     scheduler_router, dependencies=[require_module("automations"), Depends(require_auth)]
 )
 app.include_router(ha_router, dependencies=[require_module("ha_entities"), Depends(require_auth)])
+app.include_router(
+    tariff_router, dependencies=[require_module("energy_costs"), Depends(require_auth)]
+)
 
 # UI router (serves GET / and POST /api/command). GET / redirects to /login when
 # unauthenticated; /api/command guards itself.

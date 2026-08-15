@@ -1,0 +1,237 @@
+<!-- ── Energy Costs / Tariff Tab (Phase B) ──────────────────── -->
+<div x-data="energyCostsTab()">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-lg font-semibold text-slate-100">Energy Costs</h1>
+      <p class="text-xs text-slate-500">Two-way tariff windows, live billing-period accumulation, and the automations that act on them.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span x-show="loading" class="text-[10px] text-slate-500">refreshing…</span>
+      <button @click="load()" class="btn btn-sm btn-secondary">Refresh</button>
+      <button @click="goSettings()" class="btn btn-sm btn-primary">Configure in Settings</button>
+    </div>
+  </div>
+
+  <div x-show="error" x-cloak class="card mb-4 border-red-500/30 bg-red-500/5 text-sm text-red-300" x-text="error"></div>
+
+  <!-- Empty state: nothing configured yet -->
+  <template x-if="overview && !anyConfig">
+    <div class="card mb-4 text-center py-8">
+      <div class="text-3xl mb-2">💲</div>
+      <div class="text-sm text-slate-300 font-medium mb-1">No tariff configured</div>
+      <p class="text-xs text-slate-500 mb-3 max-w-md mx-auto">Set a peak-demand charge, an export reward, or a two-way export charge on a utility service to start tracking costs. Try the one-click <span class="text-cyan-300">Ausgrid two-way</span> preset.</p>
+      <button @click="goSettings()" class="btn btn-sm btn-primary">Configure in Settings</button>
+    </div>
+  </template>
+
+  <!-- ═══ Setup: resolved config ═══ -->
+  <template x-if="overview && anyConfig">
+    <div class="card mb-4">
+      <div class="card-label">Setup — active tariff windows</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+        <!-- Peak demand -->
+        <div class="rounded border p-3" :class="demandCfg ? 'border-amber-500/30 bg-amber-500/[0.04]' : 'border-white/[0.06] opacity-60'">
+          <div class="text-[11px] uppercase tracking-wide text-amber-400 mb-1">Peak-demand charge</div>
+          <template x-if="demandCfg">
+            <div class="text-xs text-slate-300 space-y-1">
+              <div x-text="fmtWindow(demandCfg.window)"></div>
+              <div><span class="text-slate-500">Rate</span> <span x-text="'$' + Number(demandCfg.rate).toFixed(4) + '/kW/' + (demandCfg.charge_basis === 'flat_per_kw' ? 'mo' : 'day')"></span></div>
+              <div><span class="text-slate-500">Interval</span> <span x-text="demandCfg.interval_min + ' min (×' + (60/demandCfg.interval_min) + ')'"></span></div>
+            </div>
+          </template>
+          <div x-show="!demandCfg" class="text-xs text-slate-500">Not configured</div>
+        </div>
+
+        <!-- Export reward -->
+        <div class="rounded border p-3" :class="bonusCfg ? 'border-emerald-500/30 bg-emerald-500/[0.04]' : 'border-white/[0.06] opacity-60'">
+          <div class="text-[11px] uppercase tracking-wide text-emerald-400 mb-1">Export reward (bonus)</div>
+          <template x-if="bonusCfg">
+            <div class="text-xs text-slate-300 space-y-1">
+              <div x-text="fmtWindow(bonusCfg.window)"></div>
+              <div><span class="text-slate-500">Reward</span> <span x-text="cents(bonusCfg.rate)"></span></div>
+            </div>
+          </template>
+          <div x-show="!bonusCfg" class="text-xs text-slate-500">Not configured</div>
+        </div>
+
+        <!-- Export charge -->
+        <div class="rounded border p-3" :class="chargeCfg ? 'border-cyan-500/30 bg-cyan-500/[0.04]' : 'border-white/[0.06] opacity-60'">
+          <div class="text-[11px] uppercase tracking-wide text-cyan-400 mb-1">Two-way export charge</div>
+          <template x-if="chargeCfg">
+            <div class="text-xs text-slate-300 space-y-1">
+              <div x-text="fmtWindow(chargeCfg.window)"></div>
+              <div><span class="text-slate-500">Charge</span> <span x-text="cents(chargeCfg.rate)"></span></div>
+              <div><span class="text-slate-500">Free</span> <span x-text="Number(chargeCfg.free_kwh_per_day).toFixed(2) + ' kWh/day'"></span></div>
+            </div>
+          </template>
+          <div x-show="!chargeCfg" class="text-xs text-slate-500">Not configured</div>
+        </div>
+      </div>
+
+      <!-- Per-service flag summary -->
+      <div class="mt-3 pt-3 border-t border-white/[0.06]">
+        <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-2">Utility services</div>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="s in (overview.services || [])" :key="s.id">
+            <div class="rounded border border-white/[0.06] px-2.5 py-1.5 text-xs">
+              <span class="text-slate-200" x-text="s.name"></span>
+              <span class="ml-2 space-x-1">
+                <span x-show="s.has_peak_demand" class="text-amber-400" title="Peak demand">◆</span>
+                <span x-show="s.has_export_bonus" class="text-emerald-400" title="Export reward">◆</span>
+                <span x-show="s.has_export_charge" class="text-cyan-400" title="Export charge">◆</span>
+                <span x-show="s.has_tou" class="text-slate-400" title="TOU plan">◆</span>
+                <span x-show="!s.has_peak_demand && !s.has_export_bonus && !s.has_export_charge && !s.has_tou" class="text-slate-600">no tariff</span>
+              </span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ═══ This period (live) ═══ -->
+  <template x-if="overview && anyConfig">
+    <div class="card mb-4">
+      <div class="flex items-center justify-between">
+        <div class="card-label !mb-0">This billing period</div>
+        <span class="text-[11px] text-slate-500" x-text="periodLabel"></span>
+      </div>
+      <!-- period progress -->
+      <div class="h-1.5 rounded-full bg-slate-700/60 overflow-hidden my-3">
+        <div class="h-full bg-cyan-500/70 transition-all" :style="`width: ${periodPct}%`"></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+        <!-- Demand -->
+        <div class="rounded border border-white/[0.06] p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] uppercase tracking-wide text-amber-400">Peak demand</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full"
+                  :class="bool('tariff.demand_window_active') ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-700 text-slate-500'"
+                  x-text="bool('tariff.demand_window_active') ? 'in window' : 'off-window'"></span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm">
+            <span class="text-slate-500 text-xs">Peak</span>
+            <span class="font-mono text-slate-100"><span x-text="num('demand.peak_kw')"></span> kW</span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm mt-1">
+            <span class="text-slate-500 text-xs">Charge so far</span>
+            <span class="font-mono text-slate-100" x-text="money('demand.period_charge')"></span>
+          </div>
+          <div class="flex items-baseline justify-between text-xs mt-1 text-slate-500">
+            <span>Projected</span>
+            <span class="font-mono" x-text="projectMoney('demand.period_charge')"></span>
+          </div>
+        </div>
+
+        <!-- Export reward -->
+        <div class="rounded border border-white/[0.06] p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] uppercase tracking-wide text-emerald-400">Export reward</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full"
+                  :class="bool('tariff.bonus_window_active') ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-500'"
+                  x-text="bool('tariff.bonus_window_active') ? 'in window' : 'off-window'"></span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm">
+            <span class="text-slate-500 text-xs">Exported</span>
+            <span class="font-mono text-slate-100"><span x-text="num('bonus.export_kwh')"></span> kWh</span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm mt-1">
+            <span class="text-slate-500 text-xs">Credit so far</span>
+            <span class="font-mono text-emerald-300" x-text="money('bonus.period_credit')"></span>
+          </div>
+          <div class="flex items-baseline justify-between text-xs mt-1 text-slate-500">
+            <span>Projected</span>
+            <span class="font-mono" x-text="projectMoney('bonus.period_credit')"></span>
+          </div>
+        </div>
+
+        <!-- Export charge -->
+        <div class="rounded border border-white/[0.06] p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] uppercase tracking-wide text-cyan-400">Export charge</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full"
+                  :class="bool('tariff.export_charge_window_active') ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-700 text-slate-500'"
+                  x-text="bool('tariff.export_charge_window_active') ? 'in window' : 'off-window'"></span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm">
+            <span class="text-slate-500 text-xs">Exported</span>
+            <span class="font-mono text-slate-100"><span x-text="num('tariff.export_charge_kwh')"></span> kWh</span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm mt-1">
+            <span class="text-slate-500 text-xs">Free left</span>
+            <span class="font-mono text-slate-300"><span x-text="num('tariff.export_charge_free_remaining')"></span> kWh</span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm mt-1">
+            <span class="text-slate-500 text-xs">Billable</span>
+            <span class="font-mono text-slate-100"><span x-text="num('tariff.export_charge_net_kwh')"></span> kWh</span>
+          </div>
+          <div class="flex items-baseline justify-between text-sm mt-1">
+            <span class="text-slate-500 text-xs">Cost so far</span>
+            <span class="font-mono text-cyan-300" x-text="money('tariff.export_charge_cost')"></span>
+          </div>
+          <div class="flex items-baseline justify-between text-xs mt-1 text-slate-500">
+            <span>Projected</span>
+            <span class="font-mono" x-text="projectMoney('tariff.export_charge_cost')"></span>
+          </div>
+        </div>
+      </div>
+      <p class="text-[10px] text-slate-600 mt-2">Projection is a linear extrapolation from the elapsed portion of the billing period; actuals depend on future usage.</p>
+    </div>
+  </template>
+
+  <!-- ═══ Linked automations ═══ -->
+  <template x-if="overview">
+    <div class="card mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="card-label !mb-0">Linked automations</div>
+        <button @click="goSchedule()" class="text-xs text-cyan-400 hover:text-cyan-300">Open Schedule →</button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">Schedule entries that condition on a tariff, demand, or export sensor.</p>
+
+      <template x-if="!linked.length">
+        <div class="text-xs text-slate-500 py-3 text-center">No automations reference tariff sensors yet. Build one in <button @click="goSchedule()" class="text-cyan-400 hover:text-cyan-300">Schedule</button> (try a peak-shave or solar-sponge template).</div>
+      </template>
+
+      <template x-if="linked.length">
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-left text-slate-500 border-b border-white/[0.06]">
+                <th class="py-1.5 pr-3 font-medium">Automation</th>
+                <th class="py-1.5 pr-3 font-medium">Action</th>
+                <th class="py-1.5 pr-3 font-medium">Sensors</th>
+                <th class="py-1.5 pr-3 font-medium">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="a in linked" :key="a.id">
+                <tr class="border-b border-white/[0.04]">
+                  <td class="py-2 pr-3 text-slate-200" x-text="a.name"></td>
+                  <td class="py-2 pr-3 text-slate-400 font-mono" x-text="a.action"></td>
+                  <td class="py-2 pr-3">
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="sid in a.sensors" :key="sid">
+                        <span class="px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-300 font-mono text-[10px]" x-text="sid"></span>
+                      </template>
+                    </div>
+                  </td>
+                  <td class="py-2 pr-3">
+                    <span x-show="a.active_now" class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300">active now</span>
+                    <span x-show="!a.active_now && a.enabled" class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">enabled</span>
+                    <span x-show="!a.enabled" class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-500">disabled</span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+  </template>
+
+</div>
