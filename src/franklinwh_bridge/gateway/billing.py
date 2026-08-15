@@ -49,12 +49,14 @@ class BillingStore:
                 if demand_cfg is None:
                     interval = int(_num(pricing.get("demand_interval_min"), 30)) or 30
                     basis = pricing.get("demand_charge_basis") or "per_kw_day"
+                    if basis not in ("per_kw_day", "flat_per_kw"):
+                        basis = "per_kw_day"
                     demand_cfg = {
                         "window": s["demand_window"],
                         "rate": _num(pricing.get("demand_rate")),  # $/kW/day (or flat $/kW)
                         "cycle_day": cycle_day,
                         "interval_min": interval if interval in (15, 30, 60) else 30,
-                        "charge_basis": basis if basis in ("per_kw_day", "flat_per_kw") else "per_kw_day",
+                        "charge_basis": basis,
                     }
             if s.get("has_export_bonus") and isinstance(s.get("bonus_window"), dict):
                 bonus.append(s["bonus_window"])
