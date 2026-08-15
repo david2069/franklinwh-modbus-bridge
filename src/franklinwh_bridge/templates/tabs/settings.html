@@ -495,11 +495,18 @@
             <!-- Billing / tariff (only on an existing service; needs a service id) -->
             <template x-if="serviceEditId !== 'new'">
               <div class="mt-2 pt-2 border-t border-white/[0.06] space-y-2">
-                <div class="text-[10px] uppercase tracking-wide text-slate-500">Billing / Tariff</div>
+                <div class="flex items-center justify-between">
+                  <div class="text-[10px] uppercase tracking-wide text-slate-500">Billing / Tariff</div>
+                  <button type="button" @click="loadAusgridPreset()"
+                          class="px-2 py-0.5 rounded text-[10px] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">
+                    Load preset: Ausgrid two-way
+                  </button>
+                </div>
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_tou" class="accent-cyan-500"> TOU plan</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_peak_demand" class="accent-cyan-500"> Peak-demand import charge</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_bonus" class="accent-cyan-500"> Battery export bonus</label>
+                  <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_charge" class="accent-amber-500"> Two-way export charge</label>
                 </div>
                 <div class="grid grid-cols-3 gap-3">
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Min monthly bill</span>
@@ -574,6 +581,36 @@
                       <template x-for="(dl, di) in dayLabels" :key="'bd'+di">
                         <button type="button" @click="toggleWinDay(serviceEdit.bonus_window, di)" class="px-1.5 py-0.5 rounded text-[10px] border"
                                 :class="serviceEdit.bonus_window.days.includes(di) ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'text-slate-400 border-white/10'" x-text="dl"></button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Two-way export CHARGE window (solar sponge: pay to export midday) -->
+                <template x-if="serviceEdit.has_export_charge">
+                  <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
+                    <div class="text-[11px] text-amber-400">Export-charge window <span class="text-slate-500">→ tariff.export_charge_net_kwh / _cost</span></div>
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="text-slate-500">From</span><input type="time" x-model="serviceEdit.pricing.export_charge.window.start" class="form-control !py-0.5 !text-xs w-24">
+                      <span class="text-slate-500">to</span><input type="time" x-model="serviceEdit.pricing.export_charge.window.end" class="form-control !py-0.5 !text-xs w-24">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Charge ($/kWh)</span>
+                        <input type="number" min="0" step="0.0001" x-model.number="serviceEdit.pricing.export_charge.rate" class="form-control !py-0.5 !text-xs"></label>
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Free export (kWh/day)</span>
+                        <input type="number" min="0" step="0.01" x-model.number="serviceEdit.pricing.export_charge.free_kwh_per_day" class="form-control !py-0.5 !text-xs"></label>
+                    </div>
+                    <div class="text-[10px] text-slate-600">free allowance = kWh/day × days in the billing period; only export above it is charged</div>
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="(mo, mi) in monthLabels" :key="'cm'+mi">
+                        <button type="button" @click="toggleWinMonth(serviceEdit.pricing.export_charge.window, mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                                :class="serviceEdit.pricing.export_charge.window.months.includes(mi+1) ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'text-slate-400 border-white/10'" x-text="mo"></button>
+                      </template>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="(dl, di) in dayLabels" :key="'cd'+di">
+                        <button type="button" @click="toggleWinDay(serviceEdit.pricing.export_charge.window, di)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                                :class="serviceEdit.pricing.export_charge.window.days.includes(di) ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'text-slate-400 border-white/10'" x-text="dl"></button>
                       </template>
                     </div>
                   </div>

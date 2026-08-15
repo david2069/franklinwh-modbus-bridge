@@ -257,6 +257,7 @@ function settingsTab() {
         pricing_api: svc.pricing_api || 'none',
         demand_window: this._win(svc.demand_window, '14:00', '20:00'),
         bonus_window: this._win(svc.bonus_window, '00:00', '06:00'),
+        has_export_charge: !!(svc.pricing && svc.pricing.export_charge),
         // calculation method + rates (stored in the pricing JSON)
         pricing: {
           billing_cycle_day: (svc.pricing && svc.pricing.billing_cycle_day) || 1,
@@ -264,6 +265,10 @@ function settingsTab() {
           demand_interval_min: (svc.pricing && svc.pricing.demand_interval_min) || 30,
           demand_charge_basis: (svc.pricing && svc.pricing.demand_charge_basis) || 'per_kw_day',
           export_bonus_rate: (svc.pricing && svc.pricing.export_bonus_rate) || 0,
+          export_charge: (svc.pricing && svc.pricing.export_charge) || {
+            window: { months: [], days: [], start: '10:00', end: '15:00' },
+            rate: 0.0123, free_kwh_per_day: 6.84,
+          },
         },
       };
       this.serviceEditId = svc.id;
@@ -276,9 +281,30 @@ function settingsTab() {
       this.serviceEditId = null;
     },
 
+    // Fill the billing form with the Ausgrid two-way (solar-sponge) tariff so the
+    // user only has to confirm/save. Reward 4-9pm @ 3.85c; export CHARGE 10am-3pm
+    // @ 1.23c with ~6.84 kWh/day free (≈212 kWh over a 31-day period).
+    loadAusgridPreset() {
+      const e = this.serviceEdit;
+      e.has_export_bonus = true;
+      e.bonus_window = { months: [], days: [], start: '16:00', end: '21:00' };
+      e.pricing.export_bonus_rate = 0.0385;
+      e.has_export_charge = true;
+      e.pricing.export_charge = {
+        window: { months: [], days: [], start: '10:00', end: '15:00' },
+        rate: 0.0123, free_kwh_per_day: 6.84,
+      };
+      if (!e.pricing.billing_cycle_day) e.pricing.billing_cycle_day = 1;
+      Alpine.store('app').toast('Ausgrid two-way tariff loaded — review & save', 'info');
+    },
+
     async saveService() {
       const isNew = this.serviceEditId === 'new';
       const url = isNew ? 'api/services' : `api/services/${this.serviceEditId}`;
+      // export_charge only persists when the toggle is on
+      if (this.serviceEdit.pricing && !this.serviceEdit.has_export_charge) {
+        this.serviceEdit.pricing = { ...this.serviceEdit.pricing, export_charge: null };
+      }
       const data = await fetchJSON(url, {
         method: isNew ? 'POST' : 'PATCH',
         body: JSON.stringify(this.serviceEdit),

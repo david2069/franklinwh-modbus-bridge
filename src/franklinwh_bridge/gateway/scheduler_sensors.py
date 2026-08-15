@@ -292,6 +292,35 @@ def _bonus_credit(p: Points, _n: datetime) -> float | None:
     return round(kwh * rate, 2)
 
 
+def _charge_net_kwh(p: Points, _n: datetime) -> float | None:
+    """Export-charge kWh above the monthly free allowance (what actually gets
+    charged). = max(0, charge_export_kwh − free_kwh)."""
+    kwh = _num(p, "charge_export_kwh")
+    free = _num(p, "charge_free_kwh")
+    if kwh is None:
+        return None
+    return round(max(0.0, kwh - (free or 0.0)), 3)
+
+
+def _charge_free_remaining(p: Points, _n: datetime) -> float | None:
+    """Free-export headroom left this period = max(0, free_kwh − charge kWh).
+    The key gate for 'self-consume midday once the free allowance is used up'."""
+    kwh = _num(p, "charge_export_kwh")
+    free = _num(p, "charge_free_kwh")
+    if kwh is None or free is None:
+        return None
+    return round(max(0.0, free - kwh), 3)
+
+
+def _charge_cost(p: Points, _n: datetime) -> float | None:
+    """Export-charge cost so far = net kWh (above free) × export_charge_rate."""
+    net = _charge_net_kwh(p, _n)
+    rate = _num(p, "tariff_export_charge_rate")
+    if net is None or rate is None:
+        return None
+    return round(net * rate, 2)
+
+
 def _kwh(points: Points, key: str) -> float | None:
     """Lifetime cumulative energy in kWh from a Wh point, or None if absent.
 
@@ -431,6 +460,27 @@ SENSORS: list[SensorDef] = [
     SensorDef(
         "bonus.period_credit", "Battery Export Bonus this period ($)", "$", "number",
         _bonus_credit,
+    ),
+    # ── Export charge (two-way / solar-sponge) ──
+    SensorDef(
+        "tariff.export_charge_window_active", "In Export-Charge Window", None, "bool",
+        lambda p, n: _any_window_active(p, "tariff_charge_windows", n),
+    ),
+    SensorDef(
+        "tariff.export_charge_kwh", "Export-charge Export this period (kWh)", "kWh", "number",
+        lambda p, _n: _num(p, "charge_export_kwh"),
+    ),
+    SensorDef(
+        "tariff.export_charge_free_remaining", "Free Export Allowance Remaining (kWh)",
+        "kWh", "number", _charge_free_remaining,
+    ),
+    SensorDef(
+        "tariff.export_charge_net_kwh", "Chargeable Export above free (kWh)", "kWh", "number",
+        _charge_net_kwh,
+    ),
+    SensorDef(
+        "tariff.export_charge_cost", "Export Charge this period ($)", "$", "number",
+        _charge_cost,
     ),
     # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
     SensorDef(

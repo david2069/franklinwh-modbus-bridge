@@ -13,14 +13,17 @@ ALLDAY = {"months": [], "days": [], "start": "00:00", "end": "23:59"}
 
 
 class FakeBilling:
-    def __init__(self, demand=None, bonus=None):
-        self._d, self._b = demand, bonus
+    def __init__(self, demand=None, bonus=None, charge=None):
+        self._d, self._b, self._c = demand, bonus, charge
 
     def demand_config(self):
         return self._d
 
     def bonus_config(self):
         return self._b
+
+    def charge_config(self):
+        return self._c
 
 
 def _s(dt: datetime, **points) -> Sample:
@@ -122,3 +125,50 @@ def test_period_start():
     assert _period_start(datetime(2026, 3, 5), 12) == datetime(2026, 2, 12)
     # now = Mar 20 → period started Mar 12
     assert _period_start(datetime(2026, 3, 20), 12) == datetime(2026, 3, 12)
+
+
+async def test_export_charge_window_and_free_allowance():
+    """Charge-window export accumulates; free allowance = free_kwh_per_day ×
+    full-period days; net + cost only above the free threshold."""
+    from franklinwh_bridge.gateway.scheduler_sensors import snapshot
+    charge = {"window": ALLDAY, "rate": 0.0123, "free_kwh_per_day": 6.84, "cycle_day": 1}
+
+    class B(FakeBilling):
+        def charge_config(self):
+            return charge
+
+    t = DemandTracker(db=None, billing=B())
+    d = datetime(2026, 3, 10)  # March = 31-day period (cycle day 1) → free ≈ 6.84×31
+    await _feed(t, [
+        _s(d.replace(hour=11, minute=0), grid_export_wh=0),
+        _s(d.replace(hour=12, minute=0), grid_export_wh=300000),   # +300 kWh in-window
+    ])
+    now = d.replace(hour=12, minute=0)
+    pts = {**t.as_points(now=now), "tariff_export_charge_rate": 0.0123}
+    snap = snapshot(pts, now)
+    free = round(6.84 * 31, 3)                       # 212.04 kWh free this period
+    assert snap["tariff.export_charge_kwh"] == 300.0
+    assert snap["tariff.export_charge_free_remaining"] == 0.0     # exceeded free
+    assert snap["tariff.export_charge_net_kwh"] == round(300.0 - free, 3)
+    assert snap["tariff.export_charge_cost"] == round((300.0 - free) * 0.0123, 2)
+
+
+async def test_export_charge_under_free_costs_nothing():
+    from franklinwh_bridge.gateway.scheduler_sensors import snapshot
+    charge = {"window": ALLDAY, "rate": 0.0123, "free_kwh_per_day": 6.84, "cycle_day": 1}
+
+    class B(FakeBilling):
+        def charge_config(self):
+            return charge
+
+    t = DemandTracker(db=None, billing=B())
+    d = datetime(2026, 3, 10)
+    await _feed(t, [
+        _s(d.replace(hour=11, minute=0), grid_export_wh=0),
+        _s(d.replace(hour=12, minute=0), grid_export_wh=50000),   # 50 kWh < free
+    ])
+    now = d.replace(hour=12, minute=0)
+    snap = snapshot({**t.as_points(now=now), "tariff_export_charge_rate": 0.0123}, now)
+    assert snap["tariff.export_charge_net_kwh"] == 0.0
+    assert snap["tariff.export_charge_cost"] == 0.0
+    assert snap["tariff.export_charge_free_remaining"] > 100  # plenty left

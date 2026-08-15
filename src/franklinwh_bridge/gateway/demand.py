@@ -74,7 +74,8 @@ class DemandTracker:
             "last_export_wh": None,
             "peak_kwh": 0.0,             # max completed-interval import kWh in window
             "cur_interval_kwh": 0.0,     # accumulated import this interval (any window)
-            "bonus_export_wh": 0.0,      # export accumulated inside the bonus window
+            "bonus_export_wh": 0.0,      # export accumulated inside the bonus (reward) window
+            "charge_export_wh": 0.0,     # export accumulated inside the export-charge window
         }
 
     async def load(self) -> None:
@@ -143,13 +144,18 @@ class DemandTracker:
             )
             self._s["last_import_wh"] = imp
 
-        # ── bonus: export accumulated inside the bonus window ───
+        # ── export accumulation inside the reward + charge windows ───
         if isinstance(exp, (int, float)):
             exp = float(exp)
             last = self._s["last_export_wh"]
-            bcfg = self._billing.bonus_config()
-            if last is not None and exp >= last and bcfg and _in_window(bcfg["window"], now):
-                self._s["bonus_export_wh"] += exp - last
+            if last is not None and exp >= last:  # monotonic counter delta
+                delta = exp - last
+                bcfg = self._billing.bonus_config()
+                if bcfg and _in_window(bcfg["window"], now):
+                    self._s["bonus_export_wh"] += delta
+                ccfg = self._billing.charge_config()
+                if ccfg and _in_window(ccfg["window"], now):
+                    self._s["charge_export_wh"] += delta
             self._s["last_export_wh"] = exp
 
         if sample.ts - self._last_persist >= _PERSIST_INTERVAL_S:
@@ -181,13 +187,21 @@ class DemandTracker:
             elapsed_h = max(1.0 / 3600.0, (now.timestamp() - st) / 3600.0)
             interval_kw = round(self._s["cur_interval_kwh"] / elapsed_h, 3)
         ps_ts = self._s["period_start"]
-        days = 0.0
+        days = 0.0                # days elapsed this period
+        period_days = 0.0         # full length of the billing period (for the free allowance)
         if ps_ts is not None:
             ps = datetime.fromtimestamp(ps_ts)
             days = round(max(0.0, (now - ps).total_seconds() / 86400.0), 3)
+            pe = _period_end(ps, self._cycle_day())
+            period_days = round((pe - ps).total_seconds() / 86400.0, 3)
+        # Export-charge free allowance = free_kwh_per_day × full-period days.
+        ccfg = self._billing.charge_config() or {}
+        free_kwh = round(float(ccfg.get("free_kwh_per_day") or 0.0) * period_days, 3)
         return {
             "demand_peak_kw": peak_kw,
             "demand_interval_kw": interval_kw,
             "demand_days_in_period": days,
             "bonus_export_kwh": round(self._s["bonus_export_wh"] / 1000.0, 3),
+            "charge_export_kwh": round(self._s["charge_export_wh"] / 1000.0, 3),
+            "charge_free_kwh": free_kwh,
         }

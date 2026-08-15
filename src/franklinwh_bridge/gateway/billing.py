@@ -29,9 +29,10 @@ class BillingStore:
         self._db = db
         self._demand: list[dict] = []
         self._bonus: list[dict] = []
-        # First service with each flag drives the demand/bonus calculator (v1).
+        # First service with each flag drives the demand/bonus/charge calc (v1).
         self._demand_cfg: dict | None = None
         self._bonus_cfg: dict | None = None
+        self._charge_cfg: dict | None = None
 
     async def load(self) -> None:
         try:
@@ -40,7 +41,7 @@ class BillingStore:
             logger.debug("BillingStore load failed: %s", exc)
             return
         demand, bonus = [], []
-        demand_cfg = bonus_cfg = None
+        demand_cfg = bonus_cfg = charge_cfg = None
         for s in services:
             pricing = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
             cycle_day = int(_num(pricing.get("billing_cycle_day"), 1)) or 1
@@ -66,8 +67,18 @@ class BillingStore:
                         "rate": _num(pricing.get("export_bonus_rate")),  # $/kWh
                         "cycle_day": cycle_day,
                     }
+            # Export CHARGE: {window, rate $/kWh, free_kwh_per_day} in pricing JSON.
+            ec = pricing.get("export_charge")
+            if charge_cfg is None and isinstance(ec, dict) and isinstance(ec.get("window"), dict):
+                charge_cfg = {
+                    "window": ec["window"],
+                    "rate": _num(ec.get("rate")),
+                    "free_kwh_per_day": _num(ec.get("free_kwh_per_day")),
+                    "cycle_day": cycle_day,
+                }
         self._demand, self._bonus = demand, bonus
         self._demand_cfg, self._bonus_cfg = demand_cfg, bonus_cfg
+        self._charge_cfg = charge_cfg
 
     def demand_config(self) -> dict | None:
         return self._demand_cfg
@@ -75,12 +86,18 @@ class BillingStore:
     def bonus_config(self) -> dict | None:
         return self._bonus_cfg
 
+    def charge_config(self) -> dict | None:
+        return self._charge_cfg
+
     def as_points(self) -> dict[str, Any]:
         d = self._demand_cfg or {}
+        c = self._charge_cfg or {}
         return {
             "tariff_demand_windows": self._demand,
             "tariff_bonus_windows": self._bonus,
+            "tariff_charge_windows": [c["window"]] if c else [],
             "tariff_demand_rate": d.get("rate", 0.0),
             "tariff_export_bonus_rate": (self._bonus_cfg or {}).get("rate", 0.0),
+            "tariff_export_charge_rate": c.get("rate", 0.0),
             "tariff_demand_charge_basis": d.get("charge_basis", "per_kw_day"),
         }
