@@ -189,6 +189,45 @@ def _time_to_discharge_min(p: Points, n: datetime) -> float | None:
     )
 
 
+def _eta_now_min(cap: float | None, stored: float | None, target_soc: float | None,
+                 signed_w: float | None, *, charging: bool) -> float | None:
+    """ETA at the CURRENT inverter rate. ``signed_w`` is battery_power_w
+    (negative = charging, positive = discharging). Returns None when the battery
+    isn't moving toward the target (idle or the wrong direction — the ETA would
+    be infinite), 0.0 when already at/past it."""
+    if cap is None or stored is None or target_soc is None or signed_w is None:
+        return None
+    target_kwh = cap * target_soc / 100.0
+    if charging:
+        rate_kw = -signed_w / 1000.0     # charging draws power negative
+        delta = target_kwh - stored
+    else:
+        rate_kw = signed_w / 1000.0      # discharging pushes power positive
+        delta = stored - target_kwh
+    if rate_kw <= 0:                      # not moving toward target
+        return None
+    if delta <= 0:                        # already there
+        return 0.0
+    return round(delta / rate_kw * 60.0, 1)
+
+
+def _time_to_charge_now_min(p: Points, n: datetime) -> float | None:
+    """ETA to Max-Charge SoC at the CURRENT charge rate (None if not charging)."""
+    return _eta_now_min(
+        _capacity_kwh(p, n), _stored_kwh(p, n),
+        _num(p, "const_max_charge_soc"), _num(p, "battery_power_w"), charging=True,
+    )
+
+
+def _time_to_discharge_now_min(p: Points, n: datetime) -> float | None:
+    """ETA to Min-Discharge SoC at the CURRENT discharge rate (None if not
+    discharging)."""
+    return _eta_now_min(
+        _capacity_kwh(p, n), _stored_kwh(p, n),
+        _num(p, "const_min_discharge_soc"), _num(p, "battery_power_w"), charging=False,
+    )
+
+
 def _kwh(points: Points, key: str) -> float | None:
     """Lifetime cumulative energy in kWh from a Wh point, or None if absent.
 
@@ -275,6 +314,16 @@ SENSORS: list[SensorDef] = [
     SensorDef(
         "battery.time_to_discharge_min",
         "ETA to Min-Discharge SoC (min)", "min", "number", _time_to_discharge_min,
+    ),
+    SensorDef(
+        "battery.time_to_charge_now_min",
+        "ETA to Max-Charge SoC — at current rate (min)", "min", "number",
+        _time_to_charge_now_min,
+    ),
+    SensorDef(
+        "battery.time_to_discharge_now_min",
+        "ETA to Min-Discharge SoC — at current rate (min)", "min", "number",
+        _time_to_discharge_now_min,
     ),
     # ── User-defined constants (min/max/demand SoC) ──
     SensorDef(

@@ -59,3 +59,25 @@ def test_derived_fail_closed_on_missing_inputs():
     for k in ("battery.capacity_kwh", "battery.remaining_kwh", "inverter.power_rating_w",
               "battery.time_to_charge_min"):
         assert s[k] is None
+
+
+def test_realtime_eta_variants():
+    """Real-time ETAs use the current inverter power; None when not moving that
+    way; the max-rate ETAs are independent."""
+    base = {
+        "wh_rating": 13600, "soc": 50.0, "max_charge_rate_w": 5000,
+        "max_discharge_rate_w": 5000, "const_min_discharge_soc": 20, "const_max_charge_soc": 100,
+    }
+    # charging at 2000W (negative)
+    s = snapshot({**base, "battery_power_w": -2000})
+    assert s["battery.time_to_charge_now_min"] == 204.0     # (13.6-6.8)/2*60
+    assert s["battery.time_to_discharge_now_min"] is None
+    # discharging at 1000W (positive)
+    s = snapshot({**base, "battery_power_w": 1000})
+    assert s["battery.time_to_discharge_now_min"] == 244.8  # (6.8-2.72)/1*60
+    assert s["battery.time_to_charge_now_min"] is None
+    # idle → both None; max-rate unaffected
+    s = snapshot({**base, "battery_power_w": 0})
+    assert s["battery.time_to_charge_now_min"] is None
+    assert s["battery.time_to_discharge_now_min"] is None
+    assert s["battery.time_to_charge_min"] == 81.6
