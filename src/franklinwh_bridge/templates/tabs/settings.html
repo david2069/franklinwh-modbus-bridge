@@ -354,10 +354,10 @@
                 <input type="text" x-model="haEdit.name" class="form-control !py-1 !text-xs"
                        placeholder="Home"></label>
               <label class="flex flex-col gap-1"><span class="text-slate-500">Base URL</span>
-                <input type="text" x-model="haEdit.base_url" class="form-control !py-1 !text-xs font-mono"
+                <input type="text" x-model="haEdit.base_url" @input="haTestResult = null" class="form-control !py-1 !text-xs font-mono"
                        placeholder="http://homeassistant.local:8123"></label>
               <label class="flex flex-col gap-1 col-span-2"><span class="text-slate-500">Long-Lived Access Token</span>
-                <input type="password" x-model="haEdit.token" class="form-control !py-1 !text-xs font-mono"
+                <input type="password" x-model="haEdit.token" @input="haTestResult = null" class="form-control !py-1 !text-xs font-mono"
                        :placeholder="haEditId !== 'new' && haEdit.has_token ? '(unchanged)' : 'paste token'"></label>
             </div>
             <div class="flex items-center gap-4 text-xs pt-0.5">
