@@ -325,6 +325,32 @@ function scheduleTab() {
       return this.actions.find(a => a.id === id) || { label: id, colour: '#64748b' };
     },
 
+    // ── per-gateway colour coding ────────────────────────────
+    // Each gateway gets a stable colour (by its position in the gateway list, so
+    // the legend matches). Used as a left-edge tint on entry rows + timeline
+    // segments so you can see which gateway an entry belongs to under "All
+    // gateways". The ACTION colour still fills the block; gateway = the edge.
+    gatewayPalette: [
+      '#38bdf8', '#f472b6', '#a78bfa', '#fb923c', '#34d399',
+      '#facc15', '#22d3ee', '#f87171', '#4ade80', '#e879f9',
+    ],
+    gatewayColour(id) {
+      if (!id || id === 'site') return '#94a3b8';  // "all gateways" → neutral
+      const list = Alpine.store('app').gatewayList || [];
+      const idx = list.findIndex(g => g.id === id);
+      if (idx >= 0) return this.gatewayPalette[idx % this.gatewayPalette.length];
+      let h = 0;  // fallback: stable hash for an id not in the current list
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+      return this.gatewayPalette[h % this.gatewayPalette.length];
+    },
+    // Colour for a schedule entry OR a timeline segment (both carry target_type/id).
+    entryTint(e) {
+      if (!e) return '#94a3b8';
+      if (e.target_type === 'site') return '#94a3b8';
+      if (e.target_type === 'service') return this.gatewayColour('svc:' + (e.target_id || ''));
+      return this.gatewayColour(e.target_id || 'default');
+    },
+
     sensorMeta(id) {
       return this.sensors.find(s => s.id === id) || { id, label: id, unit: null, kind: 'number' };
     },
