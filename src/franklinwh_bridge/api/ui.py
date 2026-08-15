@@ -12,13 +12,25 @@ from pydantic import BaseModel
 
 from franklinwh_bridge.api.auth import get_current_user, require_auth
 
-# Cache-bust token — changes on each server restart
-_CACHE_BUST = str(int(time.time()))
-
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+_STATIC_DIR = Path(__file__).parent.parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(tags=["ui"])
+
+
+def _cache_bust() -> str:
+    """Static-asset cache-bust token = newest static-file mtime. Because src is
+    hot-mounted, editing a .js/.css bumps this on the very next page load — no
+    server restart needed — so browsers never serve stale JS against fresh HTML.
+    Falls back to the process start time if the dir can't be walked."""
+    try:
+        latest = max(
+            f.stat().st_mtime for f in _STATIC_DIR.rglob("*.js") if f.is_file()
+        )
+        return str(int(latest))
+    except (ValueError, OSError):
+        return str(int(time.time()))
 
 
 class CommandRequest(BaseModel):
@@ -50,7 +62,7 @@ async def index(request: Request, user: dict | None = Depends(get_current_user))
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"base_path": base_path, "cache_bust": _CACHE_BUST},
+        {"base_path": base_path, "cache_bust": _cache_bust()},
     )
 
 
@@ -64,7 +76,7 @@ async def user_dashboard(request: Request, user: dict | None = Depends(get_curre
     return templates.TemplateResponse(
         request,
         "user.html",
-        {"base_path": base_path, "cache_bust": _CACHE_BUST},
+        {"base_path": base_path, "cache_bust": _cache_bust()},
     )
 
 
@@ -75,7 +87,7 @@ async def login_page(request: Request, user: dict | None = Depends(get_current_u
     if user is not None:
         return RedirectResponse(_home_for(base_path, user), status_code=302)
     return templates.TemplateResponse(
-        request, "login.html", {"base_path": base_path, "cache_bust": _CACHE_BUST}
+        request, "login.html", {"base_path": base_path, "cache_bust": _cache_bust()}
     )
 
 
