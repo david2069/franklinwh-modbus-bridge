@@ -18,9 +18,12 @@ from franklinwh_bridge.gateway.scheduler import (
     action_to_commands,
     next_fire,
 )
+from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog
 from franklinwh_bridge.store.db import (
     create_schedule,
     delete_schedule,
+    get_gateways,
+    get_ha_instances,
     get_schedule,
     get_schedule_log,
     get_schedules,
@@ -300,6 +303,169 @@ async def add_schedule(body: ScheduleCreate, request: Request):
     )
     await _reload_engine(request)
     return _decorate(entry, datetime.now())
+
+
+# ── Export / Import (share schedules & templates as JSON) ─────
+
+_EXPORT_TYPE = "franklinwh-automations"
+_EXPORT_VERSION = 1
+
+#: Portable fields carried in an export (identity/audit fields are stripped).
+_PORTABLE_FIELDS = (
+    "name", "action", "params", "target_type", "target_id", "enabled",
+    "release", "conflict", "priority", "trigger_kind", "trigger_spec",
+    "when_spec", "entry_conditions", "exit_conditions", "duration_s",
+    "release_policy", "missed_policy", "entry_hold_s", "ha_actions",
+)
+
+
+def _portable(entry: dict) -> dict:
+    """Strip an entry down to shareable fields (no id/created_at/live previews)."""
+    return {k: entry[k] for k in _PORTABLE_FIELDS if k in entry}
+
+
+def _collect_sensor_refs(tree: object) -> set[str]:
+    """Every sensor id referenced by a condition tree (LHS + Lookup RHS)."""
+    out: set[str] = set()
+
+    def walk(node: dict) -> None:
+        for c in node.get("conditions", []) or []:
+            if isinstance(c, dict) and "conditions" in c:
+                walk(c)
+            elif isinstance(c, dict):
+                if c.get("sensor"):
+                    out.add(c["sensor"])
+                if c.get("value_kind") == "sensor" and c.get("value_sensor"):
+                    out.add(c["value_sensor"])
+
+    if isinstance(tree, dict):
+        walk(tree)
+    return out
+
+
+async def _validate_import_entry(request: Request, entry: dict) -> dict:
+    """Validate one imported entry: hard errors (would fail to create) +
+    soft warnings (missing local customisations — HA instances, gateway,
+    unknown sensors) the user must fix before it does anything useful."""
+    db = request.app.state.db
+    name = entry.get("name") or "(unnamed)"
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    action = entry.get("action")
+    try:
+        _validate_action(action or "", entry.get("params") or {})
+    except HTTPException as exc:
+        errors.append(str(exc.detail))
+    try:
+        _validate_trigger(entry.get("trigger_kind"), entry.get("trigger_spec"))
+    except HTTPException as exc:
+        errors.append(str(exc.detail))
+
+    # gateway target must exist locally (else it falls back to Default on import)
+    if entry.get("target_type", "gateway") == "gateway" and entry.get("target_id"):
+        gw_ids = {g["id"] for g in await get_gateways(db)}
+        if entry["target_id"] not in gw_ids:
+            warnings.append(
+                f"gateway '{entry['target_id']}' not found — will target Default Gateway"
+            )
+
+    ha_ids = {h["id"] for h in await get_ha_instances(db)}
+    for a in entry.get("ha_actions") or []:
+        inst = a.get("instance_id")
+        if inst and inst not in ha_ids:
+            warnings.append(
+                f"HA instance '{inst}' missing — action on '{a.get('entity_id')}' won't run"
+            )
+
+    # condition sensors: ha:* need the instance present; others must be in the catalog
+    catalog = {s["id"] for s in sensor_catalog()}
+    refs = _collect_sensor_refs(entry.get("entry_conditions")) | _collect_sensor_refs(
+        entry.get("exit_conditions")
+    )
+    for sid in sorted(refs):
+        if sid.startswith("ha:"):
+            parts = sid.split(":")
+            inst = parts[1] if len(parts) > 2 else ""
+            if inst not in ha_ids:
+                warnings.append(f"HA sensor '{sid}' — instance '{inst}' missing")
+        elif sid not in catalog:
+            warnings.append(f"unknown sensor '{sid}' — condition will fail closed")
+
+    return {"name": name, "action": action, "ok": not errors,
+            "warnings": warnings, "errors": errors}
+
+
+@router.get("/schedules/export")
+async def export_schedules(request: Request, ids: str | None = None):
+    """Export schedules as a portable JSON bundle. ``ids`` = comma-separated
+    entry ids (default: all)."""
+    db: aiosqlite.Connection = request.app.state.db
+    rows = await get_schedules(db)
+    if ids:
+        wanted = {i.strip() for i in ids.split(",") if i.strip()}
+        rows = [r for r in rows if r["id"] in wanted]
+    return {
+        "type": _EXPORT_TYPE,
+        "version": _EXPORT_VERSION,
+        "entries": [_portable(r) for r in rows],
+    }
+
+
+class ImportBundle(BaseModel):
+    type: str | None = None
+    version: int | None = None
+    entries: list[dict] = Field(default_factory=list)
+
+
+@router.post("/schedules/import")
+async def import_schedules(bundle: ImportBundle, request: Request, dry_run: bool = True):
+    """Validate (and optionally create) an imported bundle. ``dry_run=true``
+    (default) returns a per-entry validation report without creating anything;
+    ``dry_run=false`` creates the valid entries DISABLED (for review), with any
+    unknown gateway target falling back to Default."""
+    if bundle.type and bundle.type != _EXPORT_TYPE:
+        raise HTTPException(400, f"unexpected bundle type '{bundle.type}'")
+    reports = [await _validate_import_entry(request, e) for e in bundle.entries]
+    if dry_run:
+        return {"entries": reports, "count": len(reports),
+                "importable": sum(1 for r in reports if r["ok"])}
+
+    db: aiosqlite.Connection = request.app.state.db
+    gw_ids = {g["id"] for g in await get_gateways(db)}
+    created: list[str] = []
+    skipped: list[dict] = []
+    for e, rep in zip(bundle.entries, reports, strict=False):
+        if not rep["ok"]:
+            skipped.append({"name": rep["name"], "errors": rep["errors"]})
+            continue
+        tt = e.get("target_type", "gateway")
+        tid = e.get("target_id")
+        if tt == "gateway" and tid and tid not in gw_ids:
+            tid = "default"
+        entry = await create_schedule(
+            db, name=e.get("name", "imported"), when_spec=e.get("when_spec") or {},
+            action=e["action"], params=e.get("params") or {},
+            target_type=tt, target_id=tid or None,
+            enabled=False,  # imported entries start disabled for review
+            release=e.get("release", "release"), conflict=e.get("conflict", "defer"),
+            priority=int(e.get("priority") or 0),
+            trigger_kind=e.get("trigger_kind"), trigger_spec=e.get("trigger_spec") or {},
+            entry_conditions=e.get("entry_conditions"), exit_conditions=e.get("exit_conditions"),
+            duration_s=e.get("duration_s"),
+            release_policy=e.get("release_policy", "restore_prior_mode"),
+            entry_hold_s=int(e.get("entry_hold_s") or 0),
+            ha_actions=e.get("ha_actions") or [],
+            missed_policy=e.get("missed_policy", "late_fire_remaining"),
+        )
+        await _audit_crud(
+            request, db, schedule_id=entry["id"], name=entry["name"],
+            target_type=entry.get("target_type"), target_id=entry.get("target_id"),
+            result="created", detail=f"imported — {entry['action']}",
+        )
+        created.append(entry["id"])
+    await _reload_engine(request)
+    return {"created": created, "skipped": skipped}
 
 
 @router.get("/schedules/log")

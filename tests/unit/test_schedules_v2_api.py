@@ -272,3 +272,55 @@ async def test_crud_changes_are_audited(client):
     assert "priority=5" in upd["detail"] and "action=force_charge" in upd["detail"]
     # target is the readable gateway label, not a raw tuple
     assert rows[0]["target"] in ("Default Gateway", "default")
+
+
+async def test_export_bundle_shape(client):
+    await client.post("/api/schedules", json={
+        "name": "exp", "action": "force_standby", "trigger_kind": "always",
+    })
+    bundle = (await client.get("/api/schedules/export")).json()
+    assert bundle["type"] == "franklinwh-automations"
+    assert bundle["version"] == 1
+    assert any(e["name"] == "exp" for e in bundle["entries"])
+    e = next(e for e in bundle["entries"] if e["name"] == "exp")
+    assert "id" not in e and "created_at" not in e  # identity stripped
+    assert e["action"] == "force_standby"
+
+
+async def test_import_dry_run_reports_warnings_and_errors(client):
+    body = {"type": "franklinwh-automations", "version": 1, "entries": [
+        {"name": "Good", "action": "force_standby", "trigger_kind": "always"},
+        {"name": "MissingDeps", "action": "none", "trigger_kind": "always",
+         "target_type": "gateway", "target_id": "ghost",
+         "ha_actions": [{"instance_id": "ha_x", "entity_id": "switch.y", "service": "turn_on"}],
+         "entry_conditions": {"conditions": [{"sensor": "made.up", "op": "<", "value": 1}]}},
+        {"name": "Bad", "action": "explode", "trigger_kind": "always"},
+    ]}
+    r = (await client.post("/api/schedules/import?dry_run=true", json=body)).json()
+    assert r["count"] == 3 and r["importable"] == 2
+    by = {e["name"]: e for e in r["entries"]}
+    assert by["Good"]["ok"] and not by["Good"]["warnings"]
+    assert by["MissingDeps"]["ok"]  # importable but warns
+    w = " ".join(by["MissingDeps"]["warnings"])
+    assert "ghost" in w and "ha_x" in w and "made.up" in w
+    assert not by["Bad"]["ok"] and by["Bad"]["errors"]
+
+
+async def test_import_creates_disabled_with_gateway_fallback(client):
+    body = {"type": "franklinwh-automations", "version": 1, "entries": [
+        {"name": "imp1", "action": "force_standby", "trigger_kind": "always",
+         "target_type": "gateway", "target_id": "ghost"},
+        {"name": "imp_bad", "action": "explode", "trigger_kind": "always"},
+    ]}
+    r = (await client.post("/api/schedules/import?dry_run=false", json=body)).json()
+    assert len(r["created"]) == 1
+    assert r["skipped"][0]["name"] == "imp_bad"
+    got = (await client.get("/api/schedules")).json()["schedules"]
+    imp = next(s for s in got if s["name"] == "imp1")
+    assert imp["enabled"] is False                 # imported disabled
+    assert imp["target_id"] == "default"           # unknown gateway → fallback
+
+
+async def test_import_rejects_wrong_bundle_type(client):
+    r = await client.post("/api/schedules/import", json={"type": "something-else", "entries": []})
+    assert r.status_code == 400

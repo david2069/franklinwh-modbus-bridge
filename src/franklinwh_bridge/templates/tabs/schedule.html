@@ -18,6 +18,8 @@
       <span class="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300"
             x-show="activeCount > 0" x-text="`${activeCount} active now`"></span>
       <span class="text-xs text-slate-500" x-text="`${schedules.length} ${schedules.length === 1 ? 'entry' : 'entries'}`"></span>
+      <button class="btn btn-sm btn-secondary" @click="exportAll()" title="Export all as JSON">Export</button>
+      <button class="btn btn-sm btn-secondary" @click="openImport()" title="Import from JSON">Import</button>
       <div class="relative inline-block" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
         <button class="btn btn-sm btn-secondary" @click="open = !open">Templates ▾</button>
         <div x-show="open" x-cloak
@@ -217,6 +219,11 @@
                               @click="copyEntry(e); open = false">
                         <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
                         Duplicate
+                      </button>
+                      <button class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06] flex items-center gap-2"
+                              @click="exportEntry(e); open = false">
+                        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                        Export
                       </button>
                       <div class="my-1 border-t border-white/10"></div>
                       <button class="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2"
@@ -998,6 +1005,61 @@
           </div>
         </div>
       </template>
+    </div>
+  </div>
+
+  <!-- ── Import Modal ─────────────────────────────────────── -->
+  <div x-show="importOpen" x-cloak class="fixed inset-0 z-[9998] flex items-center justify-center p-4"
+       @keydown.escape.window="closeImport()">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeImport()"></div>
+    <div class="relative w-full max-w-2xl rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-bold">Import automations</h3>
+          <button class="text-slate-500 hover:text-slate-300" @click="closeImport()">✕</button>
+        </div>
+        <p class="text-xs text-slate-500">Paste a shared JSON bundle or upload a file, then Validate. Imported entries are created <b>disabled</b> for review.</p>
+        <div class="flex items-center gap-2">
+          <label class="btn btn-sm btn-secondary cursor-pointer">
+            Choose file<input type="file" accept="application/json,.json" class="hidden" @change="onImportFile($event)">
+          </label>
+          <span class="text-xs text-slate-500" x-text="importFileName"></span>
+        </div>
+        <textarea x-model="importText" @input="importReport = null" rows="7"
+                  class="form-control w-full font-mono !text-xs" spellcheck="false"
+                  placeholder='{ "type": "franklinwh-automations", "version": 1, "entries": [ … ] }'></textarea>
+
+        <!-- validation report -->
+        <div x-show="importReport" class="rounded border border-white/10 bg-black/20 p-2 space-y-1 max-h-52 overflow-y-auto">
+          <div class="text-xs text-slate-400">
+            <span x-text="importReport && importReport.importable"></span> of
+            <span x-text="importReport && importReport.count"></span> importable
+          </div>
+          <template x-for="(r, i) in (importReport ? importReport.entries : [])" :key="i">
+            <div class="text-xs border-t border-white/[0.04] pt-1">
+              <div class="flex items-center gap-2">
+                <span :class="r.ok ? 'text-emerald-400' : 'text-red-400'" x-text="r.ok ? '✓' : '✕'"></span>
+                <span class="font-medium text-slate-200" x-text="r.name"></span>
+                <span class="text-slate-500" x-text="r.action"></span>
+              </div>
+              <template x-for="(e, j) in r.errors" :key="'e'+j">
+                <div class="text-red-400 pl-5" x-text="'✕ ' + e"></div>
+              </template>
+              <template x-for="(w, j) in r.warnings" :key="'w'+j">
+                <div class="text-amber-400 pl-5" x-text="'⚠ ' + w"></div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button class="btn btn-sm btn-secondary" @click="closeImport()">Cancel</button>
+          <button class="btn btn-sm btn-secondary" @click="validateImport()" :disabled="!importText.trim()">Validate</button>
+          <button class="btn btn-sm btn-primary" @click="runImport()"
+                  :disabled="importing || !importReport || !(importReport && importReport.importable)"
+                  x-text="importing ? 'Importing…' : (importReport ? `Import ${importReport.importable}` : 'Import')"></button>
+        </div>
+      </div>
     </div>
   </div>
 

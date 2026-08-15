@@ -992,5 +992,70 @@ function scheduleTab() {
         Alpine.store('app').toast(`Copy failed: ${res?.error || 'unknown'}`, 'error');
       }
     },
+
+    // ── Export / Import (share as JSON) ──────────────────────
+    _download(filename, obj) {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    },
+    async exportAll() {
+      const d = await fetchJSON('api/schedules/export');
+      if (d && !d.error) this._download('franklinwh-automations.json', d);
+      else Alpine.store('app').toast('Export failed', 'error');
+    },
+    async exportEntry(e) {
+      const d = await fetchJSON('api/schedules/export?ids=' + e.id);
+      if (d && !d.error) {
+        const slug = (e.name || 'automation').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+        this._download(`automation-${slug}.json`, d);
+      } else Alpine.store('app').toast('Export failed', 'error');
+    },
+
+    // import
+    importOpen: false, importText: '', importReport: null, importing: false, importFileName: '',
+    openImport() {
+      this.importOpen = true; this.importText = ''; this.importReport = null; this.importFileName = '';
+    },
+    closeImport() { this.importOpen = false; },
+    async onImportFile(ev) {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      this.importFileName = file.name;
+      this.importText = await file.text();
+      this.importReport = null;
+    },
+    _parseImport() {
+      try { return JSON.parse(this.importText); }
+      catch (e) { Alpine.store('app').toast('Invalid JSON: ' + e.message, 'error'); return null; }
+    },
+    async validateImport() {
+      const bundle = this._parseImport();
+      if (!bundle) return;
+      const r = await fetchJSON('api/schedules/import?dry_run=true', {
+        method: 'POST', body: JSON.stringify(bundle),
+      });
+      if (r && !r.error) this.importReport = r;
+      else Alpine.store('app').toast('Validation failed: ' + (r?.error || 'unknown'), 'error');
+    },
+    async runImport() {
+      const bundle = this._parseImport();
+      if (!bundle) return;
+      this.importing = true;
+      const r = await fetchJSON('api/schedules/import?dry_run=false', {
+        method: 'POST', body: JSON.stringify(bundle),
+      });
+      this.importing = false;
+      if (r && !r.error) {
+        const skip = r.skipped && r.skipped.length ? `, ${r.skipped.length} skipped` : '';
+        Alpine.store('app').toast(`Imported ${r.created.length} (disabled)${skip}`, 'info');
+        this.closeImport();
+        this.load();
+      } else {
+        Alpine.store('app').toast('Import failed: ' + (r?.error || 'unknown'), 'error');
+      }
+    },
   };
 }
