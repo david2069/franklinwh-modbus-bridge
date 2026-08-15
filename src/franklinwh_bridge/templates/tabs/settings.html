@@ -386,6 +386,30 @@
       </div>
     </div>
 
+    <!-- Automation Constants (user-defined SoC parameters) -->
+    <div class="card" x-show="$store.app.canSee('schedule')" x-cloak>
+      <div class="flex items-center justify-between mb-1">
+        <div class="card-label !mb-0">Automation Constants</div>
+        <span class="text-[10px] uppercase tracking-wide text-slate-500">const.* sensors</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">
+        SoC parameters your automations use — available as <span class="font-mono">const.*</span>
+        condition sensors and as targets for the ETA / headroom derived sensors.
+      </p>
+      <div class="grid grid-cols-3 gap-3">
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Min Discharge SoC (%)</span>
+          <input type="number" min="0" max="100" step="1" x-model.number="constants.min_discharge_soc" class="form-control !py-1 !text-sm"></label>
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Max Charge SoC (%)</span>
+          <input type="number" min="0" max="100" step="1" x-model.number="constants.max_charge_soc" class="form-control !py-1 !text-sm"></label>
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Demand-Charge Min SoC (%)</span>
+          <input type="number" min="0" max="100" step="1" x-model.number="constants.demand_charge_min_soc" class="form-control !py-1 !text-sm"></label>
+      </div>
+      <div class="flex justify-end mt-3">
+        <button class="btn btn-sm btn-primary" @click="saveConstants()" :disabled="constantsSaving"
+                x-text="constantsSaving ? 'Saving…' : 'Save Constants'"></button>
+      </div>
+    </div>
+
     <!-- Electricity Utility Service(s) -->
     <div class="card">
       <div class="card-label mb-3">Electricity Utility Service(s)</div>

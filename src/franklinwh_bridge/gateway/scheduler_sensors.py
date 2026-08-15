@@ -115,6 +115,80 @@ def _pv_generating(points: Points, _now: datetime) -> bool | None:
     return solar > PV_GENERATING_THRESHOLD_W
 
 
+# ── Derived battery / inverter fields ─────────────────────────
+# Computed from live points (+ user constants merged in as const_*), so
+# automations can condition on capacity/headroom/power-headroom/ETA without the
+# user doing the arithmetic. All fail-closed (None) when an input is missing.
+def _capacity_kwh(p: Points, _n: datetime) -> float | None:
+    wh = _num(p, "wh_rating")  # 713.WHRtg — battery plate capacity
+    return round(wh / 1000.0, 2) if wh else None
+
+
+def _stored_kwh(p: Points, _n: datetime) -> float | None:
+    cap = _capacity_kwh(p, _n)
+    soc = _num(p, "soc")
+    if cap is None or soc is None:
+        return None
+    return round(cap * soc / 100.0, 2)
+
+
+def _remaining_kwh(p: Points, _n: datetime) -> float | None:
+    """Headroom to full = plate capacity − current stored energy."""
+    cap = _capacity_kwh(p, _n)
+    stored = _stored_kwh(p, _n)
+    if cap is None or stored is None:
+        return None
+    return round(cap - stored, 2)
+
+
+def _inverter_rating_w(p: Points, _n: datetime) -> float | None:
+    c = _num(p, "max_charge_rate_w")
+    d = _num(p, "max_discharge_rate_w")
+    vals = [x for x in (c, d) if x is not None]
+    return max(vals) if vals else None
+
+
+def _utilised_w(p: Points, _n: datetime) -> float | None:
+    bw = _num(p, "battery_power_w")  # signed; magnitude = power in use
+    return abs(bw) if bw is not None else None
+
+
+def _unutilised_w(p: Points, _n: datetime) -> float | None:
+    r = _inverter_rating_w(p, _n)
+    u = _utilised_w(p, _n)
+    if r is None or u is None:
+        return None
+    return round(max(0.0, r - u), 1)
+
+
+def _eta_min(cap: float | None, stored: float | None, target_soc: float | None,
+             rate_w: float | None, *, charging: bool) -> float | None:
+    """Minutes to reach ``target_soc`` at ``rate_w`` (best case, constant rate)."""
+    if cap is None or stored is None or target_soc is None or not rate_w:
+        return None
+    target_kwh = cap * target_soc / 100.0
+    delta = (target_kwh - stored) if charging else (stored - target_kwh)
+    if delta <= 0:
+        return 0.0
+    return round(delta / (rate_w / 1000.0) * 60.0, 1)
+
+
+def _time_to_charge_min(p: Points, n: datetime) -> float | None:
+    """ETA to the user's Max-Charge SoC at the max charge rate."""
+    return _eta_min(
+        _capacity_kwh(p, n), _stored_kwh(p, n),
+        _num(p, "const_max_charge_soc"), _num(p, "max_charge_rate_w"), charging=True,
+    )
+
+
+def _time_to_discharge_min(p: Points, n: datetime) -> float | None:
+    """ETA to the user's Min-Discharge SoC at the max discharge rate."""
+    return _eta_min(
+        _capacity_kwh(p, n), _stored_kwh(p, n),
+        _num(p, "const_min_discharge_soc"), _num(p, "max_discharge_rate_w"), charging=False,
+    )
+
+
 def _kwh(points: Points, key: str) -> float | None:
     """Lifetime cumulative energy in kWh from a Wh point, or None if absent.
 
@@ -181,6 +255,40 @@ SENSORS: list[SensorDef] = [
         "mode.raw", "Operating Mode (code)", None, "number", lambda p, _n: _num(p, "mode_raw")
     ),
     SensorDef("pv.is_generating", "PV Generating", None, "bool", _pv_generating),
+    # ── Derived battery / inverter fields ──
+    SensorDef("battery.capacity_kwh", "Battery Capacity (kWh)", "kWh", "number", _capacity_kwh),
+    SensorDef("battery.stored_kwh", "Battery Stored Energy (kWh)", "kWh", "number", _stored_kwh),
+    SensorDef(
+        "battery.remaining_kwh", "Battery Headroom to Full (kWh)", "kWh", "number", _remaining_kwh
+    ),
+    SensorDef(
+        "inverter.power_rating_w", "Inverter Power Rating (W)", "W", "number", _inverter_rating_w
+    ),
+    SensorDef("inverter.utilised_w", "Inverter Power In Use (W)", "W", "number", _utilised_w),
+    SensorDef(
+        "inverter.unutilised_w", "Inverter Power Headroom (W)", "W", "number", _unutilised_w
+    ),
+    SensorDef(
+        "battery.time_to_charge_min",
+        "ETA to Max-Charge SoC (min)", "min", "number", _time_to_charge_min,
+    ),
+    SensorDef(
+        "battery.time_to_discharge_min",
+        "ETA to Min-Discharge SoC (min)", "min", "number", _time_to_discharge_min,
+    ),
+    # ── User-defined constants (min/max/demand SoC) ──
+    SensorDef(
+        "const.min_discharge_soc", "Min Discharge SoC (%)", "%", "number",
+        lambda p, _n: _num(p, "const_min_discharge_soc"),
+    ),
+    SensorDef(
+        "const.max_charge_soc", "Max Charge SoC (%)", "%", "number",
+        lambda p, _n: _num(p, "const_max_charge_soc"),
+    ),
+    SensorDef(
+        "const.demand_charge_min_soc", "Demand-Charge Min SoC (%)", "%", "number",
+        lambda p, _n: _num(p, "const_demand_charge_min_soc"),
+    ),
     # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
     SensorDef(
         "energy.grid_import.total_kwh",
@@ -280,12 +388,14 @@ def snapshot(points: Points, now: datetime | None = None) -> dict[str, Any]:
 #: Dropdown group label per sensor-id prefix (for the grouped condition picker).
 _GROUP_LABELS = {
     "battery": "Battery",
+    "inverter": "Inverter",
     "solar": "Solar / PV",
     "pv": "Solar / PV",
     "grid": "Grid",
     "load": "Load",
     "mode": "Mode",
     "energy": "Energy",
+    "const": "Constants",
     "time": "Time",
 }
 

@@ -55,6 +55,10 @@ function settingsTab() {
     haTesting: false,
     haTestResult: null,
     haSaving: false,
+    // Automation constants (user-defined SoC parameters)
+    constants: {},
+    constantsSpec: {},
+    constantsSaving: false,
     // Gateway management
     gwList: [],
     gwBusy: false,
@@ -89,6 +93,7 @@ function settingsTab() {
       await this.loadServices();
       await this.loadGateways();
       await this.loadHaInstances();
+      await this.loadConstants();
       await this.loadModules();
       if (Alpine.store('app').isAdmin) await this.loadUsers();
       setInterval(() => {
@@ -407,6 +412,31 @@ function settingsTab() {
         Alpine.store('app').toast('HA instance deleted', 'info');
       } else {
         Alpine.store('app').toast('Delete failed: ' + (data?.error || 'unknown'), 'error');
+      }
+    },
+
+    // ── Automation constants (user-defined SoC parameters) ──────
+    async loadConstants() {
+      const data = await fetchJSON('api/automation/constants');
+      if (data && data.values && !data.error) {
+        this.constants = data.values;
+        this.constantsSpec = data.spec || {};
+      }
+    },
+    async saveConstants() {
+      this.constantsSaving = true;
+      try {
+        const data = await fetchJSON('api/automation/constants', {
+          method: 'PUT', body: JSON.stringify(this.constants),
+        });
+        if (data && data.values && !data.error) {
+          this.constants = data.values;
+          Alpine.store('app').toast('Constants saved', 'info');
+        } else {
+          Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.constantsSaving = false;
       }
     },
 

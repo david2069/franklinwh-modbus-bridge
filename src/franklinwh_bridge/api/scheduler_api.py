@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.gateway.constants import ConstantsStore
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate_dict
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog, snapshot
 
@@ -37,6 +38,9 @@ def _gateway_points(request: Request, gateway: str) -> dict:
     ha = getattr(request.app.state, "ha_registry", None)
     if ha is not None:
         pts = {**pts, **ha.entity_values()}
+    constants = getattr(request.app.state, "constants", None)
+    if constants is not None:
+        pts = {**pts, **constants.as_points()}
     return pts
 
 
@@ -52,6 +56,33 @@ async def list_sensors(request: Request, gateway: str = "default"):
     if ha is not None:
         sensors = [*sensors, *ha.catalog()]
     return {"gateway": gateway, "sensors": sensors}
+
+
+class ConstantsBody(BaseModel):
+    min_discharge_soc: float | None = Field(default=None, ge=0, le=100)
+    max_charge_soc: float | None = Field(default=None, ge=0, le=100)
+    demand_charge_min_soc: float | None = Field(default=None, ge=0, le=100)
+
+
+@router.get("/automation/constants")
+async def get_constants(request: Request):
+    """User-defined automation constants (min/max/demand SoC) + their [min,max]
+    bounds for the settings form. Surfaced as ``const.*`` sensors too."""
+    store = getattr(request.app.state, "constants", None)
+    if store is None:
+        return {"values": {}, "spec": {}}
+    return {"values": store.values(), "spec": ConstantsStore.spec()}
+
+
+@router.put("/automation/constants")
+async def put_constants(body: ConstantsBody, request: Request):
+    """Update automation constants (only sent fields; each clamped to [0,100])."""
+    store = getattr(request.app.state, "constants", None)
+    if store is None:
+        raise HTTPException(503, "Constants store not available")
+    updates = body.model_dump(exclude_unset=True, exclude_none=True)
+    values = await store.update(updates)
+    return {"values": values, "spec": ConstantsStore.spec()}
 
 
 class ConditionTreeBody(BaseModel):

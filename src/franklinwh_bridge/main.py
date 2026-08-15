@@ -34,6 +34,7 @@ from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
+from franklinwh_bridge.gateway.constants import ConstantsStore
 from franklinwh_bridge.gateway.energy_totals import EnergyTotals
 from franklinwh_bridge.gateway.ha import HaRegistry
 from franklinwh_bridge.gateway.health import HealthChecker
@@ -373,14 +374,24 @@ async def lifespan(app: FastAPI):
     ha_registry = HaRegistry(db)
     app.state.ha_registry = ha_registry
 
+    # ── User-defined automation constants (min/max/demand SoC) ────────
+    constants = ConstantsStore(db)
+    await constants.load()
+    app.state.constants = constants
+
     def _schedule_points(gw_id: str) -> dict:
         """Latest cached points for a gateway (no Modbus call) + the computed
-        period energy totals + any HA entity values (``ha:<inst>:<entity>``) —
-        feeds the sensor snapshot the engine and /api/sensors evaluate condition
-        trees against."""
+        period energy totals + HA entity values (``ha:<inst>:<entity>``) + the
+        user constants (``const_*``) — feeds the sensor snapshot the engine and
+        /api/sensors evaluate condition trees (and derived sensors) against."""
         inst = registry.get(gw_id)
         pts = inst.latest_points() if inst else {}
-        return {**pts, **energy_totals.current_totals(gw_id), **ha_registry.entity_values()}
+        return {
+            **pts,
+            **energy_totals.current_totals(gw_id),
+            **ha_registry.entity_values(),
+            **constants.as_points(),
+        }
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────
     connectivity = ConnectivityMonitor(db)
