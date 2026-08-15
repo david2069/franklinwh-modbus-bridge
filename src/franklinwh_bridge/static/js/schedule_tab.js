@@ -505,6 +505,56 @@ function scheduleTab() {
       this._clearTrace();
     },
 
+    // ── Automation templates ─────────────────────────────────
+    // Pre-built automations (opened in the editor for review; start DISABLED so
+    // the enable-on-save prompt confirms before they run). Showcase the demand/
+    // tariff/const sensors + Lookup (sensor-to-sensor) comparisons.
+    automationTemplates: [
+      { id: 'peak_shave', label: 'Peak-demand shaving',
+        desc: 'Discharge to cap grid import during the peak-demand window' },
+      { id: 'export_bonus', label: 'Battery export bonus',
+        desc: 'Discharge to grid during the export-bonus window' },
+    ],
+    _tleaf(sensor, op, value, kind) {
+      const leaf = {
+        sensor, op, value: 0, value2: 0, value_kind: 'value', value_sensor: '',
+        _cid: ++this._cidSeq,
+      };
+      if (kind === 'sensor') { leaf.value_kind = 'sensor'; leaf.value_sensor = value; }
+      else { leaf.value = value; }
+      return leaf;
+    },
+    applyTemplate(id) {
+      this.newEntry();
+      const f = this.form;
+      f.trigger_type = 'always';
+      f.action = 'force_discharge';
+      f.power_unit = 'pct'; f.power_pct = 100;
+      f.release_policy = 'restore_prior_mode';
+      f.enabled = false;  // review + enable-on-save
+      // keep discharging until SOC hits the Min-Discharge floor
+      f.exit_conditions = { match: 'ANY', conditions: [
+        this._tleaf('battery.soc_pct', '<=', 'const.min_discharge_soc', 'sensor'),
+      ] };
+      if (id === 'peak_shave') {
+        f.name = 'Peak-demand shaving';
+        f.entry_conditions = { match: 'ALL', conditions: [
+          this._tleaf('tariff.demand_window_active', '==', 1),
+          // only act when actually importing enough to matter (tune this floor)
+          this._tleaf('demand.interval_kw', '>', 1),
+          // …and this interval is at/above the period peak → shave to hold it down
+          this._tleaf('demand.interval_kw', '>=', 'demand.peak_kw', 'sensor'),
+          this._tleaf('battery.soc_pct', '>', 'const.min_discharge_soc', 'sensor'),
+        ] };
+      } else if (id === 'export_bonus') {
+        f.name = 'Battery export bonus';
+        f.entry_conditions = { match: 'ALL', conditions: [
+          this._tleaf('tariff.bonus_window_active', '==', 1),
+          this._tleaf('battery.soc_pct', '>', 'const.min_discharge_soc', 'sensor'),
+        ] };
+      }
+    },
+
     editEntry(e) {
       this._clearTrace();
       const p = e.params || {};

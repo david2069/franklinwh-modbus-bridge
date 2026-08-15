@@ -18,6 +18,20 @@
       <span class="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300"
             x-show="activeCount > 0" x-text="`${activeCount} active now`"></span>
       <span class="text-xs text-slate-500" x-text="`${schedules.length} ${schedules.length === 1 ? 'entry' : 'entries'}`"></span>
+      <div class="relative inline-block" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+        <button class="btn btn-sm btn-secondary" @click="open = !open">Templates ▾</button>
+        <div x-show="open" x-cloak
+             class="absolute right-0 mt-1 z-50 min-w-[260px] rounded-md border shadow-2xl py-1 text-left"
+             style="background: var(--surface-0); border-color: var(--border);">
+          <template x-for="t in automationTemplates" :key="t.id">
+            <button class="w-full text-left px-3 py-1.5 hover:bg-white/[0.06]"
+                    @click="applyTemplate(t.id); open = false">
+              <div class="text-xs font-medium" style="color: var(--text-primary);" x-text="t.label"></div>
+              <div class="text-[10px]" style="color: var(--text-muted);" x-text="t.desc"></div>
+            </button>
+          </template>
+        </div>
+      </div>
       <button class="btn btn-sm btn-primary" @click="newEntry()">+ Add Entry</button>
     </div>
   </div>
