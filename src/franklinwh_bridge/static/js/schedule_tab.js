@@ -269,6 +269,9 @@ function scheduleTab() {
         missed: 'text-red-300', failed: 'text-red-300',
         exit_condition_met: 'text-cyan-300', duration_elapsed: 'text-slate-400',
         release: 'text-slate-400', ok: 'text-emerald-300', ha_action: 'text-emerald-300',
+        // config-change (CRUD) rows
+        created: 'text-emerald-300', enabled: 'text-emerald-300',
+        updated: 'text-sky-300', disabled: 'text-amber-300', deleted: 'text-red-300',
       })[r] || 'text-slate-300';
     },
 

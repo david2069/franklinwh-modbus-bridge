@@ -24,6 +24,7 @@ from franklinwh_bridge.store.db import (
     get_schedule,
     get_schedule_log,
     get_schedules,
+    log_schedule_event,
     update_schedule,
 )
 
@@ -171,6 +172,65 @@ async def _reload_engine(request: Request) -> None:
             logger.warning("Schedule engine reload failed: %s", exc)
 
 
+# ── CRUD audit ────────────────────────────────────────────────
+# Config changes (create/edit/enable/disable/delete) were previously logged
+# nowhere. Record them to BOTH the app log AND the schedule Activity Log so
+# there's a "who changed what, when" trail alongside the dispatch/release rows.
+
+#: Fields worth naming in an "updated" audit line (complex ones are named, not
+#: value-dumped, to keep the line short).
+_SIMPLE_FIELDS = (
+    "name", "action", "enabled", "priority", "duration_s", "release", "conflict",
+    "release_policy", "missed_policy", "trigger_kind", "entry_hold_s",
+    "target_type", "target_id",
+)
+_NAMED_FIELDS = (
+    "params", "when_spec", "trigger_spec", "entry_conditions", "exit_conditions",
+    "ha_actions",
+)
+
+
+def _crud_target_label(request: Request, target_type: str | None, target_id: str | None) -> str:
+    """Readable target for a CRUD audit row — mirrors the engine's audit target
+    (gateway name + "(mock)" flag) so both surfaces read the same."""
+    if target_type == "site":
+        return "Site (all gateways)"
+    if target_type == "service":
+        return f"service:{target_id or '?'}"
+    gw_id = target_id or "default"
+    registry = getattr(request.app.state, "registry", None)
+    inst = registry.get(gw_id) if registry is not None else None
+    cfg = getattr(inst, "config", None) if inst is not None else None
+    name = getattr(cfg, "name", None) or gw_id
+    return f"{name} (mock)" if cfg is not None and getattr(cfg, "mock", False) else str(name)
+
+
+def _changed_fields(updates: dict) -> list[str]:
+    """Human summary of the fields a PATCH changed (simple ones with values)."""
+    out: list[str] = []
+    for k in _SIMPLE_FIELDS:
+        if k in updates:
+            out.append(f"{k}={updates[k]}")
+    for k in _NAMED_FIELDS:
+        if k in updates:
+            out.append(k)
+    return out
+
+
+async def _audit_crud(
+    request: Request, db, *, schedule_id: str, name: str,
+    target_type: str | None, target_id: str | None, result: str, detail: str,
+) -> None:
+    """Log a schedule CRUD change to the app log + the Activity Log (best-effort;
+    never let an audit failure break the CRUD response)."""
+    logger.info("Schedule %s: '%s' (%s) — %s", result, name, schedule_id, detail)
+    try:
+        target = _crud_target_label(request, target_type, target_id)
+        await log_schedule_event(db, schedule_id, "config", target, result, detail)
+    except Exception as exc:
+        logger.debug("Schedule CRUD audit failed: %s", exc)
+
+
 def _decorate(entry: dict, now: datetime) -> dict:
     """Add live previews (active-now, next-fire) to an entry for the UI.
 
@@ -231,6 +291,12 @@ async def add_schedule(body: ScheduleCreate, request: Request):
         entry_hold_s=body.entry_hold_s,
         ha_actions=[a.model_dump() for a in body.ha_actions],
         missed_policy=body.missed_policy,
+    )
+    await _audit_crud(
+        request, db, schedule_id=entry["id"], name=entry["name"],
+        target_type=entry.get("target_type"), target_id=entry.get("target_id"),
+        result="created",
+        detail=f"{entry['action']}, enabled={bool(entry.get('enabled'))}",
     )
     await _reload_engine(request)
     return _decorate(entry, datetime.now())
@@ -356,6 +422,20 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
     result = await update_schedule(db, schedule_id, **updates)
     if result is None:
         raise HTTPException(404, f"Schedule '{schedule_id}' not found")
+    # A PATCH that only flips `enabled` is the common enable/disable action;
+    # anything broader is a full "updated" with the changed fields listed.
+    if list(updates) == ["enabled"]:
+        verb = "enabled" if updates["enabled"] else "disabled"
+        detail = verb
+    else:
+        verb = "updated"
+        fields = _changed_fields(updates)
+        detail = "changed: " + ", ".join(fields) if fields else "no changes"
+    await _audit_crud(
+        request, db, schedule_id=schedule_id, name=result["name"],
+        target_type=result.get("target_type"), target_id=result.get("target_id"),
+        result=verb, detail=detail,
+    )
     await _reload_engine(request)
     return _decorate(result, datetime.now())
 
@@ -364,8 +444,15 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
 async def remove_schedule(schedule_id: str, request: Request):
     """Delete a schedule entry."""
     db: aiosqlite.Connection = request.app.state.db
+    existing = await get_schedule(db, schedule_id)  # capture name/target before delete
     if not await delete_schedule(db, schedule_id):
         raise HTTPException(404, f"Schedule '{schedule_id}' not found")
+    if existing is not None:
+        await _audit_crud(
+            request, db, schedule_id=schedule_id, name=existing.get("name", schedule_id),
+            target_type=existing.get("target_type"), target_id=existing.get("target_id"),
+            result="deleted", detail=f"deleted '{existing.get('name', schedule_id)}'",
+        )
     await _reload_engine(request)
     return {"deleted": True}
 

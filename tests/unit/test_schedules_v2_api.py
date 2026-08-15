@@ -247,3 +247,28 @@ async def test_reject_monthly_bad_day(client):
         "trigger_kind": "monthly", "trigger_spec": {"day": 40},
     })
     assert bad.status_code == 400
+
+
+async def test_crud_changes_are_audited(client):
+    """Create / enable-disable / edit / delete each write a config row to the
+    schedule Activity Log (was previously logged nowhere)."""
+    created = (await client.post("/api/schedules", json={
+        "name": "audited", "action": "force_standby", "trigger_kind": "daily",
+        "trigger_spec": {"time_of_day": "07:00"}, "enabled": True,
+    })).json()
+    sid = created["id"]
+
+    # disable (enabled-only PATCH), then a broader edit
+    await client.patch(f"/api/schedules/{sid}", json={"enabled": False})
+    await client.patch(f"/api/schedules/{sid}", json={"priority": 5, "action": "force_charge"})
+    await client.delete(f"/api/schedules/{sid}")
+
+    events = (await client.get("/api/schedules/log", params={"limit": 50})).json()["events"]
+    rows = [e for e in events if e["schedule_id"] == sid and e["action"] == "config"]
+    results = {e["result"] for e in rows}
+    assert {"created", "disabled", "updated", "deleted"} <= results, results
+    # the broader edit lists the changed fields
+    upd = next(e for e in rows if e["result"] == "updated")
+    assert "priority=5" in upd["detail"] and "action=force_charge" in upd["detail"]
+    # target is the readable gateway label, not a raw tuple
+    assert rows[0]["target"] in ("Default Gateway", "default")
