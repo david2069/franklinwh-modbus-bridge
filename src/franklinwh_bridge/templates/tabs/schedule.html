@@ -324,9 +324,9 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="card-label">Trigger Type</label>
-              <select x-model="form.trigger_type" class="form-control w-full">
+              <select @change="form.trigger_type = $event.target.value" class="form-control w-full">
                 <template x-for="t in triggerTypes" :key="t.id">
-                  <option :value="t.id" x-text="t.label"></option>
+                  <option :value="t.id" :selected="t.id === form.trigger_type" x-text="t.label"></option>
                 </template>
               </select>
             </div>
@@ -461,9 +461,9 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="card-label">Action</label>
-              <select x-model="form.action" class="form-control w-full">
+              <select @change="form.action = $event.target.value" class="form-control w-full">
                 <template x-for="a in actions" :key="a.id">
-                  <option :value="a.id" x-text="a.label"></option>
+                  <option :value="a.id" :selected="a.id === form.action" x-text="a.label"></option>
                 </template>
               </select>
             </div>
@@ -535,7 +535,7 @@
                     </div>
                   </div>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
-                    <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                    <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                   </select>
                   <div class="inline-flex rounded overflow-hidden border border-white/10 text-[10px] flex-shrink-0">
                     <button type="button" @click="c.value_kind='value'" class="px-1.5 py-1" :class="(c.value_kind||'value')==='value' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">Value</button>
@@ -612,7 +612,7 @@
                         </div>
                       </div>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
-                        <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                        <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                       </select>
                       <div class="inline-flex rounded overflow-hidden border border-white/10 text-[10px] flex-shrink-0">
                         <button type="button" @click="cc.value_kind='value'" class="px-1.5 py-1" :class="(cc.value_kind||'value')==='value' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">Value</button>
@@ -728,7 +728,7 @@
                       <template x-for="g in sensorGroups" :key="g.label"><optgroup :label="g.label"><template x-for="s in g.items" :key="s.id"><option :value="s.id" x-text="s.label"></option></template></optgroup></template>
                     </select>
                     <select x-model="a.guard.op" class="form-control !py-1 !text-xs w-20">
-                      <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                      <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                     </select>
                     <input x-model="a.guard.value" class="form-control !py-1 !text-xs w-24" placeholder="value">
                     <button type="button" class="text-[11px] text-red-400 hover:text-red-300 px-1" @click="removeGuard(a)">remove guard</button>
@@ -777,7 +777,7 @@
                     </div>
                   </div>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
-                    <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                    <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                   </select>
                   <div class="inline-flex rounded overflow-hidden border border-white/10 text-[10px] flex-shrink-0">
                     <button type="button" @click="c.value_kind='value'" class="px-1.5 py-1" :class="(c.value_kind||'value')==='value' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">Value</button>
@@ -854,7 +854,7 @@
                         </div>
                       </div>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
-                        <template x-for="o in operators" :key="o"><option :value="o" x-text="o"></option></template>
+                        <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                       </select>
                       <div class="inline-flex rounded overflow-hidden border border-white/10 text-[10px] flex-shrink-0">
                         <button type="button" @click="cc.value_kind='value'" class="px-1.5 py-1" :class="(cc.value_kind||'value')==='value' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">Value</button>

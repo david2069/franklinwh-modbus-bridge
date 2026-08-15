@@ -525,34 +525,39 @@ function scheduleTab() {
       return leaf;
     },
     applyTemplate(id) {
-      this.newEntry();
-      const f = this.form;
-      f.trigger_type = 'always';
-      f.action = 'force_discharge';
-      f.power_unit = 'pct'; f.power_pct = 100;
-      f.release_policy = 'restore_prior_mode';
-      f.enabled = false;  // review + enable-on-save
-      // keep discharging until SOC hits the Min-Discharge floor
-      f.exit_conditions = { match: 'ANY', conditions: [
-        this._tleaf('battery.soc_pct', '<=', 'const.min_discharge_soc', 'sensor'),
-      ] };
+      // Build the form in ONE _blankForm() assignment (like editEntry) so the
+      // <select>s render with the template's values — mutating after newEntry()
+      // left op/action/trigger selects showing their defaults.
+      const common = {
+        trigger_type: 'always', action: 'force_discharge',
+        power_unit: 'pct', power_pct: 100, release_policy: 'restore_prior_mode',
+        enabled: false,  // review → enable-on-save prompt
+        // keep discharging until SOC hits the Min-Discharge floor
+        exit_conditions: { match: 'ANY', conditions: [
+          this._tleaf('battery.soc_pct', '<=', 'const.min_discharge_soc', 'sensor'),
+        ] },
+      };
+      let over;
       if (id === 'peak_shave') {
-        f.name = 'Peak-demand shaving';
-        f.entry_conditions = { match: 'ALL', conditions: [
+        over = { name: 'Peak-demand shaving', entry_conditions: { match: 'ALL', conditions: [
           this._tleaf('tariff.demand_window_active', '==', 1),
           // only act when actually importing enough to matter (tune this floor)
           this._tleaf('demand.interval_kw', '>', 1),
           // …and this interval is at/above the period peak → shave to hold it down
           this._tleaf('demand.interval_kw', '>=', 'demand.peak_kw', 'sensor'),
           this._tleaf('battery.soc_pct', '>', 'const.min_discharge_soc', 'sensor'),
-        ] };
+        ] } };
       } else if (id === 'export_bonus') {
-        f.name = 'Battery export bonus';
-        f.entry_conditions = { match: 'ALL', conditions: [
+        over = { name: 'Battery export bonus', entry_conditions: { match: 'ALL', conditions: [
           this._tleaf('tariff.bonus_window_active', '==', 1),
           this._tleaf('battery.soc_pct', '>', 'const.min_discharge_soc', 'sensor'),
-        ] };
+        ] } };
+      } else {
+        return;
       }
+      this._clearTrace();
+      this.form = this._blankForm({ ...common, ...over });
+      this.formOpen = true;
     },
 
     editEntry(e) {
