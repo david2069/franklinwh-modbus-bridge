@@ -416,7 +416,12 @@ function settingsTab() {
       try {
         const data = await fetchJSON('api/ha/test', {
           method: 'POST',
-          body: JSON.stringify({ base_url: this.haEdit.base_url, token: this.haEdit.token || null }),
+          body: JSON.stringify({
+            base_url: this.haEdit.base_url,
+            token: this.haEdit.token || null,
+            // On edit, let the probe use the STORED token when the field is blank.
+            ha_id: this.haEditId !== 'new' ? this.haEditId : null,
+          }),
         });
         if (data && data.connected) {
           this.haTestResult = { ok: true, msg: `Connected — ${data.entity_count} entities` };

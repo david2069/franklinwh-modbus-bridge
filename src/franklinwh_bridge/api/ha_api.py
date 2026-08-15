@@ -46,6 +46,10 @@ class HaInstanceUpdate(BaseModel):
 class HaTestBody(BaseModel):
     base_url: str = Field(min_length=1)
     token: str | None = None
+    # When editing an existing instance the token field is blank (tokens are
+    # never sent back to the client). Pass the instance id so the probe can fall
+    # back to the STORED token instead of testing with no auth (→ 401).
+    ha_id: str | None = None
 
 
 class HaExposeBody(BaseModel):
@@ -119,13 +123,22 @@ async def remove_instance(ha_id: str, request: Request):
 
 
 @router.post("/test")
-async def test_connection(body: HaTestBody):
+async def test_connection(body: HaTestBody, request: Request):
     """Probe a base_url/token WITHOUT saving — powers the config form's Test button.
+
+    On an edit the token field is blank; if ``ha_id`` is given we fall back to
+    that instance's stored token so Test reflects the real (saved) credentials
+    instead of failing 401 with no auth.
 
     Returns ``{connected, entity_count, last_error}``.
     """
+    token = body.token
+    if not token and body.ha_id:
+        row = await get_ha_instance(request.app.state.db, body.ha_id)
+        if row is not None:
+            token = row.get("token")
     inst = HaInstance(
-        {"id": "_probe", "name": "probe", "base_url": body.base_url, "token": body.token}
+        {"id": "_probe", "name": "probe", "base_url": body.base_url, "token": token}
     )
     await inst.refresh()
     return {
