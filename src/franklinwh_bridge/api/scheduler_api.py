@@ -44,6 +44,9 @@ def _gateway_points(request: Request, gateway: str) -> dict:
     billing = getattr(request.app.state, "billing", None)
     if billing is not None:
         pts = {**pts, **billing.as_points()}
+    demand = getattr(request.app.state, "demand_tracker", None)
+    if demand is not None:
+        pts = {**pts, **demand.as_points()}
     return pts
 
 

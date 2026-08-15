@@ -257,6 +257,14 @@ function settingsTab() {
         pricing_api: svc.pricing_api || 'none',
         demand_window: this._win(svc.demand_window, '14:00', '20:00'),
         bonus_window: this._win(svc.bonus_window, '00:00', '06:00'),
+        // calculation method + rates (stored in the pricing JSON)
+        pricing: {
+          billing_cycle_day: (svc.pricing && svc.pricing.billing_cycle_day) || 1,
+          demand_rate: (svc.pricing && svc.pricing.demand_rate) || 0,
+          demand_interval_min: (svc.pricing && svc.pricing.demand_interval_min) || 30,
+          demand_charge_basis: (svc.pricing && svc.pricing.demand_charge_basis) || 'per_kw_day',
+          export_bonus_rate: (svc.pricing && svc.pricing.export_bonus_rate) || 0,
+        },
       };
       this.serviceEditId = svc.id;
     },

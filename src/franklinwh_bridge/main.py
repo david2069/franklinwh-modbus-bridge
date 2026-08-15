@@ -36,6 +36,7 @@ from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.billing import BillingStore
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
 from franklinwh_bridge.gateway.constants import ConstantsStore
+from franklinwh_bridge.gateway.demand import DemandTracker
 from franklinwh_bridge.gateway.energy_totals import EnergyTotals
 from franklinwh_bridge.gateway.ha import HaRegistry
 from franklinwh_bridge.gateway.health import HealthChecker
@@ -385,6 +386,12 @@ async def lifespan(app: FastAPI):
     await billing.load()
     app.state.billing = billing
 
+    # ── Demand-charge + battery-bonus calculator ──────────────
+    demand_tracker = DemandTracker(db, billing, gateway_id="default")
+    await demand_tracker.load()
+    sample_bus.subscribe(demand_tracker.on_sample)
+    app.state.demand_tracker = demand_tracker
+
     def _schedule_points(gw_id: str) -> dict:
         """Latest cached points for a gateway (no Modbus call) + the computed
         period energy totals + HA entity values (``ha:<inst>:<entity>``) + the
@@ -398,6 +405,7 @@ async def lifespan(app: FastAPI):
             **ha_registry.entity_values(),
             **constants.as_points(),
             **billing.as_points(),
+            **demand_tracker.as_points(),
         }
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────

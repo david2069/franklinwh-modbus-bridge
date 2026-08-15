@@ -268,6 +268,30 @@ def _any_window_active(points: Points, key: str, now: datetime) -> bool:
     return any(isinstance(w, dict) and _in_window(w, now) for w in wins)
 
 
+def _demand_charge(p: Points, _n: datetime) -> float | None:
+    """Demand charge to date this period. Basis (user-configurable):
+    ``per_kw_day`` → peak_kW × rate × days-in-period; ``flat_per_kw`` →
+    peak_kW × rate."""
+    peak = _num(p, "demand_peak_kw")
+    rate = _num(p, "tariff_demand_rate")
+    if peak is None or rate is None:
+        return None
+    basis = p.get("tariff_demand_charge_basis") or "per_kw_day"
+    if basis == "flat_per_kw":
+        return round(peak * rate, 2)
+    days = _num(p, "demand_days_in_period") or 0.0
+    return round(peak * rate * days, 2)
+
+
+def _bonus_credit(p: Points, _n: datetime) -> float | None:
+    """bonus-window export (kWh) × export_bonus_rate ($/kWh)."""
+    kwh = _num(p, "bonus_export_kwh")
+    rate = _num(p, "tariff_export_bonus_rate")
+    if kwh is None or rate is None:
+        return None
+    return round(kwh * rate, 2)
+
+
 def _kwh(points: Points, key: str) -> float | None:
     """Lifetime cumulative energy in kWh from a Wh point, or None if absent.
 
@@ -387,6 +411,27 @@ SENSORS: list[SensorDef] = [
         "tariff.bonus_window_active", "In Battery-Export-Bonus Window", None, "bool",
         lambda p, n: _any_window_active(p, "tariff_bonus_windows", n),
     ),
+    # ── Demand-charge + battery-bonus calculator (DemandTracker) ──
+    SensorDef(
+        "demand.peak_kw", "Peak Demand this period (kW)", "kW", "number",
+        lambda p, _n: _num(p, "demand_peak_kw"),
+    ),
+    SensorDef(
+        "demand.interval_kw", "Current 30-min Demand (kW, running)", "kW", "number",
+        lambda p, _n: _num(p, "demand_interval_kw"),
+    ),
+    SensorDef(
+        "demand.period_charge", "Demand Charge this period ($)", "$", "number",
+        _demand_charge,
+    ),
+    SensorDef(
+        "bonus.export_kwh", "Bonus-window Export this period (kWh)", "kWh", "number",
+        lambda p, _n: _num(p, "bonus_export_kwh"),
+    ),
+    SensorDef(
+        "bonus.period_credit", "Battery Export Bonus this period ($)", "$", "number",
+        _bonus_credit,
+    ),
     # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
     SensorDef(
         "energy.grid_import.total_kwh",
@@ -495,6 +540,8 @@ _GROUP_LABELS = {
     "energy": "Energy",
     "const": "Constants",
     "tariff": "Tariff",
+    "demand": "Demand / Tariff",
+    "bonus": "Demand / Tariff",
     "time": "Time",
 }
 

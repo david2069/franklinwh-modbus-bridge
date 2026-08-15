@@ -501,9 +501,11 @@
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_peak_demand" class="accent-cyan-500"> Peak-demand import charge</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_bonus" class="accent-cyan-500"> Battery export bonus</label>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-3 gap-3">
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Min monthly bill</span>
                     <input type="number" min="0" step="0.01" x-model.number="serviceEdit.min_monthly_bill" class="form-control !py-1 !text-xs"></label>
+                  <label class="flex flex-col gap-1"><span class="text-slate-500">Billing cycle day</span>
+                    <input type="number" min="1" max="31" x-model.number="serviceEdit.pricing.billing_cycle_day" class="form-control !py-1 !text-xs"></label>
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Pricing API</span>
                     <select x-model="serviceEdit.pricing_api" class="form-control !py-1 !text-xs">
                       <option value="none">None</option>
@@ -515,10 +517,26 @@
                 <!-- Demand window -->
                 <template x-if="serviceEdit.has_peak_demand">
                   <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
-                    <div class="text-[11px] text-amber-400">Peak-demand window <span class="text-slate-500">→ tariff.demand_window_active</span></div>
+                    <div class="text-[11px] text-amber-400">Peak-demand window <span class="text-slate-500">→ demand.peak_kw / demand.period_charge</span></div>
                     <div class="flex items-center gap-2 text-xs">
                       <span class="text-slate-500">From</span><input type="time" x-model="serviceEdit.demand_window.start" class="form-control !py-0.5 !text-xs w-24">
                       <span class="text-slate-500">to</span><input type="time" x-model="serviceEdit.demand_window.end" class="form-control !py-0.5 !text-xs w-24">
+                    </div>
+                    <!-- calculation method (user-configurable) -->
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Rate ($/kW/day)</span>
+                        <input type="number" min="0" step="0.0001" x-model.number="serviceEdit.pricing.demand_rate" class="form-control !py-0.5 !text-xs"></label>
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Interval</span>
+                        <select x-model.number="serviceEdit.pricing.demand_interval_min" class="form-control !py-0.5 !text-xs">
+                          <option value="15">15 min (×4)</option>
+                          <option value="30">30 min (×2)</option>
+                          <option value="60">60 min (×1)</option>
+                        </select></label>
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Charge basis</span>
+                        <select x-model="serviceEdit.pricing.demand_charge_basis" class="form-control !py-0.5 !text-xs">
+                          <option value="per_kw_day">kW × rate × days</option>
+                          <option value="flat_per_kw">kW × rate (flat)</option>
+                        </select></label>
                     </div>
                     <div class="flex flex-wrap gap-1">
                       <template x-for="(mo, mi) in monthLabels" :key="'dm'+mi">
@@ -539,11 +557,13 @@
                 <!-- Bonus window -->
                 <template x-if="serviceEdit.has_export_bonus">
                   <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
-                    <div class="text-[11px] text-emerald-400">Battery-export-bonus window <span class="text-slate-500">→ tariff.bonus_window_active</span></div>
+                    <div class="text-[11px] text-emerald-400">Battery-export-bonus window <span class="text-slate-500">→ bonus.period_credit</span></div>
                     <div class="flex items-center gap-2 text-xs">
                       <span class="text-slate-500">From</span><input type="time" x-model="serviceEdit.bonus_window.start" class="form-control !py-0.5 !text-xs w-24">
                       <span class="text-slate-500">to</span><input type="time" x-model="serviceEdit.bonus_window.end" class="form-control !py-0.5 !text-xs w-24">
+                      <span class="text-slate-500 ml-2">Rate ($/kWh)</span><input type="number" min="0" step="0.0001" x-model.number="serviceEdit.pricing.export_bonus_rate" class="form-control !py-0.5 !text-xs w-24">
                     </div>
+                    <div class="text-[10px] text-slate-600">v1 credits total grid export in-window (may include solar)</div>
                     <div class="flex flex-wrap gap-1">
                       <template x-for="(mo, mi) in monthLabels" :key="'bm'+mi">
                         <button type="button" @click="toggleWinMonth(serviceEdit.bonus_window, mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
