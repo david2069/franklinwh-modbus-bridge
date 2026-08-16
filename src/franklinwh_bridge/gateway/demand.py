@@ -26,7 +26,11 @@ from datetime import datetime
 from typing import Any
 
 from franklinwh_bridge.gateway.scheduler_sensors import _in_window
-from franklinwh_bridge.store.db import get_app_config, set_app_config
+from franklinwh_bridge.store.db import (
+    get_app_config,
+    insert_billing_period,
+    set_app_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +116,9 @@ class DemandTracker:
         # ── period rollover ─────────────────────────────────────
         ps = _period_start(now, cycle_day)
         if self._s["period_start"] != ps.timestamp():
+            old_ps = self._s["period_start"]
+            if old_ps is not None:  # close the previous period into history first
+                await self._snapshot_closing_period(old_ps, ps)
             self._s.update(self._blank())
             self._s["period_start"] = ps.timestamp()
 
@@ -172,6 +179,51 @@ class DemandTracker:
             await set_app_config(self._db, _KEY, json.dumps(self._s))
         except Exception as exc:  # pragma: no cover
             logger.debug("DemandTracker persist failed: %s", exc)
+
+    async def _snapshot_closing_period(self, old_ps_ts: float, period_end: datetime) -> None:
+        """At a cycle rollover, freeze the just-closed period's final tariff totals
+        into ``billing_periods`` for the reporting/history view. Reuses the sensor
+        formulas (single source of truth) so history matches the live values.
+
+        Must never break live tracking — any failure is swallowed. Skipped when no
+        tariff is configured (nothing worth recording)."""
+        try:
+            if not (
+                self._billing.demand_config()
+                or self._billing.bonus_config()
+                or self._billing.charge_config()
+            ):
+                return
+            from franklinwh_bridge.gateway.scheduler_sensors import snapshot
+
+            # Value the closing state as of the period END so days == full length.
+            vals = self.as_points(now=period_end)
+            merged = {**vals, **self._billing.as_points()}
+            snap = snapshot(merged, period_end)
+
+            def _f(x: Any) -> float:
+                return round(float(x), 2) if isinstance(x, (int, float)) else 0.0
+
+            demand_charge = _f(snap.get("demand.period_charge"))
+            reward_credit = _f(snap.get("bonus.period_credit"))
+            charge_cost = _f(snap.get("tariff.export_charge_cost"))
+            record = {
+                "gateway_id": self._gw,
+                "period_start": old_ps_ts,
+                "period_end": period_end.timestamp(),
+                "demand_peak_kw": _f(vals.get("demand_peak_kw")),
+                "demand_charge": demand_charge,
+                "reward_kwh": _f(vals.get("bonus_export_kwh")),
+                "reward_credit": reward_credit,
+                "charge_kwh": _f(vals.get("charge_export_kwh")),
+                "charge_net_kwh": _f(snap.get("tariff.export_charge_net_kwh")),
+                "charge_cost": charge_cost,
+                "net_total": round(demand_charge + charge_cost - reward_credit, 2),
+                "created_at": period_end.timestamp(),
+            }
+            await insert_billing_period(self._db, record)
+        except Exception as exc:  # pragma: no cover - reporting must not break tracking
+            logger.debug("billing-period snapshot failed: %s", exc)
 
     def as_points(self, now: datetime | None = None) -> dict[str, float]:
         """Calculator outputs merged into the sensor snapshot. The sensors

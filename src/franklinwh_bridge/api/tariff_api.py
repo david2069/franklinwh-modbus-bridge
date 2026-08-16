@@ -19,15 +19,18 @@ Phase C.
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import datetime
 
 import aiosqlite
 from fastapi import APIRouter, Request
+from fastapi.responses import Response
 
 from franklinwh_bridge.api.scheduler_api import _gateway_points
 from franklinwh_bridge.api.schedules_api import _collect_sensor_refs, _decorate
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog
-from franklinwh_bridge.store.db import get_schedules, get_services
+from franklinwh_bridge.store.db import get_billing_periods, get_schedules, get_services
 
 router = APIRouter(prefix="/api", tags=["tariff"])
 
@@ -109,3 +112,42 @@ async def tariff_overview(request: Request, gateway: str = "default"):
         "live": live,
         "linked": linked,
     }
+
+
+#: History columns (order is the CSV column order too).
+_HISTORY_COLS = (
+    "period_start", "period_end", "demand_peak_kw", "demand_charge",
+    "reward_kwh", "reward_credit", "charge_kwh", "charge_net_kwh",
+    "charge_cost", "net_total",
+)
+
+
+@router.get("/tariff/history")
+async def tariff_history(request: Request, gateway: str = "default", limit: int = 36):
+    """Closed billing periods (reporting/history), most-recent first."""
+    db: aiosqlite.Connection = request.app.state.db
+    periods = await get_billing_periods(db, gateway, max(1, min(limit, 240)))
+    return {"gateway": gateway, "periods": periods}
+
+
+@router.get("/tariff/history.csv")
+async def tariff_history_csv(request: Request, gateway: str = "default"):
+    """Closed billing periods as a CSV download (chronological)."""
+    db: aiosqlite.Connection = request.app.state.db
+    periods = await get_billing_periods(db, gateway, 240)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(("period_start_iso", "period_end_iso", *_HISTORY_COLS[2:]))
+    for p in reversed(periods):  # oldest → newest for a report
+        writer.writerow(
+            (
+                datetime.fromtimestamp(p["period_start"]).date().isoformat(),
+                datetime.fromtimestamp(p["period_end"]).date().isoformat(),
+                *(p.get(c) for c in _HISTORY_COLS[2:]),
+            )
+        )
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="tariff-history-{gateway}.csv"'},
+    )

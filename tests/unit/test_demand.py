@@ -25,6 +25,16 @@ class FakeBilling:
     def charge_config(self):
         return self._c
 
+    def as_points(self):
+        d = self._d or {}
+        c = self._c or {}
+        return {
+            "tariff_demand_rate": d.get("rate", 0.0),
+            "tariff_export_bonus_rate": (self._b or {}).get("rate", 0.0),
+            "tariff_export_charge_rate": c.get("rate", 0.0),
+            "tariff_demand_charge_basis": d.get("charge_basis", "per_kw_day"),
+        }
+
 
 def _s(dt: datetime, **points) -> Sample:
     return Sample(gateway_id="default", ts=dt.timestamp(), points=points, quality="ok")
@@ -118,6 +128,66 @@ async def test_period_rollover_resets():
     m2 = datetime(2026, 4, 2, 10, 0)
     await t.on_sample(_s(m2, grid_import_wh=3000))
     assert t.as_points()["demand_peak_kw"] == 0.0
+
+
+async def test_rollover_snapshots_period_history(tmp_path):
+    """Crossing a billing cycle writes the closing period's final tariff totals
+    to billing_periods, matching the live sensor formulas."""
+    from franklinwh_bridge.store.db import get_billing_periods, init_db
+
+    db = await init_db(tmp_path / "hist.db")
+    try:
+        billing = FakeBilling(
+            demand=_demand_cfg(rate=0.15),
+            bonus={"window": ALLDAY, "rate": 0.0385},
+            charge={"window": ALLDAY, "rate": 0.0123, "free_kwh_per_day": 6.84, "cycle_day": 1},
+        )
+        t = DemandTracker(db=db, billing=billing)
+        m = datetime(2026, 3, 10)  # March = 31-day period (cycle day 1)
+        await _feed(t, [
+            _s(m.replace(hour=10, minute=0), grid_import_wh=0, grid_export_wh=0),
+            _s(m.replace(hour=10, minute=30), grid_import_wh=3000, grid_export_wh=300000),
+            _s(m.replace(hour=11, minute=0), grid_import_wh=3000, grid_export_wh=300000),
+        ])
+        # cross into April → snapshots the March period
+        apr = datetime(2026, 4, 2, 10, 0)
+        await t.on_sample(_s(apr, grid_import_wh=3000, grid_export_wh=300000))
+
+        rows = await get_billing_periods(db, "default")
+        assert len(rows) == 1
+        r = rows[0]
+        assert r["demand_peak_kw"] == 6.0                       # 3 kWh × 2
+        assert r["demand_charge"] == round(6.0 * 0.15 * 31, 2)  # peak × rate × full days
+        assert r["reward_kwh"] == 300.0
+        assert r["reward_credit"] == round(300.0 * 0.0385, 2)
+        assert r["charge_kwh"] == 300.0
+        free = 6.84 * 31                                        # 212.04 free
+        assert r["charge_net_kwh"] == round(300.0 - free, 2)
+        assert r["charge_cost"] == round((300.0 - free) * 0.0123, 2)
+        assert r["net_total"] == round(
+            r["demand_charge"] + r["charge_cost"] - r["reward_credit"], 2
+        )
+
+        # Idempotent: re-processing the same rollover doesn't duplicate the row.
+        apr2 = datetime(2026, 4, 2, 10, 1)
+        await t.on_sample(_s(apr2, grid_import_wh=3000, grid_export_wh=300000))
+        assert len(await get_billing_periods(db, "default")) == 1
+    finally:
+        await db.close()
+
+
+async def test_no_snapshot_without_tariff(tmp_path):
+    """A rollover with no tariff configured records nothing."""
+    from franklinwh_bridge.store.db import get_billing_periods, init_db
+
+    db = await init_db(tmp_path / "empty.db")
+    try:
+        t = DemandTracker(db=db, billing=FakeBilling())  # no demand/bonus/charge
+        await t.on_sample(_s(datetime(2026, 3, 10), grid_import_wh=1000))
+        await t.on_sample(_s(datetime(2026, 4, 2), grid_import_wh=1000))  # rollover
+        assert await get_billing_periods(db, "default") == []
+    finally:
+        await db.close()
 
 
 def test_period_start():

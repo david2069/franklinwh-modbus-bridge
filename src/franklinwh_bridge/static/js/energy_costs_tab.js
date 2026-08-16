@@ -8,6 +8,7 @@
 function energyCostsTab() {
   return {
     overview: null,
+    history: [],
     loading: false,
     error: '',
     _timer: null,
@@ -40,6 +41,18 @@ function energyCostsTab() {
       } else {
         this.error = data?.error || 'Failed to load tariff overview';
       }
+      this.loadHistory();
+    },
+
+    async loadHistory() {
+      const data = await fetchJSON('api/tariff/history');
+      if (data && Array.isArray(data.periods)) this.history = data.periods;
+    },
+
+    /** Same-origin CSV download (session cookie authorises it). */
+    downloadCsv() {
+      const base = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
+      window.open(`${base}/api/tariff/history.csv`, '_blank');
     },
 
     // ── live sensor accessors ──────────────────────────────
@@ -114,6 +127,23 @@ function energyCostsTab() {
       return !!(this.demandCfg || this.bonusCfg || this.chargeCfg);
     },
     get linked() { return this.overview?.linked || []; },
+
+    // ── history / reporting ────────────────────────────────
+    /** Periods oldest→newest for the chart (history arrives newest-first). */
+    get historyChrono() { return [...this.history].reverse(); },
+    /** Largest absolute net across history, for bar scaling (min 1 to avoid /0). */
+    get maxAbsNet() {
+      return Math.max(1, ...this.history.map((p) => Math.abs(p.net_total || 0)));
+    },
+    barPct(p) {
+      return Math.max(2, (Math.abs(p.net_total || 0) / this.maxAbsNet) * 100);
+    },
+    fmtDate(ts) {
+      if (ts == null) return '—';
+      const d = new Date(ts * 1000);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    },
+    dollars(v) { return (v == null ? 0 : v) < 0 ? '-$' + Math.abs(v).toFixed(2) : '$' + Number(v || 0).toFixed(2); },
 
     // ── navigation ─────────────────────────────────────────
     goSettings() { Alpine.store('app').setTab('settings'); },

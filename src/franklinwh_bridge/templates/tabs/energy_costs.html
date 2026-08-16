@@ -234,4 +234,73 @@
     </div>
   </template>
 
+  <!-- ═══ History / reporting ═══ -->
+  <template x-if="overview">
+    <div class="card mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="card-label !mb-0">History</div>
+        <button x-show="history.length" @click="downloadCsv()" class="btn btn-sm btn-secondary">Export CSV</button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">Closed billing periods, snapshotted automatically at each cycle rollover.</p>
+
+      <template x-if="!history.length">
+        <div class="text-xs text-slate-500 py-3 text-center">No closed billing periods yet — the first snapshot is written when the current period rolls over.</div>
+      </template>
+
+      <template x-if="history.length">
+        <div>
+          <!-- Net cost/credit bar chart (per closed period) -->
+          <div class="flex items-end gap-1 h-24 mb-1 border-b border-white/[0.06] pb-0">
+            <template x-for="p in historyChrono" :key="p.id">
+              <div class="flex-1 flex flex-col items-center justify-end h-full group relative" :title="fmtDate(p.period_start) + ': net ' + dollars(p.net_total)">
+                <div class="w-full rounded-t transition-all"
+                     :class="(p.net_total || 0) < 0 ? 'bg-emerald-500/60' : 'bg-cyan-500/60'"
+                     :style="`height: ${barPct(p)}%`"></div>
+              </div>
+            </template>
+          </div>
+          <div class="flex gap-1 mb-3">
+            <template x-for="p in historyChrono" :key="'l'+p.id">
+              <div class="flex-1 text-center text-[9px] text-slate-600 truncate" x-text="fmtDate(p.period_start)"></div>
+            </template>
+          </div>
+
+          <!-- Detail table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs whitespace-nowrap">
+              <thead>
+                <tr class="text-left text-slate-500 border-b border-white/[0.06]">
+                  <th class="py-1.5 pr-3 font-medium">Period</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Peak kW</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Demand $</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Reward kWh</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Reward $</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Export kWh</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Billable kWh</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Charge $</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Net $</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="p in history" :key="p.id">
+                  <tr class="border-b border-white/[0.04]">
+                    <td class="py-2 pr-3 text-slate-300"><span x-text="fmtDate(p.period_start)"></span> – <span x-text="fmtDate(p.period_end)"></span></td>
+                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.demand_peak_kw||0).toFixed(2)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-amber-300" x-text="dollars(p.demand_charge)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.reward_kwh||0).toFixed(1)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-emerald-300" x-text="dollars(p.reward_credit)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_kwh||0).toFixed(1)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_net_kwh||0).toFixed(1)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-cyan-300" x-text="dollars(p.charge_cost)"></td>
+                    <td class="py-2 pr-3 text-right font-mono font-semibold" :class="(p.net_total||0) < 0 ? 'text-emerald-300' : 'text-slate-100'" x-text="dollars(p.net_total)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+  </template>
+
 </div>

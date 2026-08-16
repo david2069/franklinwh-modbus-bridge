@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 33
+CURRENT_SCHEMA_VERSION = 34
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -519,6 +519,28 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE services ADD COLUMN demand_window TEXT;
     ALTER TABLE services ADD COLUMN bonus_window TEXT;
     ALTER TABLE services ADD COLUMN pricing TEXT;
+    """,
+    34: """
+    -- Billing-period history (tariff reporting, Phase C). One row per closed
+    -- billing period, snapshotted by the DemandTracker at each cycle rollover.
+    -- period_start/end are unix ts; UNIQUE(gateway_id, period_start) makes the
+    -- snapshot idempotent across restarts / re-fires.
+    CREATE TABLE IF NOT EXISTS billing_periods (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        gateway_id     TEXT NOT NULL DEFAULT 'default',
+        period_start   REAL NOT NULL,
+        period_end     REAL NOT NULL,
+        demand_peak_kw REAL NOT NULL DEFAULT 0,
+        demand_charge  REAL NOT NULL DEFAULT 0,
+        reward_kwh     REAL NOT NULL DEFAULT 0,
+        reward_credit  REAL NOT NULL DEFAULT 0,
+        charge_kwh     REAL NOT NULL DEFAULT 0,
+        charge_net_kwh REAL NOT NULL DEFAULT 0,
+        charge_cost    REAL NOT NULL DEFAULT 0,
+        net_total      REAL NOT NULL DEFAULT 0,
+        created_at     REAL NOT NULL DEFAULT 0,
+        UNIQUE(gateway_id, period_start)
+    );
     """,
 }
 
@@ -1224,6 +1246,44 @@ async def get_app_config(
     async with db.execute("SELECT value FROM app_config WHERE key = ?", (key,)) as cur:
         row = await cur.fetchone()
         return row["value"] if row else default
+
+
+# ── Billing-period history (tariff reporting, Phase C) ───────
+
+_BILLING_PERIOD_FIELDS = (
+    "gateway_id", "period_start", "period_end", "demand_peak_kw", "demand_charge",
+    "reward_kwh", "reward_credit", "charge_kwh", "charge_net_kwh", "charge_cost",
+    "net_total", "created_at",
+)
+
+
+async def insert_billing_period(db: aiosqlite.Connection, record: dict) -> None:
+    """Persist one closed billing period. Idempotent on (gateway_id,
+    period_start) — a re-snapshot of the same period is ignored."""
+    cols = ", ".join(_BILLING_PERIOD_FIELDS)
+    placeholders = ", ".join("?" for _ in _BILLING_PERIOD_FIELDS)
+    await db.execute(
+        f"INSERT INTO billing_periods ({cols}) VALUES ({placeholders}) "
+        "ON CONFLICT(gateway_id, period_start) DO NOTHING",
+        tuple(record.get(f) for f in _BILLING_PERIOD_FIELDS),
+    )
+    await db.commit()
+
+
+async def get_billing_periods(
+    db: aiosqlite.Connection, gateway_id: str = "default", limit: int = 36
+) -> list[dict]:
+    """Closed billing periods for a gateway, most-recent first."""
+    db.row_factory = aiosqlite.Row
+    rows = []
+    async with db.execute(
+        "SELECT * FROM billing_periods WHERE gateway_id = ? "
+        "ORDER BY period_start DESC LIMIT ?",
+        (gateway_id, limit),
+    ) as cur:
+        async for row in cur:
+            rows.append(dict(row))
+    return rows
 
 
 # ── HA instances (multi-HA entity access) ────────────────────

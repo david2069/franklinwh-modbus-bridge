@@ -89,3 +89,30 @@ async def test_linked_automations_scanner(client):
     assert row["enabled"] is True
     assert row["action"] == "force_charge"
     assert a["id"]  # sanity
+
+
+async def test_history_endpoint_and_csv(client):
+    from franklinwh_bridge.main import app
+    from franklinwh_bridge.store.db import insert_billing_period
+
+    rec = {
+        "gateway_id": "default", "period_start": 1738368000.0, "period_end": 1740787200.0,
+        "demand_peak_kw": 6.0, "demand_charge": 27.9, "reward_kwh": 300.0,
+        "reward_credit": 11.55, "charge_kwh": 300.0, "charge_net_kwh": 87.96,
+        "charge_cost": 1.08, "net_total": 17.43, "created_at": 1740787200.0,
+    }
+    await insert_billing_period(app.state.db, rec)
+
+    r = await client.get("/api/tariff/history")
+    assert r.status_code == 200
+    periods = r.json()["periods"]
+    assert len(periods) == 1
+    assert periods[0]["net_total"] == 17.43
+    assert periods[0]["demand_peak_kw"] == 6.0
+
+    c = await client.get("/api/tariff/history.csv")
+    assert c.status_code == 200
+    assert "text/csv" in c.headers["content-type"]
+    lines = c.text.splitlines()
+    assert "net_total" in lines[0]
+    assert "17.43" in c.text
