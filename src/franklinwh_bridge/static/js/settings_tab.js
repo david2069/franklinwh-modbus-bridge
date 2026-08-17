@@ -281,21 +281,24 @@ function settingsTab() {
       this.serviceEditId = null;
     },
 
-    // Fill the billing form with the Ausgrid two-way (solar-sponge) tariff so the
-    // user only has to confirm/save. Reward 4-9pm @ 3.85c; export CHARGE 10am-3pm
-    // @ 1.23c with ~6.84 kWh/day free (≈212 kWh over a 31-day period).
+    // Fill the billing form with Ausgrid's mandatory two-way export tariff EA029
+    // (FY27 rates, per Amber). REWARD 4-9pm @ 3.8551c for all exports; export
+    // CHARGE 10am-3pm @ 1.3552c above the free "Basic Export Level" of ~6.83
+    // kWh/day (≈212 kWh over a 31-day period). Applies every day, all year.
+    // (Demand tariff is seasonal + needs the network demand-window times, so it
+    //  is configured separately — see the Peak-demand section.)
     loadAusgridPreset() {
       const e = this.serviceEdit;
       e.has_export_bonus = true;
       e.bonus_window = { months: [], days: [], start: '16:00', end: '21:00' };
-      e.pricing.export_bonus_rate = 0.0385;
+      e.pricing.export_bonus_rate = 0.038551;
       e.has_export_charge = true;
       e.pricing.export_charge = {
         window: { months: [], days: [], start: '10:00', end: '15:00' },
-        rate: 0.0123, free_kwh_per_day: 6.84,
+        rate: 0.013552, free_kwh_per_day: 6.83,
       };
       if (!e.pricing.billing_cycle_day) e.pricing.billing_cycle_day = 1;
-      Alpine.store('app').toast('Ausgrid two-way tariff loaded — review & save', 'info');
+      Alpine.store('app').toast('Ausgrid EA029 two-way tariff (FY27) loaded — review & save', 'info');
     },
 
     async saveService() {
