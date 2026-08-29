@@ -117,9 +117,11 @@ async def test_points_empty(client):
     assert data["ts"] is None
 
 
-async def test_points_after_publish(client):
+async def test_points_after_publish(client, default_gateway_bus):
     sample = Sample.now("default", {"soc": 85, "power": -1200})
-    await app.state.sample_bus.publish(sample)
+    # /api/points reads the default gateway's own bus, never the global one.
+    bus = await default_gateway_bus(app)
+    await bus.publish(sample)
 
     resp = await client.get("/api/points")
     assert resp.status_code == 200

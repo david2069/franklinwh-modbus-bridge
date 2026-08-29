@@ -167,7 +167,8 @@ async def test_gateway_diagnose(client):
     data = resp.json()
     assert data["gateway_id"] == "diagmock"
     assert data["mock"] is True
-    assert "mock gateway" in data["verdict"]
+    assert data["overall"] in ("ok", "degraded")
+    assert "Mock gateway" in data["summary"]
 
     resp = await client.post("/api/gateways/does-not-exist/diagnose")
     assert resp.status_code == 404

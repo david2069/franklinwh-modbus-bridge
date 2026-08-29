@@ -427,14 +427,16 @@ async def test_app_health_on_startup(client):
     assert data["status"] == "ok"
 
 
-async def test_app_points_after_sample(client):
+async def test_app_points_after_sample(client, default_gateway_bus):
     """Points endpoint returns data after a sample is published."""
     sample = Sample.now("default", {
         "soc": 85,
         "battery_power_w": -1200,
         "voltage_v": 243.4,
     })
-    await app.state.sample_bus.publish(sample)
+    # /api/points reads the default gateway's own bus, never the global one.
+    bus = await default_gateway_bus(app)
+    await bus.publish(sample)
 
     resp = await client.get("/api/points")
     assert resp.status_code == 200

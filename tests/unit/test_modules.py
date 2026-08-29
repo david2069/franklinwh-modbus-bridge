@@ -3,6 +3,7 @@
 import pytest
 
 from franklinwh_bridge.gateway.modules import (
+    MODULES,
     get_modules,
     is_module_enabled,
     set_module_enabled,
@@ -21,7 +22,14 @@ async def test_defaults_all_enabled_core_flagged(db):
     mods = {m["id"]: m for m in await get_modules(db)}
     assert mods["dashboard"]["core"] is True and mods["settings"]["core"] is True
     assert mods["automations"]["core"] is False
-    assert all(m["enabled"] for m in mods.values())  # default: everything on
+    # Default enablement follows each module's own default_enabled flag —
+    # everything is on except the opt-in ones (energy_costs ships off).
+    defs = {m["id"]: m for m in MODULES}
+    assert all(
+        m["enabled"] == (defs[m["id"]]["core"] or defs[m["id"]]["default_enabled"])
+        for m in mods.values()
+    )
+    assert mods["energy_costs"]["enabled"] is False
     # pre-auth (no capabilities filter) → implicit admin can access all
     assert all(m["can_access"] for m in mods.values())
     assert mods["automations"]["tab"] == "schedule"  # module id != tab id
