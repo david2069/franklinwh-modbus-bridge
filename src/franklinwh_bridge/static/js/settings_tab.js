@@ -269,9 +269,47 @@ function settingsTab() {
             window: { months: [], days: [], start: '10:00', end: '15:00' },
             rate: 0.0123, free_kwh_per_day: 6.84,
           },
+          // Standing charges — a list, copied so edits don't mutate the row.
+          fixed_charges: ((svc.pricing && svc.pricing.fixed_charges) || []).map((c) => ({
+            type: c.type || 'supply',
+            description: c.description || '',
+            levied_by: c.levied_by || 'utility',
+            frequency: c.frequency || 'daily',
+            rate: Number(c.rate) || 0,
+            tax_rate: Number(c.tax_rate) || 0,
+          })),
         },
       };
       this.serviceEditId = svc.id;
+    },
+
+    // ── Fixed / standing charges ──────────────────────────────
+    addFixedCharge() {
+      this.serviceEdit.pricing.fixed_charges.push({
+        type: 'supply', description: '', levied_by: 'utility',
+        frequency: 'daily', rate: 0, tax_rate: 0,
+      });
+    },
+    removeFixedCharge(i) { this.serviceEdit.pricing.fixed_charges.splice(i, 1); },
+
+    /** Per-day equivalent of one charge, tax-inclusive. Mirrors the server's
+     *  _daily_equiv() against a nominal 30-day period — the live sensors use
+     *  the real billing-period length. */
+    _fixedPerDay(fc) {
+      const rate = Number(fc.rate) || 0;
+      const per = { daily: 1, weekly: 7, monthly: 30, quarterly: 90, annual: 360 }[fc.frequency] || 1;
+      return (rate / per) * (1 + (Number(fc.tax_rate) || 0));
+    },
+    fixedChargePerDay(fc) { return '$' + this._fixedPerDay(fc).toFixed(4); },
+    fixedChargesPerDay() {
+      const t = (this.serviceEdit.pricing.fixed_charges || [])
+        .reduce((s, fc) => s + this._fixedPerDay(fc), 0);
+      return '$' + t.toFixed(4);
+    },
+    fixedChargesPerMonth() {
+      const t = (this.serviceEdit.pricing.fixed_charges || [])
+        .reduce((s, fc) => s + this._fixedPerDay(fc), 0) * 30;
+      return '$' + t.toFixed(2);
     },
 
     cancelServiceEdit() {

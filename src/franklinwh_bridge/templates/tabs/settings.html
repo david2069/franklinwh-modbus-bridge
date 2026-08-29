@@ -615,6 +615,65 @@
                     </div>
                   </div>
                 </template>
+
+                <!-- Fixed / standing charges (levied regardless of usage) -->
+                <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div class="text-[11px] text-violet-400">Fixed / standing charges <span class="text-slate-500">→ fixed.accrued_period / fixed.remaining</span></div>
+                    <button type="button" @click="addFixedCharge()" class="px-2 py-0.5 rounded text-[10px] border border-violet-500/40 text-violet-300 hover:bg-violet-500/10">+ Add charge</button>
+                  </div>
+                  <div class="text-[10px] text-slate-600">Daily supply, metering, membership or connection fees — charged whatever you use. Counted in the Energy Costs net total.</div>
+
+                  <template x-if="!serviceEdit.pricing.fixed_charges.length">
+                    <div class="text-[11px] text-slate-500 py-1">No standing charges configured — the fixed.* sensors will read $0.</div>
+                  </template>
+
+                  <template x-for="(fc, fi) in serviceEdit.pricing.fixed_charges" :key="'fc'+fi">
+                    <div class="rounded border border-white/[0.04] p-2 space-y-1.5">
+                      <div class="grid grid-cols-4 gap-2 text-xs">
+                        <label class="flex flex-col gap-0.5"><span class="text-slate-500">Type</span>
+                          <select x-model="fc.type" class="form-control !py-0.5 !text-xs">
+                            <option value="supply">Supply</option>
+                            <option value="metering">Metering</option>
+                            <option value="membership">Membership</option>
+                            <option value="connection">Connection</option>
+                            <option value="other">Other</option>
+                          </select></label>
+                        <label class="flex flex-col gap-0.5"><span class="text-slate-500">Levied by</span>
+                          <select x-model="fc.levied_by" class="form-control !py-0.5 !text-xs">
+                            <option value="utility">Utility / network</option>
+                            <option value="retailer">Retailer</option>
+                            <option value="other">Other</option>
+                          </select></label>
+                        <label class="flex flex-col gap-0.5"><span class="text-slate-500">Frequency</span>
+                          <select x-model="fc.frequency" class="form-control !py-0.5 !text-xs">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="annual">Annual</option>
+                          </select></label>
+                        <label class="flex flex-col gap-0.5"><span class="text-slate-500">Rate ($)</span>
+                          <input type="number" min="0" step="0.0001" x-model.number="fc.rate" class="form-control !py-0.5 !text-xs"></label>
+                      </div>
+                      <div class="grid grid-cols-[1fr_auto_auto] gap-2 text-xs items-end">
+                        <label class="flex flex-col gap-0.5"><span class="text-slate-500">Description</span>
+                          <input type="text" maxlength="120" x-model="fc.description" placeholder="e.g. Network daily supply" class="form-control !py-0.5 !text-xs"></label>
+                        <label class="flex flex-col gap-0.5"><span class="text-slate-500">Tax rate</span>
+                          <input type="number" min="0" step="0.01" x-model.number="fc.tax_rate" class="form-control !py-0.5 !text-xs w-20"></label>
+                        <button type="button" @click="removeFixedCharge(fi)" class="px-2 py-1 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">Remove</button>
+                      </div>
+                      <div class="text-[10px] text-slate-600">≈ <span class="font-mono text-violet-300" x-text="fixedChargePerDay(fc)"></span>/day incl. tax</div>
+                    </div>
+                  </template>
+
+                  <template x-if="serviceEdit.pricing.fixed_charges.length">
+                    <div class="flex items-baseline justify-between text-xs pt-1 border-t border-white/[0.06]">
+                      <span class="text-slate-500">Total standing charges</span>
+                      <span class="font-mono text-violet-300"><span x-text="fixedChargesPerDay()"></span>/day · <span x-text="fixedChargesPerMonth()"></span>/30d</span>
+                    </div>
+                  </template>
+                </div>
               </div>
             </template>
 
