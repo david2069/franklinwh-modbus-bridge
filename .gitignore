@@ -30,3 +30,6 @@ tests/results/
 
 # Claude Code local, machine-specific settings (permissions allowlist)
 .claude/settings.local.json
+
+# Personal utility bills / statements (PII — never commit)
+*.pdf
