@@ -482,6 +482,27 @@ SENSORS: list[SensorDef] = [
         "tariff.export_charge_cost", "Export Charge this period ($)", "$", "number",
         _charge_cost,
     ),
+    # ── Fixed / standing charges (informational; offset target) ──
+    SensorDef(
+        "fixed.daily_charge", "Fixed Charges per day ($)", "$", "number",
+        lambda p, _n: _num(p, "fixed_daily_charge"),
+    ),
+    SensorDef(
+        "fixed.accrued_period", "Fixed Charges accrued this period ($)", "$", "number",
+        lambda p, _n: _num(p, "fixed_accrued_period"),
+    ),
+    SensorDef(
+        "fixed.period_total", "Fixed Charges projected this period ($)", "$", "number",
+        lambda p, _n: _num(p, "fixed_period_total"),
+    ),
+    SensorDef(
+        "fixed.remaining", "Fixed Charges left to cover this period ($)", "$", "number",
+        lambda p, _n: _num(p, "fixed_remaining"),
+    ),
+    SensorDef(
+        "fixed.days_remaining", "Days left in billing period", "days", "number",
+        lambda p, _n: _num(p, "fixed_days_remaining"),
+    ),
     # ── Lifetime cumulative energy (kWh, from Modbus Wh counters) ──
     SensorDef(
         "energy.grid_import.total_kwh",
@@ -592,6 +613,7 @@ _GROUP_LABELS = {
     "tariff": "Tariff",
     "demand": "Demand / Tariff",
     "bonus": "Demand / Tariff",
+    "fixed": "Fixed Charges",
     "time": "Time",
 }
 

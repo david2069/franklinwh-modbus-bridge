@@ -15,6 +15,14 @@ lands, not backfilled later.
 
 ### Added
 
+- **Fixed / standing charges**: per-service `pricing.fixed_charges` (daily
+  supply, metering, membership, …) accrued over the billing period and
+  published as `fixed.*` sensors (per-day, accrued, projected, left to
+  cover, days remaining) usable as automation conditions. Folded into the
+  Energy Costs net total — live ("Net this period" = demand + export
+  charge + fixed − export credit) and in the stored billing-period
+  history (new `fixed_charges` column, migration 35; rows written before
+  it keep 0).
 - **Core bridge**: config layer (environment/settings/manager), SQLite
   store, Modbus poller with sample bus, SunSpec model catalog
   (capture/persist/hash/diff), REST API gateway, MQTT publisher with Home

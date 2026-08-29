@@ -165,6 +165,9 @@ async def patch_service(service_id: str, body: ServiceUpdate, request: Request):
     billing = getattr(request.app.state, "billing", None)
     if billing is not None:
         await billing.load()
+    fixed = getattr(request.app.state, "fixed_charges", None)
+    if fixed is not None:
+        await fixed.load()
     return result
 
 

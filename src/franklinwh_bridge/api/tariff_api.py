@@ -7,8 +7,9 @@ the Settings card can't show well:
   (windows, rates, free allowance, billing cycle) per the Phase A engine, plus a
   per-service flag summary so the user knows what's on and where to edit it.
 - **This period (live)** — the current billing-period ``tariff.*`` / ``demand.*``
-  / ``bonus.*`` sensor values (peak kW + charge, reward kWh + credit, export
-  charge kWh + net-above-free + cost, free-allowance remaining, days elapsed).
+  / ``bonus.*`` / ``fixed.*`` sensor values (peak kW + charge, reward kWh +
+  credit, export charge kWh + net-above-free + cost, free-allowance remaining,
+  standing charges accrued, days elapsed).
 - **Linked automations** — which schedule entries reference any tariff/demand
   sensor, reusing the ``_collect_sensor_refs`` scanner from the import validator.
 
@@ -35,7 +36,7 @@ from franklinwh_bridge.store.db import get_billing_periods, get_schedules, get_s
 router = APIRouter(prefix="/api", tags=["tariff"])
 
 #: Sensor-id prefixes this tab owns.
-_TARIFF_PREFIXES = ("tariff.", "demand.", "bonus.")
+_TARIFF_PREFIXES = ("tariff.", "demand.", "bonus.", "fixed.")
 
 
 def _is_tariff(sensor_id: str) -> bool:
@@ -118,7 +119,7 @@ async def tariff_overview(request: Request, gateway: str = "default"):
 _HISTORY_COLS = (
     "period_start", "period_end", "demand_peak_kw", "demand_charge",
     "reward_kwh", "reward_credit", "charge_kwh", "charge_net_kwh",
-    "charge_cost", "net_total",
+    "charge_cost", "fixed_charges", "net_total",
 )
 
 

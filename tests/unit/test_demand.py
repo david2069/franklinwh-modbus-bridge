@@ -176,6 +176,63 @@ async def test_rollover_snapshots_period_history(tmp_path):
         await db.close()
 
 
+async def test_rollover_snapshot_includes_fixed_charges(tmp_path):
+    """Standing charges for the full closing period land in the snapshot and are
+    added to net_total (they're a cost, like demand/export charges)."""
+    from franklinwh_bridge.gateway.fixed_charges import FixedChargesStore
+    from franklinwh_bridge.store.db import get_billing_periods, init_db
+
+    db = await init_db(tmp_path / "fixed_hist.db")
+    try:
+        fixed = FixedChargesStore(db=None)
+        fixed._cycle_day = 1
+        fixed._charges = [
+            {"type": "supply", "description": "", "levied_by": "utility",
+             "frequency": "daily", "rate": 1.85, "tax_rate": 0.0},
+        ]
+        billing = FakeBilling(demand=_demand_cfg(rate=0.15))
+        t = DemandTracker(db=db, billing=billing, fixed_charges=fixed)
+        m = datetime(2026, 3, 10)  # March = 31-day period (cycle day 1)
+        await _feed(t, [
+            _s(m.replace(hour=10, minute=0), grid_import_wh=0),
+            _s(m.replace(hour=10, minute=30), grid_import_wh=3000),
+            _s(m.replace(hour=11, minute=0), grid_import_wh=3000),
+        ])
+        await t.on_sample(_s(datetime(2026, 4, 2, 10, 0), grid_import_wh=3000))
+
+        r = (await get_billing_periods(db, "default"))[0]
+        assert r["fixed_charges"] == round(1.85 * 31, 2)     # full period, not elapsed
+        assert r["net_total"] == round(r["demand_charge"] + r["fixed_charges"], 2)
+    finally:
+        await db.close()
+
+
+async def test_fixed_charges_alone_still_snapshot(tmp_path):
+    """Standing charges with no demand/bonus/export tariff are still a bill —
+    the rollover records the period rather than skipping it."""
+    from franklinwh_bridge.gateway.fixed_charges import FixedChargesStore
+    from franklinwh_bridge.store.db import get_billing_periods, init_db
+
+    db = await init_db(tmp_path / "fixed_only.db")
+    try:
+        fixed = FixedChargesStore(db=None)
+        fixed._cycle_day = 1
+        fixed._charges = [
+            {"type": "membership", "description": "", "levied_by": "retailer",
+             "frequency": "monthly", "rate": 22.42, "tax_rate": 0.0},
+        ]
+        t = DemandTracker(db=db, billing=FakeBilling(), fixed_charges=fixed)
+        await t.on_sample(_s(datetime(2026, 3, 10), grid_import_wh=1000))
+        await t.on_sample(_s(datetime(2026, 4, 2), grid_import_wh=1000))  # rollover
+
+        rows = await get_billing_periods(db, "default")
+        assert len(rows) == 1
+        assert rows[0]["fixed_charges"] == pytest.approx(22.42, abs=0.02)
+        assert rows[0]["net_total"] == rows[0]["fixed_charges"]
+    finally:
+        await db.close()
+
+
 async def test_no_snapshot_without_tariff(tmp_path):
     """A rollover with no tariff configured records nothing."""
     from franklinwh_bridge.store.db import get_billing_periods, init_db

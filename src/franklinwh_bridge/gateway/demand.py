@@ -22,7 +22,7 @@ from __future__ import annotations
 import calendar
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from franklinwh_bridge.gateway.scheduler_sensors import _in_window
@@ -61,9 +61,20 @@ def _period_end(period_start: datetime, cycle_day: int) -> datetime:
 
 
 class DemandTracker:
-    def __init__(self, db: Any, billing: Any, *, gateway_id: str = "default") -> None:
+    def __init__(
+        self,
+        db: Any,
+        billing: Any,
+        *,
+        gateway_id: str = "default",
+        fixed_charges: Any = None,
+    ) -> None:
         self._db = db
         self._billing = billing
+        #: Optional FixedChargesStore — its accrual is folded into the closing
+        #: period's ``net_total`` so history reflects the whole bill, not just
+        #: the usage-driven part. ``None`` → fixed charges count as 0.
+        self._fixed = fixed_charges
         self._gw = gateway_id
         self._last_persist = 0.0
         self._s: dict[str, Any] = self._blank()
@@ -192,13 +203,22 @@ class DemandTracker:
                 self._billing.demand_config()
                 or self._billing.bonus_config()
                 or self._billing.charge_config()
+                or (self._fixed and self._fixed.charges())
             ):
                 return
             from franklinwh_bridge.gateway.scheduler_sensors import snapshot
 
             # Value the closing state as of the period END so days == full length.
             vals = self.as_points(now=period_end)
-            merged = {**vals, **self._billing.as_points()}
+            # Standing charges resolve their own period from ``now``, and
+            # ``period_end`` is the NEXT period's start — value them at the
+            # closing period's last instant or they'd price the wrong month.
+            fixed_pts = (
+                self._fixed.as_points(now=period_end - timedelta(seconds=1))
+                if self._fixed
+                else {}
+            )
+            merged = {**vals, **self._billing.as_points(), **fixed_pts}
             snap = snapshot(merged, period_end)
 
             def _f(x: Any) -> float:
@@ -207,6 +227,8 @@ class DemandTracker:
             demand_charge = _f(snap.get("demand.period_charge"))
             reward_credit = _f(snap.get("bonus.period_credit"))
             charge_cost = _f(snap.get("tariff.export_charge_cost"))
+            # Standing charges for the full period (0 when none are configured).
+            fixed_charges = _f(snap.get("fixed.period_total"))
             record = {
                 "gateway_id": self._gw,
                 "period_start": old_ps_ts,
@@ -218,7 +240,10 @@ class DemandTracker:
                 "charge_kwh": _f(vals.get("charge_export_kwh")),
                 "charge_net_kwh": _f(snap.get("tariff.export_charge_net_kwh")),
                 "charge_cost": charge_cost,
-                "net_total": round(demand_charge + charge_cost - reward_credit, 2),
+                "fixed_charges": fixed_charges,
+                "net_total": round(
+                    demand_charge + charge_cost + fixed_charges - reward_credit, 2
+                ),
                 "created_at": period_end.timestamp(),
             }
             await insert_billing_period(self._db, record)

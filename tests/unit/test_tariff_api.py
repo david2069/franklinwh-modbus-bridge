@@ -40,12 +40,16 @@ async def test_overview_shape_and_live_sensors(client):
     for key in ("config", "services", "period", "live", "linked"):
         assert key in data
     assert set(data["config"]) == {"demand", "bonus", "charge"}
-    # live carries only tariff/demand/bonus sensors, each with an id + value key
+    # live carries only tariff/demand/bonus/fixed sensors, each with id + value
     ids = {s["id"] for s in data["live"]}
     assert "tariff.export_charge_cost" in ids
     assert "demand.peak_kw" in ids
     assert "bonus.period_credit" in ids
-    assert all(s["id"].split(".")[0] in ("tariff", "demand", "bonus") for s in data["live"])
+    assert "fixed.accrued_period" in ids
+    assert all(
+        s["id"].split(".")[0] in ("tariff", "demand", "bonus", "fixed")
+        for s in data["live"]
+    )
     assert all("value" in s for s in data["live"])
 
 

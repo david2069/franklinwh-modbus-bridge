@@ -39,6 +39,7 @@ from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
 from franklinwh_bridge.gateway.constants import ConstantsStore
 from franklinwh_bridge.gateway.demand import DemandTracker
 from franklinwh_bridge.gateway.energy_totals import EnergyTotals
+from franklinwh_bridge.gateway.fixed_charges import FixedChargesStore
 from franklinwh_bridge.gateway.ha import HaRegistry
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
@@ -387,8 +388,17 @@ async def lifespan(app: FastAPI):
     await billing.load()
     app.state.billing = billing
 
+    # ── Fixed / standing charges accrual (fixed.* sensors) ────
+    # Built before the tracker: the billing-period snapshot folds these into
+    # net_total, so the tracker needs a reference to it.
+    fixed_charges = FixedChargesStore(db)
+    await fixed_charges.load()
+    app.state.fixed_charges = fixed_charges
+
     # ── Demand-charge + battery-bonus calculator ──────────────
-    demand_tracker = DemandTracker(db, billing, gateway_id="default")
+    demand_tracker = DemandTracker(
+        db, billing, gateway_id="default", fixed_charges=fixed_charges
+    )
     await demand_tracker.load()
     sample_bus.subscribe(demand_tracker.on_sample)
     app.state.demand_tracker = demand_tracker
@@ -407,6 +417,7 @@ async def lifespan(app: FastAPI):
             **constants.as_points(),
             **billing.as_points(),
             **demand_tracker.as_points(),
+            **fixed_charges.as_points(),
         }
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────

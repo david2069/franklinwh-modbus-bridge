@@ -104,7 +104,7 @@
         <div class="h-full bg-cyan-500/70 transition-all" :style="`width: ${periodPct}%`"></div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 gap-3" :class="hasFixed ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'">
 
         <!-- Demand -->
         <div class="rounded border border-white/[0.06] p-3">
@@ -179,8 +179,39 @@
             <span class="font-mono" x-text="projectMoney('tariff.export_charge_cost')"></span>
           </div>
         </div>
+
+        <!-- Fixed / standing charges -->
+        <template x-if="hasFixed">
+          <div class="rounded border border-white/[0.06] p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] uppercase tracking-wide text-violet-400">Fixed charges</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300"><span x-text="money('fixed.daily_charge')"></span>/day</span>
+            </div>
+            <div class="flex items-baseline justify-between text-sm">
+              <span class="text-slate-500 text-xs">Accrued</span>
+              <span class="font-mono text-violet-300" x-text="money('fixed.accrued_period')"></span>
+            </div>
+            <div class="flex items-baseline justify-between text-sm mt-1">
+              <span class="text-slate-500 text-xs">Left to cover</span>
+              <span class="font-mono text-slate-100"><span x-text="money('fixed.remaining')"></span> · <span x-text="num('fixed.days_remaining', 0)"></span>d</span>
+            </div>
+            <div class="flex items-baseline justify-between text-xs mt-1 text-slate-500">
+              <span>Full period</span>
+              <span class="font-mono" x-text="money('fixed.period_total')"></span>
+            </div>
+          </div>
+        </template>
       </div>
-      <p class="text-[10px] text-slate-600 mt-2">Projection is a linear extrapolation from the elapsed portion of the billing period; actuals depend on future usage.</p>
+
+      <!-- Net this period — same composition as the stored history net_total -->
+      <div class="flex items-baseline justify-between mt-3 pt-3 border-t border-white/[0.06]">
+        <span class="text-xs text-slate-400">Net this period</span>
+        <div class="text-right">
+          <div class="font-mono text-base font-semibold" :class="netSoFar < 0 ? 'text-emerald-300' : 'text-slate-100'" x-text="dollars(netSoFar)"></div>
+          <div class="text-[10px] text-slate-500">projected <span class="font-mono" x-text="dollars(netProjected)"></span></div>
+        </div>
+      </div>
+      <p class="text-[10px] text-slate-600 mt-2">Net = demand charge + export charge + fixed charges − export credit. Projection is a linear extrapolation from the elapsed portion of the billing period; actuals depend on future usage.</p>
     </div>
   </template>
 
@@ -278,6 +309,7 @@
                   <th class="py-1.5 pr-3 font-medium text-right">Export kWh</th>
                   <th class="py-1.5 pr-3 font-medium text-right">Billable kWh</th>
                   <th class="py-1.5 pr-3 font-medium text-right">Charge $</th>
+                  <th class="py-1.5 pr-3 font-medium text-right">Fixed $</th>
                   <th class="py-1.5 pr-3 font-medium text-right">Net $</th>
                 </tr>
               </thead>
@@ -292,6 +324,7 @@
                     <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_kwh||0).toFixed(1)"></td>
                     <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_net_kwh||0).toFixed(1)"></td>
                     <td class="py-2 pr-3 text-right font-mono text-cyan-300" x-text="dollars(p.charge_cost)"></td>
+                    <td class="py-2 pr-3 text-right font-mono text-violet-300" x-text="dollars(p.fixed_charges)"></td>
                     <td class="py-2 pr-3 text-right font-mono font-semibold" :class="(p.net_total||0) < 0 ? 'text-emerald-300' : 'text-slate-100'" x-text="dollars(p.net_total)"></td>
                   </tr>
                 </template>

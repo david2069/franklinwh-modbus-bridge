@@ -123,8 +123,25 @@ function energyCostsTab() {
       return (Number(rate) * 100).toFixed(2) + '¢/kWh';
     },
 
+    /** Standing charges are configured when they accrue anything per day. */
+    get hasFixed() { return Number(this.val('fixed.daily_charge') || 0) > 0; },
+
     get anyConfig() {
-      return !!(this.demandCfg || this.bonusCfg || this.chargeCfg);
+      return !!(this.demandCfg || this.bonusCfg || this.chargeCfg) || this.hasFixed;
+    },
+
+    /** Net cost this period so far: charges + standing charges − export credit.
+     *  Same composition as the stored history row's net_total. */
+    get netSoFar() {
+      const n = (id) => Number(this.val(id) || 0);
+      return n('demand.period_charge') + n('tariff.export_charge_cost')
+        + n('fixed.accrued_period') - n('bonus.period_credit');
+    },
+    /** End-of-period net: usage parts extrapolated, standing charges known. */
+    get netProjected() {
+      const pr = (id) => this.project(id) ?? Number(this.val(id) || 0);
+      return pr('demand.period_charge') + pr('tariff.export_charge_cost')
+        + Number(this.val('fixed.period_total') || 0) - pr('bonus.period_credit');
     },
     get linked() { return this.overview?.linked || []; },
 

@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 34
+CURRENT_SCHEMA_VERSION = 35
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -541,6 +541,12 @@ MIGRATIONS: dict[int, str] = {
         created_at     REAL NOT NULL DEFAULT 0,
         UNIQUE(gateway_id, period_start)
     );
+    """,
+    35: """
+    -- Fixed / standing charges accrued over the period (daily supply, metering,
+    -- membership, …). Folded into net_total from here on; rows written before
+    -- this migration keep 0, so their net_total is usage-driven cost only.
+    ALTER TABLE billing_periods ADD COLUMN fixed_charges REAL NOT NULL DEFAULT 0;
     """,
 }
 
@@ -1253,19 +1259,20 @@ async def get_app_config(
 _BILLING_PERIOD_FIELDS = (
     "gateway_id", "period_start", "period_end", "demand_peak_kw", "demand_charge",
     "reward_kwh", "reward_credit", "charge_kwh", "charge_net_kwh", "charge_cost",
-    "net_total", "created_at",
+    "fixed_charges", "net_total", "created_at",
 )
 
 
 async def insert_billing_period(db: aiosqlite.Connection, record: dict) -> None:
     """Persist one closed billing period. Idempotent on (gateway_id,
-    period_start) — a re-snapshot of the same period is ignored."""
+    period_start) — a re-snapshot of the same period is ignored. Fields the
+    caller omits fall back to 0 (the columns are NOT NULL)."""
     cols = ", ".join(_BILLING_PERIOD_FIELDS)
     placeholders = ", ".join("?" for _ in _BILLING_PERIOD_FIELDS)
     await db.execute(
         f"INSERT INTO billing_periods ({cols}) VALUES ({placeholders}) "
         "ON CONFLICT(gateway_id, period_start) DO NOTHING",
-        tuple(record.get(f) for f in _BILLING_PERIOD_FIELDS),
+        tuple(record.get(f, 0) for f in _BILLING_PERIOD_FIELDS),
     )
     await db.commit()
 
