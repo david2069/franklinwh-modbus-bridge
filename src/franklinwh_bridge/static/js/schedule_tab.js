@@ -188,6 +188,40 @@ function scheduleTab() {
     expandedId: null,
     previewDay: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, // Mon=0
     timelineGateway: 'all',  // 'all' | '<gateway_id>' — paints the bar for one or all
+
+    // ── timeline zoom (time-of-day window) ───────────────────
+    // Defaults to the whole of the selected day (today). Narrowing the window
+    // spreads the same segments across the full width, so a 90-minute dispatch
+    // reads as a block instead of a 6% sliver.
+    zoomFromStr: '00:00',
+    zoomToStr: '23:59',
+    zoomPresets: [
+      { label: 'Full day', from: '00:00', to: '23:59' },
+      { label: 'Daylight', from: '06:00', to: '20:00' },
+      { label: 'Evening peak', from: '15:00', to: '22:00' },
+      { label: 'Overnight', from: '20:00', to: '23:59' },
+    ],
+    _minOf(s) {
+      const [h, m] = String(s || '0:0').split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    },
+    _hhmm(m) {
+      const t = Math.min(1440, Math.max(0, Math.round(m)));
+      return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    },
+    get zoomFrom() { return Math.max(0, Math.min(1425, this._minOf(this.zoomFromStr))); },
+    get zoomTo() {
+      const t = this._minOf(this.zoomToStr);
+      // 23:59 means "end of day" — treat it as 1440 so a full day is exact.
+      return Math.min(1440, Math.max(this.zoomFrom + 15, t === 1439 ? 1440 : t));
+    },
+    get zoomSpan() { return this.zoomTo - this.zoomFrom; },
+    get zoomed() { return this.zoomFrom !== 0 || this.zoomTo !== 1440; },
+    setZoom(p) { this.zoomFromStr = p.from; this.zoomToStr = p.to; },
+    /** Five evenly spaced axis labels across the current window. */
+    get axisTicks() {
+      return [0, 1, 2, 3, 4].map((i) => this._hhmm(this.zoomFrom + (this.zoomSpan * i) / 4));
+    },
     loading: false,
     _interval: null,
 
@@ -429,23 +463,77 @@ function scheduleTab() {
     },
 
     // ── timeline geometry ────────────────────────────────────
-    get visualSegments() {
+    /** Clip segments to the zoom window, splitting any that wrap midnight. */
+    _clipSegments(segs) {
       const out = [];
-      for (const seg of this.timeline.segments) {
-        if (!this._segForGateway(seg)) continue;
-        const colour = this.actionMeta(seg.action).colour;
-        if (seg.end_min <= seg.start_min) {
-          out.push({ ...seg, colour, _l: seg.start_min, _w: 1440 - seg.start_min });
-          out.push({ ...seg, colour, _l: 0, _w: seg.end_min });
+      const z0 = this.zoomFrom;
+      const z1 = this.zoomTo;
+      const push = (seg, left, width) => {
+        const s = Math.max(left, z0);
+        const e = Math.min(left + width, z1);
+        if (e <= s) return;  // entirely outside the window
+        out.push({ ...seg, colour: this.actionMeta(seg.action).colour, _l: s, _w: e - s });
+      };
+      for (const seg of segs) {
+        if (seg.end_min <= seg.start_min) {   // wraps past midnight → two pieces
+          push(seg, seg.start_min, 1440 - seg.start_min);
+          push(seg, 0, seg.end_min);
         } else {
-          out.push({ ...seg, colour, _l: seg.start_min, _w: seg.end_min - seg.start_min });
+          push(seg, seg.start_min, seg.end_min - seg.start_min);
         }
       }
       return out;
     },
 
-    pct(min) { return (min / 1440) * 100; },
+    /** A gateway-targeted segment belongs to this row? Site/service targets fan
+     *  out to several gateways, so they get their own row rather than being
+     *  duplicated onto every one (which would imply a membership the client
+     *  can't confirm). */
+    _segOnGateway(seg, gwId) {
+      return seg.target_type === 'gateway' && (seg.target_id || 'default') === gwId;
+    },
+
+    /** One track per gateway under "All gateways", otherwise a single track.
+     *  Splitting by row makes overlap visible — two gateways dispatching at the
+     *  same time previously rendered as one block on a shared strip. */
+    get timelineRows() {
+      const gws = Alpine.store('app').gatewayList || [];
+      if (this.timelineGateway !== 'all' || gws.length < 2) {
+        const one = gws.find((g) => g.id === this.timelineGateway);
+        return [{
+          id: this.timelineGateway,
+          name: one ? one.name : 'All gateways',
+          colour: one ? this.gatewayColour(one.id) : '#94a3b8',
+          segments: this._clipSegments(this.timeline.segments.filter((s) => this._segForGateway(s))),
+        }];
+      }
+      const rows = gws.map((g) => ({
+        id: g.id,
+        name: g.name,
+        colour: this.gatewayColour(g.id),
+        segments: this._clipSegments(this.timeline.segments.filter((s) => this._segOnGateway(s, g.id))),
+      }));
+      const fanout = this.timeline.segments.filter(
+        (s) => s.target_type === 'site' || s.target_type === 'service',
+      );
+      if (fanout.length) {
+        rows.unshift({
+          id: '__fanout', name: 'Site / service', colour: '#94a3b8',
+          segments: this._clipSegments(fanout),
+        });
+      }
+      return rows;
+    },
+
+    pct(min) { return ((min - this.zoomFrom) / this.zoomSpan) * 100; },
     get nowPct() { return this.pct(this.timeline.now_min); },
+    /** The now-marker only means something on today's column, and only when the
+     *  current time falls inside the zoom window. */
+    get nowVisible() {
+      const today = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+      const n = this.timeline.now_min;
+      return this.previewDay === today && n >= this.zoomFrom && n <= this.zoomTo;
+    },
 
     // ── form ─────────────────────────────────────────────────
     _blankForm(overrides) {

@@ -59,23 +59,55 @@
       </div>
     </div>
 
-    <div class="relative h-12 rounded-md overflow-hidden border border-white/[0.06]"
-         style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.06) 0 6px, transparent 6px 12px);">
-      <template x-for="(seg, idx) in visualSegments" :key="idx">
-        <div class="absolute top-0 h-full flex items-center justify-center overflow-hidden"
-             :class="seg.trigger ? 'border-t-2 border-white/70' : ''"
-             :style="`left:${pct(seg._l)}%; width:${pct(seg._w)}%; background:${seg.colour}; opacity:.85; border-left:3px solid ${entryTint(seg)};`"
-             :title="`${seg.name} — ${actionMeta(seg.action).label} · ${targetLabel(seg)}${seg.trigger ? ' (automation fire)' : ''}`">
-          <span class="text-[9px] font-semibold text-white/90 truncate px-1" x-show="seg._w > 80" x-text="seg.name"></span>
-        </div>
+    <!-- Zoom: narrow the time-of-day window; default is the whole day -->
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <span class="text-[10px] uppercase tracking-wide text-slate-500">Zoom</span>
+      <template x-for="z in zoomPresets" :key="z.label">
+        <button type="button" @click="setZoom(z)"
+                class="px-2 py-0.5 rounded text-[11px] border transition-colors"
+                :class="zoomFromStr === z.from && zoomToStr === z.to ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-slate-400 border-white/10 hover:border-white/25'"
+                x-text="z.label"></button>
       </template>
-      <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
-           x-show="previewDay === (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1)"
-           :style="`left:${nowPct}%`"></div>
+      <span class="text-slate-600 text-[11px] ml-1">from</span>
+      <input type="time" x-model="zoomFromStr" class="form-control !py-0.5 !text-[11px] w-24">
+      <span class="text-slate-600 text-[11px]">to</span>
+      <input type="time" x-model="zoomToStr" class="form-control !py-0.5 !text-[11px] w-24">
+      <span x-show="zoomed" class="text-[10px] text-cyan-400"
+            x-text="`showing ${Math.round(zoomSpan / 60 * 10) / 10}h of 24h`"></span>
     </div>
 
-    <div class="flex justify-between text-[10px] text-slate-600 mt-1 font-mono">
-      <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+    <!-- One labelled track per gateway under "All gateways" -->
+    <div class="space-y-1">
+      <template x-for="row in timelineRows" :key="row.id">
+        <div class="flex items-stretch gap-2">
+          <div class="w-28 shrink-0 flex items-center gap-1.5 text-[11px] text-slate-400 truncate"
+               x-show="timelineRows.length > 1" :title="row.name">
+            <span class="w-2 h-2 rounded-sm shrink-0" :style="`background:${row.colour}`"></span>
+            <span class="truncate" x-text="row.name"></span>
+          </div>
+          <div class="relative flex-1 h-10 rounded-md overflow-hidden border border-white/[0.06]"
+               style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.06) 0 6px, transparent 6px 12px);">
+            <template x-for="(seg, idx) in row.segments" :key="idx">
+              <div class="absolute top-0 h-full flex items-center justify-center overflow-hidden"
+                   :class="seg.trigger ? 'border-t-2 border-white/70' : ''"
+                   :style="`left:${pct(seg._l)}%; width:${pct(seg._l + seg._w) - pct(seg._l)}%; background:${seg.colour}; opacity:.85; border-left:3px solid ${entryTint(seg)};`"
+                   :title="`${seg.name} — ${actionMeta(seg.action).label} · ${targetLabel(seg)}${seg.trigger ? ' (automation fire)' : ''}`">
+                <span class="text-[9px] font-semibold text-white/90 truncate px-1"
+                      x-show="(pct(seg._l + seg._w) - pct(seg._l)) > 6" x-text="seg.name"></span>
+              </div>
+            </template>
+            <div class="absolute inset-0 flex items-center justify-center text-[10px] text-slate-600"
+                 x-show="!row.segments.length">nothing scheduled in this window</div>
+            <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
+                 x-show="nowVisible" :style="`left:${nowPct}%`"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="flex justify-between text-[10px] text-slate-600 mt-1 font-mono"
+         :style="timelineRows.length > 1 ? 'padding-left: 7.5rem' : ''">
+      <template x-for="t in axisTicks" :key="t"><span x-text="t"></span></template>
     </div>
 
     <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px]">
