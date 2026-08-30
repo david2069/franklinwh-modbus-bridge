@@ -714,8 +714,32 @@ function scheduleTab() {
       if (tree) walk(tree);
     },
     condFailed(c) { const t = this.traceByCid[c._cid]; return !!t && t.result === false; },
+    condPassed(c) { const t = this.traceByCid[c._cid]; return !!t && t.result === true; },
     condTested(c) { return this.traceByCid[c._cid] !== undefined; },
     condLive(c) { const t = this.traceByCid[c._cid]; return t ? t.live_value : undefined; },
+    /** Word, not just a colour — "fails"/"passes" is unambiguous where a red
+     *  outline alone reads as an error rather than a test result. A missing
+     *  live value is its own case: the condition couldn't be evaluated. */
+    condVerdict(c) {
+      if (!this.condTested(c)) return '';
+      const live = this.condLive(c);
+      if (live === undefined || live === null) return '✕ no value';
+      return this.condFailed(c) ? '✕ fails now' : '✓ passes now';
+    },
+    condVerdictClass(c) {
+      const live = this.condLive(c);
+      if (live === undefined || live === null) return 'text-amber-400';
+      return this.condFailed(c) ? 'text-red-400' : 'text-emerald-400';
+    },
+    /** Ring colour for a tested row: green passes, red fails, amber no value. */
+    condRingClass(c) {
+      if (!this.condTested(c)) return '';
+      const live = this.condLive(c);
+      if (live === undefined || live === null) return 'ring-1 ring-amber-500/70 rounded px-1 py-0.5';
+      return this.condFailed(c)
+        ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5'
+        : 'ring-1 ring-emerald-500/60 rounded px-1 py-0.5';
+    },
 
     formActionMeta() { return this.actionMeta(this.form.action); },
 

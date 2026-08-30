@@ -451,7 +451,7 @@
                   <input type="time" x-model="w.start" class="form-control w-32">
                   <span class="text-slate-500">→</span>
                   <input type="time" x-model="w.end" class="form-control w-32">
-                  <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeWindow(i)" x-show="form.windows.length > 1">✕</button>
+                  <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeWindow(i)" x-show="form.windows.length > 1">✕</button>
                   <span class="text-[10px] text-slate-600" x-show="w.end <= w.start && w.end !== w.start">wraps past midnight</span>
                 </div>
               </template>
@@ -519,7 +519,7 @@
             <template x-for="(c, i) in form.entry_conditions.conditions" :key="i">
               <div>
                 <!-- leaf row -->
-                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condFailed(c) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
+                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(c)">
                   <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                             class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -577,8 +577,9 @@
                       </div>
                     </div>
                   </template>
-                  <span x-show="condTested(c)" class="text-[10px] font-mono" :class="condFailed(c) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(c)"></span>
-                  <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
+                  <span x-show="condTested(c)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLive(c)"></span>
+                  <span x-show="condTested(c)" class="text-[10px] font-medium" :class="condVerdictClass(c)" x-text="condVerdict(c)"></span>
+                  <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
                 </div>
                 <!-- nested group -->
                 <div x-show="isGroup(c)" class="rounded border border-cyan-500/20 bg-white/[0.02] p-2 space-y-1.5">
@@ -596,7 +597,7 @@
                     </div>
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
-                    <div class="flex items-center gap-1.5 flex-wrap" :class="condFailed(cc) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
+                    <div class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(cc)">
                       <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                 class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -654,8 +655,9 @@
                           </div>
                         </div>
                       </template>
-                      <span x-show="condTested(cc)" class="text-[10px] font-mono" :class="condFailed(cc) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(cc)"></span>
-                      <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
+                      <span x-show="condTested(cc)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLive(cc)"></span>
+                      <span x-show="condTested(cc)" class="text-[10px] font-medium" :class="condVerdictClass(cc)" x-text="condVerdict(cc)"></span>
+                      <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
                     </div>
                   </template>
                   <div x-show="isGroup(c) && !c.conditions.length" class="text-[10px] text-slate-600">empty group — add rows</div>
@@ -669,6 +671,12 @@
                 <span class="text-xs" :class="testResult.result === true ? 'text-emerald-300' : (testResult.result === false ? 'text-amber-300' : 'text-slate-400')"
                       x-text="testResult.msg ? testResult.msg : (testResult.result ? '✓ conditions currently PASS' : '✗ conditions currently FAIL')"></span>
               </template>
+            </div>
+            <div x-show="testResult !== null" class="text-[10px] text-slate-500 pt-1">
+              Per row: <span class="text-emerald-400">green outline = passes now</span> ·
+              <span class="text-red-400">red = fails now</span> ·
+              <span class="text-amber-400">amber = no value, so it can't be evaluated</span>.
+              The ✕ ending each row deletes that row.
             </div>
           </div>
 
@@ -726,7 +734,7 @@
                 <template x-if="haControlKind(a) === 'press'"><span class="text-[11px] text-slate-500 px-1">press button</span></template>
                 <template x-if="haControlKind(a) === 'run'"><span class="text-[11px] text-slate-500 px-1">run</span></template>
                 <button type="button" x-show="!a.guard" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
-                <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeHaAction(ai)">✕</button>
+                <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeHaAction(ai)">✕</button>
                 </div>
                 <template x-if="a.guard">
                   <div class="flex items-center gap-1.5 flex-wrap pl-4">
@@ -761,7 +769,7 @@
             <template x-for="(c, i) in form.exit_conditions.conditions" :key="i">
               <div>
                 <!-- leaf row -->
-                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condFailed(c) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
+                <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(c)">
                   <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                             class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -819,8 +827,9 @@
                       </div>
                     </div>
                   </template>
-                  <span x-show="condTested(c)" class="text-[10px] font-mono" :class="condFailed(c) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(c)"></span>
-                  <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
+                  <span x-show="condTested(c)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLive(c)"></span>
+                  <span x-show="condTested(c)" class="text-[10px] font-medium" :class="condVerdictClass(c)" x-text="condVerdict(c)"></span>
+                  <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
                 </div>
                 <!-- nested group -->
                 <div x-show="isGroup(c)" class="rounded border border-cyan-500/20 bg-white/[0.02] p-2 space-y-1.5">
@@ -838,7 +847,7 @@
                     </div>
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
-                    <div class="flex items-center gap-1.5 flex-wrap" :class="condFailed(cc) ? 'ring-1 ring-red-500/70 rounded px-1 py-0.5' : ''">
+                    <div class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(cc)">
                       <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                 class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
@@ -896,8 +905,9 @@
                           </div>
                         </div>
                       </template>
-                      <span x-show="condTested(cc)" class="text-[10px] font-mono" :class="condFailed(cc) ? 'text-red-400' : 'text-emerald-400/70'" x-text="'live: ' + condLive(cc)"></span>
-                      <button type="button" class="text-red-400 hover:text-red-300 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
+                      <span x-show="condTested(cc)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLive(cc)"></span>
+                      <span x-show="condTested(cc)" class="text-[10px] font-medium" :class="condVerdictClass(cc)" x-text="condVerdict(cc)"></span>
+                      <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
                     </div>
                   </template>
                   <div x-show="isGroup(c) && !c.conditions.length" class="text-[10px] text-slate-600">empty group — add rows</div>
@@ -911,6 +921,12 @@
                 <span class="text-xs" :class="exitTestResult.result === true ? 'text-amber-300' : 'text-emerald-300'"
                       x-text="exitTestResult.msg ? exitTestResult.msg : (exitTestResult.result ? '⚠ exit WOULD fire now' : '✓ exit would NOT fire')"></span>
               </template>
+            </div>
+            <div x-show="exitTestResult !== null" class="text-[10px] text-slate-500 pt-1">
+              Per row: <span class="text-emerald-400">green outline = passes now</span> ·
+              <span class="text-red-400">red = fails now</span> ·
+              <span class="text-amber-400">amber = no value, so it can't be evaluated</span>.
+              The ✕ ending each row deletes that row.
             </div>
           </div>
 
