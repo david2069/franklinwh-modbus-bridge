@@ -313,6 +313,60 @@ function scheduleTab() {
     get anyOutage() {
       return this.conn && this.conn.connected === false;
     },
+
+    // ── link state, drawn under each timeline track ──────────
+    /** Outages are real timestamps, but the day picker previews a WEEKDAY —
+     *  so the link strip is only truthful on today's column. Elsewhere we say
+     *  so rather than drawing a green bar we can't stand behind. */
+    get linkIsForToday() {
+      const today = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+      return this.previewDay === today;
+    },
+    /** Outage spans for one gateway, clipped to today and the zoom window,
+     *  as {_l,_w,title} in minutes-of-day. */
+    linkOutages(gwId) {
+      if (!this.linkIsForToday) return [];
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      const base = midnight.getTime() / 1000;
+      const out = [];
+      for (const o of this.conn.recent_outages || []) {
+        if (gwId && gwId !== '__fanout' && o.gateway_id && o.gateway_id !== gwId) continue;
+        const s = Math.max(0, (o.start_ts - base) / 60);
+        const e = (o.end_ts ? (o.end_ts - base) / 60 : this.timeline.now_min);
+        if (e < 0 || s > 1440) continue;                       // not today
+        const l = Math.max(s, this.zoomFrom);
+        const r = Math.min(Math.max(e, s + 1), this.zoomTo);   // ≥1min so it's visible
+        if (r <= l) continue;                                  // outside the zoom window
+        out.push({
+          _l: l, _w: r - l,
+          title: `Outage ${this.fmtTs(o.start_ts)} · ${this.outageDur(o)}${o.reason ? ' · ' + o.reason : ''}`
+            + (o.missed_job_ids && o.missed_job_ids.length
+              ? ` · ${o.missed_job_ids.length} missed fire(s)` : ''),
+        });
+      }
+      return out;
+    },
+    /** Outage count for a gateway today — drives the row's summary text. */
+    linkOutageCount(gwId) { return this.linkOutages(gwId).length; },
+
+    // ── legend: only what's actually on screen ───────────────
+    /** Actions present in the current tracks, so the legend stops listing all
+     *  ten every time. */
+    get visibleActions() {
+      const present = new Set();
+      for (const row of this.timelineRows) {
+        for (const seg of row.segments) present.add(seg.action);
+      }
+      return this.actions.filter((a) => present.has(a.id));
+    },
+    get anyTriggerSeg() {
+      return this.timelineRows.some((r) => r.segments.some((s) => s.trigger));
+    },
+    /** The gateway legend is redundant once every track is labelled. */
+    get showGatewayLegend() {
+      return this.timelineRows.length < 2 && (Alpine.store('app').gatewayList || []).length > 1;
+    },
     get recentOutages() {
       return (this.conn && this.conn.recent_outages) || [];
     },

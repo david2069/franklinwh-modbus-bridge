@@ -100,6 +100,18 @@
                  x-show="!row.segments.length">nothing scheduled in this window</div>
             <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
                  x-show="nowVisible" :style="`left:${nowPct}%`"></div>
+
+            <!-- Link state: green baseline, red where the gateway was out.
+                 Only drawn on today's column — outages are real timestamps,
+                 not weekday patterns. -->
+            <div class="absolute bottom-0 left-0 right-0 h-1"
+                 :class="linkIsForToday ? 'bg-emerald-500/70' : 'bg-slate-600/40'"
+                 :title="linkIsForToday ? 'Link up' : 'Link history only shown for today'"></div>
+            <template x-for="(o, oi) in linkOutages(row.id)" :key="'o'+oi">
+              <div class="absolute bottom-0 h-1 bg-red-500 z-10"
+                   :style="`left:${pct(o._l)}%; width:${Math.max(0.4, pct(o._l + o._w) - pct(o._l))}%`"
+                   :title="o.title"></div>
+            </template>
           </div>
         </div>
       </template>
@@ -110,8 +122,9 @@
       <template x-for="t in axisTicks" :key="t"><span x-text="t"></span></template>
     </div>
 
+    <!-- Legend: only what's actually drawn in the current window -->
     <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px]">
-      <template x-for="a in actions" :key="a.id">
+      <template x-for="a in visibleActions" :key="a.id">
         <span class="flex items-center gap-1.5 text-slate-400">
           <span class="w-3 h-3 rounded-sm inline-block" :style="`background:${a.colour}`"></span>
           <span x-text="a.label"></span>
@@ -122,15 +135,23 @@
               style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.3) 0 3px, transparent 3px 6px);"></span>
         <span>Native (TOU / mode)</span>
       </span>
-      <span class="flex items-center gap-1.5 text-slate-400">
+      <span class="flex items-center gap-1.5 text-slate-400" x-show="anyTriggerSeg">
         <span class="w-3 h-3 rounded-sm inline-block border-t-2 border-white/70" style="background: rgba(100,116,139,.85);"></span>
         <span>Automation fire (trigger + duration)</span>
       </span>
+      <span class="flex items-center gap-1.5 text-slate-400">
+        <span class="w-3 h-1 rounded-sm inline-block bg-emerald-500/70"></span>
+        <span>Link up</span>
+      </span>
+      <span class="flex items-center gap-1.5 text-slate-400">
+        <span class="w-3 h-1 rounded-sm inline-block bg-red-500"></span>
+        <span x-text="linkIsForToday ? `Outage (${conn.recent_outages.length} recent)` : 'Outage — today only'"></span>
+      </span>
     </div>
 
-    <!-- Gateway colour legend — the left edge of each row/segment (shown with >1 gateway) -->
+    <!-- Gateway colour legend — only when the tracks aren't already labelled -->
     <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2 pt-2 border-t border-white/[0.06] text-[11px]"
-         x-show="$store.app.gatewayList.length > 1">
+         x-show="showGatewayLegend">
       <span class="text-slate-500 uppercase tracking-wide text-[10px]">Gateways</span>
       <template x-for="gw in $store.app.gatewayList" :key="gw.id">
         <span class="flex items-center gap-1.5 text-slate-400">
@@ -141,25 +162,12 @@
     </div>
   </div>
 
-  <!-- Connectivity / outages -->
-  <div class="card mb-4" :class="anyOutage ? 'border-red-500/40' : ''">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="w-2.5 h-2.5 rounded-full inline-block" :class="conn.connected ? 'bg-emerald-400' : 'bg-red-500 animate-pulse'"></span>
-        <span class="text-sm font-medium" x-text="conn.connected ? 'aGate connected' : 'aGate outage — dispatch paused'"></span>
-      </div>
-      <span class="text-[11px] text-slate-500" x-show="recentOutages.length"
-            x-text="`${recentOutages.length} recent outage${recentOutages.length === 1 ? '' : 's'}`"></span>
-    </div>
-    <div x-show="recentOutages.length" class="mt-2 space-y-1">
-      <template x-for="o in recentOutages.slice(0, 4)" :key="o.id">
-        <div class="text-[11px] text-slate-500 flex items-center gap-2">
-          <span class="font-mono text-slate-400" x-text="fmtTs(o.start_ts)"></span>
-          <span x-text="`· ${outageDur(o)}`"></span>
-          <span x-show="o.missed_job_ids && o.missed_job_ids.length" class="text-red-300"
-                x-text="`· ${o.missed_job_ids.length} missed fire${o.missed_job_ids.length === 1 ? '' : 's'}`"></span>
-        </div>
-      </template>
+  <!-- Connectivity now lives as the link strip under each timeline track;
+       an outage while dispatch is live is called out inline below. -->
+  <div x-show="anyOutage" class="card mb-4 border-red-500/40">
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-full inline-block bg-red-500 animate-pulse"></span>
+      <span class="text-sm font-medium">aGate outage — dispatch paused</span>
     </div>
   </div>
 
