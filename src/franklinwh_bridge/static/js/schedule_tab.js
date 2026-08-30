@@ -183,6 +183,7 @@ function scheduleTab() {
     },
 
     audit: [],
+    auditAll: [],   // unfiltered log, feeds the timeline's actual-dispatch overlay
     auditFilter: '',
     conn: { connected: true, gateways: {}, recent_outages: [] },
     expandedId: null,
@@ -258,13 +259,16 @@ function scheduleTab() {
     },
 
     async load() {
-      const [sch, tl, svc, sen, log, conn] = await Promise.all([
+      const [sch, tl, svc, sen, log, conn, all] = await Promise.all([
         fetchJSON('api/schedules'),
         fetchJSON(`api/schedules/timeline?day=${this.previewDay}`),
         fetchJSON('api/services'),
         fetchJSON('api/sensors'),
         fetchJSON(this._logUrl()),
         fetchJSON('api/health/connectivity'),
+        // Unfiltered log for the timeline's actual-dispatch overlay — the
+        // visible Activity Log is user-filtered and capped at 40 rows.
+        fetchJSON('api/schedules/log?limit=300'),
       ]);
       if (sch && sch.schedules) this.schedules = sch.schedules;
       if (tl && tl.segments) this.timeline = tl;
@@ -272,6 +276,7 @@ function scheduleTab() {
       if (sen && sen.sensors) this.sensors = sen.sensors;
       if (log && log.events) this.audit = log.events;
       if (conn) this.conn = conn;
+      if (all && all.events) this.auditAll = all.events;
       this.loadHaControllable();  // exposed controllable HA entities for actions
     },
 
@@ -349,6 +354,69 @@ function scheduleTab() {
     },
     /** Outage count for a gateway today — drives the row's summary text. */
     linkOutageCount(gwId) { return this.linkOutages(gwId).length; },
+
+    // ── what actually ran (left of the now-line) ─────────────
+    /** Pair each "dispatched …" log row with the release/exit that ended it,
+     *  giving real dispatch spans in minutes-of-day. A still-running dispatch
+     *  runs to now. Today only — the log holds timestamps, and the day picker
+     *  previews a weekday. */
+    get actualSpans() {
+      if (!this.linkIsForToday) return [];
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      const base = midnight.getTime() / 1000;
+      const ENDS = new Set(['exit_condition_met', 'duration_elapsed', 'stopped', 'missed']);
+      const rows = (this.auditAll || [])
+        .filter((e) => e.ts >= base)
+        .sort((a, b) => a.ts - b.ts);
+      const open = {};
+      const out = [];
+      for (const e of rows) {
+        const m = (e.ts - base) / 60;
+        const started = typeof e.detail === 'string' && e.detail.startsWith('dispatched');
+        const ended = e.action === 'release' || ENDS.has(e.result);
+        if (started) {
+          if (open[e.schedule_id] === undefined) open[e.schedule_id] = { m, detail: e.detail };
+        } else if (ended && open[e.schedule_id] !== undefined) {
+          out.push({
+            id: e.schedule_id, _s: open[e.schedule_id].m, _e: m,
+            detail: open[e.schedule_id].detail, ended: e.detail,
+          });
+          delete open[e.schedule_id];
+        }
+      }
+      // Anything still open is running right now → runs to the now-line.
+      for (const [sid, v] of Object.entries(open)) {
+        out.push({ id: sid, _s: v.m, _e: this.timeline.now_min, detail: v.detail, running: true });
+      }
+      return out;
+    },
+
+    /** Actual spans belonging to one track, clipped to the zoom window. */
+    actualForRow(row) {
+      const single = this.timelineRows.length < 2;
+      const out = [];
+      for (const sp of this.actualSpans) {
+        const s = this.schedules.find((x) => x.id === sp.id);
+        if (!s) continue;
+        const onRow = single
+          ? this._segForGateway(s)
+          : (row.id === '__fanout'
+            ? (s.target_type === 'site' || s.target_type === 'service')
+            : this._segOnGateway(s, row.id));
+        if (!onRow) continue;
+        const l = Math.max(sp._s, this.zoomFrom);
+        const r = Math.min(Math.max(sp._e, sp._s + 1), this.zoomTo);
+        if (r <= l) continue;
+        out.push({
+          ...sp, _l: l, _w: r - l,
+          colour: this.actionMeta(s.action).colour,
+          title: `${s.name} — actually ran ${this._hhmm(sp._s)}–${sp.running ? 'now' : this._hhmm(sp._e)}`
+            + (sp.running ? ' (running)' : (sp.ended ? ` · ${sp.ended}` : '')),
+        });
+      }
+      return out;
+    },
 
     // ── legend: only what's actually on screen ───────────────
     /** Actions present in the current tracks, so the legend stops listing all
@@ -517,16 +585,29 @@ function scheduleTab() {
     },
 
     // ── timeline geometry ────────────────────────────────────
-    /** Clip segments to the zoom window, splitting any that wrap midnight. */
+    /** Clip segments to the zoom window, splitting any that wrap midnight —
+     *  and, on today's column, splitting again at the now-line so the past
+     *  half can be drawn as "was planned" and the future half as "is planned".
+     *  What actually ran in the past comes from the log, not from here. */
     _clipSegments(segs) {
       const out = [];
       const z0 = this.zoomFrom;
       const z1 = this.zoomTo;
+      const nowM = this.nowVisible ? this.timeline.now_min : null;
       const push = (seg, left, width) => {
         const s = Math.max(left, z0);
         const e = Math.min(left + width, z1);
         if (e <= s) return;  // entirely outside the window
-        out.push({ ...seg, colour: this.actionMeta(seg.action).colour, _l: s, _w: e - s });
+        const add = (a, b, past) => {
+          if (b <= a) return;
+          out.push({ ...seg, colour: this.actionMeta(seg.action).colour, _l: a, _w: b - a, _past: past });
+        };
+        if (nowM !== null && s < nowM && e > nowM) {   // straddles "now" → split
+          add(s, nowM, true);
+          add(nowM, e, false);
+        } else {
+          add(s, e, nowM !== null && e <= nowM);
+        }
       };
       for (const seg of segs) {
         if (seg.end_min <= seg.start_min) {   // wraps past midnight → two pieces
