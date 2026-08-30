@@ -164,6 +164,11 @@ async def browse_entities(
     Filters: ``instance`` (id), ``domain``, ``search`` (substring of entity_id or
     friendly name), ``exposed`` (true/false). Returns
     ``{total, page, page_size, exposed_count, entities:[...]}``.
+
+    ``search`` accepts **comma-separated terms matched as OR** — real
+    installations name the same concept a dozen ways ("pv", "solar",
+    "enphase", "envoy"), so a single substring misses most of a topic. A
+    plain term without commas behaves exactly as before.
     """
     reg = _registry(request)
     rows = reg.browse() if reg is not None else []
@@ -177,8 +182,15 @@ async def browse_entities(
     if exposed is not None:
         rows = [r for r in rows if r["exposed"] is exposed]
     if search:
-        q = search.lower()
-        rows = [r for r in rows if q in r["entity_id"].lower() or q in r["friendly_name"].lower()]
+        terms = [t.strip().lower() for t in search.split(",") if t.strip()]
+        if terms:
+            rows = [
+                r for r in rows
+                if any(
+                    t in r["entity_id"].lower() or t in r["friendly_name"].lower()
+                    for t in terms
+                )
+            ]
 
     rows.sort(key=lambda r: (r["instance_name"], r["entity_id"]))
     total = len(rows)

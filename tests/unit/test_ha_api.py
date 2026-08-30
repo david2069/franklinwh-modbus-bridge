@@ -148,6 +148,24 @@ async def test_browse_entities_shape_and_filters(client):
     assert (await client.get("/api/ha/domains")).json() == ["binary_sensor", "light", "sensor"]
 
 
+async def test_search_terms_are_ored(client):
+    """Comma-separated search terms match as OR — the topic presets rely on it,
+    since the same concept is named differently by every integration."""
+    await _make_instance_with_cache(client)
+
+    # Two topics that share no single substring still come back together.
+    both = (await client.get("/api/ha/entities?search=amber,lamp")).json()
+    assert both["total"] == 2
+    assert {e["entity_id"] for e in both["entities"]} == {"sensor.amber_price", "light.lamp"}
+
+    # Whitespace and empty segments are tolerated; a term matching nothing is a no-op.
+    assert (await client.get("/api/ha/entities?search= amber , ,nomatch")).json()["total"] == 1
+    # A plain single term behaves exactly as before (no regression).
+    assert (await client.get("/api/ha/entities?search=amber")).json()["total"] == 1
+    # entity_id matches too, not just friendly names.
+    assert (await client.get("/api/ha/entities?search=binary_sensor.,light.")).json()["total"] == 2
+
+
 async def test_pagination(client):
     await _make_instance_with_cache(client)
     p1 = (await client.get("/api/ha/entities?page=1&page_size=2")).json()

@@ -62,6 +62,30 @@
           </label>
         </div>
 
+        <!-- Topic presets: naming varies wildly between integrations, so each
+             preset is a set of synonyms OR'd together, not one keyword. -->
+        <div class="flex flex-wrap items-center gap-1.5 mb-3">
+          <span class="text-[10px] uppercase tracking-wide text-slate-500 mr-1">Topics</span>
+          <template x-for="p in presets" :key="p.label">
+            <button type="button" @click="applyPreset(p)" :title="'Matches: ' + p.terms"
+                    class="px-2 py-0.5 rounded text-[11px] border transition-colors"
+                    :class="search === p.terms ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-slate-400 border-white/10 hover:border-white/25'"
+                    x-text="p.label"></button>
+          </template>
+          <button type="button" x-show="search || domain || instance || exposedOnly"
+                  @click="clearFilters()" class="px-2 py-0.5 rounded text-[11px] text-slate-500 hover:text-slate-300 underline">clear</button>
+        </div>
+
+        <!-- Conflict flag: any ENABLED automation in view already drives its own
+             entities, so switching control to the Bridge can fight it. -->
+        <div x-show="domain === 'automation' && activeAutomations > 0"
+             class="mb-3 rounded border border-amber-500/40 bg-amber-500/[0.06] p-2 text-[11px] text-amber-200">
+          <span class="font-medium" x-text="activeAutomations + ' enabled automation(s) in this view.'"></span>
+          Anything these already control will fight a Bridge rule targeting the same entity —
+          decide on ONE owner per entity before enabling both. Names vary between installs, so
+          treat this as a prompt to check, not a complete list.
+        </div>
+
         <!-- Table -->
         <div class="overflow-x-auto">
           <table class="w-full text-xs">

@@ -18,8 +18,39 @@ function haEntitiesTab() {
     exposedOnly: false,
     loading: false,
 
+    /** Topic presets — each is a synonym set, because the same concept is named
+     *  differently by every integration (pv / solar / enphase / envoy all mean
+     *  the same array). The API ORs comma-separated terms. */
+    presets: [
+      { label: 'Solar / PV', terms: 'pv,solar,enphase,envoy,inverter' },
+      { label: 'Battery', terms: 'battery,soc,franklin,powerwall,charge' },
+      { label: 'Grid / Export', terms: 'grid,export,feed_in,feed-in,import,curtail' },
+      { label: 'Price / Tariff', terms: 'price,amber,tariff,cost,rate' },
+      { label: 'Automations', terms: 'automation.' },
+    ],
+
     get totalPages() {
       return Math.max(1, Math.ceil(this.total / this.pageSize));
+    },
+
+    /** Enabled automations in the current view — the ones that can fight a
+     *  Bridge rule for control of the same entity. */
+    get activeAutomations() {
+      return this.entities.filter(
+        (e) => e.domain === 'automation' && String(e.state).toLowerCase() === 'on',
+      ).length;
+    },
+
+    /** Toggle: clicking the active preset clears it. */
+    applyPreset(p) {
+      this.search = this.search === p.terms ? '' : p.terms;
+      this.page = 1;
+      this.load();
+    },
+
+    clearFilters() {
+      this.resetFilters();
+      this.load();
     },
 
     async init() {
