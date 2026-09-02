@@ -208,11 +208,16 @@ def _missed_fire_time(entry: dict, since: datetime, now: datetime) -> datetime |
 
 
 def winner(entries: list[dict], now: datetime) -> dict | None:
-    """Pick the single winning *active* entry for one target.
+    """Pick the single winning *active* entry for one target, ignoring gates.
 
-    Entries are pre-sorted (priority desc, created_at desc) by the store, so the
-    first active one is the winner: highest priority, newest as tie-break
-    (last-writer). Disabled entries are excluded by the caller.
+    Entries are pre-sorted (priority desc, created_at ASC) by the store, so the
+    first active one is the winner: highest priority, oldest as tie-break — an
+    entry added later never displaces an established one at equal priority.
+    Disabled entries are excluded by the caller.
+
+    The engine itself uses :meth:`SchedulerEngine._battery_winner`, which also
+    skips entries whose conditions currently fail; this stays as the pure
+    activity-only ranking.
     """
     for e in entries:
         if entry_active(e, now):
@@ -364,6 +369,11 @@ class ScheduleEngine:
         # targets we're currently deferring on (so we audit the defer once, not
         # every tick while a manual command stays active)
         self._deferred: set[tuple] = set()
+        # (tkey, loser_id, winner_id) already audited as skipped, and the last
+        # battery-lane winner per target — so losing the gateway is logged once
+        # per contest rather than every tick.
+        self._skipped: set[tuple] = set()
+        self._last_win: dict[tuple, str] = {}
         # tkey -> entry_id whose CURRENT window we've already completed (its
         # sustained dispatch ended in-window via the watchdog or an external
         # release). Suppresses re-firing until the window is re-entered.
@@ -645,11 +655,26 @@ class ScheduleEngine:
         # entirely (entry deleted) are reconciled to "no desired" below.
         seen: set[tuple] = set()
         for (ttype, tid), entries in self._targets().items():
-            win = winner(entries, now)
+            # Two lanes. Only a battery command is exclusive — one gateway can
+            # run one setpoint at a time — so only those entries contend for the
+            # target. HA-actions-only entries command other devices entirely
+            # (a solar inverter that may not even be wired through this
+            # gateway), so they reconcile under their own key and never block a
+            # battery entry. Before this split, an "always evaluate" HA-only
+            # entry held the target permanently and starved every schedule on
+            # that gateway while dispatching nothing itself.
+            battery = [e for e in entries if e.get("action") != "none"]
+            ha_only = [e for e in entries if e.get("action") == "none"]
             for gw_id, h in self._resolver(ttype, tid):
                 tkey = (ttype, tid, gw_id)
                 seen.add(tkey)
-                await self._reconcile(tkey, h, win, now)
+                await self._reconcile(tkey, h, await self._battery_winner(battery, tkey, now), now)
+                for e in ha_only:
+                    # Same gw_id in slot 2 so the audit target still resolves to
+                    # the gateway's name; the entry id only isolates the state.
+                    hkey = (ttype, f"{tid}#{e['id']}", gw_id)
+                    seen.add(hkey)
+                    await self._reconcile(hkey, h, e if entry_active(e, now) else None, now)
 
         # A target/gateway we used to own but whose entries are now gone (or that
         # left a fan-out group) → release it. Re-resolve the handler by gw_id.
@@ -668,6 +693,84 @@ class ScheduleEngine:
                 self._gated.discard(tkey)
                 self._ha_fired.pop(tkey, None)
                 self._exit_entry.pop(tkey, None)
+                self._last_win.pop(tkey, None)
+                self._skipped = {m for m in self._skipped if m[0] != tkey}
+
+    async def _battery_winner(
+        self, entries: list[dict], tkey: tuple, now: datetime
+    ) -> dict | None:
+        """Which battery entry owns this gateway right now.
+
+        A gateway runs one setpoint at a time, so exactly one entry may hold it.
+        Order of preference:
+
+        1. **The incumbent** — an entry we already own keeps the gateway even if
+           its gate blips false, so a running dispatch is never dropped and
+           re-acquired mid-window.
+        2. **The first ranked entry whose entry-conditions pass.** Ranking is
+           priority, then oldest-first. Skipping a gated entry is the fix for
+           the starvation bug: previously the first *active* entry took the
+           gateway and then did nothing when its own conditions failed, while
+           every entry behind it went unevaluated and unlogged.
+        3. **The first active entry**, when none pass — so a single gated entry
+           still audits its own gate exactly as before.
+        """
+        active = [e for e in entries if entry_active(e, now)]
+        if not active:
+            self._last_win.pop(tkey, None)
+            return None
+
+        own = self._owned.get(tkey)
+        if own is not None:
+            incumbent = next((e for e in active if e["id"] == own.get("entry_id")), None)
+            if incumbent is not None:
+                await self._note_skips(active, incumbent, tkey)
+                return incumbent
+
+        snap = None
+        for e in active:
+            tree = e.get("entry_conditions")
+            if tree is None:
+                await self._note_skips(active, e, tkey)
+                return e
+            if snap is None:
+                snap = self._snapshot(tkey[2], now)
+            ok, _trace = eval_conditions(tree, snap)
+            if ok:
+                await self._note_skips(active, e, tkey)
+                return e
+
+        # Nobody's gate passes — hand back the top-ranked entry so it audits its
+        # own gate failure (unchanged single-entry behaviour).
+        await self._note_skips(active, active[0], tkey)
+        return active[0]
+
+    async def _note_skips(self, active: list[dict], win: dict, tkey: tuple) -> None:
+        """Audit the entries that lost this gateway, once per contest.
+
+        Losing was previously invisible: a non-winning entry is never evaluated,
+        so it wrote nothing to the activity log and simply appeared not to run.
+        """
+        if len(active) < 2:
+            return
+        if self._last_win.get(tkey) != win["id"]:
+            # New winner → this is a fresh contest; let the losers re-audit.
+            self._last_win[tkey] = win["id"]
+            self._skipped = {m for m in self._skipped if m[0] != tkey}
+        for e in active:
+            if e["id"] == win["id"]:
+                continue
+            mark = (tkey, e["id"], win["id"])
+            if mark in self._skipped:
+                continue
+            self._skipped.add(mark)
+            await self._audit(
+                e["id"],
+                e.get("action", "none"),
+                tkey,
+                "skipped",
+                f"gateway held by '{win.get('name', win['id'])}' this tick",
+            )
 
     async def _reconcile(self, tkey: tuple, handler: Any, win: dict | None, now: datetime) -> None:
         own = self._owned.get(tkey)

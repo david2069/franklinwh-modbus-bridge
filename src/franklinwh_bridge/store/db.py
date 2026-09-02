@@ -1058,7 +1058,11 @@ async def get_schedules(db: aiosqlite.Connection) -> list[dict]:
     try:
         rows = []
         async with db.execute(
-            "SELECT * FROM schedules ORDER BY priority DESC, created_at DESC, id"
+            # priority first, then OLDEST first: at equal priority the
+            # longest-standing entry outranks one added later, so adding a rule
+            # never silently displaces an established one. Reordering is done by
+            # setting priority explicitly.
+            "SELECT * FROM schedules ORDER BY priority DESC, created_at ASC, id"
         ) as cur:
             async for row in cur:
                 rows.append(_decode_schedule(dict(row)))

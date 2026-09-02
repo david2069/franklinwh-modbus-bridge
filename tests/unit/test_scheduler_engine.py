@@ -588,3 +588,74 @@ async def test_stop_entry_not_active():
     assert res["status"] == "not_active"
     res2 = await eng.stop_entry("missing", now=MON)
     assert res2["status"] == "not_found"
+
+
+# ── lane split + gate-aware selection (starvation fix) ────────
+
+
+async def test_ha_only_entry_does_not_starve_a_battery_entry():
+    """The 29-Aug regression: an always-on HA-only entry used to win the target
+    permanently and block every battery schedule on that gateway, while
+    dispatching nothing itself. HA-only entries now reconcile in their own lane."""
+    h = FakeHandler()
+    ha = entry(
+        id="ha", name="Curtail PV", action="none",
+        trigger_kind="always",                  # active 24/7 by definition
+        entry_conditions={"conditions": [GT]},  # and its own gate never passes
+    )
+    batt = entry(id="batt", name="Export", action="force_discharge")
+    audits: list[dict] = []
+    eng = make_engine([ha, batt], h, points={"soc": 10}, audits=audits)
+    await eng.tick(MON)
+
+    assert h.state.active is True and h.state.action == "Force Discharge"
+    assert any(a["result"] == "ok" and a["id"] == "batt" for a in audits)
+
+
+async def test_gated_battery_entry_steps_aside_for_the_next_one():
+    """Two battery entries on one gateway: the higher-ranked one's gate fails,
+    so the gateway goes to the next entry that can actually act instead of being
+    held by one that then does nothing."""
+    h = FakeHandler()
+    first = entry(id="first", name="Peak shave", action="force_charge",
+                  entry_conditions={"conditions": [GT]})     # needs soc > 50
+    second = entry(id="second", name="Export", action="force_discharge")
+    audits: list[dict] = []
+    eng = make_engine([first, second], h, points={"soc": 10}, audits=audits)
+    await eng.tick(MON)
+
+    assert h.state.action == "Force Discharge"
+    # losing the gateway is now visible in the log, not silent
+    assert any(a["result"] == "skipped" and a["id"] == "first" for a in audits)
+
+
+async def test_single_gated_entry_still_audits_its_gate():
+    """Nothing to fall through to → unchanged: the entry keeps the target and
+    audits its own gate failure exactly once."""
+    h = FakeHandler()
+    e = entry(entry_conditions={"conditions": [GT]})
+    audits: list[dict] = []
+    eng = make_engine([e], h, points={"soc": 10}, audits=audits)
+    await eng.tick(MON)
+    await eng.tick(MON)
+
+    assert h.state.active is False
+    assert gated_count(audits) == 1
+    assert not any(a["result"] == "skipped" for a in audits)
+
+
+async def test_incumbent_keeps_the_gateway_when_its_gate_blips():
+    """A running dispatch must not be dropped and re-acquired because its gate
+    momentarily reads false — the exit tree ends a window, not the entry gate."""
+    h = FakeHandler()
+    points = {"soc": 80}
+    running = entry(id="run", name="Running", action="force_charge",
+                    entry_conditions={"conditions": [GT]})
+    other = entry(id="other", name="Other", action="force_discharge")
+    eng = make_engine([running, other], h, points=points)
+    await eng.tick(MON)
+    assert h.state.action == "Force Charge"
+
+    points["soc"] = 10          # gate now fails for the incumbent
+    await eng.tick(MON)
+    assert h.state.action == "Force Charge"   # still ours, not handed over
