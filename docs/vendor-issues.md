@@ -311,8 +311,20 @@ work against real hardware, on either the Modbus TCP path or FranklinWH's Local 
   persisting write to 15508/15509.** Register 15507 (OnGrid Mode) writes *do* succeed —
   only the reserve percentage registers are blocked.
 
-**Local API (franklinwh-local, TCP/9000) — also unconfirmed, and less rigorously checked
-than the Modbus path:**
+**UPDATE 2026-09-04 — the Local API path is no longer merely "unconfirmed": the
+bridge author reports first-hand that setting reserve SoC over it FAILS.** The
+Local API (TCP/9000) is confirmed *capable* for a useful set of controls the
+Modbus path lacks — **switching operating modes, smart circuits, generator
+status, and V2L mode** — but for **TOU / Self-Consumption reserve SoC it only
+ever returns values: every attempt to set it has failed.** That makes three
+transports (Modbus, Local API, Cloud) with no confirmed, persisting reserve-SoC
+write between them, and it removes the Local API as the hoped-for workaround.
+Not yet backed by a recorded test artefact in this repo — worth capturing one
+(a set followed by a readback) so it carries the same weight as the Modbus
+evidence below.
+
+**Local API (franklinwh-local, TCP/9000) — the pre-2026-09-04 assessment, kept
+for how the conclusion was reached:**
 - `franklinwh-local/README.md:7-9` / `docs/index.md:9-11`: repo-wide status is
   *"alpha ... live transport against real hardware should be validated on your own LAN."*
 - `set_mode_soc()` (`client.py:283-291`, cmd 1405) exists, but unlike `mode --set`'s CLI
