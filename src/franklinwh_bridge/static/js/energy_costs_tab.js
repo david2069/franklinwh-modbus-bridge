@@ -152,8 +152,10 @@ function energyCostsTab() {
     get maxAbsNet() {
       return Math.max(1, ...this.history.map((p) => Math.abs(p.net_total || 0)));
     },
+    /** Bar height as a percentage of ONE HALF of the plot, since bars grow from
+     *  a centred zero line: cost upward, credit downward. The caller halves it. */
     barPct(p) {
-      return Math.max(2, (Math.abs(p.net_total || 0) / this.maxAbsNet) * 100);
+      return Math.max(4, (Math.abs(p.net_total || 0) / this.maxAbsNet) * 100);
     },
     fmtDate(ts) {
       if (ts == null) return '—';
