@@ -71,3 +71,57 @@ async def test_billing_store_and_sensor(db):
     assert snap["tariff.demand_window_active"] is True
     assert snap["tariff.bonus_window_active"] is False
     assert snapshot(pts, datetime(2026, 6, 10, 12, 0))["tariff.bonus_window_active"] is True
+
+
+# ── plan permissions (migration 36) ───────────────────────────
+
+
+async def test_plan_permissions_default_permissive(tmp_path):
+    """An unconfigured install must behave exactly as before: everything
+    permitted, no export cap."""
+    from franklinwh_bridge.gateway.billing import BillingStore
+    from franklinwh_bridge.store.db import init_db
+
+    db = await init_db(tmp_path / "plan.db")
+    try:
+        store = BillingStore(db)
+        await store.load()
+        p = store.plan()
+        assert p["plan_type"] == "unknown"
+        assert p["export_allowed"] is True
+        assert p["charging_allowed"] is True and p["discharging_allowed"] is True
+        assert p["export_limit_kw"] == 0.0            # 0 = unlimited
+
+        pts = store.as_points()
+        assert pts["service_export_allowed"] is True
+        assert pts["service_export_limit_kw"] == 0.0
+    finally:
+        await db.close()
+
+
+async def test_plan_permissions_round_trip_to_sensors(tmp_path):
+    """What the plan forbids reaches the automation sensor catalog."""
+    from franklinwh_bridge.gateway.billing import BillingStore
+    from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog
+    from franklinwh_bridge.store.db import get_services, init_db, update_service
+
+    db = await init_db(tmp_path / "plan2.db")
+    try:
+        # BillingStore reads the FIRST service (v1 is single-service), and a
+        # fresh DB already seeds one — so configure that rather than adding another.
+        first = (await get_services(db))[0]
+        await update_service(
+            db, first["id"], plan_type="tou", export_allowed=False,
+            export_limit_kw=5.0, charging_allowed=False, discharging_allowed=True,
+        )
+        store = BillingStore(db)
+        await store.load()
+        assert store.plan()["plan_type"] == "tou"
+
+        cat = {c["id"]: c["value"] for c in sensor_catalog(store.as_points())}
+        assert cat["service.export_allowed"] is False
+        assert cat["service.charging_allowed"] is False
+        assert cat["service.discharging_allowed"] is True
+        assert cat["service.export_limit_kw"] == 5.0
+    finally:
+        await db.close()

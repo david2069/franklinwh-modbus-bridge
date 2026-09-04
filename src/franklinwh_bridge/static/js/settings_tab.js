@@ -258,6 +258,13 @@ function settingsTab() {
         demand_window: this._win(svc.demand_window, '14:00', '20:00'),
         bonus_window: this._win(svc.bonus_window, '00:00', '06:00'),
         has_export_charge: !!(svc.pricing && svc.pricing.export_charge),
+        // plan description + permissions (migration 36); permissive defaults so
+        // an older service edits exactly as it behaves.
+        plan_type: svc.plan_type || 'unknown',
+        export_allowed: svc.export_allowed !== false,
+        export_limit_kw: Number(svc.export_limit_kw) || 0,
+        charging_allowed: svc.charging_allowed !== false,
+        discharging_allowed: svc.discharging_allowed !== false,
         // calculation method + rates (stored in the pricing JSON)
         pricing: {
           billing_cycle_day: (svc.pricing && svc.pricing.billing_cycle_day) || 1,

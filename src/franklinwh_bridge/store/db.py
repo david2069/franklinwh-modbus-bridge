@@ -12,7 +12,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 35
+CURRENT_SCHEMA_VERSION = 36
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -548,6 +548,18 @@ MIGRATIONS: dict[int, str] = {
     -- this migration keep 0, so their net_total is usage-driven cost only.
     ALTER TABLE billing_periods ADD COLUMN fixed_charges REAL NOT NULL DEFAULT 0;
     """,
+    36: """
+    -- What the electricity PLAN permits, as opposed to what the user prefers.
+    -- plan_type is informational (it describes the tariff; it does not drive any
+    -- rate calculation yet). The four permissions are utility/plan requirements
+    -- exposed to the scheduler as service.* sensors so automations can condition
+    -- on them. export_limit_kw NULL = unlimited.
+    ALTER TABLE services ADD COLUMN plan_type TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE services ADD COLUMN export_allowed INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE services ADD COLUMN export_limit_kw REAL;
+    ALTER TABLE services ADD COLUMN charging_allowed INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE services ADD COLUMN discharging_allowed INTEGER NOT NULL DEFAULT 1;
+    """,
 }
 
 
@@ -888,6 +900,9 @@ _SERVICE_FIELDS = (
     "name", "meter_number", "account", "ac_service", "rated_amps",
     "has_tou", "has_peak_demand", "has_export_bonus", "min_monthly_bill", "pricing_api",
     "demand_window", "bonus_window", "pricing",
+    # plan description + what the plan permits (migration 36)
+    "plan_type", "export_allowed", "export_limit_kw",
+    "charging_allowed", "discharging_allowed",
 )
 _SERVICE_JSON_FIELDS = ("demand_window", "bonus_window", "pricing")
 

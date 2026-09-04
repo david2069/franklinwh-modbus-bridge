@@ -33,6 +33,16 @@ class BillingStore:
         self._demand_cfg: dict | None = None
         self._bonus_cfg: dict | None = None
         self._charge_cfg: dict | None = None
+        # What the plan permits, from the first service that defines it (v1 is
+        # single-service). Defaults are permissive so an unconfigured install
+        # behaves exactly as before.
+        self._plan: dict = {
+            "plan_type": "unknown",
+            "export_allowed": True,
+            "export_limit_kw": 0.0,      # 0 = unlimited
+            "charging_allowed": True,
+            "discharging_allowed": True,
+        }
 
     async def load(self) -> None:
         try:
@@ -42,7 +52,16 @@ class BillingStore:
             return
         demand, bonus = [], []
         demand_cfg = bonus_cfg = charge_cfg = None
+        plan = None
         for s in services:
+            if plan is None:  # first service defines the plan (v1: single service)
+                plan = {
+                    "plan_type": s.get("plan_type") or "unknown",
+                    "export_allowed": bool(s.get("export_allowed", 1)),
+                    "export_limit_kw": _num(s.get("export_limit_kw")),
+                    "charging_allowed": bool(s.get("charging_allowed", 1)),
+                    "discharging_allowed": bool(s.get("discharging_allowed", 1)),
+                }
             pricing = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
             cycle_day = int(_num(pricing.get("billing_cycle_day"), 1)) or 1
             if s.get("has_peak_demand") and isinstance(s.get("demand_window"), dict):
@@ -79,6 +98,8 @@ class BillingStore:
         self._demand, self._bonus = demand, bonus
         self._demand_cfg, self._bonus_cfg = demand_cfg, bonus_cfg
         self._charge_cfg = charge_cfg
+        if plan is not None:
+            self._plan = plan
 
     def demand_config(self) -> dict | None:
         return self._demand_cfg
@@ -88,6 +109,10 @@ class BillingStore:
 
     def charge_config(self) -> dict | None:
         return self._charge_cfg
+
+    def plan(self) -> dict:
+        """What the electricity plan permits (defaults are permissive)."""
+        return dict(self._plan)
 
     def as_points(self) -> dict[str, Any]:
         d = self._demand_cfg or {}
@@ -100,4 +125,10 @@ class BillingStore:
             "tariff_export_bonus_rate": (self._bonus_cfg or {}).get("rate", 0.0),
             "tariff_export_charge_rate": c.get("rate", 0.0),
             "tariff_demand_charge_basis": d.get("charge_basis", "per_kw_day"),
+            # Plan permissions → service.* sensors an automation can gate on.
+            "service_plan_type": self._plan["plan_type"],
+            "service_export_allowed": self._plan["export_allowed"],
+            "service_export_limit_kw": self._plan["export_limit_kw"],
+            "service_charging_allowed": self._plan["charging_allowed"],
+            "service_discharging_allowed": self._plan["discharging_allowed"],
         }

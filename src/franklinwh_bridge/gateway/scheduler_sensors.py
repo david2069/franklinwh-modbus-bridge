@@ -482,6 +482,25 @@ SENSORS: list[SensorDef] = [
         "tariff.export_charge_cost", "Export Charge this period ($)", "$", "number",
         _charge_cost,
     ),
+    # ── What the electricity plan permits (utility/plan requirements) ──
+    # Referenceable so an automation can refuse to act against its own plan —
+    # e.g. only force-discharge while service.export_allowed is true.
+    SensorDef(
+        "service.export_allowed", "Plan allows export to grid", None, "bool",
+        lambda p, _n: bool(p.get("service_export_allowed", True)),
+    ),
+    SensorDef(
+        "service.export_limit_kw", "Plan export limit (kW, 0 = unlimited)", "kW", "number",
+        lambda p, _n: _num(p, "service_export_limit_kw"),
+    ),
+    SensorDef(
+        "service.charging_allowed", "Plan allows battery charging", None, "bool",
+        lambda p, _n: bool(p.get("service_charging_allowed", True)),
+    ),
+    SensorDef(
+        "service.discharging_allowed", "Plan allows battery discharging", None, "bool",
+        lambda p, _n: bool(p.get("service_discharging_allowed", True)),
+    ),
     # ── Fixed / standing charges (informational; offset target) ──
     SensorDef(
         "fixed.daily_charge", "Fixed Charges per day ($)", "$", "number",
@@ -614,6 +633,7 @@ _GROUP_LABELS = {
     "demand": "Demand / Tariff",
     "bonus": "Demand / Tariff",
     "fixed": "Fixed Charges",
+    "service": "Utility Plan",
     "time": "Time",
 }
 
