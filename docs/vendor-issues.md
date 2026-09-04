@@ -312,16 +312,32 @@ work against real hardware, on either the Modbus TCP path or FranklinWH's Local 
   only the reserve percentage registers are blocked.
 
 **UPDATE 2026-09-04 — the Local API path is no longer merely "unconfirmed": the
-bridge author reports first-hand that setting reserve SoC over it FAILS.** The
-Local API (TCP/9000) is confirmed *capable* for a useful set of controls the
-Modbus path lacks — **switching operating modes, smart circuits, generator
-status, and V2L mode** — but for **TOU / Self-Consumption reserve SoC it only
-ever returns values: every attempt to set it has failed.** That makes three
-transports (Modbus, Local API, Cloud) with no confirmed, persisting reserve-SoC
-write between them, and it removes the Local API as the hoped-for workaround.
-Not yet backed by a recorded test artefact in this repo — worth capturing one
-(a set followed by a readback) so it carries the same weight as the Modbus
-evidence below.
+bridge author reports first-hand that setting reserve SoC over it FAILS, and
+that the CLOUD path is the one that works.** Specifically:
+
+- The Local API (TCP/9000) is confirmed *capable* for a useful set of controls
+  the Modbus path lacks — **switching operating modes, smart circuits,
+  generator status, and V2L mode**. But for **TOU / Self-Consumption reserve
+  SoC it only returns values: every attempt to set it has failed**, despite
+  `set_mode_soc()` existing (cmd 1405 opt=1, writing all four fields
+  `selfMin/selfMax/touMin/touMax` together — i.e. the "set them all at once"
+  hypothesis below was tried and is not sufficient).
+- **The `franklinwh-hybrid` bridge therefore routes reserve-SoC setting to the
+  FranklinWH Cloud API** (`update_soc(soc, workMode, electricityType)`) rather
+  than the local transport. Its cross-transport table
+  (`/Users/davidhona/dev/franklinwh-hybrid/docs/CROSS_REFERENCE.md:149`) lists
+  local, cloud and REST equivalents; the author's report is what identifies
+  cloud as the one used in practice for this capability.
+
+**So the ordering is: Modbus blocked → Local API blocked → Cloud works.** An
+earlier draft of this note claimed all three were blocked; that was wrong.
+
+Still missing on the cloud side: a recorded **set-then-readback** artefact. The
+cloud client's own live test asserts the HTTP call succeeded and re-reads only
+`workMode`, never the SoC value (see the 2026-07-15 update below), so
+"the Hybrid bridge uses it" is a stronger signal than anything logged here but
+is not the same as a verified persistence check. `tools/test_cloud_soc_persistence.py`
+was written for exactly this and has still not been run.
 
 **Local API (franklinwh-local, TCP/9000) — the pre-2026-09-04 assessment, kept
 for how the conclusion was reached:**
