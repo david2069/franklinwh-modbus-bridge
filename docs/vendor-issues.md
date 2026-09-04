@@ -332,12 +332,20 @@ that the CLOUD path is the one that works.** Specifically:
 **So the ordering is: Modbus blocked → Local API blocked → Cloud works.** An
 earlier draft of this note claimed all three were blocked; that was wrong.
 
-Still missing on the cloud side: a recorded **set-then-readback** artefact. The
-cloud client's own live test asserts the HTTP call succeeded and re-reads only
-`workMode`, never the SoC value (see the 2026-07-15 update below), so
-"the Hybrid bridge uses it" is a stronger signal than anything logged here but
-is not the same as a verified persistence check. `tools/test_cloud_soc_persistence.py`
-was written for exactly this and has still not been run.
+**The cloud path setting reserve SoC is confirmed by the bridge author**
+(2026-09-04) — it is not merely implemented, it works. This is the only
+transport that can, so any bridge feature exposing a writable reserve SoC must
+route there.
+
+What is still missing is only the **recorded artefact**, not the capability: no
+set-then-readback capture lives in this repo. The cloud client's own live test
+asserts the HTTP call succeeded and re-reads `workMode` alone, never the SoC
+value (see the 2026-07-15 update below). Two ready harnesses exist for closing
+that gap — `tools/test_cloud_soc_persistence.py` (unrun), and the **FWHAI REST
+API** (`https://localhost:8099`, HTTPS not HTTP, auth required), which the
+author notes can exercise the same cloud call. Worth capturing once, since it
+would turn the single most consequential control on this device from
+"known to work" into "evidenced".
 
 **Local API (franklinwh-local, TCP/9000) — the pre-2026-09-04 assessment, kept
 for how the conclusion was reached:**
