@@ -50,29 +50,20 @@
             <option :value="gw.id" x-text="gw.name"></option>
           </template>
         </select>
-        <div class="flex gap-1">
-          <template x-for="(d, i) in weekdays" :key="i">
-            <button class="text-[11px] px-2 py-0.5 rounded transition"
-                    :class="previewDay === i ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:text-slate-300'"
-                    @click="setPreviewDay(i)" x-text="d"></button>
+        <select x-model="zoomChoice" @change="onZoomChoice()" class="form-control !py-0.5 !text-[11px] w-auto">
+          <template x-for="z in zoomPresets" :key="z.id">
+            <option :value="z.id" x-text="z.label"></option>
           </template>
-        </div>
+        </select>
       </div>
     </div>
 
-    <!-- Zoom: narrow the time-of-day window; default is the whole day -->
-    <div class="flex flex-wrap items-center gap-2 mb-2">
-      <span class="text-[10px] uppercase tracking-wide text-slate-500">Zoom</span>
-      <template x-for="z in zoomPresets" :key="z.label">
-        <button type="button" @click="setZoom(z)"
-                class="px-2 py-0.5 rounded text-[11px] border transition-colors"
-                :class="zoomFromStr === z.from && zoomToStr === z.to ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-slate-400 border-white/10 hover:border-white/25'"
-                x-text="z.label"></button>
-      </template>
-      <span class="text-slate-600 text-[11px] ml-1">from</span>
-      <input type="time" x-model="zoomFromStr" class="form-control !py-0.5 !text-[11px] w-24">
+    <!-- Custom range only — the presets moved into the header dropdown -->
+    <div class="flex flex-wrap items-center gap-2 mb-2" x-show="zoomChoice === 'custom'">
+      <span class="text-slate-600 text-[11px]">from</span>
+      <input type="time" x-model="zoomFromStr" class="form-control !py-0.5 !text-[11px] w-28">
       <span class="text-slate-600 text-[11px]">to</span>
-      <input type="time" x-model="zoomToStr" class="form-control !py-0.5 !text-[11px] w-24">
+      <input type="time" x-model="zoomToStr" class="form-control !py-0.5 !text-[11px] w-28">
       <span x-show="zoomed" class="text-[10px] text-cyan-400"
             x-text="`showing ${Math.round(zoomSpan / 60 * 10) / 10}h of 24h`"></span>
     </div>
@@ -85,9 +76,29 @@
                x-show="timelineRows.length > 1" :title="row.name">
             <span class="w-2 h-2 rounded-sm shrink-0" :style="`background:${row.colour}`"></span>
             <span class="truncate" x-text="row.name"></span>
+            <span x-show="socNow(row) !== null" class="ml-auto font-mono text-[10px] text-lime-300"
+                  x-text="socNow(row) + '%'" title="Latest state of charge"></span>
           </div>
           <div class="relative flex-1 h-10 rounded-md overflow-hidden border border-white/[0.06]"
                style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.06) 0 6px, transparent 6px 12px);">
+            <!-- What the gateway ACTUALLY ran: operating-mode band along the
+                 top, same colours as the Dashboard's Power History. -->
+            <template x-for="(m, mi) in modeSpans(row)" :key="'m'+mi">
+              <div class="absolute top-0 h-1.5"
+                   :style="`left:${pct(m._l)}%; width:${Math.max(0.4, pct(m._l + m._w) - pct(m._l))}%; background:${m.colour}`"
+                   :title="m.title"></div>
+            </template>
+
+            <!-- SoC history to now, as an overlay line (0–100% of track height) -->
+            <template x-if="socPath(row)">
+              <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100"
+                   preserveAspectRatio="none" aria-hidden="true">
+                <polyline :points="socPath(row)" fill="none" stroke="rgba(163,230,53,.85)"
+                          stroke-width="1.5" vector-effect="non-scaling-stroke"
+                          stroke-dasharray="3 2"></polyline>
+              </svg>
+            </template>
+
             <!-- Planned windows. Past of the now-line they fade to an outline:
                  what was planned. What actually ran is drawn over them. -->
             <template x-for="(seg, idx) in row.segments" :key="idx">
@@ -165,6 +176,14 @@
       <span class="flex items-center gap-1.5 text-slate-400" x-show="anyTriggerSeg">
         <span class="w-3 h-3 rounded-sm inline-block border-t-2 border-white/70" style="background: rgba(100,116,139,.85);"></span>
         <span>Automation fire (trigger + duration)</span>
+      </span>
+      <span class="flex items-center gap-1.5 text-slate-400" title="What the gateway actually ran (top band) — same colours as the Dashboard">
+        <span class="w-3 h-1.5 rounded-sm inline-block" style="background:rgba(34,197,94,0.7)"></span>
+        <span>Actual mode</span>
+      </span>
+      <span class="flex items-center gap-1.5 text-slate-400" title="State of charge to now">
+        <span class="w-3 h-0 inline-block" style="border-top:2px dashed rgba(163,230,53,.85)"></span>
+        <span>SoC %</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400">
         <span class="w-3 h-1 rounded-sm inline-block bg-emerald-500/70"></span>

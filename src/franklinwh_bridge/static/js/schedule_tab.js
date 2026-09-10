@@ -187,6 +187,10 @@ function scheduleTab() {
     auditFilter: '',
     conn: { connected: true, gateways: {}, recent_outages: [] },
     expandedId: null,
+    // Timeline is always TODAY. The weekday picker previewed a recurrence
+    // pattern, not real days, so it couldn't show what actually happened —
+    // which is what the mode/SoC/dispatch overlays are for. Past/future days
+    // belong to the calendar view (backlog), not a 7-button row.
     previewDay: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, // Mon=0
     timelineGateway: 'all',  // 'all' | '<gateway_id>' — paints the bar for one or all
 
@@ -196,12 +200,20 @@ function scheduleTab() {
     // reads as a block instead of a 6% sliver.
     zoomFromStr: '00:00',
     zoomToStr: '23:59',
+    // One dropdown instead of a row of chips + two time inputs — the chip row
+    // wrapped badly on a phone. Custom reveals the from/to pair.
+    zoomChoice: 'full',
     zoomPresets: [
-      { label: 'Full day', from: '00:00', to: '23:59' },
-      { label: 'Daylight', from: '06:00', to: '20:00' },
-      { label: 'Evening peak', from: '15:00', to: '22:00' },
-      { label: 'Overnight', from: '20:00', to: '23:59' },
+      { id: 'full', label: 'Full day', from: '00:00', to: '23:59' },
+      { id: 'daylight', label: 'Daylight (06:00–20:00)', from: '06:00', to: '20:00' },
+      { id: 'evening', label: 'Evening peak (15:00–22:00)', from: '15:00', to: '22:00' },
+      { id: 'overnight', label: 'Overnight (20:00–24:00)', from: '20:00', to: '23:59' },
+      { id: 'custom', label: 'Custom range…', from: null, to: null },
     ],
+    onZoomChoice() {
+      const p = this.zoomPresets.find((x) => x.id === this.zoomChoice);
+      if (p && p.from) { this.zoomFromStr = p.from; this.zoomToStr = p.to; }
+    },
     _minOf(s) {
       const [h, m] = String(s || '0:0').split(':').map(Number);
       return (h || 0) * 60 + (m || 0);
@@ -280,6 +292,7 @@ function scheduleTab() {
       if (log && log.events) this.audit = log.events;
       if (conn) this.conn = conn;
       if (all && all.events) this.auditAll = all.events;
+      this.loadMetricsHistory();  // actual mode + SoC overlay for today
       this.loadHaControllable();  // exposed controllable HA entities for actions
     },
 
@@ -357,6 +370,97 @@ function scheduleTab() {
     },
     /** Outage count for a gateway today — drives the row's summary text. */
     linkOutageCount(gwId) { return this.linkOutages(gwId).length; },
+
+    // ── actual operating mode + SoC history (today, from metrics) ──
+    // Same colours/abbreviations the Dashboard's Power History uses, so a mode
+    // means the same thing in both places.
+    metricsByGw: {},
+    MODE_COLOURS: {
+      'TOU': 'rgba(251,191,36,0.7)',
+      'Time of Use': 'rgba(251,191,36,0.7)',
+      'Self-Consumption': 'rgba(34,197,94,0.7)',
+      'Emergency Backup': 'rgba(239,68,68,0.7)',
+    },
+    MODE_ABBR: {
+      'TOU': 'TOU', 'Time of Use': 'TOU',
+      'Self-Consumption': 'Self', 'Emergency Backup': 'Backup',
+    },
+    modeColour(m) { return this.MODE_COLOURS[m] || 'rgba(148,163,184,0.55)'; },
+
+    async loadMetricsHistory() {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      const start = Math.floor(midnight.getTime() / 1000);
+      const end = Math.floor(Date.now() / 1000);
+      const gws = Alpine.store('app').gatewayList || [];
+      const ids = gws.length ? gws.map((g) => g.id) : ['default'];
+      const out = {};
+      await Promise.all(ids.map(async (id) => {
+        const d = await fetchJSON(
+          `api/metrics?start=${start}&end=${end}&bucket=15m&gateway_id=${encodeURIComponent(id)}`,
+        );
+        out[id] = (d && d.points) || [];
+      }));
+      this.metricsByGw = out;
+      this._midnightTs = start;
+    },
+
+    /** Metric samples for a track, as {min, soc, mode}. The fan-out row has no
+     *  single gateway of its own, so it gets nothing. */
+    _samples(row) {
+      if (!row || row.id === '__fanout') return [];
+      const key = row.id === 'all' ? 'default' : row.id;
+      const pts = this.metricsByGw[key] || [];
+      const base = this._midnightTs || 0;
+      return pts.map((p) => ({
+        min: (p.ts - base) / 60,
+        soc: typeof p.soc === 'number' ? p.soc : null,
+        mode: p.mode_name || null,
+      }));
+    },
+
+    /** Contiguous runs of the same operating mode, clipped to the zoom window —
+     *  what the gateway was ACTUALLY doing, vs the bridge's planned overrides. */
+    modeSpans(row) {
+      const s = this._samples(row).filter((x) => x.mode);
+      if (!s.length) return [];
+      const runs = [];
+      let cur = { mode: s[0].mode, from: s[0].min, to: s[0].min };
+      for (const x of s.slice(1)) {
+        if (x.mode === cur.mode) { cur.to = x.min; continue; }
+        runs.push(cur);
+        cur = { mode: x.mode, from: cur.to, to: x.min };
+      }
+      cur.to = Math.max(cur.to, this.timeline.now_min);
+      runs.push(cur);
+      const out = [];
+      for (const r of runs) {
+        const l = Math.max(r.from, this.zoomFrom);
+        const rr = Math.min(r.to, this.zoomTo);
+        if (rr <= l) continue;
+        out.push({
+          _l: l, _w: rr - l, mode: r.mode,
+          colour: this.modeColour(r.mode),
+          title: `${r.mode} · ${this._hhmm(r.from)}–${this._hhmm(r.to)}`,
+        });
+      }
+      return out;
+    },
+
+    /** SoC history as an SVG polyline in a 0..100 viewBox — x is position in the
+     *  zoom window, y is inverted SoC. Stops at the now-line by construction. */
+    socPath(row) {
+      const span = this.zoomSpan || 1;
+      const pts = this._samples(row)
+        .filter((x) => x.soc !== null && x.min >= this.zoomFrom && x.min <= this.zoomTo)
+        .map((x) => `${(((x.min - this.zoomFrom) / span) * 100).toFixed(2)},${(100 - x.soc).toFixed(2)}`);
+      return pts.length > 1 ? pts.join(' ') : '';
+    },
+    /** Latest SoC for the row, for the inline label. */
+    socNow(row) {
+      const s = this._samples(row).filter((x) => x.soc !== null);
+      return s.length ? s[s.length - 1].soc : null;
+    },
 
     // ── what actually ran (left of the now-line) ─────────────
     /** Pair each "dispatched …" log row with the release/exit that ended it,
