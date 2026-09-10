@@ -83,12 +83,30 @@ function powerColour(watts, type) {
 }
 
 // ── Polling ──────────────────────────────────────────────────
+/** Record reachability so the UI can say "I can't see the bridge" instead of
+ *  silently showing stale values. Only a TRANSPORT failure counts: an HTTP 401
+ *  or 500 means we reached the bridge and it answered, which is a different
+ *  problem and must not raise the offline banner. */
+function _noteReachable(ok) {
+  try {
+    const s = window.Alpine && Alpine.store('app');
+    if (!s) return;
+    if (ok) {
+      s.connFailures = 0;
+      s.connLastOk = Date.now() / 1000;
+    } else {
+      s.connFailures = (s.connFailures || 0) + 1;
+    }
+  } catch (_) { /* store not built yet — nothing to report to */ }
+}
+
 async function fetchJSON(url, options = {}) {
   try {
     if (options.body && !options.headers) {
       options.headers = { 'Content-Type': 'application/json' };
     }
     const r = await fetch(url, options);
+    _noteReachable(true);   // it answered, whatever the status
     if (!r.ok) {
       let detail = `HTTP ${r.status}`;
       try {
@@ -99,6 +117,9 @@ async function fetchJSON(url, options = {}) {
     }
     return await r.json();
   } catch (e) {
+    // fetch() rejects (rather than resolving with a bad status) only when the
+    // request never completed — dropped VPN, DNS, host down.
+    if (e instanceof TypeError) _noteReachable(false);
     console.warn('[Bridge]', url, e.message);
     return { ok: false, error: e.message };
   }
@@ -157,6 +178,39 @@ document.addEventListener('alpine:init', () => {
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
       localStorage.setItem('fwh-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
+    },
+
+    // ── Reachability ──────────────────────────────────────────
+    // Two consecutive transport failures before we shout: one can be a single
+    // dropped request, and a banner that flickers gets ignored.
+    connFailures: 0,
+    connLastOk: null,
+    connRetrying: false,
+    get connLost() { return this.connFailures >= 2; },
+
+    // navigator.onLine is the ONLY network fact a browser exposes, and it only
+    // means "an interface is up" — it stays true on wifi with the VPN down, and
+    // no API reveals VPN state at all (deliberately: it would leak the user's
+    // network posture to any site). But combining it with our own reachability
+    // does narrow the cause usefully:
+    //   device offline           → it's the device
+    //   device online, bridge no → it's the path: VPN, DNS, or the bridge itself
+    deviceOffline: !navigator.onLine,
+    get connCause() {
+      return this.deviceOffline
+        ? 'This device has no network connection.'
+        : 'This device is online, so it\'s the path to the bridge — check VPN.';
+    },
+    /** "14:32" of the last successful call — what the screen is actually showing. */
+    get connLastOkLabel() { return this.connLastOk ? fmt.clock(this.connLastOk) : 'never'; },
+    async retryNow() {
+      this.connRetrying = true;
+      try {
+        await fetchJSON('api/health');          // cheapest possible probe
+        if (!this.connLost) await this.refresh();  // back? pull fresh data
+      } finally {
+        this.connRetrying = false;
+      }
     },
 
     // Theme
@@ -272,9 +326,16 @@ document.addEventListener('alpine:init', () => {
     init() {
       // Apply saved theme
       document.documentElement.setAttribute('data-theme', this.theme);
+      // Track the one network fact the browser will tell us. Fires immediately
+      // on a phone losing wifi, well before our 10s poll notices.
+      addEventListener('online', () => { this.deviceOffline = false; this.retryNow(); });
+      addEventListener('offline', () => { this.deviceOffline = true; });
       this.loadMe();
       this.refresh();
       this.loadModules();
+      // This 10s loop IS the retry: it keeps calling fetchJSON regardless of
+      // which tab is open, so connFailures clears within one tick of the
+      // network returning and the offline banner disappears on its own.
       this._interval = setInterval(() => this.refresh(), 10000);
       // Load battery label from site config (one-shot at startup)
       fetchJSON('api/site').then(d => { if (d && d.battery_label) this.batteryLabel = d.battery_label; });

@@ -55,6 +55,24 @@
       <!-- ── Topbar ───────────────────────────────────── -->
       {% include "partials/topbar.html" %}
 
+      <!-- ── Offline banner ───────────────────────────────
+           Without this, a dropped VPN looks identical to a quiet bridge: the
+           page keeps rendering its last values with auto-refresh still ticking.
+           Says what it can't do AND when the data on screen is from. -->
+      <div x-show="$store.app.connLost" x-cloak
+           class="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 bg-red-500/15 border-b border-red-500/40 text-xs text-red-200">
+        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></span>
+        <span class="font-medium">Can't reach the bridge</span>
+        <span class="text-red-300/80">
+          showing data from <span class="font-mono" x-text="$store.app.connLastOkLabel"></span>
+          · <span x-text="$store.app.connFailures"></span> failed attempts
+        </span>
+        <span class="text-red-300/60 hidden sm:inline" x-text="$store.app.connCause + ' Retrying every 10s.'"></span>
+        <button @click="$store.app.retryNow()" :disabled="$store.app.connRetrying"
+                class="ml-auto px-2 py-0.5 rounded border border-red-400/40 hover:bg-red-500/20 disabled:opacity-50"
+                x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
+      </div>
+
       <!-- ── Content ──────────────────────────────────── -->
       <main class="flex-1 overflow-y-auto p-4 lg:p-6">
 
