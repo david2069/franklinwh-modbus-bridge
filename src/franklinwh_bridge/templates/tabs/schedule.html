@@ -142,8 +142,8 @@
                       x-show="(pct(a._l + a._w) - pct(a._l)) > 10">ran</span>
               </div>
             </template>
-            <div class="absolute inset-0 flex items-center justify-center text-[10px] text-slate-600"
-                 x-show="!row.segments.length">nothing scheduled in this window</div>
+            <div class="absolute inset-0 flex items-center justify-center text-[10px] text-slate-500/70 pointer-events-none"
+                 x-show="!row.segments.length && !modeSpans(row).length">nothing scheduled in this window</div>
             <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
                  x-show="nowVisible" :style="`left:${nowPct}%`"></div>
 
@@ -185,8 +185,8 @@
         </span>
       </template>
       <span class="flex items-center gap-1.5 text-slate-500"
-            title="Bare track = the bridge issues no WSet, so the gateway runs its own mode — the background tint shows which.">
-        <span>Bare track = no override</span>
+            title="No block = the bridge issues no WSet, so the gateway runs its own mode — the tint and label say which.">
+        <span>No block = no override</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" x-show="nowVisible"
             title="Left of the red line is what happened; right of it is what is planned.">
