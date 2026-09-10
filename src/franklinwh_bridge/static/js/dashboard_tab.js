@@ -310,7 +310,7 @@ function dashboardTab() {
     showEventsModal: false,
     eventsData: [],
     eventsLoading: false,
-    eventsRange: '7d',
+    eventsRange: localStorage.getItem('fwh-events-range') || '7d',
     // Same preset list as the Power History chart's own Time Span dropdown,
     // minus 'live' (events are historical, there's no "live" mode for them).
     eventsRanges: [
@@ -358,7 +358,10 @@ function dashboardTab() {
       return 'No history recorded for this gateway in this range.';
     },
 
-    chartRange: '30m',
+    // Last choice wins, else 24h — 30m showed a sliver of the day and almost
+    // everyone widened it immediately. 'custom' is never restored: it depends
+    // on dates we don't store, so it would reopen as an empty range.
+    chartRange: localStorage.getItem('fwh-chart-range') || '24h',
     chartRanges: [
       { value: 'live', label: 'Live' },
       { value: '30m',  label: '30m' },
@@ -480,6 +483,7 @@ function dashboardTab() {
 
     async setChartRange(range) {
       this.chartRange = range;
+      if (range !== 'custom') localStorage.setItem('fwh-chart-range', range);
       this.showDateRange = false;  // close date picker when selecting preset
 
       // Fast polling for live mode (2s), normal for everything else
@@ -1104,6 +1108,7 @@ function dashboardTab() {
 
     setEventsRange(range) {
       this.eventsRange = range;
+      if (range !== 'custom') localStorage.setItem('fwh-events-range', range);
       this.showEventsDateRange = false;  // close date picker when selecting preset
       this.loadEvents();
     },
