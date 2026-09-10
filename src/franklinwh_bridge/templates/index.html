@@ -67,7 +67,9 @@
           showing data from <span class="font-mono" x-text="$store.app.connLastOkLabel"></span>
           · <span x-text="$store.app.connFailures"></span> failed attempts
         </span>
-        <span class="text-red-300/60 hidden sm:inline" x-text="$store.app.connCause + ' Retrying every 10s.'"></span>
+        <!-- Shown at EVERY width: this is the one sentence that tells the user what
+             to do, and a phone is where a VPN drop actually happens. -->
+        <span class="w-full sm:w-auto text-red-300/70" x-text="$store.app.connCause + ' Retrying every 10s.'"></span>
         <button @click="$store.app.retryNow()" :disabled="$store.app.connRetrying"
                 class="ml-auto px-2 py-0.5 rounded border border-red-400/40 hover:bg-red-500/20 disabled:opacity-50"
                 x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
