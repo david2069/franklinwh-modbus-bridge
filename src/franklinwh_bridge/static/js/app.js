@@ -103,6 +103,24 @@ function mockSyntheticSeries(gatewayId, nowTs, rangeSeconds, nPoints) {
   return points;
 }
 
+// ── Operating-mode colours ───────────────────────────────────
+// Shared by the Dashboard chart and the Schedule timeline so a mode means the
+// same thing in both. BG is a WASH behind the plot — deliberately ~0.07 alpha,
+// because mode is context for the data on top, not a value in its own right.
+// LEGEND is the saturated swatch used in keys and tooltips.
+const MODE_BG_COLORS = {
+  'TOU':              'rgba(251,191,36,0.08)',
+  'Time of Use':      'rgba(251,191,36,0.08)',
+  'Self-Consumption': 'rgba(34,197,94,0.07)',
+  'Emergency Backup': 'rgba(239,68,68,0.08)',
+};
+const MODE_LEGEND_COLORS = {
+  'TOU':              'rgba(251,191,36,0.7)',
+  'Time of Use':      'rgba(251,191,36,0.7)',
+  'Self-Consumption': 'rgba(34,197,94,0.7)',
+  'Emergency Backup': 'rgba(239,68,68,0.7)',
+};
+
 // Availability dot colour for a gateway's health state.
 function gwDotClass(health) {
   return health === 'connected' ? 'bg-emerald-400'

@@ -376,17 +376,16 @@ function scheduleTab() {
     // means the same thing in both places.
     metricsByGw: {},
     alarmsByGw: {},
-    MODE_COLOURS: {
-      'TOU': 'rgba(251,191,36,0.7)',
-      'Time of Use': 'rgba(251,191,36,0.7)',
-      'Self-Consumption': 'rgba(34,197,94,0.7)',
-      'Emergency Backup': 'rgba(239,68,68,0.7)',
-    },
+
     MODE_ABBR: {
       'TOU': 'TOU', 'Time of Use': 'TOU',
       'Self-Consumption': 'Self', 'Emergency Backup': 'Backup',
     },
-    modeColour(m) { return this.MODE_COLOURS[m] || 'rgba(148,163,184,0.55)'; },
+    // Background WASH, matching the Dashboard chart. Mode is context for the
+    // dispatch bars drawn on top, not a value of its own — as a saturated bar
+    // it out-shouted them and its green was indistinguishable from the green
+    // "Link up" strip on the same track.
+    modeColour(m) { return MODE_BG_COLORS[m] || 'rgba(148,163,184,0.06)'; },
 
     async loadMetricsHistory() {
       const midnight = new Date();

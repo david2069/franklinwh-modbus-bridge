@@ -18,18 +18,6 @@ function dashboardTab() {
   const MAX_LIVE_POINTS = 180;
 
   // Operating-mode colours used for both background shading and the legend
-  const MODE_BG_COLORS = {
-    'TOU':              'rgba(251,191,36,0.08)',
-    'Time of Use':      'rgba(251,191,36,0.08)',
-    'Self-Consumption': 'rgba(34,197,94,0.07)',
-    'Emergency Backup': 'rgba(239,68,68,0.08)',
-  };
-  const MODE_LEGEND_COLORS = {
-    'TOU':              'rgba(251,191,36,0.7)',
-    'Time of Use':      'rgba(251,191,36,0.7)',
-    'Self-Consumption': 'rgba(34,197,94,0.7)',
-    'Emergency Backup': 'rgba(239,68,68,0.7)',
-  };
   const MODE_ABBR = {
     'TOU':              'TOU',
     'Time of Use':      'TOU',
