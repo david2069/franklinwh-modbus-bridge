@@ -233,6 +233,9 @@ function scheduleTab() {
     // nulling it mid-teardown is what threw "form.id is null" floods in Alpine.
     form: null,
     formOpen: false,
+    // True only when the form was OPENED with enabled=false (template review).
+    // Gates the enable-on-save prompt so it never fires on a deliberate disable.
+    _openedDisabled: false,
     testResult: null,       // entry-conditions Test Verification result
     exitTestResult: null,   // exit-conditions Test Verification result
     traceByCid: {},         // leaf _cid -> {result, live_value} from last test
@@ -725,6 +728,10 @@ function scheduleTab() {
     newEntry() {
       this.form = this._blankForm();
       this.formOpen = true;
+      // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
+      // (templates seed enabled=false so you review first). If the user turned
+      // it off themselves, offering to turn it back on is just undoing them.
+      this._openedDisabled = !this.form.enabled;
       this._clearTrace();
     },
 
@@ -809,6 +816,10 @@ function scheduleTab() {
       this._clearTrace();
       this.form = this._blankForm({ ...common, ...over });
       this.formOpen = true;
+      // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
+      // (templates seed enabled=false so you review first). If the user turned
+      // it off themselves, offering to turn it back on is just undoing them.
+      this._openedDisabled = !this.form.enabled;
     },
 
     editEntry(e) {
@@ -856,6 +867,10 @@ function scheduleTab() {
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
       this.formOpen = true;
+      // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
+      // (templates seed enabled=false so you review first). If the user turned
+      // it off themselves, offering to turn it back on is just undoing them.
+      this._openedDisabled = !this.form.enabled;
     },
 
     _cloneTree(t) {
@@ -1137,9 +1152,12 @@ function scheduleTab() {
       if (res && !res.error) {
         Alpine.store('app').toast(f.id ? 'Schedule updated' : 'Schedule created', 'info');
         this.closeForm();
-        // Saved but disabled → it won't run. Offer to enable it now rather than
-        // let a schedule silently sit inert (a common "why didn't it fire?" trap).
-        if (!body.enabled && res.id) {
+        // Saved but disabled → it won't run. Offer to enable it, but ONLY when
+        // the form opened disabled — i.e. a template seeded it that way for
+        // review. If the user disabled it themselves, or is editing an entry
+        // that was already off, prompting just asks them to undo what they
+        // came here to do.
+        if (!body.enabled && res.id && this._openedDisabled) {
           const enable = await Alpine.store('app').confirm({
             title: 'Enable now?',
             message: `"${body.name}" is saved but disabled, so it won't run. Enable it?`,
