@@ -1,28 +1,40 @@
 <!-- ── Logs Tab — filterable log viewer with pagination ── -->
 <div x-data="logsTab()">
 
-  <!-- Level summary cards -->
-  <div class="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
+  <!-- Level totals as one row of tappable chips. As cards these were five
+       ~130px boxes around a single digit — ~270px of chrome on a phone before
+       any log was visible, and four of the five read 0 nearly always. -->
+  <div class="flex flex-wrap gap-1.5 mb-3">
     <template x-for="lvl in levels" :key="lvl.name">
       <button @click="toggleLevelFilter(lvl.name)"
-              class="card !p-2 sm:!p-3 text-center transition hover:opacity-80"
-              :class="levelFilter === lvl.name ? 'ring-1 ring-current' : ''">
-        <div class="text-[10px] uppercase font-semibold tracking-wider mb-1"
-             :class="lvl.color" x-text="lvl.name"></div>
-        <div class="text-base sm:text-xl font-bold font-mono" :class="lvl.color"
-             x-text="summary[lvl.name] ?? 0"></div>
+              class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] transition hover:opacity-80"
+              :class="levelFilter === lvl.name ? 'border-current ring-1 ring-current' : 'border-white/10'"
+              :title="'Filter to ' + lvl.name">
+        <span class="uppercase tracking-wide" :class="lvl.color" x-text="lvl.name"></span>
+        <span class="font-mono font-semibold" :class="lvl.color" x-text="summary[lvl.name] ?? 0"></span>
       </button>
     </template>
   </div>
 
   <!-- Filter bar -->
   <div class="card !p-3 mb-4">
-    <div class="flex items-center gap-3 flex-wrap">
-      <!-- Search -->
-      <div class="flex-1 min-w-[200px]">
+    <!-- Search always visible; the rest collapses behind a toggle on a phone.
+         `hidden sm:flex` keeps desktop exactly as it was, toggle and all. -->
+    <div class="flex items-center gap-2">
+      <div class="flex-1 min-w-0">
         <input type="text" x-model="searchQuery" placeholder="Search messages..."
                class="form-control !py-1.5 !text-xs" @input.debounce.300ms="loadLogs()">
       </div>
+      <button @click="filtersOpen = !filtersOpen"
+              class="sm:hidden btn btn-sm btn-secondary whitespace-nowrap !py-1.5 !text-xs"
+              :aria-expanded="filtersOpen">
+        Filters<span x-show="activeFilterCount"
+                     class="ml-1 px-1.5 rounded-full bg-cyan-500/20 text-cyan-300"
+                     x-text="activeFilterCount"></span>
+      </button>
+    </div>
+    <div class="items-center gap-3 flex-wrap mt-2 sm:mt-3"
+         :class="filtersOpen ? 'flex' : 'hidden sm:flex'">
       <!-- Level filter -->
       <select x-model="levelFilter" @change="loadLogs()" class="form-control !py-1.5 !text-xs w-28">
         <option value="">All Levels</option>

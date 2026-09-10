@@ -13,6 +13,14 @@ function logsTab() {
     levelFilter: '',
     sourceFilter: '',
     gatewayFilter: '',
+    // Filters collapse on a phone (the row of selects cost ~370px before a
+    // single log line was visible). Desktop never sees the toggle — the panel
+    // is `hidden sm:flex`, so it's always open there.
+    filtersOpen: false,
+    get activeFilterCount() {
+      return [this.levelFilter, this.sourceFilter, this.gatewayFilter]
+        .filter(Boolean).length + (this.rangePreset !== '24h' ? 1 : 0);
+    },
 
     // Time range (server-side, over persisted logs)
     rangePreset: '24h',   // 1h | 6h | 24h | 7d | 30d | all | custom

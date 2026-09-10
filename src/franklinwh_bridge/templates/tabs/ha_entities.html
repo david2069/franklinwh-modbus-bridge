@@ -25,19 +25,21 @@
   <template x-if="instances.length > 0">
     <div>
       <!-- Stat cards -->
-      <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
-        <div class="card !p-3">
-          <div class="text-[10px] uppercase tracking-wide text-slate-500">Total Entities</div>
-          <div class="text-base sm:text-xl font-semibold text-slate-100" x-text="grandTotal.toLocaleString()"></div>
-        </div>
-        <div class="card !p-3">
-          <div class="text-[10px] uppercase tracking-wide text-slate-500">Exposed</div>
-          <div class="text-base sm:text-xl font-semibold text-emerald-400" x-text="exposedCount"></div>
-        </div>
-        <div class="card !p-3">
-          <div class="text-[10px] uppercase tracking-wide text-slate-500">Instances</div>
-          <div class="text-base sm:text-xl font-semibold text-slate-100" x-text="instances.length"></div>
-        </div>
+      <!-- Three read-only counts don't need three cards; one chip row says the
+           same in a fraction of the height. -->
+      <div class="flex flex-wrap gap-1.5 mb-3 text-[11px]">
+        <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10">
+          <span class="uppercase tracking-wide text-slate-500">Entities</span>
+          <span class="font-mono font-semibold text-slate-100" x-text="grandTotal.toLocaleString()"></span>
+        </span>
+        <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10">
+          <span class="uppercase tracking-wide text-slate-500">Exposed</span>
+          <span class="font-mono font-semibold text-emerald-400" x-text="exposedCount"></span>
+        </span>
+        <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10">
+          <span class="uppercase tracking-wide text-slate-500">Instances</span>
+          <span class="font-mono font-semibold text-slate-100" x-text="instances.length"></span>
+        </span>
       </div>
 
       <div class="card">
