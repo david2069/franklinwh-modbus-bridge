@@ -396,6 +396,14 @@ function scheduleTab() {
       const ids = gws.length ? gws.map((g) => g.id) : ['default'];
       const out = {};
       await Promise.all(ids.map(async (id) => {
+        // A mock gateway persists no metrics, so its mode band and SoC line
+        // would simply be missing while the Dashboard shows it a full curve.
+        // Same synthetic series as everywhere else — see app.js.
+        const gw = gws.find((g) => g.id === id);
+        if (gw && gw.mock) {
+          out[id] = mockSyntheticSeries(id, end, Math.max(600, end - start), 96);
+          return;
+        }
         const d = await fetchJSON(
           `api/metrics?start=${start}&end=${end}&bucket=15m&gateway_id=${encodeURIComponent(id)}`,
         );
