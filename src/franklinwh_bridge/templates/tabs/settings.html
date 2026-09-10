@@ -396,7 +396,7 @@
         SoC parameters your automations use — available as <span class="font-mono">const.*</span>
         condition sensors and as targets for the ETA / headroom derived sensors.
       </p>
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Min Discharge SoC (%)</span>
           <input type="number" min="0" max="100" step="1" x-model.number="constants.min_discharge_soc" class="form-control !py-1 !text-sm"></label>
         <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Max Charge SoC (%)</span>
@@ -535,7 +535,7 @@
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_bonus" class="accent-cyan-500"> Battery export bonus</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_charge" class="accent-amber-500"> Two-way export charge</label>
                 </div>
-                <div class="grid grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Min monthly bill</span>
                     <input type="number" min="0" step="0.01" x-model.number="serviceEdit.min_monthly_bill" class="form-control !py-1 !text-xs"></label>
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Billing cycle day</span>
@@ -657,7 +657,7 @@
 
                   <template x-for="(fc, fi) in serviceEdit.pricing.fixed_charges" :key="'fc'+fi">
                     <div class="rounded border border-white/[0.04] p-2 space-y-1.5">
-                      <div class="grid grid-cols-4 gap-2 text-xs">
+                      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
                         <label class="flex flex-col gap-0.5"><span class="text-slate-500">Type</span>
                           <select x-model="fc.type" class="form-control !py-0.5 !text-xs">
                             <option value="supply">Supply</option>

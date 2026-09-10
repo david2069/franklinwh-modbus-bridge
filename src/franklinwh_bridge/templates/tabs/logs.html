@@ -2,14 +2,14 @@
 <div x-data="logsTab()">
 
   <!-- Level summary cards -->
-  <div class="grid grid-cols-5 gap-3 mb-4">
+  <div class="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
     <template x-for="lvl in levels" :key="lvl.name">
       <button @click="toggleLevelFilter(lvl.name)"
-              class="card !p-3 text-center transition hover:opacity-80"
+              class="card !p-2 sm:!p-3 text-center transition hover:opacity-80"
               :class="levelFilter === lvl.name ? 'ring-1 ring-current' : ''">
         <div class="text-[10px] uppercase font-semibold tracking-wider mb-1"
              :class="lvl.color" x-text="lvl.name"></div>
-        <div class="text-xl font-bold font-mono" :class="lvl.color"
+        <div class="text-base sm:text-xl font-bold font-mono" :class="lvl.color"
              x-text="summary[lvl.name] ?? 0"></div>
       </button>
     </template>
