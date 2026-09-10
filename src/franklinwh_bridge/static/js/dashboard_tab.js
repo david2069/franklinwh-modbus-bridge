@@ -347,6 +347,9 @@ function dashboardTab() {
     // reads as "the chart didn't redraw" but is worse — it attributes one
     // gateway's history to another. Mock gateways never persist metrics, so
     // this is their normal state, not a fault.
+    // Chart controls are collapsed on a phone (see the Options toggle) — the
+    // chart itself is what you came for; the seven controls rarely are.
+    chartOptionsOpen: false,
     chartEmpty: false,
     get chartEmptyMsg() {
       const gw = (Alpine.store('app').gatewayList || [])
