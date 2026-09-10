@@ -25,6 +25,18 @@ const fmt = {
   },
   // Full local timestamp, used as a tooltip on the HH:MM label.
   at: (ts) => (ts == null ? 'never' : new Date(ts * 1000).toLocaleString()),
+  // Compact stamp for dense tables: "2 Sep 12:57", or just "12:57" for today.
+  // A full toLocaleString() is ~24 characters and dominates a phone-width row;
+  // pair this with the full value in a title= so nothing is actually lost.
+  short: (ts) => {
+    if (ts == null) return '—';
+    const d = new Date(ts * 1000);
+    const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const now = new Date();
+    const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth()
+      && d.getFullYear() === now.getFullYear();
+    return sameDay ? hm : `${d.getDate()} ${d.toLocaleDateString([], { month: 'short' })} ${hm}`;
+  },
 };
 
 // Availability dot colour for a gateway's health state.

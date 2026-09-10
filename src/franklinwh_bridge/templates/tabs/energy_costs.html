@@ -316,14 +316,14 @@
               <thead>
                 <tr class="text-left text-slate-500 border-b border-white/[0.06]">
                   <th class="py-1.5 pr-3 font-medium">Period</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Peak kW</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Demand $</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Reward kWh</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Reward $</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Export kWh</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Billable kWh</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Charge $</th>
-                  <th class="py-1.5 pr-3 font-medium text-right">Fixed $</th>
+                  <th class="hidden lg:table-cell py-1.5 pr-3 font-medium text-right">Peak kW</th>
+                  <th class="hidden sm:table-cell py-1.5 pr-3 font-medium text-right">Demand $</th>
+                  <th class="hidden xl:table-cell py-1.5 pr-3 font-medium text-right">Reward kWh</th>
+                  <th class="hidden sm:table-cell py-1.5 pr-3 font-medium text-right">Reward $</th>
+                  <th class="hidden xl:table-cell py-1.5 pr-3 font-medium text-right">Export kWh</th>
+                  <th class="hidden xl:table-cell py-1.5 pr-3 font-medium text-right">Billable kWh</th>
+                  <th class="hidden lg:table-cell py-1.5 pr-3 font-medium text-right">Charge $</th>
+                  <th class="hidden lg:table-cell py-1.5 pr-3 font-medium text-right">Fixed $</th>
                   <th class="py-1.5 pr-3 font-medium text-right">Net $</th>
                 </tr>
               </thead>
@@ -331,14 +331,14 @@
                 <template x-for="p in history" :key="p.id">
                   <tr class="border-b border-white/[0.04]">
                     <td class="py-2 pr-3 text-slate-300"><span x-text="fmtDate(p.period_start)"></span> – <span x-text="fmtDate(p.period_end)"></span></td>
-                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.demand_peak_kw||0).toFixed(2)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-amber-300" x-text="dollars(p.demand_charge)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.reward_kwh||0).toFixed(1)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-emerald-300" x-text="dollars(p.reward_credit)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_kwh||0).toFixed(1)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_net_kwh||0).toFixed(1)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-cyan-300" x-text="dollars(p.charge_cost)"></td>
-                    <td class="py-2 pr-3 text-right font-mono text-violet-300" x-text="dollars(p.fixed_charges)"></td>
+                    <td class="hidden lg:table-cell py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.demand_peak_kw||0).toFixed(2)"></td>
+                    <td class="hidden sm:table-cell py-2 pr-3 text-right font-mono text-amber-300" x-text="dollars(p.demand_charge)"></td>
+                    <td class="hidden xl:table-cell py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.reward_kwh||0).toFixed(1)"></td>
+                    <td class="hidden sm:table-cell py-2 pr-3 text-right font-mono text-emerald-300" x-text="dollars(p.reward_credit)"></td>
+                    <td class="hidden xl:table-cell py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_kwh||0).toFixed(1)"></td>
+                    <td class="hidden xl:table-cell py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.charge_net_kwh||0).toFixed(1)"></td>
+                    <td class="hidden lg:table-cell py-2 pr-3 text-right font-mono text-cyan-300" x-text="dollars(p.charge_cost)"></td>
+                    <td class="hidden lg:table-cell py-2 pr-3 text-right font-mono text-violet-300" x-text="dollars(p.fixed_charges)"></td>
                     <td class="py-2 pr-3 text-right font-mono font-semibold" :class="(p.net_total||0) < 0 ? 'text-emerald-300' : 'text-slate-100'" x-text="dollars(p.net_total)"></td>
                   </tr>
                 </template>

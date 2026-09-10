@@ -1262,23 +1262,33 @@
       <table class="w-full text-xs">
         <thead class="sticky top-0 bg-slate-800 z-10">
           <tr class="border-b border-white/[0.08]">
+            <!-- Column priority: identity + severity on every screen; register
+                 and duration return once there's room. Beats horizontal scroll,
+                 which hides the fact that columns exist at all. -->
             <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">TIME</th>
-            <th class="text-left px-3 py-2 text-slate-500 font-semibold">REGISTER</th>
+            <th class="hidden lg:table-cell text-left px-3 py-2 text-slate-500 font-semibold">REGISTER</th>
             <th class="text-left px-3 py-2 text-slate-500 font-semibold">SUNSPEC GROUP.POINT</th>
             <th class="text-left px-3 py-2 text-slate-500 font-semibold">VALUE</th>
-            <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">DURATION</th>
+            <th class="hidden sm:table-cell text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">DURATION</th>
           </tr>
         </thead>
         <tbody>
           <template x-for="(ev, idx) in filteredEventsData" :key="idx">
             <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
-              <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" x-text="formatEventTime(ev.ts)"></td>
-              <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.register ?? '—'"></td>
+              <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" :title="formatEventTime(ev.ts)">
+                <span class="md:hidden" x-text="fmt.short(ev.ts)"></span>
+                <span class="hidden md:inline" x-text="formatEventTime(ev.ts)"></span>
+              </td>
+              <td class="hidden lg:table-cell px-3 py-1.5 font-mono text-slate-400" x-text="ev.register ?? '—'"></td>
               <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.point ?? ev.source"></td>
               <td class="px-3 py-1.5">
                 <span class="chip text-[10px]" :class="severityChipClass(ev.severity)" x-text="ev.name"></span>
+                <span class="sm:hidden block text-[10px] text-slate-500 font-mono mt-0.5">
+                  <span x-text="formatDuration(ev.duration_seconds)"></span>
+                  <span x-show="ev.ongoing" class="text-amber-400"> (ongoing)</span>
+                </span>
               </td>
-              <td class="px-3 py-1.5 font-mono text-slate-300 whitespace-nowrap">
+              <td class="hidden sm:table-cell px-3 py-1.5 font-mono text-slate-300 whitespace-nowrap">
                 <span x-text="formatDuration(ev.duration_seconds)"></span>
                 <span x-show="ev.ongoing" class="text-amber-400"> (ongoing)</span>
               </td>

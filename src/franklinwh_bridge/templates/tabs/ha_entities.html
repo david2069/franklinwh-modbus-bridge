@@ -91,30 +91,30 @@
           <table class="w-full text-xs">
             <thead>
               <tr class="text-left text-[10px] uppercase tracking-wide text-slate-500 border-b border-white/[0.08]">
-                <th class="py-2 pr-2 font-semibold w-8">#</th>
+                <th class="hidden md:table-cell py-2 pr-2 font-semibold w-8">#</th>
                 <th class="py-2 pr-2 font-semibold">Entity</th>
-                <th class="py-2 pr-2 font-semibold w-28">Domain</th>
+                <th class="hidden lg:table-cell py-2 pr-2 font-semibold w-28">Domain</th>
                 <th class="py-2 pr-2 font-semibold w-28">State</th>
-                <th class="py-2 pr-2 font-semibold w-32">Instance</th>
+                <th class="hidden xl:table-cell py-2 pr-2 font-semibold w-32">Instance</th>
                 <th class="py-2 pr-2 font-semibold w-24 text-right">Expose</th>
               </tr>
             </thead>
             <tbody>
               <template x-for="(e, idx) in entities" :key="e.instance + ':' + e.entity_id">
                 <tr class="border-b border-white/[0.04] hover:bg-white/[0.02]">
-                  <td class="py-1.5 pr-2 text-slate-600 font-mono" x-text="(page-1)*pageSize + idx + 1"></td>
+                  <td class="hidden md:table-cell py-1.5 pr-2 text-slate-600 font-mono" x-text="(page-1)*pageSize + idx + 1"></td>
                   <td class="py-1.5 pr-2">
                     <div class="font-mono text-slate-300" x-text="e.entity_id"></div>
                     <div class="text-slate-500" x-text="e.friendly_name"></div>
                   </td>
-                  <td class="py-1.5 pr-2">
+                  <td class="hidden lg:table-cell py-1.5 pr-2">
                     <span class="px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 font-mono text-[10px]" x-text="e.domain"></span>
                   </td>
                   <td class="py-1.5 pr-2 font-mono text-slate-300">
                     <span x-text="e.state ?? '--'"></span>
                     <span class="text-slate-500" x-show="e.unit" x-text="' ' + (e.unit || '')"></span>
                   </td>
-                  <td class="py-1.5 pr-2 text-slate-400" x-text="e.instance_name"></td>
+                  <td class="hidden xl:table-cell py-1.5 pr-2 text-slate-400" x-text="e.instance_name"></td>
                   <td class="py-1.5 pr-2 text-right">
                     <button @click="toggleExpose(e)"
                             class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
