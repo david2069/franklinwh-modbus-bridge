@@ -83,7 +83,7 @@
             <span x-show="socNow(row) !== null" class="ml-auto font-mono text-[10px] text-lime-300"
                   x-text="socNow(row) + '%'" title="Latest state of charge"></span>
           </div>
-          <div class="relative flex-1 h-10 rounded-md overflow-hidden border border-white/[0.06]"
+          <div class="relative flex-1 h-16 rounded-md overflow-hidden border border-white/[0.06]"
                style="background: repeating-linear-gradient(45deg, rgba(148,163,184,.06) 0 6px, transparent 6px 12px);">
             <!-- What the gateway ACTUALLY ran: operating-mode band along the
                  top, same colours as the Dashboard's Power History. -->
@@ -95,12 +95,20 @@
 
             <!-- SoC history to now, as an overlay line (0–100% of track height) -->
             <template x-if="socPath(row)">
-              <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100"
-                   preserveAspectRatio="none" aria-hidden="true">
-                <polyline :points="socPath(row)" fill="none" stroke="rgba(163,230,53,.85)"
-                          stroke-width="1.5" vector-effect="non-scaling-stroke"
-                          stroke-dasharray="3 2"></polyline>
-              </svg>
+              <div class="absolute inset-0 pointer-events-none">
+                <!-- 0/50/100 guides: without a scale the SoC line was a squiggle
+                     with no way to read a value off it. -->
+                <div class="absolute left-0 right-0 top-1/2 border-t border-dashed border-lime-400/20"></div>
+                <div class="absolute left-0 right-0 top-0 border-t border-lime-400/10"></div>
+                <span class="absolute right-1 top-0 text-[8px] leading-none text-lime-400/40 font-mono">100</span>
+                <span class="absolute right-1 top-1/2 -mt-1 text-[8px] leading-none text-lime-400/30 font-mono">50</span>
+                <svg class="absolute inset-0 w-full h-full" viewBox="0 0 100 100"
+                     preserveAspectRatio="none" aria-hidden="true">
+                  <polyline :points="socPath(row)" fill="none" stroke="rgba(163,230,53,.85)"
+                            stroke-width="1.5" vector-effect="non-scaling-stroke"
+                            stroke-dasharray="3 2"></polyline>
+                </svg>
+              </div>
             </template>
 
             <!-- Planned windows. Past of the now-line they fade to an outline:
@@ -131,6 +139,14 @@
                  x-show="!row.segments.length">nothing scheduled in this window</div>
             <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
                  x-show="nowVisible" :style="`left:${nowPct}%`"></div>
+
+            <!-- Alarm / PV-clip events, so a dispatch coinciding with one is
+                 visible here instead of only in the Events card. -->
+            <template x-for="(a, k) in alarmMarks(row)" :key="'al'+k">
+              <div class="absolute top-0 h-full w-px z-20 pointer-events-auto"
+                   :style="`left:${pct(a._l)}%; background:${alarmColour(a.severity)}`"
+                   :title="a.title"></div>
+            </template>
 
             <!-- Link state: green baseline, red where the gateway was out.
                  Only drawn on today's column — outages are real timestamps,
@@ -185,9 +201,13 @@
         <span class="w-3 h-1.5 rounded-sm inline-block" style="background:rgba(34,197,94,0.7)"></span>
         <span>Actual mode</span>
       </span>
-      <span class="flex items-center gap-1.5 text-slate-400" title="State of charge to now">
+      <span class="flex items-center gap-1.5 text-slate-400" title="State of charge to now, 0–100% of track height">
         <span class="w-3 h-0 inline-block" style="border-top:2px dashed rgba(163,230,53,.85)"></span>
         <span>SoC %</span>
+      </span>
+      <span class="flex items-center gap-1.5 text-slate-400" title="Alarm / PV-clip events — hover a marker for detail">
+        <span class="w-px h-3 inline-block" style="background:rgba(239,68,68,.95)"></span>
+        <span>Alarm</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400">
         <span class="w-3 h-1 rounded-sm inline-block bg-emerald-500/70"></span>

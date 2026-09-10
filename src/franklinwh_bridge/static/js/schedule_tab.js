@@ -375,6 +375,7 @@ function scheduleTab() {
     // Same colours/abbreviations the Dashboard's Power History uses, so a mode
     // means the same thing in both places.
     metricsByGw: {},
+    alarmsByGw: {},
     MODE_COLOURS: {
       'TOU': 'rgba(251,191,36,0.7)',
       'Time of Use': 'rgba(251,191,36,0.7)',
@@ -411,6 +412,19 @@ function scheduleTab() {
       }));
       this.metricsByGw = out;
       this._midnightTs = start;
+
+      // Alarms in the same window. A rule firing DURING an alarm is exactly the
+      // correlation this view can make and the Activity Log can't.
+      const ev = {};
+      await Promise.all(ids.map(async (id) => {
+        const gw = gws.find((g) => g.id === id);
+        if (gw && gw.mock) { ev[id] = []; return; }   // mocks raise no alarms
+        const d = await fetchJSON(
+          `api/alarm-events?start=${start}&end=${end}&gateway_id=${encodeURIComponent(id)}`,
+        );
+        ev[id] = (d && d.events) || [];
+      }));
+      this.alarmsByGw = ev;
     },
 
     /** Metric samples for a track, as {min, soc, mode}. The fan-out row has no
@@ -464,6 +478,29 @@ function scheduleTab() {
         .map((x) => `${(((x.min - this.zoomFrom) / span) * 100).toFixed(2)},${(100 - x.soc).toFixed(2)}`);
       return pts.length > 1 ? pts.join(' ') : '';
     },
+    /** Alarm events for a track as {min, title, severity}, clipped to the zoom. */
+    alarmMarks(row) {
+      if (!row || row.id === '__fanout' || !this.linkIsForToday) return [];
+      const key = row.id === 'all' ? 'default' : row.id;
+      const base = this._midnightTs || 0;
+      const out = [];
+      for (const e of this.alarmsByGw[key] || []) {
+        const m = (e.ts - base) / 60;
+        if (m < this.zoomFrom || m > this.zoomTo) continue;
+        const set = e.alarms_set || '';
+        out.push({
+          _l: m,
+          severity: e.severity || 'info',
+          title: `${this._hhmm(m)} · ${e.source || 'alarm'}${set ? ' · ' + set : ''}`,
+        });
+      }
+      return out;
+    },
+    alarmColour(sev) {
+      return sev === 'fault' ? 'rgba(239,68,68,.95)'
+        : sev === 'warning' ? 'rgba(245,158,11,.95)' : 'rgba(148,163,184,.9)';
+    },
+
     /** Latest SoC for the row, for the inline label. */
     socNow(row) {
       const s = this._samples(row).filter((x) => x.soc !== null);
