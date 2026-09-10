@@ -1,10 +1,10 @@
 <div x-data="haEntitiesTab()" x-init="init()">
 
   <!-- Header -->
-  <div class="flex items-start justify-between mb-4">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
     <div>
       <h1 class="text-lg font-semibold text-slate-100">HA Entities</h1>
-      <p class="text-xs text-slate-500">Browse Home Assistant entities and choose which to expose as
+      <p class="hidden sm:block text-xs text-slate-500">Browse Home Assistant entities and choose which to expose as
         <span class="font-mono text-slate-400">ha:&lt;instance&gt;:&lt;entity&gt;</span> Automation conditions.</p>
     </div>
     <button @click="reload()" class="btn btn-sm btn-secondary" :disabled="loading">

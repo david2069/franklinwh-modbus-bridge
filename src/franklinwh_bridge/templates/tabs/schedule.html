@@ -12,9 +12,10 @@
         </svg>
         Schedule &amp; Automations
       </h2>
-      <p class="text-xs text-slate-500">Time- and sensor-driven battery dispatch. A WSet setpoint puts the gateway in VPP mode, overriding Self-Consumption, TOU and Emergency Backup until it's released — with condition gates &amp; exit criteria.</p>
+      <p class="hidden sm:block text-xs text-slate-500">Time- and sensor-driven battery dispatch. A WSet setpoint puts the gateway in VPP mode, overriding Self-Consumption, TOU and Emergency Backup until it's released — with condition gates &amp; exit criteria.</p>
     </div>
-    <div class="flex items-center gap-2">
+    <!-- wrap: the four buttons + two counters overflowed a phone, clipping "+ Add Entry" -->
+    <div class="flex items-center flex-wrap gap-2">
       <span class="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300"
             x-show="activeCount > 0" x-text="`${activeCount} active now`"></span>
       <span class="text-xs text-slate-500" x-text="`${schedules.length} ${schedules.length === 1 ? 'entry' : 'entries'}`"></span>
@@ -1136,7 +1137,7 @@
           <h3 class="text-lg font-bold">Import automations</h3>
           <button class="text-slate-500 hover:text-slate-300" @click="closeImport()">✕</button>
         </div>
-        <p class="text-xs text-slate-500">Paste a shared JSON bundle or upload a file, then Validate. Imported entries are created <b>disabled</b> for review.</p>
+        <p class="hidden sm:block text-xs text-slate-500">Paste a shared JSON bundle or upload a file, then Validate. Imported entries are created <b>disabled</b> for review.</p>
         <div class="flex items-center gap-2">
           <label class="btn btn-sm btn-secondary cursor-pointer">
             Choose file<input type="file" accept="application/json,.json" class="hidden" @change="onImportFile($event)">
