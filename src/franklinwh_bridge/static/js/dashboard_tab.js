@@ -390,6 +390,19 @@ function dashboardTab() {
     eventsSourceFilter: '',
 
     // Chart range selector
+    // Set when a metrics fetch succeeds but returns nothing for this gateway.
+    // Without it the chart silently keeps the PREVIOUS gateway's data, which
+    // reads as "the chart didn't redraw" but is worse — it attributes one
+    // gateway's history to another. Mock gateways never persist metrics, so
+    // this is their normal state, not a fault.
+    chartEmpty: false,
+    get chartEmptyMsg() {
+      const gw = (Alpine.store('app').gatewayList || [])
+        .find((g) => g.id === Alpine.store('app').activeGateway);
+      if (gw && gw.mock) return `${gw.name} is a mock gateway — its metrics aren't recorded.`;
+      return 'No history recorded for this gateway in this range.';
+    },
+
     chartRange: '30m',
     chartRanges: [
       { value: 'live', label: 'Live' },
@@ -559,7 +572,17 @@ function dashboardTab() {
       if (activeGw && activeGw !== 'site') alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
       const [data, alarmResp] = await Promise.all([fetchJSON(url), fetchJSON(alarmUrl).catch(() => null)]);
+      if (data && !data.error && (!data.points || data.points.length === 0)) {
+        // Succeeded, but this gateway has nothing here — blank the chart so it
+        // can't keep showing the gateway we just switched away from.
+        this.chartEmpty = true;
+        const none = [];
+        this._updateChartData(none, none, none, none, none, none, none, none, none, none, none, none, [], none);
+        this._updateModalChart(none, none, none, none, none, none, none, none, none, none, none, none, [], none);
+        return;
+      }
       if (data && !data.error && data.points && data.points.length > 0) {
+        this.chartEmpty = false;
         const tsRaw = data.points.map(p => p.ts);
         const labels = tsRaw.map(ts => this._formatChartLabel(ts));
         const battery = data.points.map(p => p.battery_w);
@@ -647,7 +670,17 @@ function dashboardTab() {
       if (activeGw && activeGw !== 'site') alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
       const [data, alarmResp] = await Promise.all([fetchJSON(url), fetchJSON(alarmUrl).catch(() => null)]);
+      if (data && !data.error && (!data.points || data.points.length === 0)) {
+        // Succeeded, but this gateway has nothing here — blank the chart so it
+        // can't keep showing the gateway we just switched away from.
+        this.chartEmpty = true;
+        const none = [];
+        this._updateChartData(none, none, none, none, none, none, none, none, none, none, none, none, [], none);
+        this._updateModalChart(none, none, none, none, none, none, none, none, none, none, none, none, [], none);
+        return;
+      }
       if (data && !data.error && data.points && data.points.length > 0) {
+        this.chartEmpty = false;
         const tsRaw = data.points.map(p => p.ts);
         const labels = tsRaw.map(ts => this._formatChartLabel(ts));
         const battery = data.points.map(p => p.battery_w);

@@ -970,6 +970,12 @@
 
       <div class="relative" style="height: 280px;">
         <canvas x-ref="powerChart"></canvas>
+        <!-- Says WHY the chart is blank. Previously an empty result left the
+             previous gateway's chart on screen, silently mislabelled. -->
+        <div x-show="chartEmpty" x-cloak
+             class="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-slate-500">
+          <span x-text="chartEmptyMsg"></span>
+        </div>
       </div>
     </div>
 
