@@ -828,6 +828,17 @@
           <span x-show="!$store.app.activeGateway || $store.app.activeGateway === 'site'"
                 class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-600/30 text-slate-400">Combined</span>
         </div>
+        <!-- Compare / Events open other views rather than configuring this
+             chart, so they sit outside the collapsible group and stay
+             available on a phone. -->
+        <button x-show="$store.app.gatewayList.filter(g => g.enabled).length > 1"
+                @click="openCompareModal()"
+                class="px-2 py-1 text-[10px] font-medium rounded border border-violet-500/40 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition"
+                title="Compare all gateways">Compare</button>
+        <button @click="openEventsModal()"
+                class="px-2 py-1 text-[10px] font-medium rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition"
+                title="View alarm/event history">Events</button>
+
         <button @click="chartOptionsOpen = !chartOptionsOpen"
                 class="sm:hidden flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border border-white/10 text-slate-300"
                 :aria-expanded="chartOptionsOpen">
@@ -933,17 +944,6 @@
               </label>
             </div>
           </div>
-
-          <!-- Compare (multi-gateway) -->
-          <button x-show="$store.app.gatewayList.filter(g => g.enabled).length > 1"
-                  @click="openCompareModal()"
-                  class="px-2 py-1 text-[10px] font-medium rounded border border-violet-500/40 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition"
-                  title="Compare all gateways">Compare</button>
-
-          <!-- Events (durationed alarm/PV-Clip history) -->
-          <button @click="openEventsModal()"
-                  class="px-2 py-1 text-[10px] font-medium rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition"
-                  title="View alarm/event history">Events</button>
 
           <!-- Expand -->
           <button @click="openChartModal()"

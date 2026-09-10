@@ -581,3 +581,62 @@ body {
 @media (max-width: 768px) {
   .metrics-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ── Range sliders ────────────────────────────────────────────
+   Safari — iOS especially — ignores `accent-color` on range inputs and draws
+   its own chunky white track and thumb, so the same control looked native-ugly
+   there and correct in Chrome/Firefox. Styling the track and thumb explicitly
+   for both engines makes it identical everywhere.
+
+   min-height (not height) gives a ~20px touch target without fighting the
+   `h-1.5` utility already on these inputs — the visible track is drawn by the
+   pseudo-element, so the control stays visually thin while staying tappable. */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  min-height: 1.25rem;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;             /* centre the thumb on a 4px track */
+  border-radius: 50%;
+  background: var(--accent, #22d3ee);
+  border: 2px solid rgba(15, 23, 42, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent, #22d3ee);
+  border: 2px solid rgba(15, 23, 42, 0.9);
+}
+input[type="range"]:focus-visible::-webkit-slider-thumb,
+input[type="range"]:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--accent, #22d3ee);
+  outline-offset: 2px;
+}
+input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
+[data-theme="light"] input[type="range"]::-webkit-slider-runnable-track,
+[data-theme="light"] input[type="range"]::-moz-range-track {
+  background: rgba(100, 116, 139, 0.3);
+}
+[data-theme="light"] input[type="range"]::-webkit-slider-thumb,
+[data-theme="light"] input[type="range"]::-moz-range-thumb {
+  border-color: rgba(255, 255, 255, 0.95);
+}
