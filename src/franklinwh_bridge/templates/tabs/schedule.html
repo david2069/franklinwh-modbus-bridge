@@ -88,9 +88,16 @@
             <!-- What the gateway ACTUALLY ran: operating-mode band along the
                  top, same colours as the Dashboard's Power History. -->
             <template x-for="(m, mi) in modeSpans(row)" :key="'m'+mi">
-              <div class="absolute top-0 bottom-0 z-0"
+              <div class="absolute top-0 bottom-0 z-0 overflow-hidden"
                    :style="`left:${pct(m._l)}%; width:${Math.max(0.4, pct(m._l + m._w) - pct(m._l))}%; background:${m.colour}`"
-                   :title="m.title"></div>
+                   :title="m.title">
+                <!-- Name the mode in place, as the Dashboard does in-plot —
+                     a tint alone can't say WHICH mode without a colour lookup. -->
+                <span class="absolute bottom-0.5 left-1 text-[9px] leading-none font-medium whitespace-nowrap"
+                      :style="`color:${MODE_LEGEND_COLORS[m.mode] || 'rgba(148,163,184,.9)'}`"
+                      x-show="(pct(m._l + m._w) - pct(m._l)) > 5"
+                      x-text="modeAbbr(m.mode)"></span>
+              </div>
             </template>
 
             <!-- SoC history to now, as an overlay line (0–100% of track height) -->
@@ -104,9 +111,9 @@
                 <span class="absolute right-0.5 top-1/2 -mt-1 text-[7px] leading-none text-lime-400/20 font-mono">50</span>
                 <svg class="absolute inset-0 w-full h-full" viewBox="0 0 100 100"
                      preserveAspectRatio="none" aria-hidden="true">
-                  <polyline :points="socPath(row)" fill="none" stroke="rgba(163,230,53,.85)"
+                  <polyline :points="socPath(row)" fill="none" stroke="rgba(190,242,100,.95)"
                             stroke-width="1.5" vector-effect="non-scaling-stroke"
-                            stroke-dasharray="3 2"></polyline>
+                            stroke-linejoin="round"></polyline>
                 </svg>
               </div>
             </template>

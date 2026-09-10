@@ -286,7 +286,11 @@ function scheduleTab() {
         fetchJSON('api/schedules/log?limit=300'),
       ]);
       if (sch && sch.schedules) this.schedules = sch.schedules;
-      if (tl && tl.segments) this.timeline = tl;
+      if (tl && tl.segments) {
+        this.timeline = tl;
+        // Re-anchor to the bridge's day; the viewer's may differ by a date.
+        this.previewDay = this.serverWeekday;
+      }
       if (svc && svc.services) this.services = svc.services;
       if (sen && sen.sensors) this.sensors = sen.sensors;
       if (log && log.events) this.audit = log.events;
@@ -339,17 +343,22 @@ function scheduleTab() {
     /** Outages are real timestamps, but the day picker previews a WEEKDAY —
      *  so the link strip is only truthful on today's column. Elsewhere we say
      *  so rather than drawing a green bar we can't stand behind. */
-    get linkIsForToday() {
-      const today = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
-      return this.previewDay === today;
+    /** The bridge's own weekday (Mon=0), derived from its clock rather than the
+     *  viewer's — 00:30 in NZ is still the previous evening in Sydney, so the
+     *  two disagree about what "today" is. */
+    get serverWeekday() {
+      const ms = (this._midnightTs
+        || (Date.now() / 1000 - (this.timeline.now_min || 0) * 60)) * 1000;
+      const d = new Date(ms).getDay();
+      return d === 0 ? 6 : d - 1;
     },
+    get linkIsForToday() { return this.previewDay === this.serverWeekday; },
     /** Outage spans for one gateway, clipped to today and the zoom window,
      *  as {_l,_w,title} in minutes-of-day. */
     linkOutages(gwId) {
       if (!this.linkIsForToday) return [];
-      const midnight = new Date();
-      midnight.setHours(0, 0, 0, 0);
-      const base = midnight.getTime() / 1000;
+      // Same server-anchored origin as the metrics overlays.
+      const base = this._midnightTs || (Date.now() / 1000 - (this.timeline.now_min || 0) * 60);
       const out = [];
       for (const o of this.conn.recent_outages || []) {
         if (gwId && gwId !== '__fanout' && o.gateway_id && o.gateway_id !== gwId) continue;
@@ -385,13 +394,26 @@ function scheduleTab() {
     // dispatch bars drawn on top, not a value of its own — as a saturated bar
     // it out-shouted them and its green was indistinguishable from the green
     // "Link up" strip on the same track.
-    modeColour(m) { return MODE_BG_COLORS[m] || 'rgba(148,163,184,0.06)'; },
+    // The Dashboard washes mode behind a dense chart, where 0.07 alpha is
+    // plenty. A 64px timeline strip has no data behind it, so that wash was
+    // invisible — real and mock gateways looked identical despite running
+    // different modes. Same hues, enough alpha to read on a bare track.
+    modeColour(m) {
+      const base = MODE_LEGEND_COLORS[m];
+      return base ? base.replace(/[\d.]+\)$/, '0.18)') : 'rgba(148,163,184,0.10)';
+    },
+    modeAbbr(m) { return this.MODE_ABBR[m] || m || ''; },
 
     async loadMetricsHistory() {
-      const midnight = new Date();
-      midnight.setHours(0, 0, 0, 0);
-      const start = Math.floor(midnight.getTime() / 1000);
+      // Anchor the day to the SERVER's midnight, not the browser's. The x-axis
+      // and now-line come from timeline.now_min (the bridge's local minutes),
+      // so using the browser's midnight put every overlay hours out of step
+      // whenever viewer and bridge are in different timezones — visible as a
+      // SoC line crammed into the left edge while the now-line sat at the far
+      // right. now_min and Date.now() describe the same instant, so the
+      // difference IS the server's midnight.
       const end = Math.floor(Date.now() / 1000);
+      const start = Math.floor(end - (this.timeline.now_min || 0) * 60);
       const gws = Alpine.store('app').gatewayList || [];
       const ids = gws.length ? gws.map((g) => g.id) : ['default'];
       const out = {};
@@ -513,9 +535,7 @@ function scheduleTab() {
      *  previews a weekday. */
     get actualSpans() {
       if (!this.linkIsForToday) return [];
-      const midnight = new Date();
-      midnight.setHours(0, 0, 0, 0);
-      const base = midnight.getTime() / 1000;
+      const base = this._midnightTs || (Date.now() / 1000 - (this.timeline.now_min || 0) * 60);
       const ENDS = new Set(['exit_condition_met', 'duration_elapsed', 'stopped', 'missed']);
       const rows = (this.auditAll || [])
         .filter((e) => e.ts >= base)
