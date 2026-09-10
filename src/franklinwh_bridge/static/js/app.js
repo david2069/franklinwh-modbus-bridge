@@ -100,12 +100,24 @@ function _noteReachable(ok) {
   } catch (_) { /* store not built yet — nothing to report to */ }
 }
 
-async function fetchJSON(url, options = {}) {
+/** Bare fetch() has NO timeout. A cleanly-refused connection rejects at once,
+ *  but a half-dead path — VPN up and blackholing packets, which is the common
+ *  way Tailscale fails — leaves the request hanging for the browser's own
+ *  limit (tens of seconds to minutes). During that hang nothing fails, so no
+ *  banner appears and no data arrives: the exact silent-stale case we're
+ *  trying to kill. 8s is under the 10s poll, so a hung request is abandoned
+ *  before the next one starts rather than piling up. */
+const FETCH_TIMEOUT_MS = 8000;
+
+async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     if (options.body && !options.headers) {
       options.headers = { 'Content-Type': 'application/json' };
     }
-    const r = await fetch(url, options);
+    // Respect a caller's own signal if it passed one.
+    const r = await fetch(url, { ...options, signal: options.signal || ctl.signal });
     _noteReachable(true);   // it answered, whatever the status
     if (!r.ok) {
       let detail = `HTTP ${r.status}`;
@@ -117,11 +129,17 @@ async function fetchJSON(url, options = {}) {
     }
     return await r.json();
   } catch (e) {
-    // fetch() rejects (rather than resolving with a bad status) only when the
-    // request never completed — dropped VPN, DNS, host down.
-    if (e instanceof TypeError) _noteReachable(false);
-    console.warn('[Bridge]', url, e.message);
-    return { ok: false, error: e.message };
+    // Transport failure = the request never completed. Two shapes: fetch()
+    // rejects with TypeError (refused, DNS, host down), or we aborted it
+    // ourselves on timeout. An HTTP error status is neither — it means the
+    // bridge answered.
+    const timedOut = e.name === 'AbortError';
+    if (e instanceof TypeError || timedOut) _noteReachable(false);
+    const msg = timedOut ? `no response within ${Math.round(timeoutMs / 1000)}s` : e.message;
+    console.warn('[Bridge]', url, msg);
+    return { ok: false, error: msg };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
