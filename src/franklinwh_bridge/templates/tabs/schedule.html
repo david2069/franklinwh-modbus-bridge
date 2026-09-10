@@ -40,17 +40,20 @@
 
   <!-- Visual Timeline -->
   <div class="card mb-4">
-    <div class="flex items-center justify-between mb-3">
-      <div class="card-label">Visual Timeline
-        <span class="text-slate-600 normal-case">— when the bridge overrides the gateway's mode (VPP setpoint)</span></div>
-      <div class="flex items-center gap-3">
-        <select x-model="timelineGateway" class="form-control !py-0.5 !text-[11px] w-auto">
+    <!-- Stack on a phone: side-by-side squeezed the title into a one-word-wide
+         column. The explanatory tail is desktop-only — it explains, it doesn't
+         identify, so losing it on a small screen costs nothing. -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+      <div class="card-label !mb-0">Visual Timeline
+        <span class="hidden lg:inline text-slate-600 normal-case">— when the bridge overrides the gateway's mode (VPP setpoint)</span></div>
+      <div class="flex items-center gap-2 min-w-0">
+        <select x-model="timelineGateway" class="form-control !py-0.5 !text-[11px] flex-1 min-w-0 sm:flex-none sm:w-auto">
           <option value="all">All gateways</option>
           <template x-for="gw in $store.app.gatewayList" :key="gw.id">
             <option :value="gw.id" x-text="gw.name"></option>
           </template>
         </select>
-        <select x-model="zoomChoice" @change="onZoomChoice()" class="form-control !py-0.5 !text-[11px] w-auto">
+        <select x-model="zoomChoice" @change="onZoomChoice()" class="form-control !py-0.5 !text-[11px] flex-1 min-w-0 sm:flex-none sm:w-auto">
           <template x-for="z in zoomPresets" :key="z.id">
             <option :value="z.id" x-text="z.label"></option>
           </template>
