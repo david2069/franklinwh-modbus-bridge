@@ -6,12 +6,19 @@
        any log was visible, and four of the five read 0 nearly always. -->
   <div class="flex flex-wrap gap-1.5 mb-3">
     <template x-for="lvl in levels" :key="lvl.name">
+      <!-- A count of 0 recedes; anything non-zero is tinted and keeps full
+           contrast, so an ERROR still catches the eye at chip size. -->
       <button @click="toggleLevelFilter(lvl.name)"
               class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] transition hover:opacity-80"
-              :class="levelFilter === lvl.name ? 'border-current ring-1 ring-current' : 'border-white/10'"
+              :class="[
+                levelFilter === lvl.name ? 'border-current ring-1 ring-current' : 'border-white/10',
+                (summary[lvl.name] ?? 0) > 0 ? lvl.chipBg : 'opacity-55'
+              ]"
               :title="'Filter to ' + lvl.name">
-        <span class="uppercase tracking-wide" :class="lvl.color" x-text="lvl.name"></span>
-        <span class="font-mono font-semibold" :class="lvl.color" x-text="summary[lvl.name] ?? 0"></span>
+        <span class="uppercase tracking-wide" :class="(summary[lvl.name] ?? 0) > 0 ? lvl.color : 'text-slate-500'"
+              x-text="lvl.name"></span>
+        <span class="font-mono font-semibold" :class="(summary[lvl.name] ?? 0) > 0 ? lvl.color : 'text-slate-500'"
+              x-text="summary[lvl.name] ?? 0"></span>
       </button>
     </template>
   </div>

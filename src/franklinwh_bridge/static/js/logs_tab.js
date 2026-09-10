@@ -36,12 +36,14 @@ function logsTab() {
     summary: { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, CRITICAL: 0 },
 
     // Level config
+    // chipBg tints the chip only when the count is non-zero — severity should
+    // still read at a glance now that the totals are chips rather than cards.
     levels: [
-      { name: 'DEBUG',    color: 'text-slate-400' },
-      { name: 'INFO',     color: 'text-emerald-400' },
-      { name: 'WARNING',  color: 'text-amber-400' },
-      { name: 'ERROR',    color: 'text-red-400' },
-      { name: 'CRITICAL', color: 'text-red-500' },
+      { name: 'DEBUG',    color: 'text-slate-400',   chipBg: 'bg-slate-500/10' },
+      { name: 'INFO',     color: 'text-emerald-400', chipBg: 'bg-emerald-500/10' },
+      { name: 'WARNING',  color: 'text-amber-400',   chipBg: 'bg-amber-500/15' },
+      { name: 'ERROR',    color: 'text-red-400',     chipBg: 'bg-red-500/15' },
+      { name: 'CRITICAL', color: 'text-red-500',     chipBg: 'bg-red-500/20' },
     ],
 
     async init() {

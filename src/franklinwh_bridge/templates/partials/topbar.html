@@ -3,7 +3,7 @@
 
   <!-- Left: Sidebar toggle + Page title -->
   <div class="flex items-center gap-3">
-    <button @click="$store.app.sidebarCollapsed = !$store.app.sidebarCollapsed"
+    <button @click="$store.app.toggleSidebar()"
             class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200 text-sm font-bold"
             :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
             x-text="$store.app.sidebarCollapsed ? '▶' : '◀'">

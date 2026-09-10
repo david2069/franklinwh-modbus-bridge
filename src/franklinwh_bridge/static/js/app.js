@@ -145,8 +145,19 @@ document.addEventListener('alpine:init', () => {
     // Tab state
     activeTab: 'dashboard',
 
-    // Sidebar state
-    sidebarCollapsed: false,
+    // Sidebar state. An explicit choice is remembered and always wins; with no
+    // saved choice, collapse on a small screen where a 224px rail is a large
+    // share of the viewport. Resizing never overrides what the user picked.
+    sidebarCollapsed: (() => {
+      const saved = localStorage.getItem('fwh-sidebar');
+      if (saved !== null) return saved === 'collapsed';
+      return window.innerWidth < 768;
+    })(),
+
+    toggleSidebar() {
+      this.sidebarCollapsed = !this.sidebarCollapsed;
+      localStorage.setItem('fwh-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
+    },
 
     // Theme
     theme: localStorage.getItem('fwh-theme') || 'dark',
@@ -275,6 +286,8 @@ document.addEventListener('alpine:init', () => {
         const byTab = {};
         for (const m of data.modules) byTab[m.tab] = { enabled: m.enabled, can_access: m.can_access };
         this.modulesByTab = byTab;
+        // Honour ?tab= now that we know which tabs this role may actually see.
+        this.applyTabFromUrl();
         // If the active tab's module is now hidden, fall back to the dashboard.
         if (!this.canSee(this.activeTab)) this.setTab('dashboard');
       }
@@ -313,10 +326,30 @@ document.addEventListener('alpine:init', () => {
       return this.showSources ? (POINT_SOURCES[key] || '') : '';
     },
 
-    setTab(tab) {
+    setTab(tab, { push = true } = {}) {
       this.activeTab = tab;
+      // Keep ?tab= in sync so the address bar is always shareable/refreshable.
+      // replaceState, not pushState: tab switches shouldn't stack up in Back.
+      if (push) {
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.set('tab', tab);
+          window.history.replaceState(null, '', u);
+        } catch { /* non-browser context — URL sync is cosmetic */ }
+      }
       // Notify tab components
       window.dispatchEvent(new CustomEvent('tab:changed', { detail: { tab } }));
+    },
+
+    /** Open the tab named in ?tab=, if it's real and this role may see it.
+     *  Called after the module/capability list loads, so an unauthorised or
+     *  disabled tab falls back to the default rather than rendering empty. */
+    applyTabFromUrl() {
+      let want = null;
+      try { want = new URL(window.location.href).searchParams.get('tab'); } catch { return; }
+      if (!want || want === this.activeTab) return;
+      if (this.canSee && !this.canSee(want)) return;
+      this.setTab(want, { push: false });
     },
 
     setGateway(gwId) {
