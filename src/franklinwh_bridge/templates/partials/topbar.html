@@ -1,15 +1,15 @@
 <!-- ── Topbar ─────────────────────────────────────────── -->
-<header class="flex items-center justify-between gap-4 px-4 lg:px-6 py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
+<header class="flex items-center justify-between gap-2 lg:gap-4 px-3 lg:px-6 py-2 lg:py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
 
   <!-- Left: Sidebar toggle + Page title -->
-  <div class="flex items-center gap-3">
+  <div class="flex items-center gap-2 lg:gap-3 min-w-0">
     <button @click="$store.app.toggleSidebar()"
             class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200 text-sm font-bold"
             :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
             x-text="$store.app.sidebarCollapsed ? '▶' : '◀'">
     </button>
 
-    <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider"
+    <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider truncate"
         x-text="$store.app.activeTab === 'dashboard' ? 'Dashboard' :
                 $store.app.activeTab === 'explorer' ? 'SunSpec Explorer' :
                 $store.app.activeTab === 'logs' ? 'Logs' :
@@ -57,7 +57,7 @@
   </div>
 
   <!-- Centre: System status indicators (order + visibility driven by topbarPrefs) -->
-  <div class="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider">
+  <div class="hidden xl:flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider">
     <!-- Grid -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='grid')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='grid')}`"
@@ -100,11 +100,11 @@
   </div>
 
   <!-- Right: Status indicators + actions -->
-  <div class="flex items-center gap-4">
+  <div class="flex items-center gap-2 lg:gap-4 shrink-0">
 
     <!-- Connection status (text-then-dot, matching the indicators on the left) -->
     <div class="flex items-center gap-2">
-      <span class="text-xs font-medium"
+      <span class="hidden sm:inline text-xs font-medium"
             :class="$store.app.connected ? 'text-emerald-400' : 'text-red-400'"
             x-text="$store.app.connected ? 'Connected' : 'Disconnected'"></span>
       <div class="w-2 h-2 rounded-full"
@@ -118,7 +118,7 @@
          x-text="$store.app.quality"></div>
 
     <!-- Last poll (wall-clock HH:MM; full timestamp on hover) -->
-    <span class="text-xs text-slate-500"
+    <span class="hidden md:inline text-xs text-slate-500"
           :title="'Last poll: ' + fmt.at($store.app.lastPollTs)"
           x-text="fmt.clock($store.app.lastPollTs)"></span>
 
@@ -138,7 +138,7 @@
     <!-- Model point source toggle -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='sunspec')?.visible !== false"
             @click="$store.app.toggleSources()"
-            class="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition"
+            class="hidden lg:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition"
             :class="$store.app.showSources
               ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
               : 'text-slate-300 hover:text-slate-100 bg-slate-700/50 hover:bg-slate-700 border border-slate-600/30'"
@@ -171,7 +171,7 @@
     <!-- Theme toggle -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='theme')?.visible !== false"
             @click="$store.app.toggleTheme()"
-            class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+            class="hidden sm:block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
             :title="$store.app.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
       <svg x-show="$store.app.theme === 'dark'" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="5"/><path stroke-linecap="round" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -184,7 +184,7 @@
     <!-- Refresh button -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='refresh')?.visible !== false"
             @click="$store.app.refresh()"
-            class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+            class="hidden sm:block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
             title="Refresh now">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
@@ -193,7 +193,7 @@
     </button>
 
     <!-- Topbar preferences gear -->
-    <div class="relative" x-data="{ open: false }" @click.away="open = false">
+    <div class="relative shrink-0" x-data="{ open: false }" @click.away="open = false">
       <button @click="open = !open; $store.app.showTopbarPrefs = open"
               class="p-1.5 rounded hover:bg-slate-700 transition"
               :class="open ? 'text-cyan-400 bg-slate-700' : 'text-slate-400 hover:text-slate-200'"
