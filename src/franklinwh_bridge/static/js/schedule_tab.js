@@ -192,6 +192,17 @@ function scheduleTab() {
     // which is what the mode/SoC/dispatch overlays are for. Past/future days
     // belong to the calendar view (backlog), not a 7-button row.
     previewDay: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, // Mon=0
+    // Entries list defaults to ENABLED: a disabled rule can't act, so it's
+    // reference material rather than what you came to check. Not persisted —
+    // "enabled" should be what you land on each visit.
+    entryStatusFilter: 'enabled',
+    get visibleSchedules() {
+      if (this.entryStatusFilter === 'enabled') return this.schedules.filter((e) => e.enabled);
+      if (this.entryStatusFilter === 'disabled') return this.schedules.filter((e) => !e.enabled);
+      return this.schedules;
+    },
+    get hiddenEntryCount() { return this.schedules.length - this.visibleSchedules.length; },
+
     timelineGateway: 'all',  // 'all' | '<gateway_id>' — paints the bar for one or all
 
     // ── timeline zoom (time-of-day window) ───────────────────
