@@ -72,6 +72,15 @@ function dashboardTab() {
   // time-series for mock gateways in the compare chart (they are never stored
   // to the DB, so we generate them client-side using the same deterministic formula).
   // Mirrors mock_gateway.py synthetic_points() — realistic time-of-day patterns.
+  // Seconds covered by each chart range — shared by the main chart and the
+  // Gateway Comparison modal, so a synthetic series spans the same window a
+  // real fetch would have.
+  const RANGE_SECS = {
+    '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600,
+    '8h': 28800, '12h': 43200, '18h': 64800, '24h': 86400,
+    '3d': 259200, '5d': 432000, '7d': 604800, '30d': 2592000,
+  };
+
   // Uses actual timestamps so historical bars show a real diurnal arc.
   function mockSyntheticSeries(gatewayId, nowTs, rangeSeconds, nPoints) {
     const seed = gatewayId.split('').reduce((s, c) => s + c.charCodeAt(0), 0) || 1;
@@ -571,7 +580,16 @@ function dashboardTab() {
       let alarmUrl = `api/alarm-events?start=${startTs}&end=${endTs}`;
       if (activeGw && activeGw !== 'site') alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
-      const [data, alarmResp] = await Promise.all([fetchJSON(url), fetchJSON(alarmUrl).catch(() => null)]);
+      const gwMetaC = (Alpine.store('app')?.gatewayList || []).find((g) => g.id === activeGw);
+      let data, alarmResp;
+      if (gwMetaC && gwMetaC.mock) {
+        const secs = Math.max(600, endTs - startTs);
+        data = { points: mockSyntheticSeries(activeGw, endTs, secs,
+                                             Math.min(180, Math.max(12, Math.floor(secs / 10)))) };
+        alarmResp = null;
+      } else {
+        [data, alarmResp] = await Promise.all([fetchJSON(url), fetchJSON(alarmUrl).catch(() => null)]);
+      }
       if (data && !data.error && (!data.points || data.points.length === 0)) {
         // Succeeded, but this gateway has nothing here — blank the chart so it
         // can't keep showing the gateway we just switched away from.
@@ -669,7 +687,20 @@ function dashboardTab() {
       let alarmUrl = `api/alarm-events?range=${this.chartRange}`;
       if (activeGw && activeGw !== 'site') alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
-      const [data, alarmResp] = await Promise.all([fetchJSON(url), fetchJSON(alarmUrl).catch(() => null)]);
+      // A mock gateway never persists metrics, so a fetch returns nothing and
+      // the chart would be blank while the Comparison modal — which already
+      // synthesises — shows a full curve for the same gateway. Generate the
+      // same series here so the two views agree.
+      const gwMeta = (Alpine.store('app')?.gatewayList || []).find((g) => g.id === activeGw);
+      let data, alarmResp;
+      if (gwMeta && gwMeta.mock) {
+        const secs = RANGE_SECS[this.chartRange] || 1800;
+        data = { points: mockSyntheticSeries(activeGw, Date.now() / 1000, secs,
+                                             Math.min(180, Math.max(12, Math.floor(secs / 10)))) };
+        alarmResp = null;
+      } else {
+        [data, alarmResp] = await Promise.all([fetchJSON(url), fetchJSON(alarmUrl).catch(() => null)]);
+      }
       if (data && !data.error && (!data.points || data.points.length === 0)) {
         // Succeeded, but this gateway has nothing here — blank the chart so it
         // can't keep showing the gateway we just switched away from.
@@ -1247,11 +1278,6 @@ function dashboardTab() {
 
       // Parallel fetch for real gateways; synthetic generation for mock gateways
       const range = this.chartRange === 'live' ? '30m' : this.chartRange;
-      const RANGE_SECS = {
-        '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600,
-        '8h': 28800, '12h': 43200, '18h': 64800, '24h': 86400,
-        '3d': 259200, '5d': 432000, '7d': 604800, '30d': 2592000,
-      };
       const nowTs = Date.now() / 1000;
       const rangeSecs = RANGE_SECS[range] || 1800;
       const results = await Promise.all(gateways.map(async gw => {
