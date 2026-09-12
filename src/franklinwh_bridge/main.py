@@ -580,6 +580,13 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Bridge started (env=%s, v%s)", config.environment, __version__)
+    # Schedule triggers and TOU windows run on this clock — log it so a wrong
+    # timezone is caught at boot rather than by a missed dispatch.
+    _lt = time.localtime()
+    logger.info(
+        "Local clock: %s %s (UTC%+.2g) — schedules and TOU windows use this",
+        time.strftime("%Y-%m-%d %H:%M:%S", _lt), _lt.tm_zone, _lt.tm_gmtoff / 3600,
+    )
 
     yield
 

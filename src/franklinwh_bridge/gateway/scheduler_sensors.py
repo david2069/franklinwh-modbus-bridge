@@ -38,6 +38,7 @@ a stub that always returns ``None`` just clutters the condition picker. Add one
 
 from __future__ import annotations
 
+import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -625,6 +626,17 @@ SENSORS: list[SensorDef] = [
     SensorDef("time.hour", "Hour of day (0..23, local)", None, "number", lambda _p, n: n.hour),
     SensorDef("time.dow", "Day of week (0=Mon..6=Sun)", None, "number", lambda _p, n: n.weekday()),
     SensorDef("time.month", "Month (1..12)", None, "number", lambda _p, n: n.month),
+    # Every trigger and TOU window is evaluated against the LOCAL clock above.
+    # Surface that clock so a wrong container timezone is visible instead of
+    # silently shifting every automation (it shifted a daily 18:00 export to
+    # 04:00 on 2026-09-12 when a bind mount reverted to UTC).
+    SensorDef(
+        "time.utc_offset_h",
+        "Bridge clock offset from UTC (hours) — wrong value shifts every schedule",
+        "h",
+        "number",
+        lambda _p, n: round(_time.localtime(n.timestamp()).tm_gmtoff / 3600, 2),
+    ),
     # NOTE: no price.* sensor yet — a price source isn't wired. Re-add a
     # ``price.export_c_per_kwh`` SensorDef (mapped to a real point) when the
     # pricing integration lands, rather than shipping a stub that's always None

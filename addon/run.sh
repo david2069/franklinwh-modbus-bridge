@@ -11,6 +11,16 @@ set -e
 
 export APP_ENV="ha_addon"
 
+# Timezone. Schedule triggers and TOU windows are evaluated in LOCAL time, so a
+# wrong TZ silently runs every automation at the wrong hour. Take the host's
+# timezone from the Supervisor rather than trusting the container default.
+if bashio::info.timezone > /dev/null 2>&1; then
+  TZ="$(bashio::info.timezone)"
+  if [ -n "${TZ}" ] && [ "${TZ}" != "null" ]; then
+    export TZ
+  fi
+fi
+
 # Gateway connection. An empty host is allowed: the UI can add gateways later,
 # so the add-on should start and be reachable rather than refusing to boot.
 if bashio::config.has_value 'gateway_host'; then

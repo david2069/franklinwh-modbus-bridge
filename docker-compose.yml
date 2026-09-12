@@ -24,6 +24,13 @@ services:
       - APP_ENV=${APP_ENV:-docker}
       - DATA_DIR=/data
       - PYTHONPATH=/app/src
+      # ── Timezone ──────────────────────────────────────────────
+      # EVERY schedule trigger, TOU window and time.* sensor is evaluated in
+      # the container's LOCAL time. The /etc/localtime bind mount above is not
+      # dependable on Docker Desktop for macOS — it silently reverted to the
+      # image's UTC on 2026-09-12 and a daily 18:00 export ran 10h out (04:00
+      # local). TZ is authoritative and survives that, so set it explicitly.
+      - TZ=${TZ:-Australia/Sydney}
       # ── Auth (multi-user) ─────────────────────────────────────
       # LAN/localhost dev over plain HTTP: allow login without TLS. Put this
       # Bridge behind TLS (Caddy/Tailscale) and drop ALLOW_INSECURE_AUTH +
