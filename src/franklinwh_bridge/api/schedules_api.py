@@ -12,7 +12,7 @@ from datetime import datetime
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from franklinwh_bridge.gateway.scheduler import (
     action_to_commands,
@@ -70,16 +70,38 @@ _MISSED_POLICY = r"^(late_fire_remaining|skip|late_fire_always)$"
 
 
 class HaActionItem(BaseModel):
-    """One one-shot HA-entity action. ``when`` selects the edge it runs on:
-    ``fire`` (activation) or ``exit`` (when the window/activation ends)."""
+    """One one-shot HA action. ``when`` selects the edge it runs on: ``fire``
+    (activation) or ``exit`` (when the window/activation ends).
 
+    Two kinds:
+    - ``entity`` (default) — a service call on an entity (turn_on, select_option…).
+    - ``notify`` — a one-way message via an HA ``notify.*`` service. It has no
+      entity: ``service`` is the notify target name and title/message carry the
+      content, so entity_id is not required for it.
+    """
+
+    kind: str = Field(default="entity", pattern=r"^(entity|notify)$")
     instance_id: str = Field(..., min_length=1)
-    entity_id: str = Field(..., min_length=1)
+    entity_id: str = ""          # required for kind=entity; unused for notify
     service: str = Field(..., min_length=1)
     data: dict = Field(default_factory=dict)
     when: str = Field(default="fire", pattern=r"^(fire|exit)$")
     # Optional guard leaf {sensor, op, value}: run only if currently true.
     guard: dict | None = None
+    # notify only. {sensor.id} placeholders are substituted from the live
+    # snapshot when the notification fires.
+    title: str = Field(default="", max_length=200)
+    message: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def _entity_needs_an_entity(self) -> HaActionItem:
+        """An entity action without an entity_id would be silently skipped by the
+        engine — reject it here where the user can still see why."""
+        if self.kind == "entity" and not self.entity_id:
+            raise ValueError("entity_id is required for an entity action")
+        if self.kind == "notify" and not self.message:
+            raise ValueError("message is required for a notification")
+        return self
 
 
 class ScheduleCreate(BaseModel):

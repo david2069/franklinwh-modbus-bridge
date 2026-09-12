@@ -398,6 +398,21 @@ SENSORS: list[SensorDef] = [
         "load.power_w", "Home Load (W)", "W", "number", lambda p, _n: _num(p, "home_load_ext")
     ),
     SensorDef("mode.name", "Operating Mode", None, "enum", _mode_name),
+    # Device state strings. Polled all along but never exposed, so a rule could
+    # act on power numbers yet not on "is the inverter actually running", and a
+    # notification couldn't quote it.
+    SensorDef(
+        "inverter.status", "Inverter State", None, "enum",
+        lambda p, _n: _text(p, "inverter_state"),
+    ),
+    SensorDef(
+        "battery.status", "Battery State (Charging / Discharging / Standby)", None, "enum",
+        lambda p, _n: _text(p, "battery_state"),
+    ),
+    SensorDef(
+        "grid.status", "Grid Connection State", None, "enum",
+        lambda p, _n: _text(p, "connection_state"),
+    ),
 
     # ── Device identity ──────────────────────────────────────
     # Serial/model are already polled from the nameplate but weren't reachable

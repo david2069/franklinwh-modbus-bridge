@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -334,6 +335,7 @@ class ScheduleEngine:
         points_fn: Callable[[str], dict] | None = None,
         connectivity: Any | None = None,
         ha_action_fn: Callable[[str, str, str, dict], Awaitable[dict]] | None = None,
+        ha_notify_fn: Callable[[str, str, str, str], Awaitable[dict]] | None = None,
         gw_label_fn: Callable[[str], str] | None = None,
     ) -> None:
         self._db = db
@@ -345,6 +347,10 @@ class ScheduleEngine:
         # -> {"ok": bool, ...}. Wired to HaRegistry.call_service in main.py. None
         # → HA actions are skipped (no HA configured).
         self._ha_action_fn = ha_action_fn
+        # One-way notifications: (instance_id, service, title, message) -> {ok}.
+        # Separate from ha_action_fn because notify.* is a service call with no
+        # entity. Nothing comes back — actionable/two-way is a later feature.
+        self._ha_notify_fn = ha_notify_fn
         self._now = now_fn or datetime.now
         self._tick_s = tick_s
         self._on_audit = on_audit
@@ -978,6 +984,33 @@ class ScheduleEngine:
             f"dispatched {win.get('name', action)} — {_action_summary(action, params)}",
         )
 
+    def _render(self, text: str, tkey: tuple, now: datetime | None) -> str:
+        """Substitute %sensor.id% placeholders from the live snapshot.
+
+        Uses the SAME sensor ids conditions use — %battery.soc_pct%,
+        %mode.name%, %battery.reserve_pct%, %inverter.status% — rather than a
+        second set of friendly aliases. One vocabulary: whatever you can gate a
+        rule on, you can quote in its message, and there is no alias table to
+        drift out of step with the catalog.
+
+        An unknown or unreadable sensor renders "?" rather than failing the
+        send. A notification is what you reach for when something has gone
+        wrong; a message with a gap still beats no message.
+        """
+        if not text or "%" not in text:
+            return text
+        snap = self._snapshot(tkey[2], now or self._now())
+
+        def _sub(m: Any) -> str:
+            v = snap.get(m.group(1))
+            if v is None:
+                return "?"
+            if isinstance(v, float):
+                return f"{v:g}"      # 63.0 -> "63", 2.75 -> "2.75"
+            return str(v)
+
+        return re.sub(r"%([a-z][a-z0-9_]*\.[a-z0-9_]+)%", _sub, text)
+
     def _guard_ok(self, guard: dict, gw_id: str, now: datetime | None) -> bool:
         """Evaluate an HA action's optional guard leaf against the snapshot."""
         snap = self._snapshot(gw_id, now or self._now())
@@ -995,7 +1028,10 @@ class ScheduleEngine:
         actions = [a for a in (win.get("ha_actions") or []) if (a.get("when") or "fire") == phase]
         if not actions:
             return
-        if self._ha_action_fn is None:
+        # Bail only when NEITHER hook is available. Checking just ha_action_fn
+        # would skip notifications on a bridge that has notify wired but no
+        # entity-action dispatcher — the two are independent capabilities.
+        if self._ha_action_fn is None and self._ha_notify_fn is None:
             await self._audit(
                 win["id"], "ha_action", tkey, "failed",
                 f"{len(actions)} HA action(s) skipped — no HA configured",
@@ -1006,22 +1042,44 @@ class ScheduleEngine:
             eid = a.get("entity_id")
             svc = a.get("service")
             data = a.get("data") or {}
-            if not (inst and eid and svc):
+            # A notification is not an entity operation: notify.* takes
+            # title/message and no entity_id, so it needs its own route rather
+            # than being forced through call_service.
+            is_notify = (a.get("kind") == "notify")
+            if is_notify:
+                if not (inst and svc):
+                    continue
+            elif not (inst and eid and svc):
                 continue
             guard = a.get("guard")
             if guard and not self._guard_ok(guard, tkey[2], now):
                 await self._audit(
                     win["id"], "ha_action", tkey, "gated",
-                    f"[{phase}] {eid} skipped — guard "
+                    f"[{phase}] {eid or svc} skipped — guard "
                     f"{guard.get('sensor')}{guard.get('op')}{guard.get('value')} not met",
                 )
                 continue
             try:
-                res = await self._ha_action_fn(inst, eid, svc, data)
+                if is_notify:
+                    if self._ha_notify_fn is None:
+                        res = {"ok": False, "error": "notifications not wired"}
+                    else:
+                        res = await self._ha_notify_fn(
+                            inst, svc,
+                            self._render(a.get("title") or "", tkey, now),
+                            self._render(a.get("message") or "", tkey, now),
+                        )
+                elif self._ha_action_fn is None:
+                    res = {"ok": False, "error": "HA entity actions not wired"}
+                else:
+                    res = await self._ha_action_fn(inst, eid, svc, data)
             except Exception as exc:  # defensive — call_service already soft-fails
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
             ok = bool(res.get("ok"))
-            detail = f"[{phase}] {eid} → {svc}" + (f" {data}" if data else "")
+            if is_notify:
+                detail = f"[{phase}] notify.{svc}: {(a.get('message') or '')[:60]}"
+            else:
+                detail = f"[{phase}] {eid} → {svc}" + (f" {data}" if data else "")
             if not ok:
                 detail += f" — {res.get('error')}"
             await self._audit(

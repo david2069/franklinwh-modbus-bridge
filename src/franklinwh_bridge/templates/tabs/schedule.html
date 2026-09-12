@@ -847,7 +847,13 @@
             <template x-for="(a, ai) in form.ha_actions" :key="ai">
               <div class="rounded border border-white/[0.04] p-1.5 space-y-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                <select :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs">
+                <select x-model="a.kind" class="form-control !py-1 !text-xs w-28"
+                        title="Control an entity, or send a one-way notification">
+                  <option value="entity">Entity</option>
+                  <option value="notify">Notify</option>
+                </select>
+                <select x-show="(a.kind || 'entity') === 'entity'"
+                        :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs">
                   <option value="::">— entity —</option>
                   <template x-for="grp in haControllableGroups" :key="grp.label">
                     <optgroup :label="grp.label">
@@ -879,8 +885,34 @@
                 </template>
                 <template x-if="haControlKind(a) === 'press'"><span class="text-[11px] text-slate-500 px-1">press button</span></template>
                 <template x-if="haControlKind(a) === 'run'"><span class="text-[11px] text-slate-500 px-1">run</span></template>
+                <!-- Notify target: a notify.* SERVICE, not an entity — it never
+                     appears in the entity picker, so it has its own list. -->
+                <select x-show="a.kind === 'notify'"
+                        :value="a.instance_id + '::' + a.service"
+                        @change="onNotifyPick(a, $event.target.value)"
+                        class="form-control !py-1 !text-xs">
+                  <option value="::">— notify target —</option>
+                  <template x-for="t in notifyTargets" :key="t.instance_id + t.service">
+                    <option :value="t.instance_id + '::' + t.service" x-text="t.label"></option>
+                  </template>
+                </select>
                 <button type="button" x-show="!a.guard" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
                 <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeHaAction(ai)">✕</button>
+                </div>
+                <!-- Title + message. %sensor.id% placeholders use the SAME ids
+                     as conditions, so anything you can gate on you can quote. -->
+                <div x-show="a.kind === 'notify'" class="space-y-1 pl-1">
+                  <input type="text" x-model="a.title" maxlength="200" placeholder="Title (optional)"
+                         class="form-control !py-1 !text-xs w-full">
+                  <textarea x-model="a.message" maxlength="1000" rows="2"
+                            placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                            class="form-control !py-1 !text-xs w-full"></textarea>
+                  <div class="text-[10px] text-slate-600">
+                    Insert live values with <span class="font-mono">%sensor.id%</span> — the same ids
+                    the conditions above use. An unreadable value renders as
+                    <span class="font-mono">?</span> rather than blocking the message.
+                  </div>
+                </div>
                 </div>
                 <template x-if="a.guard">
                   <div class="flex items-center gap-1.5 flex-wrap pl-4">

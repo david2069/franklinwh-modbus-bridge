@@ -75,6 +75,7 @@ function scheduleTab() {
     services: [],
     sensors: [],
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
+    notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
 
     // Sensors grouped by their `group` label for the condition-picker,
     // preserving first-seen order (native metrics first, then HA · <instance>).
@@ -113,6 +114,20 @@ function scheduleTab() {
     },
 
     // ── HA actions (one-shot) ──────────────────────────────────
+    async loadNotifyTargets() {
+      const d = await fetchJSON('api/ha/notify-targets');
+      this.notifyTargets = (d && d.targets) || [];
+    },
+
+    /** Notify targets are "<instance>::<service>" — the service is a notify
+     *  target name, NOT an entity, so entity_id stays empty. */
+    onNotifyPick(a, value) {
+      const [instance_id, service] = (value || '').split('::');
+      a.instance_id = instance_id || '';
+      a.service = service || '';
+      a.entity_id = '';
+    },
+
     async loadHaControllable() {
       const CTRL = ['switch', 'input_boolean', 'light', 'select', 'input_select',
                     'number', 'input_number', 'button', 'scene', 'script'];
@@ -164,7 +179,7 @@ function scheduleTab() {
     },
 
     addHaAction() {
-      this.form.ha_actions.push({ instance_id: '', entity_id: '', service: 'turn_on', data: {}, when: 'fire' });
+      this.form.ha_actions.push({ kind: 'entity', title: '', message: '', instance_id: '', entity_id: '', service: 'turn_on', data: {}, when: 'fire' });
     },
     removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
     addGuard(a) {
@@ -309,6 +324,7 @@ function scheduleTab() {
       if (all && all.events) this.auditAll = all.events;
       this.loadMetricsHistory();  // actual mode + SoC overlay for today
       this.loadHaControllable();  // exposed controllable HA entities for actions
+      this.loadNotifyTargets();   // notify.* services for notification actions
     },
 
     async setAuditFilter(f) {
@@ -1285,12 +1301,21 @@ function scheduleTab() {
         enabled: f.enabled,
         entry_hold_s: Number(f.entry_hold_s) || 0,
         ha_actions: (f.ha_actions || [])
-          .filter((a) => a.instance_id && a.entity_id && a.service)
+          // A notify action has no entity — filtering on entity_id would drop
+          // every notification silently on save.
+          .filter((a) => (a.kind === 'notify'
+            ? a.instance_id && a.service && a.message
+            : a.instance_id && a.entity_id && a.service))
           .map((a) => {
             const o = {
-              instance_id: a.instance_id, entity_id: a.entity_id,
+              kind: a.kind || 'entity',
+              instance_id: a.instance_id, entity_id: a.entity_id || '',
               service: a.service, data: a.data || {}, when: a.when || 'fire',
             };
+            if (a.kind === 'notify') {
+              o.title = a.title || '';
+              o.message = a.message || '';
+            }
             if (a.guard && a.guard.sensor) {
               o.guard = { sensor: a.guard.sensor, op: a.guard.op, value: this._coerceVal(a.guard.value) };
             }

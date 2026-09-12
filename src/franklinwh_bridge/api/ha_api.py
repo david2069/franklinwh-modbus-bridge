@@ -148,6 +148,19 @@ async def test_connection(body: HaTestBody, request: Request):
     }
 
 
+@router.get("/notify-targets")
+async def notify_targets(request: Request):
+    """Available ``notify.*`` services across all HA instances.
+
+    Notify targets are services, not entities, so they never appear in the
+    entity browser — the action picker needs them from here.
+    """
+    reg = _registry(request)
+    if reg is None:
+        return {"targets": []}
+    return {"targets": await reg.notify_services()}
+
+
 @router.get("/entities")
 async def browse_entities(
     request: Request,

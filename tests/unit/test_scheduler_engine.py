@@ -659,3 +659,91 @@ async def test_incumbent_keeps_the_gateway_when_its_gate_blips():
     points["soc"] = 10          # gate now fails for the incumbent
     await eng.tick(MON)
     assert h.state.action == "Force Charge"   # still ours, not handed over
+
+
+# ── one-way HA notifications ──────────────────────────────────
+
+
+def _notify_engine(entries, handler, points=None, audits=None, sent=None):
+    """Engine with a notify hook that records what it was asked to send."""
+    async def on_audit(sid, action, target, result, detail):
+        if audits is not None:
+            audits.append({"id": sid, "result": result, "detail": detail})
+
+    async def notify_fn(instance_id, service, title, message):
+        sent.append({"instance": instance_id, "service": service,
+                     "title": title, "message": message})
+        return {"ok": True, "error": None}
+
+    eng = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", handler)],
+        on_audit=on_audit if audits is not None else None,
+        points_fn=(lambda gw: points) if points is not None else None,
+        ha_notify_fn=notify_fn,
+    )
+    eng._entries = entries
+    return eng
+
+
+async def test_notification_sent_on_fire():
+    """A notify action needs no entity_id — notify.* is a service call, and
+    requiring one would silently skip it."""
+    h = FakeHandler()
+    sent, audits = [], []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "mobile_app_phone",
+        "when": "fire", "title": "Export started", "message": "Discharging now",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 80}, audits=audits, sent=sent)
+    await eng.tick(MON)
+
+    assert len(sent) == 1
+    assert sent[0]["service"] == "mobile_app_phone"
+    assert sent[0]["message"] == "Discharging now"
+    assert any(a["result"] == "ha_action" for a in audits)
+
+
+async def test_notification_substitutes_live_sensor_values():
+    """{sensor.id} placeholders render from the snapshot — a static string can't
+    tell you what actually happened."""
+    h = FakeHandler()
+    sent = []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "persistent_notification",
+        "when": "fire", "title": "SoC", "message": "Battery at %battery.soc_pct%% and mode %mode.name%",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 63, "mode_name": "Self-Consumption"}, sent=sent)
+    await eng.tick(MON)
+
+    assert sent and sent[0]["message"] == "Battery at 63% and mode Self-Consumption"
+
+
+async def test_notification_unknown_placeholder_degrades():
+    """An unreadable sensor renders '?' rather than killing the notification —
+    a message with a gap still beats no message."""
+    h = FakeHandler()
+    sent = []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "x",
+        "when": "fire", "message": "Value %nope.missing% here",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 50}, sent=sent)
+    await eng.tick(MON)
+
+    assert sent and sent[0]["message"] == "Value ? here"
+
+
+async def test_notification_respects_its_guard():
+    """Guards apply to notifications exactly as to entity actions."""
+    h = FakeHandler()
+    sent = []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "x",
+        "when": "fire", "message": "should not send",
+        "guard": {"sensor": "battery.soc_pct", "op": ">", "value": 90},
+    }])
+    eng = _notify_engine([e], h, points={"soc": 10}, sent=sent)
+    await eng.tick(MON)
+
+    assert sent == []

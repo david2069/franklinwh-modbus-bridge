@@ -142,6 +142,54 @@ class HaInstance:
             }
 
     # ── outbound control (automation actions) ─────────────────
+    async def notify(self, service: str, title: str, message: str) -> dict:
+        """Send a one-way notification via an HA ``notify.*`` service.
+
+        Distinct from :meth:`call_service` because a notification is NOT an
+        entity operation: ``notify.mobile_app_x`` takes ``title``/``message`` in
+        the body and no entity_id. Passing one makes HA reject the call.
+
+        One-way by design — HA is told, nothing comes back. Actionable
+        (two-way) notifications need a callback route and are a separate
+        feature; see the notifications backlog.
+        """
+        name = (service or "").split(".", 1)[-1].strip()
+        if not name:
+            return {"ok": False, "error": f"bad notify service: {service!r}"}
+        url = f"{self.base_url}/api/services/notify/{name}"
+        payload: dict = {"message": message or ""}
+        if title:
+            payload["title"] = title
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(url, headers=self._headers(), json=payload)
+                resp.raise_for_status()
+            return {"ok": True, "error": None}
+        except Exception as exc:
+            err = str(exc) or type(exc).__name__
+            logger.warning("HA %s notify.%s failed: %s", self.name, name, err)
+            return {"ok": False, "error": err}
+
+    async def list_notify_services(self) -> list[str]:
+        """Available ``notify.*`` service names from HA's /api/services.
+
+        Notify targets are services, not entities, so they never appear in the
+        entity cache the rest of this class is built around — they have to be
+        asked for separately.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.get(f"{self.base_url}/api/services", headers=self._headers())
+                resp.raise_for_status()
+                domains = resp.json() or []
+        except Exception as exc:
+            logger.debug("HA %s list services failed: %s", self.name, exc)
+            return []
+        for d in domains:
+            if d.get("domain") == "notify":
+                return sorted((d.get("services") or {}).keys())
+        return []
+
     async def call_service(
         self, entity_id: str, service: str, data: dict | None = None
     ) -> dict:
@@ -401,6 +449,28 @@ class HaRegistry:
         if inst is None:
             return {"ok": False, "error": f"HA instance {instance_id!r} not found"}
         return await inst.call_service(entity_id, service, data)
+
+    async def notify(
+        self, instance_id: str, service: str, title: str, message: str
+    ) -> dict:
+        """Route a notification to the right HA instance (never raises)."""
+        inst = self._instances.get(instance_id)
+        if inst is None:
+            return {"ok": False, "error": f"HA instance {instance_id!r} not found"}
+        return await inst.notify(service, title, message)
+
+    async def notify_services(self) -> list[dict]:
+        """Every notify target across all instances, for the action picker."""
+        out: list[dict] = []
+        for inst in self._instances.values():
+            for name in await inst.list_notify_services():
+                out.append({
+                    "instance_id": inst.id,
+                    "instance_name": inst.name,
+                    "service": name,
+                    "label": f"{name} ({inst.name})",
+                })
+        return out
 
     def status(self) -> list[dict]:
         return [
