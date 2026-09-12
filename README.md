@@ -47,6 +47,17 @@ single codebase.
 
 ## Installation
 
+**Full instructions: [INSTALL.md](INSTALL.md)** — Home Assistant add-on
+(ingress, automatic MQTT), Docker Compose, and development setups, plus gateway
+types (aGate X / MAC-1 collar) and troubleshooting.
+
+### Home Assistant add-on
+
+Add `https://github.com/david2069/franklinwh-modbus-bridge` as an add-on
+repository, install **FranklinWH Modbus Bridge**, set the gateway IP and start.
+The UI opens from the sidebar — HA authenticates you via ingress, and MQTT is
+read from the Supervisor, so there's no second login and no broker to retype.
+
 ### Local Development
 
 ```bash

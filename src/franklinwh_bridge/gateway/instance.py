@@ -49,6 +49,9 @@ class GatewayConfig:
     enabled: bool = True
     mock: bool = False  # synthetic gateway — no Modbus connection
     service_id: str | None = None  # utility-service link (SCH3 fan-out target)
+    # 'agate' (full battery system) or 'mac1' (Meter Adaptor Collar: metering
+    # only — no battery, far fewer SunSpec models, so absent models are normal).
+    device_type: str = "agate"
 
 
 @dataclass

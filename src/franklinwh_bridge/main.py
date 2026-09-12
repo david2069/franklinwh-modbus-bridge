@@ -33,6 +33,7 @@ from franklinwh_bridge.api.tariff_api import router as tariff_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.manager import AppConfig
+from franklinwh_bridge.config.supervisor import discover_mqtt
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.billing import BillingStore
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
@@ -184,6 +185,19 @@ async def lifespan(app: FastAPI):
         mqtt_config["username"] = env_mqtt.username
     if env_mqtt.password:
         mqtt_config["password"] = env_mqtt.password
+
+    # Running as an HA add-on, the Supervisor already knows the broker — ask it
+    # rather than making the user retype what Mosquitto was set up with. Only
+    # fills in what hasn't been set explicitly: a typed host always wins, and
+    # outside an add-on this is inert.
+    if mqtt_config.get("host") in (None, "", "localhost"):
+        discovered = await discover_mqtt()
+        if discovered:
+            mqtt_config.update({k: v for k, v in discovered.items() if v is not None})
+            logger.info(
+                "MQTT broker discovered via Supervisor: %s:%s",
+                discovered["host"], discovered["port"],
+            )
 
     mqtt_publisher = MqttPublisher.from_db_config(
         mqtt_config, gateway_id=gateway_id,
@@ -410,8 +424,13 @@ async def lifespan(app: FastAPI):
         /api/sensors evaluate condition trees (and derived sensors) against."""
         inst = registry.get(gw_id)
         pts = inst.latest_points() if inst else {}
+        # device_type is configuration, not a polled point — a MAC-1 collar
+        # can't report "I'm a collar" over Modbus. Merge it in so automations
+        # can gate on gateway.device_type / gateway.battery_capable.
+        dev_type = getattr(getattr(inst, "config", None), "device_type", None) or "agate"
         return {
             **pts,
+            "device_type": dev_type,
             **energy_totals.current_totals(gw_id),
             **ha_registry.entity_values(),
             **constants.as_points(),

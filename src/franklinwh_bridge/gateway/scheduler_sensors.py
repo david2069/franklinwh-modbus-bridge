@@ -86,6 +86,21 @@ def _grid_connected(points: Points, _now: datetime) -> bool | None:
     return None
 
 
+def _text(points: Points, *keys: str) -> str | None:
+    """First non-empty string among ``keys``, else None.
+
+    SunSpec Model 1 (Common) reaches the snapshot twice: as friendly keys
+    (``serial``, ``model``) and as raw points (``1.SN``, ``1.Md``). Which are
+    populated depends on the device — a MAC-1 collar publishes a smaller set —
+    so read the friendly name first and fall back to the register.
+    """
+    for k in keys:
+        v = points.get(k)
+        if v not in (None, ""):
+            return str(v)
+    return None
+
+
 def _mode_name(points: Points, _now: datetime) -> str | None:
     v = points.get("mode_name")
     return str(v) if v is not None else None
@@ -383,6 +398,40 @@ SENSORS: list[SensorDef] = [
         "load.power_w", "Home Load (W)", "W", "number", lambda p, _n: _num(p, "home_load_ext")
     ),
     SensorDef("mode.name", "Operating Mode", None, "enum", _mode_name),
+
+    # ── Device identity ──────────────────────────────────────
+    # Serial/model are already polled from the nameplate but weren't reachable
+    # from an automation. With several gateways — and with MAC-1 collars beside
+    # aGates — a rule needs to be able to say WHICH box it means, and a serial
+    # is the only identifier that survives renaming a gateway.
+    SensorDef(
+        "gateway.serial", "Gateway Serial Number", None, "enum",
+        lambda p, _n: _text(p, "serial", "1.SN"),
+    ),
+    SensorDef(
+        "gateway.model", "Gateway Model (from nameplate)", None, "enum",
+        lambda p, _n: _text(p, "model", "1.Md"),
+    ),
+    SensorDef(
+        "gateway.device_type", "Gateway Type (agate / mac1)", None, "enum",
+        lambda p, _n: str(p.get("device_type") or "agate"),
+    ),
+    SensorDef(
+        "gateway.manufacturer", "Gateway Manufacturer (1.Mn)", None, "enum",
+        lambda p, _n: _text(p, "manufacturer", "1.Mn"),
+    ),
+    SensorDef(
+        "gateway.version", "Gateway Firmware Version (1.Vr)", None, "enum",
+        lambda p, _n: _text(p, "version", "1.Vr"),
+    ),
+    SensorDef(
+        "gateway.options", "Gateway Options (1.Opt)", None, "enum",
+        lambda p, _n: _text(p, "options", "1.Opt"),
+    ),
+    SensorDef(
+        "gateway.battery_capable", "Gateway can accept battery commands", None, "bool",
+        lambda p, _n: str(p.get("device_type") or "agate") != "mac1",
+    ),
     SensorDef(
         "mode.raw", "Operating Mode (code)", None, "number", lambda p, _n: _num(p, "mode_raw")
     ),
@@ -627,6 +676,7 @@ _GROUP_LABELS = {
     "grid": "Grid",
     "load": "Load",
     "mode": "Mode",
+    "gateway": "Gateway identity",
     "energy": "Energy",
     "const": "Constants",
     "tariff": "Tariff",

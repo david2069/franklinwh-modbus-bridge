@@ -12,7 +12,21 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 36
+#: Supported gateway device types and what they can do. A Meter Adaptor Collar
+#: measures; it has no battery to command and exposes a fraction of the aGate's
+#: SunSpec models, so "missing" models are normal for it rather than a fault.
+DEVICE_TYPES = {
+    "agate": {"label": "aGate X", "battery": True},
+    "mac1": {"label": "MAC-1 (Meter Adaptor Collar)", "battery": False},
+}
+
+
+def device_is_battery_capable(device_type: str | None) -> bool:
+    """False for metering-only devices — they can't accept a battery command."""
+    return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
+
+
+CURRENT_SCHEMA_VERSION = 37
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -560,6 +574,14 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE services ADD COLUMN charging_allowed INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE services ADD COLUMN discharging_allowed INTEGER NOT NULL DEFAULT 1;
     """,
+    37: """
+    -- Device type. 'agate' is the full aGate X (battery, inverter, the whole
+    -- SunSpec model set). 'mac1' is a Meter Adaptor Collar: a metering device
+    -- with no battery and a much smaller model/point set, so absent models are
+    -- expected rather than a fault, and battery commands don't apply to it.
+    -- Existing rows are aGates, which is what they were.
+    ALTER TABLE gateways ADD COLUMN device_type TEXT NOT NULL DEFAULT 'agate';
+    """,
 }
 
 
@@ -748,8 +770,10 @@ async def create_gateway(
     poll_interval: int = 10,
     timeout: float = 10.0,
     mock: bool = False,
+    device_type: str = "agate",
 ) -> dict:
-    """Create a new gateway."""
+    """Create a new gateway. ``device_type`` is 'agate' (full battery system)
+    or 'mac1' (Meter Adaptor Collar — metering only, far fewer models)."""
     now = time.time()
     # Find next display_order
     async with db.execute("SELECT COALESCE(MAX(display_order), -1) + 1 FROM gateways") as cur:
@@ -757,8 +781,8 @@ async def create_gateway(
 
     await db.execute(
         "INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at, "
-        "description, poll_interval, timeout, display_order, mock) "
-        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)",
+        "description, poll_interval, timeout, display_order, mock, device_type) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
         (
             gateway_id,
             name,
@@ -771,6 +795,7 @@ async def create_gateway(
             timeout,
             order,
             int(mock),
+            device_type if device_type in DEVICE_TYPES else "agate",
         ),
     )
     await db.commit()

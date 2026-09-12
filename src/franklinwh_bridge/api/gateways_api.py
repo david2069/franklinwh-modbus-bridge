@@ -204,6 +204,9 @@ class GatewayCreate(BaseModel):
     poll_interval: int = Field(default=10, ge=1, le=300)
     timeout: float = Field(default=10.0, ge=1, le=60)
     mock: bool = False
+    # 'agate' = full battery system; 'mac1' = Meter Adaptor Collar (metering
+    # only, far fewer SunSpec models, no battery to command).
+    device_type: str = Field(default="agate", pattern=r"^(agate|mac1)$")
 
 
 class GatewayUpdate(BaseModel):
@@ -219,6 +222,7 @@ class GatewayUpdate(BaseModel):
     service_id: str | None = Field(default=None, max_length=63)
     phase: str | None = Field(default=None, pattern=r"^(all|L[123](\+L[123])*)$")
     phase_view: str | None = Field(default=None, pattern=r"^(both|aggregate|per_phase)$")
+    device_type: str | None = Field(default=None, pattern=r"^(agate|mac1)$")
 
 
 @router.get("/gateways")
@@ -301,6 +305,7 @@ async def add_gateway(body: GatewayCreate, request: Request):
         poll_interval=body.poll_interval,
         timeout=body.timeout,
         mock=body.mock,
+        device_type=body.device_type,
     )
 
     # Onboard immediately so the gateway starts polling without an app restart.
