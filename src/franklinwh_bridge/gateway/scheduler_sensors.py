@@ -44,6 +44,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
+from franklinwh_bridge.config import clock as _clock
+
 #: Solar power (W) above which ``pv.is_generating`` is True.
 PV_GENERATING_THRESHOLD_W = 50.0
 
@@ -636,6 +638,17 @@ SENSORS: list[SensorDef] = [
         "h",
         "number",
         lambda _p, n: round(_time.localtime(n.timestamp()).tm_gmtoff / 3600, 2),
+    ),
+    # 1 while the clock still matches the timezone recorded at install, 0 once
+    # it has drifted (every schedule then fires at the wrong wall-clock time).
+    # None until the first startup check has run. Referenceable as a condition
+    # so an automation can notify on it.
+    SensorDef(
+        "time.tz_ok",
+        "Clock matches the timezone recorded at install (0 = schedules are mistimed)",
+        None,
+        "bool",
+        lambda _p, _n: (lambda ok: None if ok is None else int(ok))(_clock.tz_ok()),
     ),
     # NOTE: no price.* sensor yet — a price source isn't wired. Re-add a
     # ``price.export_c_per_kwh`` SensorDef (mapped to a real point) when the

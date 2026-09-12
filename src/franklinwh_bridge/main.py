@@ -32,6 +32,7 @@ from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.tariff_api import router as tariff_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
+from franklinwh_bridge.config.clock import check_and_record
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.config.supervisor import discover_mqtt
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
@@ -580,13 +581,19 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Bridge started (env=%s, v%s)", config.environment, __version__)
-    # Schedule triggers and TOU windows run on this clock — log it so a wrong
-    # timezone is caught at boot rather than by a missed dispatch.
+    # Schedule triggers and TOU windows run on this clock — log it, then check
+    # it against the timezone recorded at install so a drift is caught at boot
+    # rather than by a missed dispatch hours later.
     _lt = time.localtime()
     logger.info(
         "Local clock: %s %s (UTC%+.2g) — schedules and TOU windows use this",
         time.strftime("%Y-%m-%d %H:%M:%S", _lt), _lt.tm_zone, _lt.tm_gmtoff / 3600,
     )
+    try:
+        app.state.timezone_check = await check_and_record(db)
+    except Exception as exc:  # never block startup on the guard itself
+        logger.warning("Timezone check failed: %s", exc)
+        app.state.timezone_check = None
 
     yield
 
