@@ -50,6 +50,9 @@ dev = [
     "respx>=0.21",
     "ruff>=0.5",
     "coverage>=7.5",
+    # Browser console gate (tools/console_gate.py). Drives the installed Google
+    # Chrome via channel="chrome", so no browser download is needed.
+    "playwright>=1.47",
 ]
 
 [project.scripts]

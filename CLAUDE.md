@@ -31,6 +31,11 @@ pip install -e /Users/davidhona/dev/modbus
 - `pytest -m "not hardware"` — skip tests requiring a real aGate
 - `ruff check src/ tests/` — lint
 - `ruff format src/ tests/` — format
+- `python tools/console_gate.py` — browser console gate against a **running**
+  bridge; exits non-zero on any console error, uncaught exception or failed
+  request. **Required after any JS/HTML change.** Drives the installed Google
+  Chrome (no browser download). Safari can't do this job: `safaridriver`
+  implements none of WebDriver's log endpoints, so the console can't be read.
 - `bridge run` — start the bridge
 - `bridge --help` — CLI reference
 
