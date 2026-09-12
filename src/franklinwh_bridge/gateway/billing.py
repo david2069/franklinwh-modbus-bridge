@@ -42,6 +42,10 @@ class BillingStore:
             "export_limit_kw": 0.0,      # 0 = unlimited
             "charging_allowed": True,
             "discharging_allowed": True,
+            # Where the service is billed (migration 38). "" = not stated; we
+            # never guess a location from anything else.
+            "country": "",
+            "timezone": "",
         }
 
     async def load(self) -> None:
@@ -61,6 +65,8 @@ class BillingStore:
                     "export_limit_kw": _num(s.get("export_limit_kw")),
                     "charging_allowed": bool(s.get("charging_allowed", 1)),
                     "discharging_allowed": bool(s.get("discharging_allowed", 1)),
+                    "country": (s.get("country") or "").strip().upper(),
+                    "timezone": (s.get("timezone") or "").strip(),
                 }
             pricing = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
             cycle_day = int(_num(pricing.get("billing_cycle_day"), 1)) or 1
@@ -131,4 +137,10 @@ class BillingStore:
             "service_export_limit_kw": self._plan["export_limit_kw"],
             "service_charging_allowed": self._plan["charging_allowed"],
             "service_discharging_allowed": self._plan["discharging_allowed"],
+            # Where the service is billed. The timezone is what the plan's TOU
+            # windows are WRITTEN in — the engine still evaluates them on the
+            # container clock, so the two are compared rather than one driving
+            # the other (see service.tz_matches_clock).
+            "service_country": self._plan["country"],
+            "service_timezone": self._plan["timezone"],
         }

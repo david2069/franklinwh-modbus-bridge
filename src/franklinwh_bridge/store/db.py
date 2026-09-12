@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 37
+CURRENT_SCHEMA_VERSION = 38
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -582,6 +582,20 @@ MIGRATIONS: dict[int, str] = {
     -- Existing rows are aGates, which is what they were.
     ALTER TABLE gateways ADD COLUMN device_type TEXT NOT NULL DEFAULT 'agate';
     """,
+    38: """
+    -- Where the service is billed. country is an ISO 3166-1 alpha-2 code and
+    -- seeds season boundaries / holiday sets; timezone is an IANA name
+    -- ("Australia/Sydney") and is the timezone the plan's TOU windows are
+    -- written in.
+    --
+    -- ADVISORY for now: the engine still evaluates windows on the container
+    -- clock. This records the INTENT so the two can be cross-checked — on
+    -- 2026-09-12 the container drifted AEST->UTC and a daily 18:00 export
+    -- silently stopped firing, with nothing on file saying what the clock was
+    -- supposed to be. Empty = not stated; never guess a location.
+    ALTER TABLE services ADD COLUMN country TEXT NOT NULL DEFAULT '';
+    ALTER TABLE services ADD COLUMN timezone TEXT NOT NULL DEFAULT '';
+    """,
 }
 
 
@@ -928,6 +942,10 @@ _SERVICE_FIELDS = (
     # plan description + what the plan permits (migration 36)
     "plan_type", "export_allowed", "export_limit_kw",
     "charging_allowed", "discharging_allowed",
+    # Where the service is billed (migration 38). Advisory: records the
+    # timezone the plan's TOU windows are written in so it can be checked
+    # against the clock the engine actually runs on.
+    "country", "timezone",
 )
 _SERVICE_JSON_FIELDS = ("demand_window", "bonus_window", "pricing")
 

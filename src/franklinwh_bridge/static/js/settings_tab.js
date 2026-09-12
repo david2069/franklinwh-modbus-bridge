@@ -265,6 +265,10 @@ function settingsTab() {
         export_limit_kw: Number(svc.export_limit_kw) || 0,
         charging_allowed: svc.charging_allowed !== false,
         discharging_allowed: svc.discharging_allowed !== false,
+        // where the service is billed (migration 38). Blank = not stated; the
+        // form never pre-fills a guess, so an empty field means empty on file.
+        country: svc.country || '',
+        timezone: svc.timezone || '',
         // calculation method + rates (stored in the pricing JSON)
         pricing: {
           billing_cycle_day: (svc.pricing && svc.pricing.billing_cycle_day) || 1,

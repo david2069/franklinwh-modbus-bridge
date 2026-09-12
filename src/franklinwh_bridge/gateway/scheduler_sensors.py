@@ -41,8 +41,9 @@ from __future__ import annotations
 import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from franklinwh_bridge.config import clock as _clock
 
@@ -102,6 +103,29 @@ def _text(points: Points, *keys: str) -> str | None:
         if v not in (None, ""):
             return str(v)
     return None
+
+
+def _tz_matches_clock(points: Points) -> bool | None:
+    """Does the plan's timezone agree with the clock windows are evaluated on?
+
+    Compares the **current UTC offsets**, not the zone names: that is the
+    functional question (do the plan's windows land at the intended wall-clock
+    time?), and comparing at a single instant handles DST on both sides. Name
+    comparison would also call ``UTC`` and ``Etc/UTC`` a mismatch.
+
+    None when the service hasn't stated a timezone, or states one this system
+    can't resolve — unknown must not read as a failure.
+    """
+    name = (points.get("service_timezone") or "").strip()
+    if not name:
+        return None
+    try:
+        plan_offset = datetime.now(UTC).astimezone(ZoneInfo(name)).utcoffset()
+    except Exception:
+        return None
+    if plan_offset is None:
+        return None
+    return plan_offset == timedelta(seconds=_time.localtime().tm_gmtoff)
 
 
 def _mode_name(points: Points, _now: datetime) -> str | None:
@@ -567,6 +591,27 @@ SENSORS: list[SensorDef] = [
     SensorDef(
         "service.discharging_allowed", "Plan allows battery discharging", None, "bool",
         lambda p, _n: bool(p.get("service_discharging_allowed", True)),
+    ),
+    # ── Where the service is billed (informational) ──
+    SensorDef(
+        "service.country", "Service country (ISO code)", None, "enum",
+        lambda p, _n: _text(p, "service_country"),
+    ),
+    SensorDef(
+        "service.timezone", "Timezone the plan's TOU windows are written in", None, "enum",
+        lambda p, _n: _text(p, "service_timezone"),
+    ),
+    # The point of recording the plan's timezone: compare it to the clock the
+    # engine actually evaluates windows on. 0 means the TOU windows are being
+    # applied at the wrong wall-clock time. None when the service hasn't stated
+    # one — unknown must not read as a failure. Complements time.tz_ok, which
+    # catches the clock CHANGING; this catches it never having been right.
+    SensorDef(
+        "service.tz_matches_clock",
+        "Plan timezone matches the clock schedules run on (0 = TOU windows mistimed)",
+        None,
+        "bool",
+        lambda p, _n: _tz_matches_clock(p),
     ),
     # ── Fixed / standing charges (informational; offset target) ──
     SensorDef(

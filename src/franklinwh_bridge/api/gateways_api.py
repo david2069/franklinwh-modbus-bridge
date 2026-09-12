@@ -8,10 +8,11 @@ endpoints (points, command, models, battery limits).
 from __future__ import annotations
 
 import logging
+from zoneinfo import ZoneInfo
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
@@ -140,6 +141,45 @@ class ServiceUpdate(BaseModel):
     export_limit_kw: float | None = Field(default=None, ge=0)  # None/0 → unlimited
     charging_allowed: bool | None = None
     discharging_allowed: bool | None = None
+    # ── Where the service is billed (migration 38) ──
+    # Advisory: the engine still evaluates windows on the container clock. This
+    # records what the plan's TOU windows are WRITTEN in, so the two can be
+    # compared — see service.tz_matches_clock.
+    country: str | None = Field(default=None, max_length=2)
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("country")
+    @classmethod
+    def _upper_country(cls, v: str | None) -> str | None:
+        """ISO 3166-1 alpha-2, upper-cased. "" clears it."""
+        if v is None:
+            return None
+        v = v.strip().upper()
+        if v and not (len(v) == 2 and v.isalpha()):
+            raise ValueError("country must be a 2-letter ISO code (e.g. AU, NZ, US)")
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_timezone(cls, v: str | None) -> str | None:
+        """Reject anything zoneinfo can't resolve.
+
+        A timezone that only looks right is worse than a blank one: it reads as
+        confirmation while being unusable, which is exactly how a clock problem
+        stays invisible.
+        """
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return ""
+        try:
+            ZoneInfo(v)
+        except Exception as exc:
+            raise ValueError(
+                f"unknown timezone '{v}' — use an IANA name like Australia/Sydney"
+            ) from exc
+        return v
 
 
 @router.get("/services")

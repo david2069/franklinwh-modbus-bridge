@@ -533,6 +533,33 @@
                     <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.discharging_allowed" class="accent-emerald-500"> Battery discharging permitted</label>
                   </div>
                   <div class="text-[10px] text-slate-600">Plan requirements, not preferences. Referenceable in Automations today; they do not yet block a dispatch that breaks them.</div>
+                  <!-- Where the service is billed. The timezone is what the
+                       plan's TOU windows are WRITTEN in; the engine still runs
+                       on the container clock, so we compare rather than convert. -->
+                  <div class="grid grid-cols-2 gap-3 text-xs pt-1 border-t border-white/[0.06]">
+                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">Country (ISO code)</span>
+                      <input type="text" maxlength="2" placeholder="AU" x-model="serviceEdit.country"
+                             class="form-control !py-0.5 !text-xs uppercase"></label>
+                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">Plan timezone (IANA)</span>
+                      <input type="text" list="tz-suggestions" placeholder="Australia/Sydney"
+                             x-model="serviceEdit.timezone" class="form-control !py-0.5 !text-xs"></label>
+                    <datalist id="tz-suggestions">
+                      <option value="Australia/Sydney"></option>
+                      <option value="Australia/Brisbane"></option>
+                      <option value="Australia/Adelaide"></option>
+                      <option value="Australia/Perth"></option>
+                      <option value="Pacific/Auckland"></option>
+                      <option value="America/New_York"></option>
+                      <option value="America/Los_Angeles"></option>
+                      <option value="Europe/London"></option>
+                    </datalist>
+                  </div>
+                  <div class="text-[10px] text-slate-600">
+                    The timezone your plan's peak/off-peak windows are written in.
+                    Advisory — schedules still run on the Bridge's own clock, but
+                    <code class="text-slate-500">service.tz_matches_clock</code> goes to 0 if the two disagree,
+                    which means your TOU windows are firing at the wrong time of day.
+                  </div>
                 </div>
 
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
