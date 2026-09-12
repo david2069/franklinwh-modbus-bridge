@@ -497,10 +497,16 @@
               <div class="mt-2 pt-2 border-t border-white/[0.06] space-y-2">
                 <div class="flex items-center justify-between">
                   <div class="text-[10px] uppercase tracking-wide text-slate-500">Billing / Tariff</div>
-                  <button type="button" @click="loadAusgridPreset()"
-                          class="px-2 py-0.5 rounded text-[10px] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">
-                    Load preset: Ausgrid two-way
-                  </button>
+                  <div class="flex flex-wrap items-center gap-1 justify-end">
+                    <button type="button" @click="loadAglPreset()"
+                            class="px-2 py-0.5 rounded text-[10px] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">
+                      Load preset: AGL TOU
+                    </button>
+                    <button type="button" @click="loadAusgridPreset()"
+                            class="px-2 py-0.5 rounded text-[10px] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">
+                      Load preset: Ausgrid two-way
+                    </button>
+                  </div>
                 </div>
                 <!-- Plan description + what the plan permits. plan_type is
                      informational; the permissions publish as service.* sensors. -->

@@ -346,6 +346,60 @@ function settingsTab() {
       Alpine.store('app').toast('Ausgrid EA029 two-way tariff (FY27) loaded — review & save', 'info');
     },
 
+    // Fill the billing form with AGL's TOU retail plan (rates from the user's
+    // "your new electricity plan is all set" statement, 2026-09-12).
+    //
+    // What the engine ACTUALLY prices from this: the 28c evening feed-in
+    // (bonus window) and the daily supply charge. The plan has NO demand
+    // charges, so peak-demand stays off.
+    //
+    // The import rates (peak 54.175c / off-peak 21.626c) are recorded under
+    // pricing.import_rates but are NOT priced — the billing engine has no
+    // import-rate model yet, so storing them keeps the plan on file without
+    // pretending they feed net_total.
+    //
+    // Deliberately does NOT touch has_export_charge: a network two-way export
+    // charge (Ausgrid EA029) can sit underneath a retail plan, and silently
+    // clearing it would understate costs. Review that toggle separately.
+    loadAglPreset() {
+      const e = this.serviceEdit;
+      e.plan_type = 'tou';
+      e.has_tou = true;
+      e.has_peak_demand = false;
+
+      // Evening peak FiT — 28 c/kWh, 5pm-9pm every day, all year. This is the
+      // full export rate in the window (same convention as the Ausgrid preset),
+      // not a bonus added on top.
+      e.has_export_bonus = true;
+      e.bonus_window = { months: [], days: [], start: '17:00', end: '21:00' };
+      e.pricing.export_bonus_rate = 0.28;
+
+      // Supply charge 158.631 c/day, already GST-inclusive → tax_rate 0.
+      // Replace any existing supply row so re-loading the preset can't stack it.
+      const others = (e.pricing.fixed_charges || []).filter((fc) => fc.type !== 'supply');
+      e.pricing.fixed_charges = [...others, {
+        type: 'supply', description: 'AGL daily supply charge', levied_by: 'utility',
+        frequency: 'daily', rate: 1.58631, tax_rate: 0,
+      }];
+
+      // On file, not priced (see note above).
+      e.pricing.import_rates = {
+        peak: 0.54175, off_peak: 0.21626, gst_inclusive: true,
+        // Peak 3pm-9pm daily, Nov-Mar and Jun-Aug. Off-peak covers all other
+        // hours, and all day during Apr-May and Sep-Oct.
+        peak_window: { start: '15:00', end: '21:00', months: [11, 12, 1, 2, 3, 6, 7, 8] },
+      };
+      e.pricing.export_rates = {
+        off_peak: 0.03, morning_peak: 0.03, evening_peak: 0.28, gst_inclusive: false,
+        morning_peak_window: { start: '07:00', end: '08:00' },
+      };
+      if (!e.pricing.billing_cycle_day) e.pricing.billing_cycle_day = 1;
+      Alpine.store('app').toast(
+        'AGL TOU plan loaded — 28c evening FiT + supply charge priced; import rates on file only',
+        'info',
+      );
+    },
+
     async saveService() {
       const isNew = this.serviceEditId === 'new';
       const url = isNew ? 'api/services' : `api/services/${this.serviceEditId}`;
