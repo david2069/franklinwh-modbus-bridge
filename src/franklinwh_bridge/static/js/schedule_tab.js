@@ -286,6 +286,7 @@ function scheduleTab() {
     operators: OPERATORS,
 
     init() {
+      this.loadTlAppearance();
       this.load();
       window.addEventListener('tab:changed', (e) => {
         if (e.detail.tab === 'schedule') this.load();
@@ -425,11 +426,92 @@ function scheduleTab() {
     // plenty. A 64px timeline strip has no data behind it, so that wash was
     // invisible — real and mock gateways looked identical despite running
     // different modes. Same hues, enough alpha to read on a bare track.
-    modeColour(m) {
-      const base = MODE_LEGEND_COLORS[m];
-      return base ? base.replace(/[\d.]+\)$/, '0.18)') : 'rgba(148,163,184,0.10)';
-    },
+    // Alpha is NOT baked here: the returned colour carries var(--tl-mode-alpha),
+    // so the theme (and the Appearance panel) decides how strong the wash is.
+    // A value tuned for a dark track nearly vanishes on a light one.
+    modeColour(m) { return modeWash(m); },
     modeAbbr(m) { return this.MODE_ABBR[m] || m || ''; },
+
+    // ── Timeline appearance ─────────────────────────────────
+    // Defaults live in CSS per theme. A preset or a custom slider writes CSS
+    // variables inline on the timeline card, so nothing that DRAWS the
+    // timeline needs to know a preference exists — it just reads the cascade.
+    //
+    // Presets carry a value per theme because "high contrast" means a darker
+    // track on dark and a stronger one on light; a single number can't serve
+    // both. null = leave the theme default alone.
+    TL_PRESETS: [
+      { id: 'auto',     label: 'Auto (match theme)', hint: 'Theme defaults' },
+      { id: 'contrast', label: 'High contrast',      hint: 'Stronger track + bolder mode tint',
+        dark: { surface: 0.75, mode: 0.30 }, light: { surface: 0.95, mode: 0.44 } },
+      { id: 'muted',    label: 'Muted',              hint: 'Quieter track, lighter tint',
+        dark: { surface: 0.22, mode: 0.12 }, light: { surface: 0.40, mode: 0.20 } },
+      { id: 'flat',     label: 'Flat (no track)',    hint: 'No slab — blocks float on the card',
+        dark: { surface: 0.0,  mode: 0.16 }, light: { surface: 0.0,  mode: 0.28 } },
+    ],
+    tlAppearance: { preset: 'auto', surface: null, mode: null },
+    tlPanelOpen: false,
+
+    loadTlAppearance() {
+      try {
+        const raw = localStorage.getItem('fwh-timeline-appearance');
+        if (raw) this.tlAppearance = { ...this.tlAppearance, ...JSON.parse(raw) };
+      } catch (_) { /* corrupt value shouldn't break the tab */ }
+    },
+    _saveTlAppearance() {
+      try {
+        localStorage.setItem('fwh-timeline-appearance', JSON.stringify(this.tlAppearance));
+      } catch (_) { /* private mode / quota — the view still works */ }
+    },
+    setTlPreset(id) {
+      // Switching preset drops custom values, otherwise a stale slider would
+      // silently override the preset the user just picked.
+      this.tlAppearance = { preset: id, surface: null, mode: null };
+      this._saveTlAppearance();
+    },
+    setTlCustom(key, value) {
+      this.tlAppearance = { ...this.tlAppearance, preset: 'custom', [key]: Number(value) };
+      this._saveTlAppearance();
+    },
+    resetTlAppearance() { this.setTlPreset('auto'); },
+
+    _tlPresetValues() {
+      const theme = (Alpine.store('app') || {}).theme === 'light' ? 'light' : 'dark';
+      const p = this.TL_PRESETS.find(x => x.id === this.tlAppearance.preset);
+      return (p && p[theme]) || {};
+    },
+    // Effective values, for the sliders to show something truthful rather than
+    // snapping to 0 when a preset (not a custom value) is in force.
+    tlEffective(key) {
+      const custom = this.tlAppearance[key];
+      if (custom !== null && custom !== undefined) return custom;
+      const preset = this._tlPresetValues()[key];
+      if (preset !== undefined) return preset;
+      const themeDefault = getComputedStyle(document.documentElement)
+        .getPropertyValue(key === 'mode' ? '--tl-mode-alpha' : '--tl-surface-alpha-default');
+      const n = parseFloat(themeDefault);
+      return Number.isFinite(n) ? n : (key === 'mode' ? 0.18 : 0.45);
+    },
+    tlIsDefault() {
+      return this.tlAppearance.preset === 'auto'
+        && this.tlAppearance.surface === null && this.tlAppearance.mode === null;
+    },
+    // Inline CSS vars for the timeline card. Empty string when nothing is
+    // overridden, so the stylesheet stays in charge by default.
+    timelineVars() {
+      if (this.tlIsDefault()) return '';
+      const vals = { ...this._tlPresetValues() };
+      if (this.tlAppearance.surface !== null) vals.surface = this.tlAppearance.surface;
+      if (this.tlAppearance.mode !== null) vals.mode = this.tlAppearance.mode;
+      const out = [];
+      if (vals.surface !== undefined) {
+        out.push(vals.surface <= 0
+          ? '--tl-surface: transparent'
+          : `--tl-surface: rgba(var(--tl-surface-rgb), ${vals.surface})`);
+      }
+      if (vals.mode !== undefined) out.push(`--tl-mode-alpha: ${vals.mode}`);
+      return out.join('; ');
+    },
 
     async loadMetricsHistory() {
       // Anchor the day to the SERVER's midnight, not the browser's. The x-axis

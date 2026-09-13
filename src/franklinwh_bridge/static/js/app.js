@@ -114,6 +114,31 @@ const MODE_BG_COLORS = {
   'Self-Consumption': 'rgba(34,197,94,0.07)',
   'Emergency Backup': 'rgba(239,68,68,0.08)',
 };
+// Bare RGB triplets for the DOM-drawn schedule timeline, which composes them
+// with CSS variables (rgba(R,G,B,var(--tl-mode-alpha))) so the wash strength
+// comes from the theme/Appearance cascade instead of being baked in JS. The
+// Chart.js dashboard cannot do this — a canvas fill can't read a CSS var — so
+// MODE_BG_COLORS above stays as literal rgba for that.
+const MODE_RGB = {
+  'TOU':              '251,191,36',
+  'Time of Use':      '251,191,36',
+  'Self-Consumption': '34,197,94',
+  'Emergency Backup': '239,68,68',
+};
+const MODE_RGB_FALLBACK = '148,163,184';
+
+// Mode tint for a timeline track: hue fixed, alpha from the cascade.
+function modeWash(mode) {
+  return `rgba(${MODE_RGB[mode] || MODE_RGB_FALLBACK}, var(--tl-mode-alpha))`;
+}
+
+// In-track mode label. The raw hue is tuned for a dark track and goes muddy on
+// a light one, so mix it toward the theme's ink. If color-mix is unsupported
+// the declaration is simply dropped and the label inherits a legible colour.
+function modeInk(mode) {
+  return `color-mix(in srgb, rgb(${MODE_RGB[mode] || MODE_RGB_FALLBACK}) 72%, var(--tl-mode-ink-base))`;
+}
+
 const MODE_LEGEND_COLORS = {
   'TOU':              'rgba(251,191,36,0.7)',
   'Time of Use':      'rgba(251,191,36,0.7)',

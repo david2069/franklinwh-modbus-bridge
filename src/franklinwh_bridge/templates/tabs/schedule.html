@@ -39,8 +39,11 @@
     </div>
   </div>
 
-  <!-- Visual Timeline -->
-  <div class="card mb-4">
+  <!-- Visual Timeline.
+       Appearance preferences arrive as inline CSS variables on this card; every
+       track below reads them from the cascade, so no drawing code knows they
+       exist. Empty string when nothing is overridden. -->
+  <div class="card mb-4" :style="timelineVars()">
     <!-- Stack on a phone: side-by-side squeezed the title into a one-word-wide
          column. The explanatory tail is desktop-only — it explains, it doesn't
          identify, so losing it on a small screen costs nothing. -->
@@ -59,6 +62,68 @@
             <option :value="z.id" x-text="z.label"></option>
           </template>
         </select>
+
+        <!-- Appearance: presets + two sliders. @click.outside rather than a
+             modal — it's a preference you want to adjust while WATCHING the
+             timeline change behind it. -->
+        <div class="relative shrink-0" @click.outside="tlPanelOpen = false">
+          <button type="button" @click="tlPanelOpen = !tlPanelOpen"
+                  class="px-2 py-1 rounded border text-[11px] transition-colors"
+                  :class="tlIsDefault() ? 'border-white/10 text-slate-400 hover:text-slate-200'
+                                        : 'border-cyan-500/40 text-cyan-300'"
+                  :title="tlIsDefault() ? 'Timeline appearance' : 'Timeline appearance (customised)'"
+                  aria-label="Timeline appearance">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"></path>
+            </svg>
+          </button>
+          <div x-show="tlPanelOpen" x-cloak
+               class="absolute right-0 z-[70] mt-1 w-64 rounded-md border border-white/10 shadow-2xl p-2.5 space-y-2"
+               style="background: var(--surface-0);">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase tracking-wide text-slate-500">Timeline appearance</span>
+              <button type="button" @click="resetTlAppearance()" x-show="!tlIsDefault()"
+                      class="text-[10px] text-cyan-400 hover:text-cyan-300">Reset</button>
+            </div>
+            <div class="space-y-1">
+              <template x-for="p in TL_PRESETS" :key="p.id">
+                <button type="button" @click="setTlPreset(p.id)"
+                        class="w-full text-left px-2 py-1 rounded text-[11px] transition-colors"
+                        :class="tlAppearance.preset === p.id
+                          ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+                          : 'text-slate-300 hover:bg-white/5 border border-transparent'">
+                  <span x-text="p.label"></span>
+                  <span class="block text-[9px] text-slate-500" x-text="p.hint"></span>
+                </button>
+              </template>
+            </div>
+            <div class="pt-1.5 border-t border-white/[0.06] space-y-2">
+              <label class="block">
+                <span class="flex justify-between text-[10px] text-slate-500">
+                  <span>Track tint</span>
+                  <span class="font-mono" x-text="Math.round(tlEffective('surface') * 100) + '%'"></span>
+                </span>
+                <input type="range" min="0" max="1" step="0.05" class="w-full accent-cyan-500"
+                       :value="tlEffective('surface')"
+                       @input="setTlCustom('surface', $event.target.value)">
+              </label>
+              <label class="block">
+                <span class="flex justify-between text-[10px] text-slate-500">
+                  <span>Mode tint</span>
+                  <span class="font-mono" x-text="Math.round(tlEffective('mode') * 100) + '%'"></span>
+                </span>
+                <input type="range" min="0" max="0.6" step="0.02" class="w-full accent-cyan-500"
+                       :value="tlEffective('mode')"
+                       @input="setTlCustom('mode', $event.target.value)">
+              </label>
+              <p class="text-[9px] text-slate-600 leading-snug">
+                Saved on this device. Light and dark keep their own defaults — a
+                tint that reads on a dark track is nearly invisible on a light one.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -83,8 +148,8 @@
             <span x-show="socNow(row) !== null" class="ml-auto font-mono text-[10px] text-lime-300"
                   x-text="socNow(row) + '%'" title="Latest state of charge"></span>
           </div>
-          <div class="relative flex-1 h-16 rounded-md overflow-hidden border border-white/[0.06]"
-               style="background: rgba(15,23,42,.45);">
+          <div class="relative flex-1 h-16 rounded-md overflow-hidden border"
+               style="background: var(--tl-surface); border-color: var(--tl-edge);">
             <!-- What the gateway ACTUALLY ran: operating-mode band along the
                  top, same colours as the Dashboard's Power History. -->
             <template x-for="(m, mi) in modeSpans(row)" :key="'m'+mi">
@@ -94,7 +159,7 @@
                 <!-- Name the mode in place, as the Dashboard does in-plot —
                      a tint alone can't say WHICH mode without a colour lookup. -->
                 <span class="absolute bottom-0.5 left-1 text-[9px] leading-none font-medium whitespace-nowrap"
-                      :style="`color:${MODE_LEGEND_COLORS[m.mode] || 'rgba(148,163,184,.9)'}`"
+                      :style="`color:${modeInk(m.mode)}`"
                       x-show="(pct(m._l + m._w) - pct(m._l)) > 5"
                       x-text="modeAbbr(m.mode)"></span>
               </div>
@@ -105,13 +170,13 @@
               <div class="absolute inset-0 pointer-events-none">
                 <!-- 0/50/100 guides: without a scale the SoC line was a squiggle
                      with no way to read a value off it. -->
-                <div class="absolute left-0 right-0 top-1/2 border-t border-dashed border-lime-400/20"></div>
-                <div class="absolute left-0 right-0 top-0 border-t border-lime-400/10"></div>
-                <span class="absolute right-0.5 top-0 text-[7px] leading-none text-lime-400/25 font-mono">100</span>
-                <span class="absolute right-0.5 top-1/2 -mt-1 text-[7px] leading-none text-lime-400/20 font-mono">50</span>
+                <div class="absolute left-0 right-0 top-1/2 border-t border-dashed" style="border-color: var(--tl-guide);"></div>
+                <div class="absolute left-0 right-0 top-0 border-t" style="border-color: var(--tl-guide-faint);"></div>
+                <span class="absolute right-0.5 top-0 text-[7px] leading-none font-mono" style="color: var(--tl-guide-ink);">100</span>
+                <span class="absolute right-0.5 top-1/2 -mt-1 text-[7px] leading-none font-mono" style="color: var(--tl-guide-ink);">50</span>
                 <svg class="absolute inset-0 w-full h-full" viewBox="0 0 100 100"
                      preserveAspectRatio="none" aria-hidden="true">
-                  <polyline :points="socPath(row)" fill="none" stroke="rgba(190,242,100,.95)"
+                  <polyline :points="socPath(row)" fill="none" stroke="var(--tl-soc)"
                             stroke-width="1.5" vector-effect="non-scaling-stroke"
                             stroke-linejoin="round"></polyline>
                 </svg>
@@ -122,11 +187,12 @@
                  what was planned. What actually ran is drawn over them. -->
             <template x-for="(seg, idx) in row.segments" :key="idx">
               <div class="absolute top-0 h-full flex items-center justify-center overflow-hidden"
-                   :class="seg.trigger ? 'border-t-2 border-white/70' : ''"
-                   :style="`left:${pct(seg._l)}%; width:${pct(seg._l + seg._w) - pct(seg._l)}%; background:${seg.colour}; opacity:${seg._past ? .22 : .85}; border-left:3px solid ${entryTint(seg)};`"
+                   :class="seg.trigger ? 'border-t-2' : ''"
+                   :style="`left:${pct(seg._l)}%; width:${pct(seg._l + seg._w) - pct(seg._l)}%; background:${seg.colour}; opacity:${seg._past ? 'var(--tl-planned-alpha)' : 'var(--tl-active-alpha)'};
+                            ${seg.trigger ? 'border-top-color: var(--tl-trigger-edge);' : ''} border-left:3px solid ${entryTint(seg)};`"
                    :title="`${seg.name} — ${actionMeta(seg.action).label} · ${targetLabel(seg)}${seg._past ? ' · planned' : ''}${seg.trigger ? ' (automation fire)' : ''}`">
                 <span class="text-[9px] font-semibold truncate px-1"
-                      :class="seg._past ? 'text-slate-300/70' : 'text-white/90'"
+                      :style="`color: ${seg._past ? 'var(--tl-ink-past)' : 'var(--tl-ink)'}`"
                       x-show="(pct(seg._l + seg._w) - pct(seg._l)) > 6" x-text="seg.name"></span>
               </div>
             </template>
@@ -136,13 +202,13 @@
             <template x-for="(a, ai) in actualForRow(row)" :key="'a'+ai">
               <div class="absolute flex items-center justify-center overflow-hidden rounded-sm"
                    :class="a.running ? 'animate-pulse' : ''"
-                   :style="`left:${pct(a._l)}%; width:${Math.max(0.4, pct(a._l + a._w) - pct(a._l))}%; background:${a.colour}; top:3px; bottom:7px; box-shadow: 0 0 0 1px rgba(255,255,255,.35) inset;`"
+                   :style="`left:${pct(a._l)}%; width:${Math.max(0.4, pct(a._l + a._w) - pct(a._l))}%; background:${a.colour}; top:3px; bottom:7px; box-shadow: 0 0 0 1px var(--tl-ran-ring) inset;`"
                    :title="a.title">
-                <span class="text-[9px] font-semibold text-white truncate px-1"
+                <span class="text-[9px] font-semibold truncate px-1" style="color: var(--tl-ink);"
                       x-show="(pct(a._l + a._w) - pct(a._l)) > 10">ran</span>
               </div>
             </template>
-            <div class="absolute inset-0 flex items-center justify-center text-[10px] text-slate-500/70 pointer-events-none"
+            <div class="absolute inset-0 flex items-center justify-center text-[10px] pointer-events-none" style="color: var(--tl-ink-empty);"
                  x-show="!row.segments.length && !modeSpans(row).length">nothing scheduled in this window</div>
             <div class="absolute top-0 h-full w-0.5 bg-red-500 z-10"
                  x-show="nowVisible" :style="`left:${nowPct}%`"></div>
@@ -190,24 +256,24 @@
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" x-show="nowVisible"
             title="Left of the red line is what happened; right of it is what is planned.">
-        <span class="w-3 h-3 rounded-sm inline-block" style="background:#64748b; opacity:.22"></span>
+        <span class="w-3 h-3 rounded-sm inline-block" style="background:#64748b; opacity:var(--tl-planned-alpha)"></span>
         <span>Planned</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" x-show="nowVisible"
             title="Drawn from the activity log. A faded block with no solid bar was planned but never ran.">
-        <span class="w-3 h-3 rounded-sm inline-block" style="background:#64748b; box-shadow:0 0 0 1px rgba(255,255,255,.35) inset"></span>
+        <span class="w-3 h-3 rounded-sm inline-block" style="background:#64748b; box-shadow:0 0 0 1px var(--tl-ran-ring) inset"></span>
         <span>Actually ran</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" x-show="anyTriggerSeg">
-        <span class="w-3 h-3 rounded-sm inline-block border-t-2 border-white/70" style="background: rgba(100,116,139,.85);"></span>
+        <span class="w-3 h-3 rounded-sm inline-block border-t-2" style="background: rgba(100,116,139,.85); border-top-color: var(--tl-trigger-edge);"></span>
         <span>Automation fire (trigger + duration)</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" title="Background tint = what the gateway actually ran — same colours as the Dashboard chart">
-        <span class="w-3 h-3 rounded-sm inline-block border border-white/10" style="background:rgba(34,197,94,0.18)"></span>
+        <span class="w-3 h-3 rounded-sm inline-block border" style="background:rgba(34,197,94,var(--tl-mode-alpha)); border-color: var(--tl-edge);"></span>
         <span>Actual mode</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" title="State of charge to now, 0–100% of track height">
-        <span class="w-3 h-0 inline-block" style="border-top:2px dashed rgba(163,230,53,.85)"></span>
+        <span class="w-3 h-0 inline-block" style="border-top:2px dashed var(--tl-soc)"></span>
         <span>SoC %</span>
       </span>
       <span class="flex items-center gap-1.5 text-slate-400" title="Alarm / PV-clip events — hover a marker for detail">

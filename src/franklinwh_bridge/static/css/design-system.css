@@ -78,6 +78,60 @@
   --border-accent:  rgba(6, 182, 212, 0.20);
 }
 
+/* ── Schedule timeline ────────────────────────────────────────
+   The timeline used to hardcode dark-mode values (a slate-900 track, washes
+   at .07-.08 alpha, white ink and white inset rings). In light mode that put
+   dark grey slabs on a white page and made two legend swatches invisible
+   against them.
+
+   Alphas differ per theme by necessity, not preference: a .18 tint reads
+   clearly over a dark track and almost vanishes over a light one, so light
+   mode needs more. Kept as variables so the Appearance panel can override
+   them per user without touching any of the drawing code. */
+:root, [data-theme="dark"] {
+  /* Track base as a bare triplet so the Appearance panel can restyle the
+     surface with just an alpha, without JS needing to know the theme. */
+  --tl-surface-rgb:   15, 23, 42;
+  --tl-surface-alpha-default: .45;   /* what the Appearance slider reads back */
+  --tl-surface:       rgba(var(--tl-surface-rgb), .45);
+  --tl-edge:          rgba(255, 255, 255, .06);
+  --tl-mode-ink-base: #f8fafc;  /* in-track mode labels mix toward this */
+  --tl-ink:           rgba(255, 255, 255, .90);  /* label on a filled block */
+  --tl-ink-past:      rgba(203, 213, 225, .70);
+  --tl-ink-empty:     rgba(100, 116, 139, .70);
+  --tl-guide:         rgba(190, 242, 100, .20);  /* SoC 50% guide */
+  --tl-guide-faint:   rgba(190, 242, 100, .10);  /* SoC 100% guide */
+  --tl-guide-ink:     rgba(163, 230, 53, .25);
+  --tl-soc:           rgba(190, 242, 100, .95);
+  --tl-ran-ring:      rgba(255, 255, 255, .35);
+  --tl-trigger-edge:  rgba(255, 255, 255, .70);
+  --tl-mode-alpha:    .18;
+  --tl-planned-alpha: .22;
+  --tl-active-alpha:  .85;
+}
+
+[data-theme="light"] {
+  --tl-surface-rgb:   226, 232, 240;             /* slate-200, sits on white */
+  --tl-surface-alpha-default: .70;
+  --tl-surface:       rgba(var(--tl-surface-rgb), .70);
+  --tl-edge:          rgba(15, 23, 42, .12);
+  --tl-mode-ink-base: #0f172a;
+  /* Action blocks stay saturated in both themes, so white ink still reads on
+     them — but a FADED (past) block is mostly track, needing dark ink. */
+  --tl-ink:           rgba(255, 255, 255, .98);
+  --tl-ink-past:      rgba(30, 41, 59, .85);
+  --tl-ink-empty:     rgba(100, 116, 139, .80);
+  --tl-guide:         rgba(77, 124, 15, .30);
+  --tl-guide-faint:   rgba(77, 124, 15, .15);
+  --tl-guide-ink:     rgba(63, 98, 18, .45);
+  --tl-soc:           rgba(63, 98, 18, .95);     /* lime-800: legible on light */
+  --tl-ran-ring:      rgba(15, 23, 42, .45);
+  --tl-trigger-edge:  rgba(15, 23, 42, .55);
+  --tl-mode-alpha:    .30;
+  --tl-planned-alpha: .32;
+  --tl-active-alpha:  .90;
+}
+
 /* ── Reset ──────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 15px; -webkit-font-smoothing: antialiased; }

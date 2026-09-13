@@ -90,6 +90,33 @@ def run(url: str, user: str, password: str) -> int:
             page.goto(f"{url}?tab={tab}", wait_until="networkidle")
             page.wait_for_timeout(900)
 
+        # Schedule → timeline Appearance panel. Opened twice for the same
+        # teardown reason, and every preset is clicked: each one rewrites CSS
+        # variables that the whole timeline re-reads.
+        page.goto(f"{url}?tab=schedule", wait_until="networkidle")
+        page.wait_for_timeout(1200)
+        for _ in (1, 2):
+            btn = page.locator("button[aria-label='Timeline appearance']:visible").first
+            if not btn.count():
+                problems.append("schedule: timeline Appearance button missing")
+                break
+            btn.click()
+            page.wait_for_timeout(350)
+            for preset in ("Auto (match theme)", "High contrast", "Muted", "Flat (no track)"):
+                opt = page.locator(f"button:has-text('{preset}'):visible").first
+                if opt.count():
+                    opt.click()
+                    page.wait_for_timeout(220)
+            for slider in page.locator("input[type=range]:visible").all():
+                slider.fill("0.5")
+                page.wait_for_timeout(150)
+            reset = page.locator("button:has-text('Reset'):visible").first
+            if reset.count():
+                reset.click()
+            page.keyboard.press("Escape")
+            page.mouse.click(5, 5)  # click-outside closes the panel
+            page.wait_for_timeout(300)
+
         # Settings → open the service editor twice. The second open is the one
         # that catches teardown bugs.
         page.goto(f"{url}?tab=settings", wait_until="networkidle")
