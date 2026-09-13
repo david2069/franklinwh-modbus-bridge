@@ -522,6 +522,25 @@ class MqttPublisher:
                 topic = f"{TOPIC_PREFIX}/{dev.device_info.short_id}/availability"
                 await client.publish(topic, status, retain=True)
 
+    def _warn_unregistered(self, gw_id: str) -> None:
+        """Say once per gateway that its samples aren't reaching MQTT.
+
+        Once, not every poll — at a 5s interval this would be ~17k lines a day
+        per gateway and would bury everything else. But not silent either: a
+        gateway quietly missing from HA is exactly the kind of gap that gets
+        mistaken for working.
+        """
+        if not hasattr(self, "_warned_unregistered"):
+            self._warned_unregistered: set[str] = set()
+        if gw_id in self._warned_unregistered:
+            return
+        self._warned_unregistered.add(gw_id)
+        logger.warning(
+            "Gateway %s has no registered MQTT device — its samples are NOT "
+            "published to Home Assistant. (Previously they were published under "
+            "the default gateway's topics, overwriting its values.)", gw_id,
+        )
+
     async def queue_sample(self, sample: Sample) -> None:
         """Queue per-entity state messages from a poller sample.
 
@@ -539,14 +558,29 @@ class MqttPublisher:
                 points.update(dev.command_handler.virtual_points)
             short_id = dev.device_info.short_id
             entities = dev.entities
-        elif self._device_info:
-            # Single-device fallback (backward compatible)
+        elif self._device_info and gw_id == self._gateway_id:
+            # Single-device fallback — ONLY for the gateway this publisher was
+            # configured with.
             points = dict(sample.points)
             if self._command_handler:
                 points.update(self._command_handler.virtual_points)
             short_id = self._device_info.short_id
             entities = self._entities
         else:
+            # A sample from a gateway with no registered device. This used to
+            # fall through to the branch above, which published it under the
+            # DEFAULT gateway's topics — so a second gateway impersonated the
+            # first and its values overwrote the real ones. Observed live: a
+            # mock gateway's SoC (28%) alternating with a real aGate's (82%) on
+            # franklinwh/<serial>/battery/battery_soc, flip-flopping the HA
+            # entity every poll.
+            #
+            # Dropping is the lesser evil: a missing entity is visibly missing,
+            # whereas a wrong value attributed to the right device is trusted.
+            # register_device() is implemented but not yet wired at startup, so
+            # today this path means "extra gateways don't reach HA" — which is
+            # what the docs already claimed was happening.
+            self._warn_unregistered(gw_id)
             return
 
         for entity in entities:
