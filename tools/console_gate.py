@@ -43,6 +43,27 @@ def _should_ignore(text: str) -> bool:
     return any(s in text for s in IGNORE_SUBSTRINGS)
 
 
+def _goto(page, url: str, problems: list) -> bool:
+    """Navigate, tolerating the one flaky failure mode this app produces.
+
+    The SPA can start its own navigation while Playwright is still waiting for
+    networkidle, which surfaces as ERR_ABORTED. That is a race in the harness,
+    not a defect in the page — but left unhandled it makes the gate fail at
+    random, and a gate that cries wolf gets ignored. One retry on a laxer wait
+    condition; a second failure is reported rather than swallowed.
+    """
+    for attempt in (1, 2):
+        try:
+            page.goto(url, wait_until="networkidle" if attempt == 1 else "domcontentloaded")
+            return True
+        except Exception as exc:
+            if attempt == 2:
+                problems.append(f"navigation failed: {url} ({exc})")
+                return False
+            page.wait_for_timeout(600)
+    return False
+
+
 def run(url: str, user: str, password: str) -> int:
     problems: list[str] = []
 
@@ -77,7 +98,7 @@ def run(url: str, user: str, password: str) -> int:
             if r.status >= 400 and not _should_ignore(r.url) else None
         ))
 
-        page.goto(url, wait_until="networkidle")
+        _goto(page, url, problems)
 
         # Log in if we landed on the login page.
         if page.locator("input[type=password]").count():
@@ -87,13 +108,13 @@ def run(url: str, user: str, password: str) -> int:
             page.wait_for_load_state("networkidle")
 
         for tab in ("dashboard", "schedule", "settings", "logs", "events"):
-            page.goto(f"{url}?tab={tab}", wait_until="networkidle")
+            _goto(page, f"{url}?tab={tab}", problems)
             page.wait_for_timeout(900)
 
         # Schedule → timeline Appearance panel. Opened twice for the same
         # teardown reason, and every preset is clicked: each one rewrites CSS
         # variables that the whole timeline re-reads.
-        page.goto(f"{url}?tab=schedule", wait_until="networkidle")
+        _goto(page, f"{url}?tab=schedule", problems)
         page.wait_for_timeout(1200)
         for _ in (1, 2):
             btn = page.locator("button[aria-label='Timeline appearance']:visible").first
@@ -119,7 +140,7 @@ def run(url: str, user: str, password: str) -> int:
 
         # Settings → open the service editor twice. The second open is the one
         # that catches teardown bugs.
-        page.goto(f"{url}?tab=settings", wait_until="networkidle")
+        _goto(page, f"{url}?tab=settings", problems)
         for attempt in (1, 2):
             # Scope to the SERVICE row: other tabs stay in the DOM hidden, and
             # Settings itself has gateway Edit buttons too — an unscoped match
