@@ -87,9 +87,15 @@ def run(url: str, user: str, password: str) -> int:
             else None
         ))
         page.on("pageerror", lambda e: problems.append(f"pageerror: {e}"))
+        # ERR_ABORTED on a DOCUMENT request is a superseded navigation — the
+        # SPA started its own while this one was in flight. Same harness race
+        # as in _goto(). Narrow on purpose: an aborted script/fetch/image is
+        # still reported, and any other document failure still fails the gate.
         page.on("requestfailed", lambda r: (
             problems.append(f"requestfailed: {r.url} ({r.failure})")
-            if not _should_ignore(r.url) else None
+            if not _should_ignore(r.url)
+            and not (r.resource_type == "document" and "ERR_ABORTED" in (r.failure or ""))
+            else None
         ))
         # A 404 is a completed response, not a "failed request" — without this
         # the console shows a bare "404" with no way to tell WHICH resource.
