@@ -14,6 +14,7 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from franklinwh_bridge.config import clock
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
@@ -92,6 +93,58 @@ async def patch_site(body: SiteConfigUpdate, request: Request):
     if "aggregate_entities" in updates:
         updates["aggregate_entities"] = int(updates["aggregate_entities"])
     return await update_site_config(db, **updates)
+
+
+# ── System timezone ───────────────────────────────────────────
+# Schedules, TOU windows and every time.* sensor run on the bridge's local
+# clock, and nothing in the app chooses it — it comes from the container. The
+# startup guard catches that clock DRIFTING, but it seeds itself from the
+# environment on first run, so an install that was wrong from day one (a
+# container with no TZ resolves to UTC) would be verified as correct forever.
+# Confirmation is the only thing that closes that, and only a person can give
+# it.
+
+
+class TimezoneConfirm(BaseModel):
+    # None = "the detected one is right". A name = correct it to this.
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _known(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        try:
+            ZoneInfo(v)
+        except Exception as exc:
+            raise ValueError(
+                f"unknown timezone '{v}' — use an IANA name like Australia/Sydney"
+            ) from exc
+        return v
+
+
+@router.get("/system/timezone")
+async def get_timezone(request: Request):
+    """Detected timezone, whether a user ever confirmed it, and the local time
+    right now — so the prompt can show what the bridge believes rather than
+    asking the user to take it on trust."""
+    return await clock.status(request.app.state.db)
+
+
+@router.post("/system/timezone/confirm")
+async def confirm_timezone_endpoint(body: TimezoneConfirm, request: Request):
+    """Record the user's decision, optionally correcting the timezone.
+
+    Correcting it here only changes what the bridge EXPECTS. The clock itself
+    comes from the container, so a correction must also be applied there (TZ in
+    docker-compose, or the Supervisor's setting) — otherwise the next start
+    reports a mismatch, which is the honest outcome rather than a silent
+    disagreement.
+    """
+    return await clock.confirm_timezone(request.app.state.db, body.timezone)
 
 
 # ── Electricity Utility Services ──────────────────────────────

@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 # app_config key holding the timezone this install was set up with.
 TZ_CONFIG_KEY = "timezone.expected"
 
+# Set once the USER has confirmed the timezone, as opposed to it merely having
+# been auto-detected. The distinction matters: seeding from the environment
+# records whatever the container resolved to, and a container with no TZ set
+# resolves to UTC. Auto-detection cannot tell "correct" from "default", so an
+# install that was wrong from the first boot would be verified as correct
+# forever. Only a person can settle that.
+TZ_CONFIRMED_KEY = "timezone.confirmed"
+
 # Set once at startup so the time.tz_ok sensor can compare without re-reading
 # the database on every evaluation. None = not yet checked this process.
 _expected: str | None = None
@@ -152,3 +160,58 @@ async def record_timezone(db: Any, name: str | None = None) -> str:
     _expected = value
     logger.info("Timezone for this install re-recorded as %s", value)
     return value
+
+
+def _looks_like_a_container_default(name: str) -> bool:
+    """Is this timezone more likely an unset default than a choice?
+
+    A container with no TZ and no mounted zoneinfo reports UTC. Someone in
+    London or Reykjavik legitimately runs UTC, so this only raises the prompt's
+    prominence — it never refuses the value.
+    """
+    return name.strip().upper() in {"UTC", "ETC/UTC", "GMT", "ETC/GMT", "UCT"}
+
+
+async def status(db: Any) -> dict:
+    """Everything the setup prompt and the Settings panel need.
+
+    ``needs_confirmation`` is the question "has a human ever agreed to this?",
+    deliberately separate from whether the clock has since drifted.
+    """
+    from franklinwh_bridge.store.db import get_app_config
+
+    actual = resolve_tz_name()
+    try:
+        expected = await get_app_config(db, TZ_CONFIG_KEY, None)
+        confirmed = await get_app_config(db, TZ_CONFIRMED_KEY, None)
+    except Exception:
+        expected, confirmed = None, None
+
+    lt = time.localtime()
+    return {
+        "timezone": actual,
+        "expected": expected,
+        "confirmed": bool(confirmed),
+        "needs_confirmation": not confirmed,
+        "matches_expected": (expected is None or expected == actual),
+        "utc_offset_h": utc_offset_hours(),
+        "abbreviation": lt.tm_zone,
+        "local_time": time.strftime("%Y-%m-%d %H:%M:%S", lt),
+        # True when the value looks like a container default rather than a
+        # choice — the prompt says so rather than quietly accepting it.
+        "looks_like_default": _looks_like_a_container_default(actual),
+    }
+
+
+async def confirm_timezone(db: Any, name: str | None = None) -> dict:
+    """Record the user's decision. ``name`` None = "the detected one is right".
+
+    Confirming also (re)records the expected timezone, so a deliberate move is
+    not then reported as drift on the next start.
+    """
+    from franklinwh_bridge.store.db import set_app_config
+
+    value = await record_timezone(db, name)
+    await set_app_config(db, TZ_CONFIRMED_KEY, "1")
+    logger.info("Timezone confirmed by user: %s", value)
+    return await status(db)

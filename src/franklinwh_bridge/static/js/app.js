@@ -338,6 +338,23 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    // Timezone confirmation state (see api/system/timezone). Null until the
+    // first fetch, so the banner can't flash before we know the answer.
+    tz: null,
+    async loadTz() {
+      this.tz = await fetchJSON('api/system/timezone');
+    },
+    async confirmTz(name = null) {
+      const body = name ? JSON.stringify({ timezone: name }) : JSON.stringify({});
+      const res = await fetchJSON('api/system/timezone/confirm', {
+        method: 'POST', body,
+      });
+      if (res) {
+        this.tz = res;
+        this.toast(`Timezone confirmed: ${res.timezone}`, 'success');
+      }
+    },
+
     // Theme
     theme: localStorage.getItem('fwh-theme') || 'dark',
 
@@ -464,6 +481,7 @@ document.addEventListener('alpine:init', () => {
       this._interval = setInterval(() => this.refresh(), 10000);
       // Load battery label from site config (one-shot at startup)
       fetchJSON('api/site').then(d => { if (d && d.battery_label) this.batteryLabel = d.battery_label; });
+      this.loadTz();
     },
 
     async loadModules() {

@@ -128,3 +128,60 @@ async def test_check_survives_a_broken_config_read(monkeypatch):
 
     assert result["status"] == "seeded"
     assert result["actual"] == "Australia/Sydney"
+
+
+# ── First-run confirmation ────────────────────────────────────
+# Auto-seeding records whatever the container resolved to. A container with no
+# TZ resolves to UTC, so an install that was wrong from day one would be
+# verified as correct forever. Only a person can settle that.
+
+
+@pytest.mark.asyncio
+async def test_first_run_needs_confirmation(db, monkeypatch):
+    monkeypatch.setenv("TZ", "Australia/Sydney")
+    await clock.check_and_record(db)
+
+    st = await clock.status(db)
+
+    assert st["needs_confirmation"] is True
+    assert st["confirmed"] is False
+    assert st["timezone"] == "Australia/Sydney"
+
+
+@pytest.mark.asyncio
+async def test_confirming_clears_the_prompt(db, monkeypatch):
+    monkeypatch.setenv("TZ", "Australia/Sydney")
+    await clock.check_and_record(db)
+
+    st = await clock.confirm_timezone(db)
+
+    assert st["confirmed"] is True
+    assert st["needs_confirmation"] is False
+
+
+@pytest.mark.asyncio
+async def test_confirming_a_correction_also_records_it(db, monkeypatch):
+    """Correcting at the prompt must not then be reported as drift next boot."""
+    monkeypatch.setenv("TZ", "UTC")
+    await clock.check_and_record(db)
+
+    await clock.confirm_timezone(db, "Pacific/Auckland")
+
+    assert await get_app_config(db, clock.TZ_CONFIG_KEY) == "Pacific/Auckland"
+
+
+@pytest.mark.asyncio
+async def test_utc_is_flagged_as_a_likely_default(db, monkeypatch):
+    """The case that motivated this: a container with no TZ reports UTC."""
+    monkeypatch.setenv("TZ", "UTC")
+    await clock.check_and_record(db)
+
+    assert (await clock.status(db))["looks_like_default"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_real_timezone_is_not_flagged(db, monkeypatch):
+    monkeypatch.setenv("TZ", "Australia/Sydney")
+    await clock.check_and_record(db)
+
+    assert (await clock.status(db))["looks_like_default"] is False

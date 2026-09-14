@@ -75,6 +75,45 @@
                 x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
       </div>
 
+      <!-- ── Timezone confirmation (first run) ────────────
+           Schedules and TOU windows run on the bridge's local clock, which
+           comes from the container, not from any setting in this app. The
+           startup guard catches that clock DRIFTING, but it seeds itself from
+           the environment, so an install that was wrong from day one (a
+           container with no TZ resolves to UTC) would be verified as correct
+           forever. Only a person can settle that, so ask once. -->
+      <!-- x-if, not x-show: x-show only HIDES, and Alpine still evaluates the
+           child bindings — which threw "Cannot read properties of null" on every
+           page load before the first fetch returned. x-if doesn't render the
+           subtree at all, and also unmounts it once confirmed. -->
+      <template x-if="$store.app.tz && $store.app.tz.needs_confirmation">
+      <div class="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 border-b text-xs"
+           :class="$store.app.tz.looks_like_default
+             ? 'bg-amber-500/15 border-amber-500/40 text-amber-100'
+             : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-100'">
+        <span class="font-medium shrink-0">Confirm the bridge's timezone</span>
+        <span class="opacity-80">
+          Detected <span class="font-mono" x-text="$store.app.tz.timezone"></span>
+          — local time now <span class="font-mono" x-text="$store.app.tz.local_time"></span>
+          (UTC<span x-text="($store.app.tz.utc_offset_h >= 0 ? '+' : '') + $store.app.tz.utc_offset_h"></span>)
+        </span>
+        <span class="w-full sm:w-auto opacity-80" x-show="$store.app.tz.looks_like_default">
+          That looks like a container default rather than a choice — schedules would run on UTC.
+        </span>
+        <span class="w-full sm:w-auto opacity-70">
+          Schedules and tariff windows use this clock.
+        </span>
+        <span class="ml-auto flex items-center gap-2">
+          <button @click="$store.app.confirmTz()"
+                  class="px-2 py-0.5 rounded border border-current/40 hover:bg-white/10">
+            Correct — confirm
+          </button>
+          <button @click="setTab('settings')"
+                  class="px-2 py-0.5 rounded underline opacity-80 hover:opacity-100">Change</button>
+        </span>
+      </div>
+      </template>
+
       <!-- ── Content ──────────────────────────────────── -->
       <main class="flex-1 overflow-y-auto p-4 lg:p-6">
 
