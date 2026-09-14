@@ -726,13 +726,18 @@
                             class="px-2 py-0.5 rounded text-[10px] border border-dashed border-white/20 text-slate-400 hover:text-slate-200">
                       + Add season
                     </button>
+                    <button type="button" @click="addFlatSeason()" x-show="!seasons.length"
+                            class="px-2 py-0.5 rounded text-[10px] border border-dashed border-sky-500/40 text-sky-300 hover:bg-sky-500/10">
+                      + Flat rate
+                    </button>
                   </div>
 
                   <template x-if="!seasons.length">
                     <div class="text-[11px] text-slate-500 py-2">
-                      No seasonal rates yet. Add a season to price grid import and export —
-                      until then "cost this period" counts only demand, export charges and
-                      standing charges, not the energy itself.
+                      No rates yet. <strong>Flat rate</strong> gives one price all year;
+                      <strong>Add season</strong> builds a time-of-use plan with peak
+                      bands. Until one exists, "cost this period" counts only demand,
+                      export charges and standing charges — not the energy itself.
                     </div>
                   </template>
 

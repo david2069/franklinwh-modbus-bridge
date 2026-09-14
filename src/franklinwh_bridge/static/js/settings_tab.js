@@ -877,6 +877,20 @@ function settingsTab() {
         blocks: [{ start: '00:00', end: '24:00', wave: 'off_peak', days: [] }],
       };
     },
+    // A flat plan is expressible in the same model — one catch-all season,
+    // one all-day block, one wave — so it needs a shortcut, not a second
+    // structure. Anything else would give two ways to mean the same thing.
+    addFlatSeason() {
+      const season = this._blankSeason('Flat rate');
+      season.months = [];                       // catch-all: every month
+      season.blocks = [{ start: '00:00', end: '24:00', wave: 'off_peak', days: [] }];
+      if (!this.serviceEdit.pricing.seasons) this.serviceEdit.pricing.seasons = [];
+      this.serviceEdit.pricing.seasons.push(season);
+      this.seasonIdx = this.seasons.length - 1;
+      this.checkRates();
+      Alpine.store('app').toast('Flat rate season added — set buy and sell on Off-Peak', 'info');
+    },
+
     addSeason() {
       if (!this.serviceEdit.pricing.seasons) this.serviceEdit.pricing.seasons = [];
       this.serviceEdit.pricing.seasons.push(this._blankSeason());
