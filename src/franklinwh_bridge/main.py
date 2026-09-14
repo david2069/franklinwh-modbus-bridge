@@ -515,6 +515,54 @@ async def lifespan(app: FastAPI):
             if default.reader_fn:
                 app.state.reader_fn = default.reader_fn
 
+        await sync_mqtt_devices()
+
+    async def sync_mqtt_devices() -> None:
+        """Give every opted-in NON-DEFAULT gateway its own MQTT/HA device.
+
+        Until this existed, register_device() was never called, so additional
+        gateways fell through to the default gateway's topics and overwrote its
+        values — a mock was driving a real battery's SoC sensor (fixed in
+        queue_sample, which now drops unregistered gateways).
+
+        The default gateway deliberately keeps the legacy single-device path:
+        its topics and unique_ids must not move, or every existing HA entity
+        would be orphaned and re-created.
+
+        Safe to call repeatedly — used at startup and after a gateway is added,
+        edited or toggled.
+        """
+        try:
+            rows = {g["id"]: g for g in await get_gateways(db)}
+        except Exception as exc:
+            logger.warning("MQTT device sync skipped (gateway read failed): %s", exc)
+            return
+
+        for gw_id, row in rows.items():
+            if gw_id == gateway_id:
+                continue  # legacy single-device path owns the default gateway
+            inst = registry.get(gw_id)
+            wanted = bool(row.get("publish_to_ha", 1)) and bool(row.get("enabled", 1))
+            registered = mqtt_publisher.get_device(gw_id) is not None
+
+            if wanted and inst and inst.device_info and not registered:
+                mqtt_publisher.register_device(
+                    gw_id,
+                    inst.device_info,
+                    command_handler=inst.command_handler,
+                    ac_type=inst.status.ac_type or 0,
+                )
+            elif registered and not wanted:
+                # Tombstone discovery so HA removes the entities rather than
+                # leaving them behind as permanently-unavailable.
+                await mqtt_publisher.unregister_device(gw_id, tombstone=True)
+
+        # A gateway removed from the DB entirely must not linger in MQTT.
+        for gw_id in [g for g in mqtt_publisher.devices() if g not in rows]:
+            await mqtt_publisher.unregister_device(gw_id, tombstone=True)
+
+    app.state.sync_mqtt_devices = sync_mqtt_devices
+
     async def _start_gateways() -> None:
         """Bring up gateways, then ALWAYS start the health checker + schedule
         engine — even if gateway bring-up failed (they no-op until a gateway is

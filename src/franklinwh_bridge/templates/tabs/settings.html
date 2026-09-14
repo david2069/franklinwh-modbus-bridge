@@ -1312,6 +1312,20 @@
                 <option value="per_phase">Per-phase</option>
               </select>
             </div>
+            <!-- Whether this gateway gets its own device + entities in HA.
+                 Off tombstones its discovery, so HA removes the entities
+                 instead of leaving them permanently unavailable. -->
+            <div class="sm:col-span-2 pt-1 border-t border-white/[0.06]">
+              <label class="flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" x-model="editGw.publish_to_ha" class="accent-emerald-500">
+                Publish this gateway to Home Assistant (MQTT Discovery)
+              </label>
+              <p class="text-[10px] text-slate-600 mt-0.5">
+                Off removes its entities from HA. A mock gateway publishes synthetic
+                values — its energy sensors feed HA long-term statistics, which outlive
+                the entity, so prefer a test HA for those.
+              </p>
+            </div>
           </div>
           <!-- Detection result / mismatch warning -->
           <template x-if="phaseDetect">

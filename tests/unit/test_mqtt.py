@@ -178,8 +178,13 @@ def test_duplicate_serial_does_not_collide():
     assert default.ha_device_block()["identifiers"] == [f"franklinwh_{serial}"]
 
     # The additional gateway is namespaced by gateway_id → no collision.
-    assert second.short_id == "gateway_2_00000001"
+    # The FORM changed (2026-09-13) from "{gateway_id}_{serial_tail}" to the
+    # slugified gateway_id alone: the serial tail is a blind last-8 slice, which
+    # turned a mock's "MOCK-MOCK GW 1" into "OCK GW 1" and put spaces in the
+    # topic. What this test guards is distinctness, not the exact string.
+    assert second.short_id == "gateway_2"
     assert default.short_id != second.short_id
+    assert " " not in second.short_id
     assert (
         default.ha_device_block()["identifiers"]
         != second.ha_device_block()["identifiers"]

@@ -166,6 +166,10 @@ class GatewayInstance:
             model="aGate (mock)",
             firmware="MOCK",
             gateway_id=self.gateway_id,
+            # Name it in HA too, not just in the model/serial fields. A device
+            # card shows its NAME; "FHP 2" beside a real gateway invites someone
+            # to wire an automation to synthetic data.
+            name=f"{self.config.name or self.gateway_id} (mock)",
         )
         self.status.connected = True
         self.status.health = "connected"

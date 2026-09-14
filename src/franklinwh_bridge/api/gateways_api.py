@@ -263,6 +263,10 @@ class GatewayUpdate(BaseModel):
     phase: str | None = Field(default=None, pattern=r"^(all|L[123](\+L[123])*)$")
     phase_view: str | None = Field(default=None, pattern=r"^(both|aggregate|per_phase)$")
     device_type: str | None = Field(default=None, pattern=r"^(agate|mac1)$")
+    # Publish this gateway's own MQTT/HA Discovery entities (migration 39).
+    # Turning it off tombstones its discovery so HA removes the entities rather
+    # than leaving them permanently unavailable.
+    publish_to_ha: bool | None = None
 
 
 @router.get("/gateways")
@@ -387,6 +391,8 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "enabled" in updates:
         updates["enabled"] = int(updates["enabled"])
+    if "publish_to_ha" in updates:
+        updates["publish_to_ha"] = int(updates["publish_to_ha"])
     if not updates:
         row = await get_gateway(db, gw_id)
         if row is None:
@@ -409,6 +415,18 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
         aggregator = getattr(request.app.state, "site_aggregator", None)
         if aggregator is not None:
             aggregator.set_gateway_phase(gw_id, updates["phase"])
+
+    # Register/unregister this gateway's own HA device when the publish toggle
+    # (or enabled) changes, so it takes effect without a restart. Turning it off
+    # tombstones discovery, which removes the entities from HA instead of
+    # leaving them behind as permanently unavailable.
+    if "publish_to_ha" in updates or "enabled" in updates:
+        sync = getattr(request.app.state, "sync_mqtt_devices", None)
+        if sync is not None:
+            try:
+                await sync()
+            except Exception as exc:  # never fail the edit over the side effect
+                logger.warning("MQTT device sync after gateway edit failed: %s", exc)
 
     # Keep the running instance's service link in sync so the schedule engine's
     # 'service' fan-out (SCH3) sees the change without a restart.

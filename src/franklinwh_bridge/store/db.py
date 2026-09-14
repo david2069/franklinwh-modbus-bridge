@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 38
+CURRENT_SCHEMA_VERSION = 39
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -595,6 +595,20 @@ MIGRATIONS: dict[int, str] = {
     -- supposed to be. Empty = not stated; never guess a location.
     ALTER TABLE services ADD COLUMN country TEXT NOT NULL DEFAULT '';
     ALTER TABLE services ADD COLUMN timezone TEXT NOT NULL DEFAULT '';
+    """,
+    39: """
+    -- Whether this gateway publishes MQTT/HA Discovery entities of its own.
+    --
+    -- ON for every gateway, mocks included (user decision, 2026-09-13): a mock
+    -- only exists because someone created one in a dev environment, so what it
+    -- publishes is their call, not the product's. The toggle is there to turn
+    -- a gateway off, not to withhold it by default.
+    --
+    -- Worth knowing when you do point a mock at a production HA: the energy
+    -- entities carry state_class=total_increasing, so HA ingests them into
+    -- long-term statistics, and synthetic kWh recorded there outlives the
+    -- entity and has to be deleted by hand.
+    ALTER TABLE gateways ADD COLUMN publish_to_ha INTEGER NOT NULL DEFAULT 1;
     """,
 }
 

@@ -78,6 +78,15 @@ class MqttState:
     discovery_published: bool = False
 
 
+def _slug(value: str) -> str:
+    """Lowercase, alphanumerics and underscores only — safe in an MQTT topic
+    and in an HA unique_id. Collapses runs so "Mock GW 1" → "mock_gw_1"."""
+    out = "".join(c.lower() if c.isalnum() else "_" for c in value)
+    while "__" in out:
+        out = out.replace("__", "_")
+    return out.strip("_") or "gateway"
+
+
 @dataclass
 class DeviceInfo:
     serial: str
@@ -95,14 +104,29 @@ class DeviceInfo:
     def short_id(self) -> str:
         """Topic/unique_id namespace for this device.
 
-        The default gateway keeps the historic serial-only id so existing
-        Home Assistant entities are preserved.  Additional gateways are
-        prefixed with their gateway_id so two gateways that happen to report
-        the same serial (e.g. both pointed at one physical aGate) get distinct
-        MQTT topics and unique_ids instead of colliding in HA Discovery.
+        The default gateway keeps the historic serial-only id so existing Home
+        Assistant entities are preserved — do not change this branch.
+
+        Additional gateways use their slugified gateway_id, which is already
+        unique per install. Two earlier attempts were worse:
+
+        - ``{gateway_id}_{serial_tail}`` mangled mock serials. _serial_tail
+          slices the last 8 characters, fine for 10060006A02F00000001 →
+          00000001, but "MOCK-MOCK GW 1" → "OCK GW 1", giving the topic
+          ``franklinwh/Mock GW 1_OCK GW 1/...``.
+        - Either form kept the gateway_id's spaces in the topic. Legal in MQTT,
+          but it breaks shell and CLI use and reads as a typo.
+
+        Safe to change: no non-default gateway has ever been registered
+        (register_device had no callers), so there are no existing entities to
+        orphan.
+
+        Slugs could in principle collide ("GW 1" and "GW-1" both → gw_1). That
+        needs deliberately near-identical names, and the alternative was a
+        mangled serial in every topic.
         """
         if self.gateway_id and self.gateway_id != "default":
-            return f"{self.gateway_id}_{self._serial_tail}"
+            return _slug(self.gateway_id)
         return self._serial_tail
 
     def ha_device_block(self, app_version: str = "") -> dict:
@@ -113,7 +137,7 @@ class DeviceInfo:
         # Device identifier mirrors short_id's namespacing so duplicate serials
         # don't merge into one HA device.
         if self.gateway_id and self.gateway_id != "default":
-            identifier = f"franklinwh_{self.gateway_id}_{self.serial}"
+            identifier = _slug(f"franklinwh_{self.gateway_id}_{self.serial}")
         else:
             identifier = f"franklinwh_{self.serial}"
         block: dict = {
@@ -434,6 +458,11 @@ class MqttPublisher:
             )
         else:
             logger.info("Unregistered MQTT device: %s", gateway_id)
+
+    def devices(self) -> list[str]:
+        """Gateway ids with a registered MQTT device (snapshot, safe to mutate
+        the registry while iterating the result)."""
+        return list(self._devices)
 
     def get_device(self, gateway_id: str) -> GatewayDevice | None:
         return self._devices.get(gateway_id)

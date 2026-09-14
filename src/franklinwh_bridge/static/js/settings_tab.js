@@ -804,6 +804,8 @@ function settingsTab() {
         service_id: gw.service_id || '',
         phase: gw.phase || 'all',
         phase_view: gw.phase_view || 'both',
+        // Default true for a gateway saved before migration 39.
+        publish_to_ha: gw.publish_to_ha !== false && gw.publish_to_ha !== 0,
         ac_type: gw.ac_type ?? 0,
       };
       this.phaseDetect = null;

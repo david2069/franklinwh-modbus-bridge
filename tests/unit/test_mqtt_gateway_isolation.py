@@ -114,6 +114,28 @@ def test_short_id_namespaces_non_default_gateways():
     default = DeviceInfo(serial="10060006A02F00000001", gateway_id="default")
     other = DeviceInfo(serial="10060006A02F00000001", gateway_id="Mock GW 1")
 
+    # The default gateway's id must never move — existing HA entities key off it.
     assert default.short_id == "00000001"
     assert other.short_id != default.short_id
-    assert other.short_id.startswith("Mock GW 1")
+
+
+def test_short_id_is_topic_safe():
+    """Topic segments must not contain spaces.
+
+    A space is legal in MQTT but broke real tooling: mosquitto_sub -v separates
+    topic and payload with a space, so a topic containing one cannot be parsed
+    back out — which silently defeated a cleanup script during this fix.
+    """
+    d = DeviceInfo(serial="MOCK-MOCK GW 1", gateway_id="Mock GW 1")
+
+    assert d.short_id == "mock_gw_1"
+    assert " " not in d.short_id
+
+
+def test_mock_serial_is_not_mangled_into_the_id():
+    """_serial_tail takes the last 8 chars, which butchers a mock serial:
+    "MOCK-MOCK GW 1" → "OCK GW 1", giving franklinwh/Mock GW 1_OCK GW 1/…"""
+    d = DeviceInfo(serial="MOCK-MOCK GW 1", gateway_id="Mock GW 1")
+
+    assert "OCK GW 1" not in d.short_id
+    assert "ock_gw_1_ock" not in d.short_id
