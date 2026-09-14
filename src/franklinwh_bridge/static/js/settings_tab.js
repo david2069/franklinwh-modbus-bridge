@@ -271,6 +271,13 @@ function settingsTab() {
         timezone: svc.timezone || '',
         // calculation method + rates (stored in the pricing JSON)
         pricing: {
+          // Spread FIRST so any pricing key this form doesn't model survives the
+          // round-trip. Rebuilding from an allow-list silently dropped whatever
+          // wasn't listed — `seasons` (the TOU rate model) was written by the
+          // API and would have been wiped by the next Save from this editor.
+          // The server replaces `pricing` wholesale, so whatever the form omits
+          // is gone.
+          ...(svc.pricing || {}),
           billing_cycle_day: (svc.pricing && svc.pricing.billing_cycle_day) || 1,
           demand_rate: (svc.pricing && svc.pricing.demand_rate) || 0,
           demand_interval_min: (svc.pricing && svc.pricing.demand_interval_min) || 30,
