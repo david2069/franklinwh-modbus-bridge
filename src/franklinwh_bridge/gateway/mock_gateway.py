@@ -28,7 +28,9 @@ def mock_serial(gateway_id: str) -> str:
 class MockController:
     """Stand-in controller for a mock gateway — no real Modbus I/O."""
 
-    def __init__(self, gateway_id: str) -> None:
+    def __init__(self, gateway_id: str, ac_type: int = 0) -> None:
+        # 0 single phase, 1 split phase (US aGate: L1+L2), 2 three phase.
+        self.ac_type = ac_type
         self.gateway_id = gateway_id
 
     @property
@@ -50,7 +52,13 @@ class MockController:
         }
 
 
-def synthetic_points(gateway_id: str, tick: int, ts: float | None = None) -> dict:
+def synthetic_points(
+    gateway_id: str,
+    tick: int,
+    ts: float | None = None,
+    ac_type: int = 0,
+    pv_channels: bool = True,
+) -> dict:
     """Build one synthetic sample for *gateway_id* at *tick*.
 
     Uses wall-clock time-of-day to drive realistic diurnal patterns:
@@ -66,10 +74,16 @@ def synthetic_points(gateway_id: str, tick: int, ts: float | None = None) -> dic
     batt_cap_kw    = 2.0 + 1.5 * ((seed * 13) % 100) / 100.0   # 2–3.5 kW battery limit
     soc_morning    = 25.0 + 20.0 * ((seed * 11) % 100) / 100.0  # morning SOC 25–45%
 
-    # Wall-clock fractional hour (UTC; good enough for demo patterns)
+    # Fractional hour on the LOCAL clock.
+    #
+    # This was `now_ts % 86400`, which is seconds since UTC midnight — so the
+    # synthetic solar bell peaked at UTC noon, i.e. 22:00 in Sydney. The mock's
+    # "day" ran ~10 h out of phase with the timeline it is drawn on, making a
+    # mock gateway show solar at night. The rest of the bridge evaluates
+    # triggers and TOU windows on the local clock; the mock has to agree.
     now_ts = ts if ts is not None else time.time()
-    day_sec = now_ts % 86400
-    hour = day_sec / 3600.0
+    lt = time.localtime(now_ts)
+    hour = lt.tm_hour + lt.tm_min / 60.0 + lt.tm_sec / 3600.0
 
     # ── Solar: smooth bell curve, zero before dawn / after dusk ──
     # Half-sine from 6 h to 20 h; width per-gateway slightly varies
@@ -128,7 +142,7 @@ def synthetic_points(gateway_id: str, tick: int, ts: float | None = None) -> dic
     # Grid mode: Forming only when island/backup mode active, rare otherwise
     grid_mode = "Grid Forming" if mode_name == "Emergency Backup" else "Grid Following"
 
-    return {
+    points = {
         "soc":                soc,
         "battery_power_w":    battery_w,
         "battery_dc_power_w": battery_w,
@@ -144,6 +158,87 @@ def synthetic_points(gateway_id: str, tick: int, ts: float | None = None) -> dic
         "cabinet_temp_c":     cabinet_temp,
     }
 
+    # ── Battery nameplate + health ────────────────────────────────
+    # Without these, 11 entities (capacity, SoH, rates, per-battery stats) sit
+    # at "unknown" in HA on a mock device.
+    capacity_wh = 13600.0            # one aPower ≈ 13.6 kWh
+    points.update({
+        "soh":                   96.0,
+        "wh_rating":             capacity_wh,
+        "available_capacity_wh": round(capacity_wh * soc / 100.0, 1),
+        "max_charge_rate_w":     5000.0,
+        "max_discharge_rate_w":  5000.0,
+        "battery_current_a":     round(battery_w / 400.0, 2),   # ~400V pack
+        "battery_temp_c":        cabinet_temp,
+        "battery_health":        "OK",
+        "battery_1_power_w":     battery_w,
+        "battery_1_voltage_v":   round(380.0 + soc * 0.4, 1),
+        "battery_1_temp_c":      cabinet_temp,
+    })
+
+    # ── Grid electrical + per-phase ───────────────────────────────
+    # ac_type: 0 single phase (L1 only), 1 split phase (L1+L2, the US aGate —
+    # which is what the FranklinWH Cloud and Local APIs assume unconditionally,
+    # even for a single-phase install), 2 three phase.
+    nominal_v = 240.0 if ac_type >= 1 else 230.0
+    freq = 60.0 if ac_type >= 1 else 50.0
+    phases = 1 if ac_type == 0 else (2 if ac_type == 1 else 3)
+
+    # Split the total across phases. Deliberately UNEVEN — a perfectly balanced
+    # mock hides exactly the imbalance bugs per-phase views exist to show.
+    shares = {1: [1.0], 2: [0.55, 0.45], 3: [0.38, 0.34, 0.28]}[phases]
+    pf = 0.97
+
+    points.update({
+        "grid_voltage_v":   nominal_v,
+        "grid_frequency_hz": freq,
+        "grid_current_a":   round(abs(grid_w) / nominal_v, 2),
+        "grid_power_factor": pf,
+        "apparent_power_va": round(abs(grid_w) / pf, 1),
+        "reactive_power_var": round(abs(grid_w) * 0.2, 1),
+    })
+    for i, share in enumerate(shares, start=1):
+        leg_w = round(grid_w * share, 1)
+        points[f"voltage_l{i}_v"] = round(nominal_v + (i - 1) * 1.4, 1)
+        points[f"current_l{i}_a"] = round(abs(leg_w) / nominal_v, 2)
+        points[f"power_l{i}_w"] = leg_w
+        points[f"pf_l{i}"] = pf
+        points[f"va_l{i}"] = round(abs(leg_w) / pf, 1)
+        points[f"var_l{i}"] = round(abs(leg_w) * 0.2, 1)
+    if phases >= 2:
+        points["voltage_l1l2_v"] = round(nominal_v * 2, 1)
+    if phases == 3:
+        points["voltage_l2l3_v"] = round(nominal_v * 1.732, 1)
+        points["voltage_l3l1_v"] = round(nominal_v * 1.732, 1)
+
+    # ── Solar channels ────────────────────────────────────────────
+    # An aGate meters PV on a proximal port plus up to two remote channels
+    # (e.g. a second array on its own inverter). Splitting the total lets the
+    # remote-PV entities carry a value instead of sitting unknown.
+    if pv_channels:
+        points["pv_proximal"] = round(solar_w * 0.6, 1)
+        points["pv_remote1"] = round(solar_w * 0.3, 1)
+        points["pv_remote2"] = round(solar_w * 0.1, 1)
+    else:
+        points["pv_proximal"] = solar_w
+        points["pv_remote1"] = 0.0
+        points["pv_remote2"] = 0.0
+
+    # ── Lifetime energy counters ──────────────────────────────────
+    # Monotonic in tick so state_class=total_increasing never sees a decrease,
+    # which HA would treat as a meter reset.
+    kwh = tick / 360.0
+    points.update({
+        "grid_export_energy_wh":     round(1_500_000 + kwh * 700, 1),
+        "grid_import_energy_wh":     round(2_400_000 + kwh * 900, 1),
+        "pv_energy_total_wh":        round(9_800_000 + kwh * 1600, 1),
+        "pv_energy_proximal_wh":     round(6_100_000 + kwh * 1000, 1),
+        "dc_energy_discharged_wh":   round(3_200_000 + kwh * 800, 1),
+        "dc_energy_charged_wh":      round(3_700_000 + kwh * 850, 1),
+    })
+
+    return points
+
 
 class _MockPollerState:
     """Minimal stand-in for ModbusPoller.state (read by to_dict/list)."""
@@ -155,14 +250,18 @@ class MockPoller:
     """Publishes synthetic samples to *sample_bus* every *poll_interval* s."""
 
     def __init__(
-        self, sample_bus: SampleBus, gateway_id: str, poll_interval: int
+        self,
+        sample_bus: SampleBus,
+        gateway_id: str,
+        poll_interval: int,
+        ac_type: int = 0,
     ) -> None:
         self._bus = sample_bus
         self._gateway_id = gateway_id
         self._interval = max(1, poll_interval)
         self._task: asyncio.Task | None = None
         self._tick = 0
-        self.ac_type = 0
+        self.ac_type = ac_type
         self.state = _MockPollerState()
 
     async def start(self) -> None:
@@ -170,7 +269,9 @@ class MockPoller:
 
     async def _run(self) -> None:
         while True:
-            pts = synthetic_points(self._gateway_id, self._tick)
+            pts = synthetic_points(
+                self._gateway_id, self._tick, ac_type=self.ac_type,
+            )
             self._tick += 1
             self.state.last_poll_ts = time.time()
             await self._bus.publish(Sample.now(self._gateway_id, pts))

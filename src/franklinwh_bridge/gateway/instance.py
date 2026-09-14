@@ -52,6 +52,10 @@ class GatewayConfig:
     # 'agate' (full battery system) or 'mac1' (Meter Adaptor Collar: metering
     # only — no battery, far fewer SunSpec models, so absent models are normal).
     device_type: str = "agate"
+    # 0 single phase, 1 split phase (L1+L2), 2 three phase. A real gateway
+    # overwrites this by detecting from Modbus; a mock has nothing to detect
+    # and uses it as-is, which is what lets a mock stand in for a US aGate.
+    ac_type: int = 0
 
 
 @dataclass
@@ -158,7 +162,13 @@ class GatewayInstance:
         """
         from franklinwh_bridge.gateway.mock_gateway import MockController, MockPoller
 
-        self.controller = MockController(self.gateway_id)
+        # A real gateway detects its AC type from Modbus; a mock has nothing to
+        # detect, so it honours whatever the gateway record declares. That makes
+        # a mock a usable stand-in for a US split-phase (L1+L2) aGate — the
+        # topology the FranklinWH Cloud and Local APIs assume unconditionally —
+        # without US hardware.
+        ac_type = int(self.config.ac_type or 0)
+        self.controller = MockController(self.gateway_id, ac_type=ac_type)
         serial = self.controller.serial
         self.device_info = DeviceInfo(
             serial=serial,
@@ -176,9 +186,11 @@ class GatewayInstance:
         self.status.serial = serial
         self.status.model = "aGate (mock)"
         self.status.firmware = "MOCK"
+        self.status.ac_type = ac_type
 
         self.poller = MockPoller(
-            self.sample_bus, self.gateway_id, self.config.poll_interval
+            self.sample_bus, self.gateway_id, self.config.poll_interval,
+            ac_type=ac_type,
         )
         # Fan-in to the global bus so the Site aggregator picks up the mock.
         self.sample_bus.subscribe(self._forward_to_global)

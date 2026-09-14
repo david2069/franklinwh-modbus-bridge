@@ -263,6 +263,10 @@ class GatewayUpdate(BaseModel):
     phase: str | None = Field(default=None, pattern=r"^(all|L[123](\+L[123])*)$")
     phase_view: str | None = Field(default=None, pattern=r"^(both|aggregate|per_phase)$")
     device_type: str | None = Field(default=None, pattern=r"^(agate|mac1)$")
+    # 0 single phase, 1 split phase (L1+L2), 2 three phase. A real gateway
+    # detects this from Modbus and overwrites it; settable mainly so a MOCK can
+    # stand in for a US split-phase aGate without US hardware.
+    ac_type: int | None = Field(default=None, ge=0, le=2)
     # Publish this gateway's own MQTT/HA Discovery entities (migration 39).
     # Turning it off tombstones its discovery so HA removes the entities rather
     # than leaving them permanently unavailable.

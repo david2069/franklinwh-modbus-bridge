@@ -44,15 +44,25 @@ class GatewayDevice:
     max_val_overrides: dict[str, float] | None = None
 
     def rebuild_entities(self) -> None:
-        """Rebuild entity lists from phase + battery port + group filters."""
+        """Rebuild entity lists from phase + battery port + group filters.
+
+        Control entities are skipped when the gateway has no command handler.
+        A mock is the case that matters: control is deliberately not wired for
+        one, so its select/number controls had no state topic to publish and no
+        command to accept — they sat at "unknown" forever. HA showed a full
+        Controls card of dead sliders, which reads as broken rather than as
+        not-applicable.
+        """
         disabled = self.disabled_slugs or set()
         ac = self.ac_type
         nport = self.battery_port_count
+        commandable = self.command_handler is not None
         self.entities = [
             e for e in BRIDGE_ENTITIES
             if (e.phase is None or e.phase <= ac + 1)
             and (e.battery_port is None or e.battery_port <= nport)
             and e.slug not in disabled
+            and (commandable or not e.is_control)
         ]
         active = {e.slug for e in self.entities}
         self.removed_entities = [
