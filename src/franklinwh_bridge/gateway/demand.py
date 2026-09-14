@@ -91,6 +91,14 @@ class DemandTracker:
             "cur_interval_kwh": 0.0,     # accumulated import this interval (any window)
             "bonus_export_wh": 0.0,      # export accumulated inside the bonus (reward) window
             "charge_export_wh": 0.0,     # export accumulated inside the export-charge window
+            # Energy COST, integrated as it accrues against the rate in force
+            # at that moment. Integrating beats "kWh x today's rate" because a
+            # period spans seasons, waves and midnight — the rate genuinely
+            # changes underneath it, and only the running total is right.
+            "import_cost": 0.0,          # $ of grid import so far this period
+            "export_credit": 0.0,        # $ earned on grid export so far
+            "unpriced_import_kwh": 0.0,  # import the plan priced no rate for
+            "unpriced_export_kwh": 0.0,
         }
 
     async def load(self) -> None:
@@ -133,6 +141,12 @@ class DemandTracker:
             self._s.update(self._blank())
             self._s["period_start"] = ps.timestamp()
 
+        # Snapshot the previous import counter now: the interval logic below
+        # advances last_import_wh, so reading it afterwards always yields a
+        # zero delta and prices nothing. (It did exactly that until tests
+        # caught it.)
+        prev_import_wh = self._s["last_import_wh"]
+
         # ── demand: 30-min interval buckets ─────────────────────
         if isinstance(imp, (int, float)):
             imp = float(imp)
@@ -162,12 +176,31 @@ class DemandTracker:
             )
             self._s["last_import_wh"] = imp
 
+        # ── energy cost, integrated against the rate in force ────────
+        # Deliberately NOT gated on a window: the rate model covers all 24h, so
+        # every kWh is priced by whichever wave is live. An hour the plan does
+        # not cover accumulates as UNPRICED rather than free — a gap must be
+        # visible, not quietly discounted.
+        rate = self._rate_now(now)
+        if isinstance(imp, (int, float)) and prev_import_wh is not None:
+            d_kwh = (float(imp) - prev_import_wh) / 1000.0
+            if d_kwh > 0:
+                if rate.get("buy") is None:
+                    self._s["unpriced_import_kwh"] += d_kwh
+                else:
+                    self._s["import_cost"] += d_kwh * rate["buy"]
+
         # ── export accumulation inside the reward + charge windows ───
         if isinstance(exp, (int, float)):
             exp = float(exp)
             last = self._s["last_export_wh"]
             if last is not None and exp >= last:  # monotonic counter delta
                 delta = exp - last
+                d_kwh = delta / 1000.0
+                if rate.get("sell") is None:
+                    self._s["unpriced_export_kwh"] += d_kwh
+                else:
+                    self._s["export_credit"] += d_kwh * rate["sell"]
                 bcfg = self._billing.bonus_config()
                 if bcfg and _in_window(bcfg["window"], now):
                     self._s["bonus_export_wh"] += delta
@@ -179,6 +212,16 @@ class DemandTracker:
         if sample.ts - self._last_persist >= _PERSIST_INTERVAL_S:
             self._last_persist = sample.ts
             await self._persist()
+
+    def _rate_now(self, now: datetime) -> dict:
+        """Resolved buy/sell for this instant, or empty if no plan is set up."""
+        from franklinwh_bridge.gateway.rate_model import resolve
+
+        try:
+            return resolve(self._billing.as_points().get("tariff_seasons"), now)
+        except Exception as exc:  # pragma: no cover - pricing must not stop tracking
+            logger.debug("Rate resolve failed: %s", exc)
+            return {}
 
     def _start_interval(self, slot: datetime, imp: float) -> None:
         self._s["interval_start"] = slot.timestamp()
@@ -268,8 +311,19 @@ class DemandTracker:
                 "charge_net_kwh": _f(snap.get("tariff.export_charge_net_kwh")),
                 "charge_cost": charge_cost,
                 "fixed_charges": fixed_charges,
+                # Consumption now counts. Until the rate model landed, a
+                # period's "net total" was surcharges only: demand, the
+                # two-way export charge and standing charges, minus the export
+                # bonus. The kWh you actually bought and sold — the bulk of a
+                # real bill — were simply absent.
+                "energy_cost": _f(vals.get("energy_import_cost")),
+                "energy_credit": _f(vals.get("energy_export_credit")),
                 "net_total": round(
-                    demand_charge + charge_cost + fixed_charges - reward_credit, 2
+                    demand_charge + charge_cost + fixed_charges
+                    + _f(vals.get("energy_import_cost"))
+                    - reward_credit
+                    - _f(vals.get("energy_export_credit")),
+                    2,
                 ),
                 "created_at": period_end.timestamp(),
             }
@@ -327,6 +381,10 @@ class DemandTracker:
             "demand_interval_kw": interval_kw,
             "demand_days_in_period": days,
             "demand_period_days": period_days,
+            "energy_import_cost": round(self._s.get("import_cost", 0.0), 4),
+            "energy_export_credit": round(self._s.get("export_credit", 0.0), 4),
+            "energy_unpriced_import_kwh": round(self._s.get("unpriced_import_kwh", 0.0), 3),
+            "energy_unpriced_export_kwh": round(self._s.get("unpriced_export_kwh", 0.0), 3),
             "bonus_export_kwh": round(self._s["bonus_export_wh"] / 1000.0, 3),
             "charge_export_kwh": round(self._s["charge_export_wh"] / 1000.0, 3),
             "charge_free_kwh": free_kwh,

@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 40
+CURRENT_SCHEMA_VERSION = 41
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -634,6 +634,14 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE billing_periods ADD COLUMN retailer TEXT NOT NULL DEFAULT '';
     ALTER TABLE billing_periods ADD COLUMN network TEXT NOT NULL DEFAULT '';
     ALTER TABLE billing_periods ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 1;
+    """,
+    41: """
+    -- Consumption cost, now that a rate model exists to price it. Before this
+    -- a period's net_total was surcharges only (demand, two-way export charge,
+    -- standing charges, less the export bonus) — the kWh actually bought and
+    -- sold, which is most of a real bill, were absent.
+    ALTER TABLE billing_periods ADD COLUMN energy_cost REAL NOT NULL DEFAULT 0;
+    ALTER TABLE billing_periods ADD COLUMN energy_credit REAL NOT NULL DEFAULT 0;
     """,
 }
 
@@ -1366,6 +1374,8 @@ _BILLING_PERIOD_FIELDS = (
     "fixed_charges", "net_total", "created_at",
     # Who supplied this period (migration 40), snapshotted at close.
     "service_id", "retailer", "network", "plan_version",
+    # Consumption priced by the rate model (migration 41).
+    "energy_cost", "energy_credit",
 )
 
 

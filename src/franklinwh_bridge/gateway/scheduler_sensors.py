@@ -666,6 +666,26 @@ SENSORS: list[SensorDef] = [
         lambda p, n: _import_billable(p, n),
     ),
 
+    # ── Energy cost this period (priced by the rate model) ─
+    SensorDef(
+        "energy.import_cost", "Grid import cost this period ($)", "$", "number",
+        lambda p, _n: _num(p, "energy_import_cost"),
+    ),
+    SensorDef(
+        "energy.export_credit", "Grid export credit this period ($)", "$", "number",
+        lambda p, _n: _num(p, "energy_export_credit"),
+    ),
+    SensorDef(
+        "energy.unpriced_import_kwh",
+        "Import the plan priced no rate for (kWh) — a coverage gap", "kWh", "number",
+        lambda p, _n: _num(p, "energy_unpriced_import_kwh"),
+    ),
+    SensorDef(
+        "energy.unpriced_export_kwh",
+        "Export the plan priced no rate for (kWh)", "kWh", "number",
+        lambda p, _n: _num(p, "energy_unpriced_export_kwh"),
+    ),
+
     # ── Resolved tariff band (seasons -> blocks -> waves) ─
     SensorDef(
         "tariff.season", "Tariff season in force", None, "enum",
