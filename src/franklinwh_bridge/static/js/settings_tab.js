@@ -276,6 +276,14 @@ function settingsTab() {
           demand_interval_min: (svc.pricing && svc.pricing.demand_interval_min) || 30,
           demand_charge_basis: (svc.pricing && svc.pricing.demand_charge_basis) || 'per_kw_day',
           export_bonus_rate: (svc.pricing && svc.pricing.export_bonus_rate) || 0,
+          // TOU import rates. Recorded (the AGL preset writes them) but not yet
+          // priced — no import-rate engine exists. Kept in the payload so a
+          // save doesn't silently drop what the preset captured.
+          import_rates: (svc.pricing && svc.pricing.import_rates) || {
+            peak: 0, off_peak: 0, gst_inclusive: true,
+            peak_window: { start: '15:00', end: '21:00', months: [] },
+          },
+          export_rates: (svc.pricing && svc.pricing.export_rates) || null,
           export_charge: (svc.pricing && svc.pricing.export_charge) || {
             window: { months: [], days: [], start: '10:00', end: '15:00' },
             rate: 0.0123, free_kwh_per_day: 6.84,
@@ -426,7 +434,11 @@ function settingsTab() {
       });
       if (data && !data.error) {
         await this.loadServices();
-        this.cancelServiceEdit();
+        // Closing on save dropped you back to the services list and lost the
+        // sub-tab you were editing — punishing for a form you tweak in several
+        // places. A new service still closes, because the next step is to edit
+        // the one you just made.
+        if (isNew) this.cancelServiceEdit();
         Alpine.store('app').toast(isNew ? 'Service added' : 'Service saved', 'info');
       } else {
         Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
@@ -834,6 +846,9 @@ function settingsTab() {
         { id: 'charge', label: 'Export charge', on: () => !!e.has_export_charge },
         { id: 'fixed', label: 'Standing charges',
           on: () => (pricing.fixed_charges || []).length > 0 },
+        { id: 'import', label: 'TOU import rates',
+          on: () => !!(pricing.import_rates
+            && (pricing.import_rates.peak || pricing.import_rates.off_peak)) },
       ];
     },
 

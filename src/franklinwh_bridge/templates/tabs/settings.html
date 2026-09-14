@@ -705,6 +705,51 @@
                 </template>
                 </div>
 
+                <!-- TOU import rates.
+                     RECORDED, NOT PRICED. The engine prices exports, demand and
+                     standing charges; there is no import-rate model, so these
+                     change no cost today. Shown because the AGL preset writes
+                     them and an invisible stored value is worse than a visible
+                     inert one — and because capturing them now means the
+                     numbers are already right when pricing lands. -->
+                <div x-show="tariffTab === 'import'" x-cloak>
+                  <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
+                    <div class="text-[11px] text-sky-400">TOU import rates
+                      <span class="text-slate-500">— recorded, not yet priced</span></div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Peak ($/kWh)</span>
+                        <input type="number" min="0" step="0.00001" x-model.number="serviceEdit.pricing.import_rates.peak"
+                               class="form-control !py-0.5 !text-xs"></label>
+                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Off-peak ($/kWh)</span>
+                        <input type="number" min="0" step="0.00001" x-model.number="serviceEdit.pricing.import_rates.off_peak"
+                               class="form-control !py-0.5 !text-xs"></label>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="text-slate-500">Peak from</span>
+                      <input type="time" x-model="serviceEdit.pricing.import_rates.peak_window.start" class="form-control !py-0.5 !text-xs w-24">
+                      <span class="text-slate-500">to</span>
+                      <input type="time" x-model="serviceEdit.pricing.import_rates.peak_window.end" class="form-control !py-0.5 !text-xs w-24">
+                      <label class="flex items-center gap-1.5 text-slate-400 ml-2">
+                        <input type="checkbox" x-model="serviceEdit.pricing.import_rates.gst_inclusive" class="accent-sky-500">
+                        GST inclusive</label>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="(mo, mi) in monthLabels" :key="'im'+mi">
+                        <button type="button" @click="toggleWinMonth(serviceEdit.pricing.import_rates.peak_window, mi+1)"
+                                class="px-1.5 py-0.5 rounded text-[10px] border"
+                                :class="(serviceEdit.pricing.import_rates.peak_window.months || []).includes(mi+1)
+                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'"
+                                x-text="mo"></button>
+                      </template>
+                    </div>
+                    <div class="text-[10px] text-slate-600">
+                      Off-peak applies outside the peak window. Nothing reads these yet —
+                      the billing engine has no import-rate model, so "cost this period"
+                      still covers only export charges, demand and standing charges.
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Fixed / standing charges (levied regardless of usage) -->
                 <div x-show="tariffTab === 'fixed'" x-cloak>
                 <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
