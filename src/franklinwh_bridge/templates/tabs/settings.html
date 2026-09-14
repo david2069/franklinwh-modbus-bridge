@@ -568,20 +568,44 @@
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_bonus" class="accent-cyan-500"> Battery export bonus</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_charge" class="accent-amber-500"> Two-way export charge</label>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Min monthly bill</span>
                     <input type="number" min="0" step="0.01" x-model.number="serviceEdit.min_monthly_bill" class="form-control !py-1 !text-xs"></label>
                   <label class="flex flex-col gap-1"><span class="text-slate-500">Billing cycle day</span>
                     <input type="number" min="1" max="31" x-model.number="serviceEdit.pricing.billing_cycle_day" class="form-control !py-1 !text-xs"></label>
-                  <label class="flex flex-col gap-1"><span class="text-slate-500">Pricing API</span>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-500">Pricing API
+                      <span class="text-slate-600">— not wired yet</span></span>
                     <select x-model="serviceEdit.pricing_api" class="form-control !py-1 !text-xs">
                       <option value="none">None</option>
-                      <option value="ha">Home Assistant</option>
+                      <option value="ha">Home Assistant (future)</option>
                       <option value="direct">Direct API (future)</option>
-                    </select></label>
+                    </select>
+                    <span class="text-[10px] text-slate-600">Stored only — no live price source
+                      reads it yet, so it changes no cost today.</span></label>
+                </div>
+
+
+                <!-- Sub-tabs: the four tariff components are long forms, and
+                     stacking them made the editor scroll for pages. Only one is
+                     being edited at a time. The count badge shows which are
+                     switched ON, so a hidden section can't be forgotten. -->
+                <div class="flex flex-wrap gap-1 border-b border-white/[0.06] pb-1">
+                  <template x-for="t in tariffTabs" :key="t.id">
+                    <button type="button" @click="tariffTab = t.id"
+                            class="px-2 py-1 rounded-t text-[11px] transition-colors border-b-2"
+                            :class="tariffTab === t.id
+                              ? 'border-cyan-400 text-cyan-300'
+                              : 'border-transparent text-slate-400 hover:text-slate-200'">
+                      <span x-text="t.label"></span>
+                      <span x-show="t.on()" class="ml-1 w-1.5 h-1.5 rounded-full inline-block align-middle bg-emerald-400"
+                            title="Configured and active"></span>
+                    </button>
+                  </template>
                 </div>
 
                 <!-- Demand window -->
+                <div x-show="tariffTab === 'demand'" x-cloak>
                 <template x-if="serviceEdit.has_peak_demand">
                   <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
                     <div class="text-[11px] text-amber-400">Peak-demand window <span class="text-slate-500">→ demand.peak_kw / demand.period_charge</span></div>
@@ -620,8 +644,10 @@
                     <div class="text-[10px] text-slate-600">no months/days selected = every month / every day</div>
                   </div>
                 </template>
+                </div>
 
                 <!-- Bonus window -->
+                <div x-show="tariffTab === 'bonus'" x-cloak>
                 <template x-if="serviceEdit.has_export_bonus">
                   <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
                     <div class="text-[11px] text-emerald-400">Battery-export-bonus window <span class="text-slate-500">→ bonus.period_credit</span></div>
@@ -645,8 +671,10 @@
                     </div>
                   </div>
                 </template>
+                </div>
 
                 <!-- Two-way export CHARGE window (solar sponge: pay to export midday) -->
+                <div x-show="tariffTab === 'charge'" x-cloak>
                 <template x-if="serviceEdit.has_export_charge">
                   <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
                     <div class="text-[11px] text-amber-400">Export-charge window <span class="text-slate-500">→ tariff.export_charge_net_kwh / _cost</span></div>
@@ -675,8 +703,10 @@
                     </div>
                   </div>
                 </template>
+                </div>
 
                 <!-- Fixed / standing charges (levied regardless of usage) -->
+                <div x-show="tariffTab === 'fixed'" x-cloak>
                 <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
                   <div class="flex items-center justify-between">
                     <div class="text-[11px] text-violet-400">Fixed / standing charges <span class="text-slate-500">→ fixed.accrued_period / fixed.remaining</span></div>
@@ -733,6 +763,7 @@
                       <span class="font-mono text-violet-300"><span x-text="fixedChargesPerDay()"></span>/day · <span x-text="fixedChargesPerMonth()"></span>/30d</span>
                     </div>
                   </template>
+                </div>
                 </div>
               </div>
             </template>

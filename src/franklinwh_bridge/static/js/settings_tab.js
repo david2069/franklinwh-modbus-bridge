@@ -291,6 +291,11 @@ function settingsTab() {
           })),
         },
       };
+      // Land on a section that is actually in use rather than an empty pane.
+      this.tariffTab = svc.has_peak_demand ? 'demand'
+        : svc.has_export_bonus ? 'bonus'
+        : (svc.pricing && svc.pricing.export_charge) ? 'charge'
+        : 'fixed';
       this.serviceEditId = svc.id;
     },
 
@@ -411,9 +416,13 @@ function settingsTab() {
       if (this.serviceEdit.pricing && !this.serviceEdit.has_export_charge) {
         this.serviceEdit.pricing = { ...this.serviceEdit.pricing, export_charge: null };
       }
+      // has_export_charge is a UI-only flag — the server derives it from
+      // pricing.export_charge. The API now rejects unknown fields rather than
+      // dropping them silently, so it must not be sent.
+      const { has_export_charge: _uiOnly, ...payload } = this.serviceEdit;
       const data = await fetchJSON(url, {
         method: isNew ? 'POST' : 'PATCH',
-        body: JSON.stringify(this.serviceEdit),
+        body: JSON.stringify(payload),
       });
       if (data && !data.error) {
         await this.loadServices();
@@ -812,6 +821,22 @@ function settingsTab() {
     },
 
     // Detection result for the gateway being edited: {detected, matches_declared, ...}
+    // ── Tariff sub-tabs ────────────────────────────────────
+    // The four tariff components are long forms; stacked, the service editor
+    // scrolled for pages. Only one is edited at a time.
+    tariffTab: 'demand',
+    get tariffTabs() {
+      const e = this.serviceEdit || {};
+      const pricing = e.pricing || {};
+      return [
+        { id: 'demand', label: 'Peak demand', on: () => !!e.has_peak_demand },
+        { id: 'bonus', label: 'Export bonus', on: () => !!e.has_export_bonus },
+        { id: 'charge', label: 'Export charge', on: () => !!e.has_export_charge },
+        { id: 'fixed', label: 'Standing charges',
+          on: () => (pricing.fixed_charges || []).length > 0 },
+      ];
+    },
+
     phaseDetect: null,
 
     async detectPhases() {
@@ -846,6 +871,10 @@ function settingsTab() {
             unit_id: g.unit_id, poll_interval: g.poll_interval, timeout: g.timeout,
             description: g.description,
             service_id: g.service_id, phase: g.phase, phase_view: g.phase_view,
+            // Hand-built body: anything omitted here is silently not saved,
+            // which is how the publish toggle appeared to work and didn't.
+            publish_to_ha: g.publish_to_ha,
+            ac_type: g.ac_type,
           }),
         });
         if (data && !data.error) {

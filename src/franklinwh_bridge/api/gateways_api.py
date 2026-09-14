@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from franklinwh_bridge.config import clock
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
@@ -52,6 +52,13 @@ def _registry(request: Request):
 
 
 class SiteConfigUpdate(BaseModel):
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     description: str | None = None
     meter_number: str | None = None
@@ -109,6 +116,13 @@ async def patch_site(body: SiteConfigUpdate, request: Request):
 
 
 class TimezoneConfirm(BaseModel):
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
     # None = "the detected one is right". A name = correct it to this.
     timezone: str | None = Field(default=None, max_length=64)
 
@@ -154,6 +168,13 @@ async def confirm_timezone_endpoint(body: TimezoneConfirm, request: Request):
 
 
 class ServiceCreate(BaseModel):
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(..., min_length=1, max_length=120)
     meter_number: str = Field(default="", max_length=120)
     account: str = Field(default="", max_length=120)
@@ -172,6 +193,13 @@ class TariffWindow(BaseModel):
 
 
 class ServiceUpdate(BaseModel):
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=120)
     meter_number: str | None = Field(default=None, max_length=120)
     account: str | None = Field(default=None, max_length=120)
@@ -203,6 +231,14 @@ class ServiceUpdate(BaseModel):
     # compared — see service.tz_matches_clock.
     country: str | None = Field(default=None, max_length=2)
     timezone: str | None = Field(default=None, max_length=64)
+    # Accepted and IGNORED, not forbidden. It is a UI-only toggle — the server
+    # derives the real state from pricing.export_charge — but older cached
+    # page loads still send it, and 422-ing them means a user with a stale tab
+    # simply cannot save. Tightening a schema must not break clients already in
+    # flight; declaring the field keeps them working and documents why it's
+    # inert. (Hit for real on 2026-09-14.)
+    has_export_charge: bool | None = Field(default=None, exclude=True)
+
     # ── Supplier + lifecycle (migration 40) ──
     # Retailer and network change independently: in AU you can switch retailer
     # (AGL) and stay on the same network/DNSP (Ausgrid), whose two-way export
@@ -249,6 +285,13 @@ class ServiceUpdate(BaseModel):
 class PlanSwitch(BaseModel):
     """Start a new plan on a service. Both fields optional — switching plan with
     the same retailer (a re-contract) is as common as changing supplier."""
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
 
     retailer: str | None = Field(default=None, max_length=120)
     network: str | None = Field(default=None, max_length=120)
@@ -382,6 +425,13 @@ async def remove_service(service_id: str, request: Request):
 
 
 class GatewayCreate(BaseModel):
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
     gateway_id: str = Field(..., min_length=1, max_length=63)
     name: str = Field(..., min_length=1, max_length=120)
     host: str = Field(default="", max_length=255)
@@ -397,6 +447,13 @@ class GatewayCreate(BaseModel):
 
 
 class GatewayUpdate(BaseModel):
+    # Reject unknown fields instead of dropping them. Pydantic's default is to
+    # IGNORE an undeclared key, so a request naming a field the model doesn't
+    # have returned 200 having changed nothing — which happened twice while
+    # building this router (ac_type, then plan_version), each time reading as a
+    # successful save. A 422 is far better than a silent no-op.
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=120)
     host: str | None = None
     port: int | None = Field(default=None, ge=1, le=65535)
