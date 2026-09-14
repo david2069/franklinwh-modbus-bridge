@@ -432,13 +432,27 @@ function settingsTab() {
     async saveService() {
       const isNew = this.serviceEditId === 'new';
       const url = isNew ? 'api/services' : `api/services/${this.serviceEditId}`;
-      // export_charge only persists when the toggle is on
-      if (this.serviceEdit.pricing && !this.serviceEdit.has_export_charge) {
-        this.serviceEdit.pricing = { ...this.serviceEdit.pricing, export_charge: null };
+      // The server reads the PRESENCE of pricing.export_charge as "enabled",
+      // so turning the toggle off has to clear it — but clearing it outright
+      // destroyed the rate and free allowance, and re-ticking the box came
+      // back empty. Worse, a save made while it was off wiped a config the
+      // user never touched. Park the values instead so the toggle is
+      // reversible.
+      if (this.serviceEdit.pricing) {
+        const pr = this.serviceEdit.pricing;
+        if (!this.serviceEdit.has_export_charge) {
+          if (pr.export_charge) pr._export_charge_parked = pr.export_charge;
+          pr.export_charge = null;
+        } else if (!pr.export_charge && pr._export_charge_parked) {
+          pr.export_charge = pr._export_charge_parked;
+        }
       }
       // has_export_charge is a UI-only flag — the server derives it from
       // pricing.export_charge. The API now rejects unknown fields rather than
       // dropping them silently, so it must not be sent.
+      // Stamp the derived plan type so service.plan_type reflects the actual
+      // rates rather than whatever was last picked from a dropdown.
+      this.serviceEdit.plan_type = this.derivedPlanType;
       const { has_export_charge: _uiOnly, ...payload } = this.serviceEdit;
       const data = await fetchJSON(url, {
         method: isNew ? 'POST' : 'PATCH',
@@ -862,6 +876,29 @@ function settingsTab() {
     rateProblems: [],
 
     get seasons() { return (this.serviceEdit?.pricing?.seasons) || []; },
+
+    // Plan type DERIVED from the rates, not typed by hand. It was a dropdown
+    // the user set and nothing read — it could say "Flat rate" over a
+    // four-season TOU plan and nothing would notice. Deriving it means the
+    // label cannot disagree with the configuration.
+    get derivedPlanType() {
+      const ss = this.seasons;
+      if (!ss.length) return 'unknown';
+      const tiered = ss.some((s) => Object.values(s.waves || {}).some(
+        (w) => Array.isArray(w.buy) || Array.isArray(w.sell)));
+      const timed = ss.length > 1 || ss.some((s) => (s.blocks || []).length > 1);
+      if (tiered && timed) return 'hybrid';
+      if (tiered) return 'tiered';
+      if (timed) return 'tou';
+      return 'fixed';
+    },
+    get planTypeLabel() {
+      return {
+        unknown: 'No rates configured', fixed: 'Flat rate',
+        tiered: 'Tiered (by kWh used)', tou: 'Time of use',
+        hybrid: 'Hybrid — time of use with tiers',
+      }[this.derivedPlanType];
+    },
     get season() { return this.seasons[this.seasonIdx] || null; },
 
     _blankSeason(name) {
@@ -1005,7 +1042,7 @@ function settingsTab() {
         { id: 'charge', label: 'Export charge', on: () => !!e.has_export_charge },
         { id: 'fixed', label: 'Standing charges',
           on: () => (pricing.fixed_charges || []).length > 0 },
-        { id: 'import', label: 'TOU rates',
+        { id: 'import', label: 'Energy rates',
           on: () => (pricing.seasons || []).length > 0 },
       ];
     },

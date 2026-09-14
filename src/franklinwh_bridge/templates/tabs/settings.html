@@ -513,26 +513,34 @@
                 <div class="rounded border border-white/[0.06] p-2 space-y-2">
                   <div class="text-[11px] text-cyan-400">Electricity plan <span class="text-slate-500">→ service.* sensors for Automations</span></div>
                   <div class="grid grid-cols-2 gap-3 text-xs">
-                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">Plan type (informational)</span>
-                      <select x-model="serviceEdit.plan_type" class="form-control !py-0.5 !text-xs">
-                        <option value="unknown">— not specified —</option>
-                        <option value="fixed">Fixed rate</option>
-                        <option value="tiered">Tiered rate</option>
-                        <option value="tou">Time of use (TOU)</option>
-                        <option value="demand">Demand</option>
-                        <option value="dynamic">Dynamic / wholesale</option>
-                        <option value="other">Other</option>
-                      </select></label>
+                    <!-- Derived from the rates, not chosen. As a dropdown it could
+                         say "Flat rate" over a four-season TOU plan and nothing
+                         would notice, because nothing read it. -->
+                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">Plan type
+                        <span class="text-slate-600">— from your rates</span></span>
+                      <div class="form-control !py-0.5 !text-xs flex items-center justify-between">
+                        <span x-text="planTypeLabel"></span>
+                        <a href="#" @click.prevent="tariffTab = 'import'"
+                           class="text-cyan-400 text-[10px] hover:text-cyan-300">edit rates</a>
+                      </div></label>
                     <label class="flex flex-col gap-0.5"><span class="text-slate-500">Export limit (kW, 0 = unlimited)</span>
                       <input type="number" min="0" step="0.1" x-model.number="serviceEdit.export_limit_kw"
                              :disabled="!serviceEdit.export_allowed" class="form-control !py-0.5 !text-xs"></label>
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-                    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.export_allowed" class="accent-emerald-500"> Export to grid allowed</label>
-                    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.charging_allowed" class="accent-emerald-500"> Battery charging permitted</label>
-                    <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.discharging_allowed" class="accent-emerald-500"> Battery discharging permitted</label>
+                    <label class="flex items-center gap-1.5"
+                           title="May energy leave the property at all — from solar OR the battery."><input type="checkbox" x-model="serviceEdit.export_allowed" class="accent-emerald-500"> Export to grid allowed</label>
+                    <label class="flex items-center gap-1.5"
+                           title="May the battery charge from the grid."><input type="checkbox" x-model="serviceEdit.charging_allowed" class="accent-emerald-500"> Battery charging permitted</label>
+                    <label class="flex items-center gap-1.5"
+                           title="May the battery discharge at all — including to serve house load only, without exporting."><input type="checkbox" x-model="serviceEdit.discharging_allowed" class="accent-emerald-500"> Battery discharging permitted</label>
                   </div>
-                  <div class="text-[10px] text-slate-600">Plan requirements, not preferences. Referenceable in Automations today; they do not yet block a dispatch that breaks them.</div>
+                  <div class="text-[10px] text-slate-600">
+                    Plan requirements, not preferences. Referenceable in Automations today;
+                    they do not yet block a dispatch that breaks them.
+                    <span class="block">Export and discharging are different: a plan can allow
+                    the battery to discharge for your own load while forbidding export to the grid.</span>
+                  </div>
                   <!-- Where the service is billed. The timezone is what the
                        plan's TOU windows are WRITTEN in; the engine still runs
                        on the container clock, so we compare rather than convert. -->
@@ -563,7 +571,6 @@
                 </div>
 
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-                  <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_tou" class="accent-cyan-500"> TOU plan</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_peak_demand" class="accent-cyan-500"> Peak-demand import charge</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_bonus" class="accent-cyan-500"> Battery export bonus</label>
                   <label class="flex items-center gap-1.5"><input type="checkbox" x-model="serviceEdit.has_export_charge" class="accent-amber-500"> Two-way export charge</label>
@@ -724,9 +731,9 @@
                     </template>
                     <button type="button" @click="addSeason()"
                             class="px-2 py-0.5 rounded text-[10px] border border-dashed border-white/20 text-slate-400 hover:text-slate-200">
-                      + Add season
+                      + Add TOU season
                     </button>
-                    <button type="button" @click="addFlatSeason()" x-show="!seasons.length"
+                    <button type="button" @click="addFlatSeason()"
                             class="px-2 py-0.5 rounded text-[10px] border border-dashed border-sky-500/40 text-sky-300 hover:bg-sky-500/10">
                       + Flat rate
                     </button>

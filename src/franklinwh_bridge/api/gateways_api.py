@@ -219,7 +219,9 @@ class ServiceUpdate(BaseModel):
     # rate calculation. The permissions are utility/plan requirements, surfaced
     # to automations as service.* sensors.
     plan_type: str | None = Field(
-        default=None, pattern=r"^(unknown|fixed|tiered|tou|demand|dynamic|other)$"
+        # 'hybrid' added 2026-09-15: time-of-use bands whose prices are tiered.
+        default=None,
+        pattern=r"^(unknown|fixed|tiered|tou|hybrid|demand|dynamic|other)$",
     )
     export_allowed: bool | None = None
     export_limit_kw: float | None = Field(default=None, ge=0)  # None/0 → unlimited
