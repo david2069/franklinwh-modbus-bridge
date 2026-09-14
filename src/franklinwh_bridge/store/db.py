@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 39
+CURRENT_SCHEMA_VERSION = 40
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -610,6 +610,31 @@ MIGRATIONS: dict[int, str] = {
     -- entity and has to be deleted by hand.
     ALTER TABLE gateways ADD COLUMN publish_to_ha INTEGER NOT NULL DEFAULT 1;
     """,
+    40: """
+    -- Attribute billing history to WHO supplied it.
+    --
+    -- Demand charges, two-way export, bonus credits and standing charges all
+    -- accrued against a gateway with no record of the plan that priced them.
+    -- Switch retailer and the old and new periods were indistinguishable, and
+    -- the only way to retire a provider was to delete it — taking its history.
+    --
+    -- AU separates the two parties, and they change independently: you can
+    -- switch RETAILER (AGL) while staying on the same NETWORK/DNSP (Ausgrid),
+    -- whose two-way export tariff applies either way.
+    ALTER TABLE services ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE services ADD COLUMN retailer TEXT NOT NULL DEFAULT '';
+    ALTER TABLE services ADD COLUMN network TEXT NOT NULL DEFAULT '';
+    ALTER TABLE services ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE services ADD COLUMN plan_started_at REAL;
+
+    -- Snapshotted onto each closed period, NOT joined at read time: history has
+    -- to stay truthful after the service is renamed, re-rated or retired. A
+    -- period shows the retailer and plan that actually produced those numbers.
+    ALTER TABLE billing_periods ADD COLUMN service_id TEXT;
+    ALTER TABLE billing_periods ADD COLUMN retailer TEXT NOT NULL DEFAULT '';
+    ALTER TABLE billing_periods ADD COLUMN network TEXT NOT NULL DEFAULT '';
+    ALTER TABLE billing_periods ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 1;
+    """,
 }
 
 
@@ -956,6 +981,9 @@ _SERVICE_FIELDS = (
     # plan description + what the plan permits (migration 36)
     "plan_type", "export_allowed", "export_limit_kw",
     "charging_allowed", "discharging_allowed",
+    # Lifecycle + supplier identity (migration 40). A retired service keeps its
+    # history; retailer and network change independently of each other.
+    "enabled", "retailer", "network", "plan_version", "plan_started_at",
     # Where the service is billed (migration 38). Advisory: records the
     # timezone the plan's TOU windows are written in so it can be checked
     # against the clock the engine actually runs on.
@@ -1336,7 +1364,50 @@ _BILLING_PERIOD_FIELDS = (
     "gateway_id", "period_start", "period_end", "demand_peak_kw", "demand_charge",
     "reward_kwh", "reward_credit", "charge_kwh", "charge_net_kwh", "charge_cost",
     "fixed_charges", "net_total", "created_at",
+    # Who supplied this period (migration 40), snapshotted at close.
+    "service_id", "retailer", "network", "plan_version",
 )
+
+
+async def service_has_history(db: aiosqlite.Connection, service_id: str) -> int:
+    """How many closed billing periods were produced by this service."""
+    async with db.execute(
+        "SELECT COUNT(*) FROM billing_periods WHERE service_id = ?", (service_id,)
+    ) as cur:
+        row = await cur.fetchone()
+        return int(row[0]) if row else 0
+
+
+async def start_new_plan(
+    db: aiosqlite.Connection,
+    service_id: str,
+    *,
+    retailer: str | None = None,
+    network: str | None = None,
+    started_at: float | None = None,
+) -> dict | None:
+    """Begin a new plan on this service: bump the version, stamp the start.
+
+    Totals reset at this boundary because the CURRENT period is closed by the
+    caller (the demand tracker) and the next one opens under the new version —
+    a period must never span two price sets, or its cost is an average of
+    tariffs that were never both in force.
+
+    History is untouched: closed periods carry their own snapshot of retailer,
+    network and plan_version, so they keep reading as what they were.
+    """
+    row = await get_service(db, service_id)
+    if row is None:
+        return None
+    updates: dict = {
+        "plan_version": int(row.get("plan_version") or 1) + 1,
+        "plan_started_at": started_at if started_at is not None else time.time(),
+    }
+    if retailer is not None:
+        updates["retailer"] = retailer.strip()
+    if network is not None:
+        updates["network"] = network.strip()
+    return await update_service(db, service_id, **updates)
 
 
 async def insert_billing_period(db: aiosqlite.Connection, record: dict) -> None:
@@ -1345,10 +1416,15 @@ async def insert_billing_period(db: aiosqlite.Connection, record: dict) -> None:
     caller omits fall back to 0 (the columns are NOT NULL)."""
     cols = ", ".join(_BILLING_PERIOD_FIELDS)
     placeholders = ", ".join("?" for _ in _BILLING_PERIOD_FIELDS)
+    # Per-field defaults: the numeric columns fall back to 0, but the supplier
+    # columns are TEXT and would otherwise be written as the integer 0, which
+    # then renders as "0" where a retailer name belongs.
+    text_defaults = {"retailer": "", "network": ""}
+    defaults: dict = {"service_id": None, "plan_version": 1, **text_defaults}
     await db.execute(
         f"INSERT INTO billing_periods ({cols}) VALUES ({placeholders}) "
         "ON CONFLICT(gateway_id, period_start) DO NOTHING",
-        tuple(record.get(f, 0) for f in _BILLING_PERIOD_FIELDS),
+        tuple(record.get(f, defaults.get(f, 0)) for f in _BILLING_PERIOD_FIELDS),
     )
     await db.commit()
 

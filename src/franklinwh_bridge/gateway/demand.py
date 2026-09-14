@@ -191,6 +191,33 @@ class DemandTracker:
         except Exception as exc:  # pragma: no cover
             logger.debug("DemandTracker persist failed: %s", exc)
 
+    async def close_period_now(self, now: datetime | None = None) -> bool:
+        """Close the running period immediately and start a fresh one.
+
+        Used when the plan changes mid-period: the numbers accrued so far
+        belong to the OUTGOING plan, so they are snapshotted under it before
+        the new one starts. Without this, a switch would leave one period
+        priced by two different tariffs.
+
+        Returns True if a period was actually closed (False when none had
+        started yet). Never raises — a failed close must not block the switch.
+        """
+        now = now or datetime.now()
+        old_ps = self._s.get("period_start")
+        if old_ps is None:
+            return False
+        try:
+            await self._snapshot_closing_period(old_ps, now)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Closing the period on plan switch failed: %s", exc)
+            return False
+        self._s.update(self._blank())
+        # The new period starts NOW, not at the next cycle day: the plan
+        # changed today, so today's costs belong to the new plan.
+        self._s["period_start"] = now.timestamp()
+        await self._persist()
+        return True
+
     async def _snapshot_closing_period(self, old_ps_ts: float, period_end: datetime) -> None:
         """At a cycle rollover, freeze the just-closed period's final tariff totals
         into ``billing_periods`` for the reporting/history view. Reuses the sensor
@@ -246,6 +273,27 @@ class DemandTracker:
                 ),
                 "created_at": period_end.timestamp(),
             }
+            # Stamp WHO produced these numbers. Snapshotted, not joined at read
+            # time: the service can be renamed, re-rated or retired later, and
+            # a closed period must keep reading as what it actually was.
+            #
+            # Guarded separately because the whole method swallows exceptions:
+            # a failure here would silently discard the ENTIRE period record,
+            # trading a missing retailer name for a lost month of billing. The
+            # numbers matter more than the label on them.
+            try:
+                plan = self._billing.plan() if self._billing else {}
+                record.update({
+                    "service_id": plan.get("service_id"),
+                    "retailer": plan.get("retailer") or "",
+                    "network": plan.get("network") or "",
+                    "plan_version": int(plan.get("plan_version") or 1),
+                })
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "Billing period %s recorded without supplier attribution: %s",
+                    old_ps_ts, exc,
+                )
             await insert_billing_period(self._db, record)
         except Exception as exc:  # pragma: no cover - reporting must not break tracking
             logger.debug("billing-period snapshot failed: %s", exc)

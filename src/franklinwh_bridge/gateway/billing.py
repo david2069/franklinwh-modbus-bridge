@@ -46,6 +46,12 @@ class BillingStore:
             # never guess a location from anything else.
             "country": "",
             "timezone": "",
+            # Who supplies this service (migration 40). Snapshotted onto each
+            # closed billing period so history survives a rename or a switch.
+            "service_id": None,
+            "retailer": "",
+            "network": "",
+            "plan_version": 1,
         }
 
     async def load(self) -> None:
@@ -58,6 +64,10 @@ class BillingStore:
         demand_cfg = bonus_cfg = charge_cfg = None
         plan = None
         for s in services:
+            # A retired service stops pricing anything. Its closed periods stay
+            # in history — that is the point of retiring rather than deleting.
+            if not bool(s.get("enabled", 1)):
+                continue
             if plan is None:  # first service defines the plan (v1: single service)
                 plan = {
                     "plan_type": s.get("plan_type") or "unknown",
@@ -67,6 +77,10 @@ class BillingStore:
                     "discharging_allowed": bool(s.get("discharging_allowed", 1)),
                     "country": (s.get("country") or "").strip().upper(),
                     "timezone": (s.get("timezone") or "").strip(),
+                    "service_id": s.get("id"),
+                    "retailer": (s.get("retailer") or "").strip(),
+                    "network": (s.get("network") or "").strip(),
+                    "plan_version": int(s.get("plan_version") or 1),
                 }
             pricing = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
             cycle_day = int(_num(pricing.get("billing_cycle_day"), 1)) or 1

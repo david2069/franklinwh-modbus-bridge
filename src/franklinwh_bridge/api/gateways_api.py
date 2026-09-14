@@ -26,8 +26,11 @@ from franklinwh_bridge.store.db import (
     delete_service,
     get_gateway,
     get_gateways,
+    get_service,
     get_services,
     get_site_config,
+    service_has_history,
+    start_new_plan,
     update_gateway,
     update_service,
     update_site_config,
@@ -200,6 +203,14 @@ class ServiceUpdate(BaseModel):
     # compared — see service.tz_matches_clock.
     country: str | None = Field(default=None, max_length=2)
     timezone: str | None = Field(default=None, max_length=64)
+    # ── Supplier + lifecycle (migration 40) ──
+    # Retailer and network change independently: in AU you can switch retailer
+    # (AGL) and stay on the same network/DNSP (Ausgrid), whose two-way export
+    # tariff applies either way.
+    retailer: str | None = Field(default=None, max_length=120)
+    network: str | None = Field(default=None, max_length=120)
+    # Retiring a service stops it pricing anything but keeps its history.
+    enabled: bool | None = None
 
     @field_validator("country")
     @classmethod
@@ -235,6 +246,53 @@ class ServiceUpdate(BaseModel):
         return v
 
 
+class PlanSwitch(BaseModel):
+    """Start a new plan on a service. Both fields optional — switching plan with
+    the same retailer (a re-contract) is as common as changing supplier."""
+
+    retailer: str | None = Field(default=None, max_length=120)
+    network: str | None = Field(default=None, max_length=120)
+
+
+@router.post("/services/{service_id}/switch-plan")
+async def switch_plan(service_id: str, body: PlanSwitch, request: Request):
+    """Close the current billing period and begin a new plan.
+
+    Totals reset at this boundary deliberately: a period must never span two
+    price sets, or its cost is an average of tariffs that were never both in
+    force. Closed periods keep their own snapshot of retailer/network/version,
+    so history reads as what it was.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    if await get_service(db, service_id) is None:
+        raise HTTPException(404, f"Service '{service_id}' not found")
+
+    # Close the period FIRST, so the numbers accrued so far are attributed to
+    # the outgoing plan rather than the incoming one.
+    tracker = getattr(request.app.state, "demand_tracker", None)
+    closed = False
+    if tracker is not None and hasattr(tracker, "close_period_now"):
+        try:
+            closed = bool(await tracker.close_period_now())
+        except Exception as exc:
+            logger.warning("Could not close the billing period on switch: %s", exc)
+
+    row = await start_new_plan(
+        db, service_id, retailer=body.retailer, network=body.network,
+    )
+    store = getattr(request.app.state, "billing", None)
+    if store is not None:
+        await store.load()
+    return {"service": row, "period_closed": closed}
+
+
+@router.get("/services/{service_id}/history-count")
+async def service_history_count(service_id: str, request: Request):
+    """How many closed billing periods this service produced — the UI uses it
+    to offer 'retire' instead of 'delete'."""
+    return {"periods": await service_has_history(request.app.state.db, service_id)}
+
+
 @router.get("/services")
 async def list_services(request: Request):
     """List all electricity utility services."""
@@ -256,15 +314,39 @@ async def add_service(body: ServiceCreate, request: Request):
     )
 
 
+#: Editing any of these changes what the CURRENT period is being priced at.
+#: The user is asked whether it's a new plan or a correction, rather than the
+#: bridge guessing: auto-resetting on every edit would wipe a month's totals
+#: over a typo'd rate, and never asking lets one period span two price sets.
+_PLAN_MATERIAL_FIELDS = (
+    "pricing", "demand_window", "bonus_window", "has_tou", "has_peak_demand",
+    "has_export_bonus", "plan_type", "min_monthly_bill",
+)
+
+
 @router.patch("/services/{service_id}")
 async def patch_service(service_id: str, body: ServiceUpdate, request: Request):
     """Update a utility service. exclude_unset so booleans/windows can be set to
     false/null explicitly (e.g. clearing a tariff window)."""
     db: aiosqlite.Connection = request.app.state.db
     updates = body.model_dump(exclude_unset=True)
+    if "enabled" in updates:
+        updates["enabled"] = int(updates["enabled"])
     result = await update_service(db, service_id, **updates)
     if result is None:
         raise HTTPException(404, f"Service '{service_id}' not found")
+
+    # Flag a pricing edit so the UI can ask "new plan, or a correction?".
+    # Advisory only — nothing resets here. Suppressed when the service has no
+    # closed periods yet, because then there is no history for a boundary to
+    # protect and the question is just noise during setup.
+    touched = [f for f in _PLAN_MATERIAL_FIELDS if f in updates]
+    result = dict(result)
+    result["plan_change_suspected"] = bool(
+        touched and await service_has_history(db, service_id)
+    )
+    result["plan_changed_fields"] = touched
+
     # Refresh the billing-window cache so demand.*/bonus.* sensors reflect the edit.
     billing = getattr(request.app.state, "billing", None)
     if billing is not None:
@@ -277,8 +359,20 @@ async def patch_service(service_id: str, body: ServiceUpdate, request: Request):
 
 @router.delete("/services/{service_id}")
 async def remove_service(service_id: str, request: Request):
-    """Delete a utility service."""
+    """Delete a utility service — refused once it has produced billing history.
+
+    Deleting would strand closed periods against a service that no longer
+    exists, which is exactly the continuity the history view is for. Retiring
+    (``enabled: false``) stops it pricing anything while keeping its rows.
+    """
     db: aiosqlite.Connection = request.app.state.db
+    periods = await service_has_history(db, service_id)
+    if periods:
+        raise HTTPException(
+            409,
+            f"'{service_id}' has {periods} closed billing period(s). Retire it "
+            "(set enabled: false) instead — deleting would orphan that history.",
+        )
     if not await delete_service(db, service_id):
         raise HTTPException(404, f"Service '{service_id}' not found")
     return {"deleted": True}
