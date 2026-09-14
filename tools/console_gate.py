@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 
 from playwright.sync_api import sync_playwright
 
@@ -64,8 +65,39 @@ def _goto(page, url: str, problems: list) -> bool:
     return False
 
 
+def _wait_until_ready(url: str, settle_s: float = 6.0, timeout_s: float = 90.0) -> str | None:
+    """Block until the app has been up for `settle_s`, or report why not.
+
+    Editing anything under src/ — including static JS — restarts uvicorn, and a
+    gate run that lands mid-restart reports missing buttons that are merely not
+    mounted yet. That produced three false failures in a row, which is worse
+    than no gate: the habit it teaches is "re-run until green", and then a real
+    failure gets re-run away too.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"{url}/api/health", timeout=3) as r:
+                uptime = json.loads(r.read()).get("uptime_s", 0)
+            if uptime >= settle_s:
+                return None
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+        time.sleep(1.5)
+    return f"app never settled for {settle_s}s within {timeout_s}s"
+
+
 def run(url: str, user: str, password: str) -> int:
     problems: list[str] = []
+
+    not_ready = _wait_until_ready(url)
+    if not_ready:
+        print(f"CONSOLE GATE COULD NOT RUN — {not_ready}")
+        return 1
 
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome", headless=True)
