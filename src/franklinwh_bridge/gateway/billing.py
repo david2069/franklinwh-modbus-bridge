@@ -29,6 +29,7 @@ class BillingStore:
         self._db = db
         self._demand: list[dict] = []
         self._bonus: list[dict] = []
+        self._imports: list[dict] = []
         # First service with each flag drives the demand/bonus/charge calc (v1).
         self._demand_cfg: dict | None = None
         self._bonus_cfg: dict | None = None
@@ -60,7 +61,7 @@ class BillingStore:
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("BillingStore load failed: %s", exc)
             return
-        demand, bonus = [], []
+        demand, bonus, imports = [], [], []
         demand_cfg = bonus_cfg = charge_cfg = None
         plan = None
         for s in services:
@@ -106,6 +107,14 @@ class BillingStore:
                         "rate": _num(pricing.get("export_bonus_rate")),  # $/kWh
                         "cycle_day": cycle_day,
                     }
+            # Grid-IMPORT windows: [{months, days, start, end, billable}].
+            # Keeping "billable" on the window (rather than a dedicated
+            # free-import feature) means a zero-rate band in the fuller rate
+            # model is the same construct — nothing to unpick later.
+            for w in pricing.get("import_windows") or []:
+                if isinstance(w, dict):
+                    imports.append(w)
+
             # Export CHARGE: {window, rate $/kWh, free_kwh_per_day} in pricing JSON.
             ec = pricing.get("export_charge")
             if charge_cfg is None and isinstance(ec, dict) and isinstance(ec.get("window"), dict):
@@ -116,6 +125,7 @@ class BillingStore:
                     "cycle_day": cycle_day,
                 }
         self._demand, self._bonus = demand, bonus
+        self._imports = imports
         self._demand_cfg, self._bonus_cfg = demand_cfg, bonus_cfg
         self._charge_cfg = charge_cfg
         if plan is not None:
@@ -141,6 +151,7 @@ class BillingStore:
             "tariff_demand_windows": self._demand,
             "tariff_bonus_windows": self._bonus,
             "tariff_charge_windows": [c["window"]] if c else [],
+            "tariff_import_windows": self._imports,
             "tariff_demand_rate": d.get("rate", 0.0),
             "tariff_export_bonus_rate": (self._bonus_cfg or {}).get("rate", 0.0),
             "tariff_export_charge_rate": c.get("rate", 0.0),

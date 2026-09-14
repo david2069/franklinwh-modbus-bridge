@@ -966,6 +966,11 @@ class ScheduleEngine:
                 self._exit_entry[tkey] = win
         self._owned[tkey] = {
             "entry_id": win["id"],
+            # Name + start so "why is the battery doing this?" is answerable
+            # without joining back to the entry list.
+            "name": win.get("name") or win["id"],
+            "since": now.timestamp(),
+            "duration_s": win.get("duration_s"),
             "signature": sig,
             "action": action,
             "display": display,
@@ -1143,9 +1148,65 @@ class ScheduleEngine:
             except Exception as exc:
                 logger.debug("Schedule: points_fn(%s) failed: %s", gw_id, exc)
                 pts = {}
+        pts = {**pts, **self._dispatch_points(gw_id, now)}
         snap = sensor_snapshot(pts, now)
         self._snap_cache[gw_id] = snap
         return snap
+
+    def dispatch_points(self, gw_id: str, now: datetime | None = None) -> dict[str, Any]:
+        """Public view of the same state, for /api/sensors and the UI.
+
+        Without this the dispatch.* sensors resolved only inside condition
+        evaluation — an automation could read them but nobody could SEE them,
+        which defeats the point of explaining why the battery is busy.
+        """
+        return self._dispatch_points(gw_id, now or self._now())
+
+    def _dispatch_points(self, gw_id: str, now: datetime) -> dict[str, Any]:
+        """Why the battery is doing what it is, as points.
+
+        The engine already tracked which entry owns a target; it was internal,
+        so nothing could answer "why is it discharging?" — not the UI, not HA,
+        not another automation. This exposes it.
+
+        ``source`` distinguishes three real states: a schedule is driving it, a
+        manual/external command is (the gateway reports a WSet the engine
+        doesn't own), or nothing is — in which case the gateway is running its
+        OWN mode and the bridge is not overriding at all.
+        """
+        own = None
+        for (ttype, _tid, owner_gw), rec in self._owned.items():
+            if owner_gw == gw_id and ttype in ("gateway", "site", "service"):
+                own = rec
+                break
+
+        if own is not None:
+            since = float(own.get("since") or now.timestamp())
+            dur = own.get("duration_s")
+            elapsed_min = max(0.0, (now.timestamp() - since) / 60.0)
+            return {
+                "dispatch_active": True,
+                "dispatch_source": "schedule",
+                "dispatch_entry": own.get("name") or own.get("entry_id"),
+                "dispatch_action": own.get("display") or own.get("action"),
+                "dispatch_since_min": round(elapsed_min, 1),
+                "dispatch_expires_min": (
+                    round(max(0.0, float(dur) / 60.0 - elapsed_min), 1) if dur else None
+                ),
+            }
+
+        # No schedule owns it. A live WSet means something else commanded the
+        # gateway — the UI's manual controls, or a direct MQTT/API call.
+        pts = self._points_fn(gw_id) if self._points_fn is not None else {}
+        manual = bool((pts or {}).get("wset_enabled"))
+        return {
+            "dispatch_active": manual,
+            "dispatch_source": "manual" if manual else "none",
+            "dispatch_entry": None,
+            "dispatch_action": None,
+            "dispatch_since_min": None,
+            "dispatch_expires_min": None,
+        }
 
     async def _audit(
         self,

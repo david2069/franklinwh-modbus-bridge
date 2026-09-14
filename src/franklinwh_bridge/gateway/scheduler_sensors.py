@@ -128,6 +128,23 @@ def _tz_matches_clock(points: Points) -> bool | None:
     return plan_offset == timedelta(seconds=_time.localtime().tm_gmtoff)
 
 
+def _import_billable(points: Points, now: datetime) -> bool | None:
+    """Is grid import billable right now?
+
+    Default True: with no free window declared, import costs money. Only an
+    explicitly non-billable window makes it False, so a misconfiguration reads
+    as "you are paying" rather than inviting an automation to charge for free
+    when it isn't.
+    """
+    windows = points.get("tariff_import_windows")
+    if not windows:
+        return None
+    for w in windows:
+        if isinstance(w, dict) and _in_window(w, now) and not w.get("billable", True):
+            return False
+    return True
+
+
 def _mode_name(points: Points, _now: datetime) -> str | None:
     v = points.get("mode_name")
     return str(v) if v is not None else None
@@ -592,6 +609,50 @@ SENSORS: list[SensorDef] = [
         "service.discharging_allowed", "Plan allows battery discharging", None, "bool",
         lambda p, _n: bool(p.get("service_discharging_allowed", True)),
     ),
+    # ── Why the battery is doing what it is ──────────────
+    # The scheduler knew which entry owned a target but never said so, leaving
+    # "why is it discharging?" answerable only by reading the activity log.
+    SensorDef(
+        "dispatch.active", "Bridge is overriding the gateway", None, "bool",
+        lambda p, _n: bool(p.get("dispatch_active")),
+    ),
+    SensorDef(
+        "dispatch.source",
+        "What is driving it: schedule / manual / none (gateway's own mode)",
+        None, "enum",
+        lambda p, _n: _text(p, "dispatch_source"),
+    ),
+    SensorDef(
+        "dispatch.entry", "Automation currently in control", None, "enum",
+        lambda p, _n: _text(p, "dispatch_entry"),
+    ),
+    SensorDef(
+        "dispatch.action", "Action it is holding", None, "enum",
+        lambda p, _n: _text(p, "dispatch_action"),
+    ),
+    SensorDef(
+        "dispatch.since_min", "Minutes it has been in control", "min", "number",
+        lambda p, _n: _num(p, "dispatch_since_min"),
+    ),
+    SensorDef(
+        "dispatch.expires_min", "Minutes until it releases", "min", "number",
+        lambda p, _n: _num(p, "dispatch_expires_min"),
+    ),
+
+    # ── Billable vs free import ──────────────────────────
+    # "Billable" is a property of the window, not a special free-import
+    # feature: a zero-rate wave in the fuller rate model is the same thing, so
+    # nothing needs unpicking when that lands.
+    SensorDef(
+        "tariff.import_window_active", "In a declared grid-import window", None, "bool",
+        lambda p, n: _any_window_active(p, "tariff_import_windows", n),
+    ),
+    SensorDef(
+        "tariff.import_billable",
+        "Grid import is billable right now (0 = free window)", None, "bool",
+        lambda p, n: _import_billable(p, n),
+    ),
+
     # ── Where the service is billed (informational) ──
     SensorDef(
         "service.country", "Service country (ISO code)", None, "enum",

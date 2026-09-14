@@ -11,6 +11,7 @@ trigger/condition fields) rather than a duplicate ``/api/scheduler/jobs``.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field
 from franklinwh_bridge.gateway.constants import ConstantsStore
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate_dict
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog, snapshot
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["scheduler"])
 
@@ -60,6 +63,14 @@ async def list_sensors(request: Request, gateway: str = "default"):
     Includes the static Bridge sensors plus any HA entities (``ha:<inst>:<entity>``)
     so the Automation Builder can condition on Home Assistant state."""
     points = _gateway_points(request, gateway)
+    # Fold in why the bridge is (or isn't) overriding. The engine owns this
+    # state; the points source can't know it.
+    engine = getattr(request.app.state, "schedule_engine", None)
+    if engine is not None:
+        try:
+            points = {**points, **engine.dispatch_points(gateway)}
+        except Exception as exc:
+            logger.debug("dispatch points unavailable for %s: %s", gateway, exc)
     sensors = sensor_catalog(points)
     ha = getattr(request.app.state, "ha_registry", None)
     if ha is not None:
