@@ -4,6 +4,9 @@
 # franklinwh-modbus ref) but builds FROM the Supervisor-provided base image so
 # the add-on gets the right architecture, s6 init and HA's CA bundle. Build
 # context is the REPO ROOT, not addon/ — see build.yaml.
+# Build context is the ASSEMBLED add-on folder (tools/build_addon.py), NOT the
+# repo root — the Supervisor builds an add-on with its own directory as context
+# and COPY cannot reach "..". Every path below is relative to that folder.
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.19
 FROM ${BUILD_FROM}
 
@@ -28,7 +31,7 @@ COPY pyproject.toml .
 COPY src/ ./src/
 RUN pip install --no-cache-dir -c constraints.txt .
 
-COPY addon/run.sh /run.sh
+COPY run.sh /run.sh
 RUN chmod a+x /run.sh
 
 # /data is the add-on's persistent volume, provided by the Supervisor.

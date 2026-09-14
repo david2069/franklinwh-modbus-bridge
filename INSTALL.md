@@ -23,14 +23,36 @@ Three supported ways to run it. Pick one:
 
 ### Install
 
-1. **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, add:
+This repository is **private**, so Home Assistant cannot fetch it as an add-on
+repository (it has no credentials) and the add-on cannot `pip install` the
+bridge from git. It installs as a **local add-on** instead.
 
-   ```
-   https://github.com/david2069/franklinwh-modbus-bridge
-   ```
+The add-on also cannot simply live in `addon/`: the Supervisor builds an add-on
+with *its own directory* as the Docker build context, and `COPY` cannot reach
+`..` for `src/`. Nor can the manifest sit at the repo root — `settings.py`
+already reads `./config.yaml` as the bridge's own configuration.
 
-2. Find **FranklinWH Modbus Bridge** in the store and click **Install**. The
-   first build compiles a few Python wheels and takes several minutes.
+So assemble a self-contained add-on folder first:
+
+```bash
+python tools/build_addon.py --verify     # --verify docker-builds it locally
+```
+
+That writes `dist/addon/` containing the manifest plus the source it needs.
+Copy it to your HA host's `/addons` share, under any folder name:
+
+```bash
+scp -r dist/addon root@homeassistant:/addons/franklinwh_modbus_bridge
+```
+
+(Or use the **Samba share** / **Advanced SSH** add-on to drop it in `/addons`.)
+
+Then in HA: **Settings → Add-ons → Add-on Store → ⋮ → Check for updates**. The
+add-on appears under *Local add-ons*. Click **Install** — the first build
+compiles a few Python wheels and takes several minutes.
+
+To update after changing the code, re-run `build_addon.py`, re-copy, then
+**Rebuild** the add-on.
 
 3. On the **Configuration** tab set:
 
