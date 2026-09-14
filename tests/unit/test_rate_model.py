@@ -211,3 +211,90 @@ def test_a_block_naming_an_unpriced_wave_is_reported():
 
 def test_wave_vocabulary_is_fixed():
     assert WAVES == ("super_off_peak", "off_peak", "mid_peak", "on_peak")
+
+
+# ── Tiered + hybrid ───────────────────────────────────────────
+# Tiers price by CUMULATIVE consumption this period. They live on the wave, so
+# "tiered within a time-of-use band" — a hybrid plan — needs no new concept.
+
+LADDER = [{"up_to_kwh": 1000, "rate": 0.22}, {"up_to_kwh": 2000, "rate": 0.28},
+          {"rate": 0.35}]
+TIERED = [{"id": "t", "name": "Tiered", "months": [],
+           "waves": {"off_peak": {"buy": LADDER, "sell": 0.03}},
+           "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+
+
+@pytest.mark.parametrize("used,rate,tier", [
+    (0, 0.22, 1), (999, 0.22, 1), (1000, 0.28, 2),
+    (1999, 0.28, 2), (2000, 0.35, 3), (9999, 0.35, 3),
+])
+def test_tier_is_chosen_by_cumulative_consumption(used, rate, tier):
+    r = resolve(TIERED, at(1, 12), used_kwh=used)
+
+    assert r["buy"] == rate
+    assert r["tier"] == tier
+
+
+def test_a_scalar_rate_still_works_and_reports_no_tier():
+    """Tiering is opt-in per price; a flat wave must be unaffected."""
+    r = resolve(AGL, at(1, 12), used_kwh=5000)
+
+    assert r["buy"] == 0.21626
+    assert r["tier"] is None
+
+
+def test_unknown_consumption_uses_the_first_tier():
+    """A period starts at zero, so that's the honest answer before any energy
+    has flowed — not 'unpriced'."""
+    assert resolve(TIERED, at(1, 12))["buy"] == 0.22
+
+
+def test_hybrid_is_tiers_inside_a_time_of_use_band():
+    """The payoff of putting tiers on the wave: no separate hybrid concept."""
+    hybrid = [{"id": "h", "name": "Hybrid", "months": [],
+               "waves": {"off_peak": {"buy": 0.20, "sell": 0.03},
+                         "on_peak": {"buy": LADDER, "sell": 0.03}},
+               "blocks": [{"start": "00:00", "end": "17:00", "wave": "off_peak"},
+                          {"start": "17:00", "end": "24:00", "wave": "on_peak"}]}]
+
+    off = resolve(hybrid, at(1, 10), used_kwh=1500)
+    on = resolve(hybrid, at(1, 18), used_kwh=1500)
+
+    assert off["buy"] == 0.20 and off["tier"] is None   # flat band
+    assert on["buy"] == 0.28 and on["tier"] == 2        # tiered band, 2nd tier
+
+
+def test_a_ladder_that_never_ends_is_reported():
+    """Without an unbounded final tier, consumption past the last threshold has
+    no price and would be recorded as unpriced rather than billed."""
+    closed = [{"id": "c", "name": "Closed", "months": [],
+               "waves": {"off_peak": {"buy": [{"up_to_kwh": 1000, "rate": 0.22}], "sell": 0.03}},
+               "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+
+    assert any("add a final tier with no limit" in p for p in validate(closed))
+
+
+def test_a_tier_without_a_rate_is_reported():
+    broken = [{"id": "b", "name": "Broken", "months": [],
+               "waves": {"off_peak": {"buy": [{"up_to_kwh": 1000}, {"rate": 0.3}], "sell": 0.03}},
+               "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+
+    assert any("no rate" in p for p in validate(broken))
+
+
+def test_a_valid_ladder_validates_clean():
+    assert validate(TIERED) == []
+
+
+def test_tiers_out_of_order_still_resolve():
+    """Authoring order shouldn't matter; the ladder is sorted by threshold."""
+    jumbled = [{"id": "j", "months": [],
+                "waves": {"off_peak": {"buy": [{"rate": 0.35},
+                                               {"up_to_kwh": 2000, "rate": 0.28},
+                                               {"up_to_kwh": 1000, "rate": 0.22}],
+                                       "sell": 0.03}},
+                "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+
+    assert resolve(jumbled, at(1, 12), used_kwh=500)["buy"] == 0.22
+    assert resolve(jumbled, at(1, 12), used_kwh=1500)["buy"] == 0.28
+    assert resolve(jumbled, at(1, 12), used_kwh=5000)["buy"] == 0.35

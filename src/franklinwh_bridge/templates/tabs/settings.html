@@ -789,20 +789,79 @@
                         </div>
                         <div class="rounded border border-white/[0.06] divide-y divide-white/[0.06]">
                           <template x-for="w in WAVE_IDS" :key="w">
-                            <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-2 py-1 text-xs">
-                              <span class="flex items-center gap-1.5">
-                                <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${WAVE_DOTS[w]}`"></span>
-                                <span x-text="WAVE_LABELS[w]"></span>
-                              </span>
-                              <label class="flex items-center gap-1"><span class="text-slate-500">buy $</span>
-                                <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].buy"
-                                       class="form-control !py-0.5 !text-xs w-24"></label>
-                              <label class="flex items-center gap-1"><span class="text-slate-500">sell $</span>
-                                <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].sell"
-                                       class="form-control !py-0.5 !text-xs w-24"></label>
-                              <span class="text-[10px]"
-                                    :class="waveUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
-                                    x-text="waveUsed(w) ? 'active' : 'not used'"></span>
+                            <div class="px-2 py-1 text-xs space-y-1">
+                              <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2">
+                                <span class="flex items-center gap-1.5">
+                                  <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${WAVE_DOTS[w]}`"></span>
+                                  <span x-text="WAVE_LABELS[w]"></span>
+                                </span>
+                                <label class="flex items-center gap-1" x-show="!isTiered(w, 'buy')">
+                                  <span class="text-slate-500">buy $</span>
+                                  <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].buy"
+                                         class="form-control !py-0.5 !text-xs w-24"></label>
+                                <span x-show="isTiered(w, 'buy')" class="text-slate-500">buy: tiered</span>
+                                <label class="flex items-center gap-1" x-show="!isTiered(w, 'sell')">
+                                  <span class="text-slate-500">sell $</span>
+                                  <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].sell"
+                                         class="form-control !py-0.5 !text-xs w-24"></label>
+                                <span x-show="isTiered(w, 'sell')" class="text-slate-500">sell: tiered</span>
+                                <span class="text-[10px]"
+                                      :class="waveUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
+                                      x-text="waveUsed(w) ? 'active' : 'not used'"></span>
+                              </div>
+
+                              <!-- Tier ladders. Priced by cumulative import this
+                                   billing period, so the last tier must be
+                                   unbounded or consumption above it has no price. -->
+                              <template x-for="side in ['buy', 'sell']" :key="w + side">
+                                <div>
+                                  <button type="button" x-show="!isTiered(w, side)"
+                                          @click="makeTiered(w, side)"
+                                          class="text-[10px] text-slate-500 hover:text-sky-300"
+                                          x-text="`make ${side} tiered`"></button>
+                                  <!-- x-if, not x-show: x-show only hides, and the
+                                       x-for inside still evaluates. Iterating a
+                                       NUMBER (a flat rate like 0.21626) made Alpine
+                                       try to build an array of that length —
+                                       "Invalid array length" on every page load. -->
+                                  <template x-if="isTiered(w, side)">
+                                  <div class="pl-3 space-y-0.5">
+                                    <div class="flex items-center justify-between">
+                                      <span class="text-[10px] uppercase tracking-wide text-slate-500"
+                                            x-text="`${side} tiers — by kWh used this period`"></span>
+                                      <span class="flex gap-1">
+                                        <button type="button" @click="addTier(w, side)"
+                                                class="text-[10px] text-sky-300 hover:text-sky-200">+ tier</button>
+                                        <button type="button" @click="makeFlat(w, side)"
+                                                class="text-[10px] text-slate-500 hover:text-slate-300">use one rate</button>
+                                      </span>
+                                    </div>
+                                    <template x-for="(t, ti) in season.waves[w][side]" :key="ti">
+                                      <div class="flex items-center gap-1.5">
+                                        <span class="text-slate-500 text-[10px] w-10"
+                                              x-text="`#${ti + 1}`"></span>
+                                        <template x-if="typeof t.up_to_kwh === 'number'">
+                                          <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">up to</span>
+                                            <input type="number" min="0" step="1" x-model.number="t.up_to_kwh"
+                                                   @change="checkRates()"
+                                                   class="form-control !py-0.5 !text-xs w-20">
+                                            <span class="text-slate-500 text-[10px]">kWh</span></label>
+                                        </template>
+                                        <template x-if="typeof t.up_to_kwh !== 'number'">
+                                          <span class="text-slate-500 text-[10px]">and above</span>
+                                        </template>
+                                        <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">$</span>
+                                          <input type="number" min="0" step="0.00001" x-model.number="t.rate"
+                                                 @change="checkRates()"
+                                                 class="form-control !py-0.5 !text-xs w-24"></label>
+                                        <button type="button" @click="removeTier(w, side, ti)"
+                                                class="text-[10px] text-red-300/70 hover:text-red-300">×</button>
+                                      </div>
+                                    </template>
+                                  </div>
+                                  </template>
+                                </div>
+                              </template>
                             </div>
                           </template>
                         </div>

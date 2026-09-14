@@ -52,6 +52,66 @@ WAVE_LABELS: dict[str, str] = {
 }
 
 
+def tier_rate(value: Any, used_kwh: float | None) -> float | None:
+    """Price from a scalar rate OR a tier ladder.
+
+    A wave's price may be a plain number, or tiers priced by CUMULATIVE
+    consumption this billing period::
+
+        buy: [ {up_to_kwh: 1000, rate: 0.22}, {rate: 0.28} ]
+
+    The last tier omits ``up_to_kwh`` and is unbounded. Tiers live on the wave
+    rather than beside the season, so "tiered within a time-of-use band" — a
+    hybrid plan — needs no extra concept: a TOU wave with a tiered price IS
+    hybrid.
+
+    With consumption unknown the FIRST tier is used, because a period starts at
+    zero and that is the honest answer before any energy has flowed.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, list) or not value:
+        return None
+
+    tiers = [t for t in value if isinstance(t, dict)]
+    if not tiers:
+        return None
+    used = float(used_kwh or 0.0)
+
+    # Bounded tiers first, in ascending order, then whatever is unbounded.
+    bounded = sorted(
+        (t for t in tiers if isinstance(t.get("up_to_kwh"), (int, float))),
+        key=lambda t: float(t["up_to_kwh"]),
+    )
+    for t in bounded:
+        if used < float(t["up_to_kwh"]):
+            r = t.get("rate")
+            return float(r) if isinstance(r, (int, float)) else None
+
+    unbounded = [t for t in tiers if not isinstance(t.get("up_to_kwh"), (int, float))]
+    last = unbounded[0] if unbounded else (bounded[-1] if bounded else None)
+    if last is None:
+        return None
+    r = last.get("rate")
+    return float(r) if isinstance(r, (int, float)) else None
+
+
+def tier_index(value: Any, used_kwh: float | None) -> int | None:
+    """Which tier applies (1-based), or None when the price isn't tiered."""
+    if not isinstance(value, list) or not value:
+        return None
+    tiers = [t for t in value if isinstance(t, dict)]
+    bounded = sorted(
+        (t for t in tiers if isinstance(t.get("up_to_kwh"), (int, float))),
+        key=lambda t: float(t["up_to_kwh"]),
+    )
+    used = float(used_kwh or 0.0)
+    for i, t in enumerate(bounded, start=1):
+        if used < float(t["up_to_kwh"]):
+            return i
+    return len(bounded) + 1
+
+
 def _hhmm(raw: object) -> int | None:
     """"HH:MM" → minutes since midnight."""
     if not isinstance(raw, str) or ":" not in raw:
@@ -109,7 +169,7 @@ def find_season(seasons: Any, now: datetime) -> dict | None:
     return fallback
 
 
-def resolve(seasons: Any, now: datetime) -> dict:
+def resolve(seasons: Any, now: datetime, used_kwh: float | None = None) -> dict:
     """What a kWh costs right now.
 
     Returns ``{season, wave, wave_label, buy, sell, billable, reason}``. Every
@@ -119,7 +179,8 @@ def resolve(seasons: Any, now: datetime) -> dict:
     """
     blank = {
         "season": None, "wave": None, "wave_label": None,
-        "buy": None, "sell": None, "billable": None, "reason": "not_configured",
+        "buy": None, "sell": None, "billable": None, "tier": None,
+        "reason": "not_configured",
     }
     if not seasons:
         return blank
@@ -143,20 +204,20 @@ def resolve(seasons: Any, now: datetime) -> dict:
 
     wave = block.get("wave")
     rates = (season.get("waves") or {}).get(wave) or {}
-    buy = rates.get("buy")
-    sell = rates.get("sell")
+    raw_buy, raw_sell = rates.get("buy"), rates.get("sell")
+    buy = tier_rate(raw_buy, used_kwh)
+    sell = tier_rate(raw_sell, used_kwh)
 
     return {
         "season": season.get("name") or season.get("id"),
         "wave": wave,
         "wave_label": WAVE_LABELS.get(wave, wave),
-        "buy": float(buy) if isinstance(buy, (int, float)) else None,
-        "sell": float(sell) if isinstance(sell, (int, float)) else None,
+        "buy": buy,
+        "sell": sell,
+        "tier": tier_index(raw_buy, used_kwh),
         # A free-import window is simply a wave priced at zero — the same
         # construct as any other band, so nothing special-cases it.
-        "billable": (
-            None if not isinstance(buy, (int, float)) else bool(float(buy) > 0.0)
-        ),
+        "billable": (None if buy is None else bool(buy > 0.0)),
         "reason": "ok",
     }
 
@@ -193,6 +254,38 @@ def validate(seasons: Any) -> list[str]:
             continue
 
         waves = s.get("waves") or {}
+
+        # Tier ladders: an unbounded last tier is what makes the ladder total.
+        # Without one, consumption past the final threshold has no price and
+        # would be recorded as unpriced rather than billed.
+        for wname, wrates in waves.items():
+            if not isinstance(wrates, dict):
+                continue
+            for side in ("buy", "sell"):
+                ladder = wrates.get(side)
+                if not isinstance(ladder, list):
+                    continue
+                label = WAVE_LABELS.get(wname, wname)
+                if not ladder:
+                    problems.append(f"'{name}' {label} {side} has an empty tier list.")
+                    continue
+                bounds = [
+                    t.get("up_to_kwh") for t in ladder
+                    if isinstance(t, dict) and isinstance(t.get("up_to_kwh"), (int, float))
+                ]
+                if len(bounds) == len(ladder):
+                    problems.append(
+                        f"'{name}' {label} {side} tiers stop at "
+                        f"{max(bounds):g} kWh — add a final tier with no limit."
+                    )
+                if any(
+                    not isinstance(t, dict) or not isinstance(t.get("rate"), (int, float))
+                    for t in ladder
+                ):
+                    problems.append(f"'{name}' {label} {side} has a tier with no rate.")
+                if len(set(bounds)) != len(bounds):
+                    problems.append(f"'{name}' {label} {side} has duplicate tier limits.")
+
         for b in blocks:
             w = b.get("wave") if isinstance(b, dict) else None
             if w not in WAVES:

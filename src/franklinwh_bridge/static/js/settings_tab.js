@@ -942,6 +942,42 @@ function settingsTab() {
     waveUsed(w) {
       return (this.season?.blocks || []).some((b) => b.wave === w);
     },
+    // ── Tier ladders on a wave's price ────────────────────
+    // A price is either a number or a list of tiers. Tiers live on the wave, so
+    // a TOU band with a tiered price IS a hybrid plan — no separate concept.
+    isTiered(wave, side) { return Array.isArray(this.season?.waves?.[wave]?.[side]); },
+    makeTiered(wave, side) {
+      const flat = Number(this.season.waves[wave][side]) || 0;
+      // Seed with the existing rate so switching modes never silently changes
+      // today's price — only the shape it's expressed in.
+      this.season.waves[wave][side] = [
+        { up_to_kwh: 1000, rate: flat },
+        { rate: flat },
+      ];
+      this.checkRates();
+    },
+    makeFlat(wave, side) {
+      const ladder = this.season.waves[wave][side];
+      this.season.waves[wave][side] = Number(ladder?.[0]?.rate) || 0;
+      this.checkRates();
+    },
+    addTier(wave, side) {
+      const ladder = this.season.waves[wave][side];
+      const last = ladder[ladder.length - 1];
+      // Insert BEFORE the unbounded tier — that one must stay last or the
+      // ladder stops covering everything above the final threshold.
+      const bounded = ladder.filter((t) => typeof t.up_to_kwh === 'number');
+      const nextLimit = bounded.length ? Math.max(...bounded.map((t) => t.up_to_kwh)) * 2 : 1000;
+      ladder.splice(ladder.length - 1, 0, { up_to_kwh: nextLimit, rate: last?.rate ?? 0 });
+      this.checkRates();
+    },
+    removeTier(wave, side, i) {
+      const ladder = this.season.waves[wave][side];
+      if (ladder.length <= 2) { this.makeFlat(wave, side); return; }
+      ladder.splice(i, 1);
+      this.checkRates();
+    },
+
     copyRatesToAllSeasons() {
       if (!this.season) return;
       const src = JSON.parse(JSON.stringify(this.season.waves));

@@ -132,7 +132,11 @@ def _rate_now(points: Points, now: datetime) -> dict:
     """Resolved season/wave/prices for this instant (pure, cheap)."""
     from franklinwh_bridge.gateway.rate_model import resolve
 
-    return resolve(points.get("tariff_seasons"), now)
+    # Tiered rates price against cumulative consumption this period, so the
+    # resolver needs it — without it every tiered plan would read as tier 1.
+    return resolve(
+        points.get("tariff_seasons"), now, points.get("energy_period_import_kwh"),
+    )
 
 
 def _import_billable(points: Points, now: datetime) -> bool | None:
@@ -667,6 +671,14 @@ SENSORS: list[SensorDef] = [
     ),
 
     # ── Energy cost this period (priced by the rate model) ─
+    SensorDef(
+        "energy.period_import_kwh", "Grid import this period (kWh)", "kWh", "number",
+        lambda p, _n: _num(p, "energy_period_import_kwh"),
+    ),
+    SensorDef(
+        "tariff.tier", "Rate tier in force (1 = first block)", None, "number",
+        lambda p, n: _rate_now(p, n).get("tier"),
+    ),
     SensorDef(
         "energy.import_cost", "Grid import cost this period ($)", "$", "number",
         lambda p, _n: _num(p, "energy_import_cost"),

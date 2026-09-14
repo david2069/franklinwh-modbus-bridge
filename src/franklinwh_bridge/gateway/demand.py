@@ -97,6 +97,10 @@ class DemandTracker:
             # changes underneath it, and only the running total is right.
             "import_cost": 0.0,          # $ of grid import so far this period
             "export_credit": 0.0,        # $ earned on grid export so far
+            # Cumulative import this billing period — what a TIERED rate is
+            # priced against. Resets with the period, which is what makes a
+            # tier ladder mean "this month's first N kWh".
+            "period_import_kwh": 0.0,
             "unpriced_import_kwh": 0.0,  # import the plan priced no rate for
             "unpriced_export_kwh": 0.0,
         }
@@ -181,10 +185,13 @@ class DemandTracker:
         # every kWh is priced by whichever wave is live. An hour the plan does
         # not cover accumulates as UNPRICED rather than free — a gap must be
         # visible, not quietly discounted.
-        rate = self._rate_now(now)
+        # Resolve against consumption BEFORE this delta: the kWh being priced
+        # is the one that takes you up to the boundary, not past it.
+        rate = self._rate_now(now, self._s.get("period_import_kwh", 0.0))
         if isinstance(imp, (int, float)) and prev_import_wh is not None:
             d_kwh = (float(imp) - prev_import_wh) / 1000.0
             if d_kwh > 0:
+                self._s["period_import_kwh"] = self._s.get("period_import_kwh", 0.0) + d_kwh
                 if rate.get("buy") is None:
                     self._s["unpriced_import_kwh"] += d_kwh
                 else:
@@ -213,12 +220,14 @@ class DemandTracker:
             self._last_persist = sample.ts
             await self._persist()
 
-    def _rate_now(self, now: datetime) -> dict:
+    def _rate_now(self, now: datetime, used_kwh: float | None = None) -> dict:
         """Resolved buy/sell for this instant, or empty if no plan is set up."""
         from franklinwh_bridge.gateway.rate_model import resolve
 
         try:
-            return resolve(self._billing.as_points().get("tariff_seasons"), now)
+            return resolve(
+                self._billing.as_points().get("tariff_seasons"), now, used_kwh,
+            )
         except Exception as exc:  # pragma: no cover - pricing must not stop tracking
             logger.debug("Rate resolve failed: %s", exc)
             return {}
@@ -381,6 +390,7 @@ class DemandTracker:
             "demand_interval_kw": interval_kw,
             "demand_days_in_period": days,
             "demand_period_days": period_days,
+            "energy_period_import_kwh": round(self._s.get("period_import_kwh", 0.0), 3),
             "energy_import_cost": round(self._s.get("import_cost", 0.0), 4),
             "energy_export_credit": round(self._s.get("export_credit", 0.0), 4),
             "energy_unpriced_import_kwh": round(self._s.get("unpriced_import_kwh", 0.0), 3),
