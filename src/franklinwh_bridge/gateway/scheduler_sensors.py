@@ -128,6 +128,13 @@ def _tz_matches_clock(points: Points) -> bool | None:
     return plan_offset == timedelta(seconds=_time.localtime().tm_gmtoff)
 
 
+def _rate_now(points: Points, now: datetime) -> dict:
+    """Resolved season/wave/prices for this instant (pure, cheap)."""
+    from franklinwh_bridge.gateway.rate_model import resolve
+
+    return resolve(points.get("tariff_seasons"), now)
+
+
 def _import_billable(points: Points, now: datetime) -> bool | None:
     """Is grid import billable right now?
 
@@ -136,6 +143,12 @@ def _import_billable(points: Points, now: datetime) -> bool | None:
     as "you are paying" rather than inviting an automation to charge for free
     when it isn't.
     """
+    # The rate model is authoritative once configured: a wave priced at zero
+    # IS a free window, so the two can't disagree.
+    resolved = _rate_now(points, now)
+    if resolved.get("billable") is not None:
+        return resolved["billable"]
+
     windows = points.get("tariff_import_windows")
     if not windows:
         return None
@@ -651,6 +664,24 @@ SENSORS: list[SensorDef] = [
         "tariff.import_billable",
         "Grid import is billable right now (0 = free window)", None, "bool",
         lambda p, n: _import_billable(p, n),
+    ),
+
+    # ── Resolved tariff band (seasons -> blocks -> waves) ─
+    SensorDef(
+        "tariff.season", "Tariff season in force", None, "enum",
+        lambda p, n: _rate_now(p, n)["season"],
+    ),
+    SensorDef(
+        "tariff.wave", "Rate band in force (Off-Peak, Mid-Peak, …)", None, "enum",
+        lambda p, n: _rate_now(p, n)["wave_label"],
+    ),
+    SensorDef(
+        "tariff.buy_rate", "Grid import price now ($/kWh)", "$/kWh", "number",
+        lambda p, n: _rate_now(p, n)["buy"],
+    ),
+    SensorDef(
+        "tariff.sell_rate", "Grid export price now ($/kWh)", "$/kWh", "number",
+        lambda p, n: _rate_now(p, n)["sell"],
     ),
 
     # ── Where the service is billed (informational) ──
