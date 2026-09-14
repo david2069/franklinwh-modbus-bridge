@@ -705,49 +705,167 @@
                 </template>
                 </div>
 
-                <!-- TOU import rates.
-                     RECORDED, NOT PRICED. The engine prices exports, demand and
-                     standing charges; there is no import-rate model, so these
-                     change no cost today. Shown because the AGL preset writes
-                     them and an invisible stored value is worse than a visible
-                     inert one — and because capturing them now means the
-                     numbers are already right when pricing lands. -->
-                <div x-show="tariffTab === 'import'" x-cloak>
-                  <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
-                    <div class="text-[11px] text-sky-400">TOU import rates
-                      <span class="text-slate-500">— recorded, not yet priced</span></div>
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Peak ($/kWh)</span>
-                        <input type="number" min="0" step="0.00001" x-model.number="serviceEdit.pricing.import_rates.peak"
-                               class="form-control !py-0.5 !text-xs"></label>
-                      <label class="flex flex-col gap-0.5"><span class="text-slate-500">Off-peak ($/kWh)</span>
-                        <input type="number" min="0" step="0.00001" x-model.number="serviceEdit.pricing.import_rates.off_peak"
-                               class="form-control !py-0.5 !text-xs"></label>
+                <!-- Seasonal TOU rates. Replaces the peak/off-peak placeholder:
+                     that could not express a plan whose import and export
+                     boundaries differ (AGL's peak import is 15:00-21:00 but its
+                     evening feed-in is 17:00-21:00), and it priced nothing. -->
+                <div x-show="tariffTab === 'import'" x-cloak class="space-y-2">
+                  <!-- Season tabs -->
+                  <div class="flex flex-wrap items-center gap-1 border-b border-white/[0.06] pb-1">
+                    <template x-for="(s, i) in seasons" :key="s.id || i">
+                      <button type="button" @click="seasonIdx = i; checkRates()"
+                              class="px-2 py-1 rounded-t text-[11px] border-b-2 transition-colors"
+                              :class="seasonIdx === i ? 'border-sky-400 text-sky-300'
+                                                      : 'border-transparent text-slate-400 hover:text-slate-200'">
+                        <span x-text="s.name || 'Season'"></span>
+                        <span class="text-slate-500"
+                              x-text="(s.months || []).length ? `${s.months.length} mo` : 'all year'"></span>
+                      </button>
+                    </template>
+                    <button type="button" @click="addSeason()"
+                            class="px-2 py-0.5 rounded text-[10px] border border-dashed border-white/20 text-slate-400 hover:text-slate-200">
+                      + Add season
+                    </button>
+                  </div>
+
+                  <template x-if="!seasons.length">
+                    <div class="text-[11px] text-slate-500 py-2">
+                      No seasonal rates yet. Add a season to price grid import and export —
+                      until then "cost this period" counts only demand, export charges and
+                      standing charges, not the energy itself.
                     </div>
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="text-slate-500">Peak from</span>
-                      <input type="time" x-model="serviceEdit.pricing.import_rates.peak_window.start" class="form-control !py-0.5 !text-xs w-24">
-                      <span class="text-slate-500">to</span>
-                      <input type="time" x-model="serviceEdit.pricing.import_rates.peak_window.end" class="form-control !py-0.5 !text-xs w-24">
-                      <label class="flex items-center gap-1.5 text-slate-400 ml-2">
-                        <input type="checkbox" x-model="serviceEdit.pricing.import_rates.gst_inclusive" class="accent-sky-500">
-                        GST inclusive</label>
-                    </div>
-                    <div class="flex flex-wrap gap-1">
-                      <template x-for="(mo, mi) in monthLabels" :key="'im'+mi">
-                        <button type="button" @click="toggleWinMonth(serviceEdit.pricing.import_rates.peak_window, mi+1)"
-                                class="px-1.5 py-0.5 rounded text-[10px] border"
-                                :class="(serviceEdit.pricing.import_rates.peak_window.months || []).includes(mi+1)
-                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'"
-                                x-text="mo"></button>
+                  </template>
+
+                  <template x-if="season">
+                    <div class="space-y-2">
+                      <div class="flex items-center gap-2 text-xs">
+                        <label class="flex items-center gap-1.5 flex-1">
+                          <span class="text-slate-500 shrink-0">Name</span>
+                          <input type="text" maxlength="60" x-model="season.name"
+                                 class="form-control !py-0.5 !text-xs w-full"></label>
+                        <button type="button" @click="removeSeason(seasonIdx)" x-show="seasons.length > 1"
+                                class="px-2 py-0.5 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">
+                          Remove
+                        </button>
+                      </div>
+
+                      <!-- Months. Exclusive across seasons: clicking one that
+                           belongs elsewhere MOVES it, so an overlap the
+                           resolver would have to arbitrate can't be created. -->
+                      <div>
+                        <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Months</div>
+                        <div class="flex flex-wrap gap-1">
+                          <template x-for="(mo, mi) in monthLabels" :key="'sm'+mi">
+                            <button type="button" @click="toggleMonth(mi+1)"
+                                    class="px-1.5 py-0.5 rounded text-[10px] border"
+                                    :title="monthOwner(mi+1) && !(season.months||[]).includes(mi+1)
+                                      ? `Belongs to ${monthOwner(mi+1)} — click to move it here` : ''"
+                                    :class="(season.months || []).includes(mi+1)
+                                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                                      : (monthOwner(mi+1) ? 'text-slate-600 border-white/5'
+                                                          : 'text-slate-400 border-white/10')"
+                                    x-text="mo"></button>
+                          </template>
+                        </div>
+                        <div class="text-[10px] text-slate-600 mt-0.5">
+                          Dimmed months belong to another season — click to move them here.
+                          No months = the catch-all, used only when no other season matches.
+                        </div>
+                      </div>
+
+                      <!-- Rate grid -->
+                      <div>
+                        <div class="flex items-center justify-between mb-1">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500">Rates — buy &amp; sell per wave</div>
+                          <button type="button" @click="copyRatesToAllSeasons()" x-show="seasons.length > 1"
+                                  class="px-2 py-0.5 rounded text-[10px] border border-white/10 text-slate-400 hover:text-slate-200">
+                            Copy rates → all seasons
+                          </button>
+                        </div>
+                        <div class="rounded border border-white/[0.06] divide-y divide-white/[0.06]">
+                          <template x-for="w in WAVE_IDS" :key="w">
+                            <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-2 py-1 text-xs">
+                              <span class="flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${WAVE_DOTS[w]}`"></span>
+                                <span x-text="WAVE_LABELS[w]"></span>
+                              </span>
+                              <label class="flex items-center gap-1"><span class="text-slate-500">buy $</span>
+                                <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].buy"
+                                       class="form-control !py-0.5 !text-xs w-24"></label>
+                              <label class="flex items-center gap-1"><span class="text-slate-500">sell $</span>
+                                <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].sell"
+                                       class="form-control !py-0.5 !text-xs w-24"></label>
+                              <span class="text-[10px]"
+                                    :class="waveUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
+                                    x-text="waveUsed(w) ? 'active' : 'not used'"></span>
+                            </div>
+                          </template>
+                        </div>
+                        <div class="text-[10px] text-slate-600 mt-0.5">
+                          A wave priced buy $0 is a free-import band. Waves are named, not
+                          price-derived — two may share a price and stay distinct.
+                        </div>
+                      </div>
+
+                      <!-- Time blocks -->
+                      <div>
+                        <div class="flex items-center justify-between mb-1">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500">Time blocks → wave</div>
+                          <button type="button" @click="addBlock()"
+                                  class="px-2 py-0.5 rounded text-[10px] border border-sky-500/40 text-sky-300 hover:bg-sky-500/10">
+                            + Add block
+                          </button>
+                        </div>
+                        <div class="space-y-1">
+                          <template x-for="(b, bi) in season.blocks" :key="bi">
+                            <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                              <input type="time" x-model="b.start" @change="checkRates()" class="form-control !py-0.5 !text-xs w-24">
+                              <span class="text-slate-500">to</span>
+                              <input type="time" x-model="b.end" @change="checkRates()" class="form-control !py-0.5 !text-xs w-24">
+                              <!-- Static options on purpose: x-model on a select
+                                   whose options come from x-for loses the bound
+                                   value on first render — every block displayed
+                                   the FIRST wave regardless of its real one, and
+                                   saving would have written that back. The wave
+                                   vocabulary is fixed, so there is nothing to
+                                   loop over anyway. -->
+                              <select x-model="b.wave" @change="checkRates()" class="form-control !py-0.5 !text-xs">
+                                <option value="super_off_peak">Super Off-Peak</option>
+                                <option value="off_peak">Off-Peak</option>
+                                <option value="mid_peak">Mid-Peak</option>
+                                <option value="on_peak">On-Peak</option>
+                              </select>
+                              <select :value="blockDayPreset(b)" @change="setBlockDays(b, $event.target.value)"
+                                      class="form-control !py-0.5 !text-xs">
+                                <option value="all">All days</option>
+                                <option value="weekdays">Weekdays</option>
+                                <option value="weekend">Weekend</option>
+                              </select>
+                              <button type="button" @click="removeBlock(bi)"
+                                      class="px-1.5 py-0.5 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">×</button>
+                            </div>
+                          </template>
+                        </div>
+                        <div class="text-[10px] text-slate-600 mt-0.5">
+                          An end at or before the start wraps past midnight. Blocks must cover
+                          all 24 h — uncovered hours are recorded as unpriced, not free.
+                        </div>
+                      </div>
+
+                      <!-- Validation, from the same resolver that does the pricing -->
+                      <template x-if="rateProblems.length">
+                        <div class="rounded border border-amber-500/30 bg-amber-500/10 p-2 space-y-0.5">
+                          <div class="text-[11px] text-amber-300">This plan won't price everything:</div>
+                          <template x-for="(p, pi) in rateProblems" :key="pi">
+                            <div class="text-[10px] text-amber-200/80" x-text="p"></div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="!rateProblems.length && seasons.length">
+                        <div class="text-[10px] text-emerald-400">Every hour of every month is priced.</div>
                       </template>
                     </div>
-                    <div class="text-[10px] text-slate-600">
-                      Off-peak applies outside the peak window. Nothing reads these yet —
-                      the billing engine has no import-rate model, so "cost this period"
-                      still covers only export charges, demand and standing charges.
-                    </div>
-                  </div>
+                  </template>
                 </div>
 
                 <!-- Fixed / standing charges (levied regardless of usage) -->

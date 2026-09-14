@@ -291,6 +291,9 @@ function settingsTab() {
             peak_window: { start: '15:00', end: '21:00', months: [] },
           },
           export_rates: (svc.pricing && svc.pricing.export_rates) || null,
+          // Seasonal rate model — deep-copied so edits don't mutate the loaded
+          // row before Save.
+          seasons: JSON.parse(JSON.stringify((svc.pricing && svc.pricing.seasons) || [])),
           export_charge: (svc.pricing && svc.pricing.export_charge) || {
             window: { months: [], days: [], start: '10:00', end: '15:00' },
             rate: 0.0123, free_kwh_per_day: 6.84,
@@ -311,6 +314,8 @@ function settingsTab() {
         : svc.has_export_bonus ? 'bonus'
         : (svc.pricing && svc.pricing.export_charge) ? 'charge'
         : 'fixed';
+      this.seasonIdx = 0;
+      this.rateProblems = [];
       this.serviceEditId = svc.id;
     },
 
@@ -840,6 +845,103 @@ function settingsTab() {
     },
 
     // Detection result for the gateway being edited: {detected, matches_declared, ...}
+    // ── Seasonal TOU rates (seasons -> blocks -> waves) ────
+    // Mirrors gateway/rate_model.py. The season owns months, a block owns
+    // hours (and optionally weekdays), a wave owns the {buy, sell} pair —
+    // because a plan's import and export boundaries need not align.
+    WAVE_IDS: ['super_off_peak', 'off_peak', 'mid_peak', 'on_peak'],
+    WAVE_LABELS: {
+      super_off_peak: 'Super Off-Peak', off_peak: 'Off-Peak',
+      mid_peak: 'Mid-Peak', on_peak: 'On-Peak',
+    },
+    WAVE_DOTS: {
+      super_off_peak: '#3b82f6', off_peak: '#64748b',
+      mid_peak: '#f59e0b', on_peak: '#ef4444',
+    },
+    seasonIdx: 0,
+    rateProblems: [],
+
+    get seasons() { return (this.serviceEdit?.pricing?.seasons) || []; },
+    get season() { return this.seasons[this.seasonIdx] || null; },
+
+    _blankSeason(name) {
+      const waves = {};
+      for (const w of this.WAVE_IDS) waves[w] = { buy: 0, sell: 0 };
+      return {
+        id: 'season_' + Date.now().toString(36),
+        name: name || `Season ${this.seasons.length + 1}`,
+        months: [],
+        waves,
+        // One all-day block so a new season is valid immediately rather than
+        // failing validation before it has been touched.
+        blocks: [{ start: '00:00', end: '24:00', wave: 'off_peak', days: [] }],
+      };
+    },
+    addSeason() {
+      if (!this.serviceEdit.pricing.seasons) this.serviceEdit.pricing.seasons = [];
+      this.serviceEdit.pricing.seasons.push(this._blankSeason());
+      this.seasonIdx = this.seasons.length - 1;
+      this.checkRates();
+    },
+    removeSeason(i) {
+      this.serviceEdit.pricing.seasons.splice(i, 1);
+      this.seasonIdx = Math.max(0, Math.min(this.seasonIdx, this.seasons.length - 1));
+      this.checkRates();
+    },
+    monthOwner(m) {
+      const s = this.seasons.find((x) => (x.months || []).includes(m));
+      return s ? s.name : null;
+    },
+    // Months are EXCLUSIVE across seasons: clicking one that belongs elsewhere
+    // moves it, rather than silently creating an overlap the resolver would
+    // have to arbitrate.
+    toggleMonth(m) {
+      if (!this.season) return;
+      const mine = (this.season.months || []).includes(m);
+      for (const s of this.seasons) {
+        s.months = (s.months || []).filter((x) => x !== m);
+      }
+      if (!mine) this.season.months.push(m);
+      this.season.months.sort((a, b) => a - b);
+      this.checkRates();
+    },
+    addBlock() {
+      this.season.blocks.push({ start: '00:00', end: '06:00', wave: 'off_peak', days: [] });
+      this.checkRates();
+    },
+    removeBlock(i) { this.season.blocks.splice(i, 1); this.checkRates(); },
+    // Presets rather than seven toggles — every plan we've seen uses one of
+    // these three shapes.
+    setBlockDays(block, preset) {
+      block.days = preset === 'weekdays' ? [0, 1, 2, 3, 4]
+        : preset === 'weekend' ? [5, 6] : [];
+      this.checkRates();
+    },
+    blockDayPreset(block) {
+      const d = (block.days || []).join(',');
+      if (d === '0,1,2,3,4') return 'weekdays';
+      if (d === '5,6') return 'weekend';
+      return 'all';
+    },
+    // A wave nothing references is dead weight in the grid — say so rather
+    // than implying its price applies.
+    waveUsed(w) {
+      return (this.season?.blocks || []).some((b) => b.wave === w);
+    },
+    copyRatesToAllSeasons() {
+      if (!this.season) return;
+      const src = JSON.parse(JSON.stringify(this.season.waves));
+      for (const s of this.seasons) if (s !== this.season) s.waves = JSON.parse(JSON.stringify(src));
+      Alpine.store('app').toast('Rates copied to every season', 'info');
+    },
+    async checkRates() {
+      const data = await fetchJSON('api/tariff/validate-rates', {
+        method: 'POST',
+        body: JSON.stringify({ seasons: this.seasons }),
+      });
+      this.rateProblems = (data && data.problems) || [];
+    },
+
     // ── Tariff sub-tabs ────────────────────────────────────
     // The four tariff components are long forms; stacked, the service editor
     // scrolled for pages. Only one is edited at a time.
@@ -853,9 +955,8 @@ function settingsTab() {
         { id: 'charge', label: 'Export charge', on: () => !!e.has_export_charge },
         { id: 'fixed', label: 'Standing charges',
           on: () => (pricing.fixed_charges || []).length > 0 },
-        { id: 'import', label: 'TOU import rates',
-          on: () => !!(pricing.import_rates
-            && (pricing.import_rates.peak || pricing.import_rates.off_peak)) },
+        { id: 'import', label: 'TOU rates',
+          on: () => (pricing.seasons || []).length > 0 },
       ];
     },
 

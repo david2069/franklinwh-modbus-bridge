@@ -329,6 +329,26 @@ async def switch_plan(service_id: str, body: PlanSwitch, request: Request):
     return {"service": row, "period_closed": closed}
 
 
+class RateValidateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    seasons: list[dict] = Field(default_factory=list)
+
+
+@router.post("/tariff/validate-rates")
+async def validate_rates(body: RateValidateBody):
+    """Check a season/wave plan before it is saved.
+
+    Server-side because the resolver is the authority on what it will actually
+    price — a UI that validated separately would drift from it. Returns
+    ``{ok, problems: [...]}`` where problems are plain sentences.
+    """
+    from franklinwh_bridge.gateway.rate_model import WAVE_LABELS, validate
+
+    problems = validate(body.seasons)
+    return {"ok": not problems, "problems": problems, "wave_labels": WAVE_LABELS}
+
+
 @router.get("/services/{service_id}/history-count")
 async def service_history_count(service_id: str, request: Request):
     """How many closed billing periods this service produced — the UI uses it
