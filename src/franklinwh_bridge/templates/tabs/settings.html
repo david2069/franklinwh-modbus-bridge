@@ -874,35 +874,49 @@
                         <div class="rounded border border-white/[0.06] divide-y divide-white/[0.06]">
                           <template x-for="w in WAVE_IDS" :key="w">
                             <div class="px-2 py-1 text-xs space-y-1">
-                              <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2">
+                              <div class="flex items-center justify-between gap-2">
                                 <span class="flex items-center gap-1.5">
                                   <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${WAVE_DOTS[w]}`"></span>
                                   <span x-text="WAVE_LABELS[w]"></span>
                                 </span>
-                                <label class="flex items-center gap-1" x-show="!isTiered(w, 'buy')">
-                                  <span class="text-slate-500">buy $</span>
-                                  <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].buy"
-                                         class="form-control !py-0.5 !text-xs w-24"></label>
-                                <span x-show="isTiered(w, 'buy')" class="text-slate-500">buy: tiered</span>
-                                <label class="flex items-center gap-1" x-show="!isTiered(w, 'sell')">
-                                  <span class="text-slate-500">sell $</span>
-                                  <input type="number" min="0" step="0.00001" x-model.number="season.waves[w].sell"
-                                         class="form-control !py-0.5 !text-xs w-24"></label>
-                                <span x-show="isTiered(w, 'sell')" class="text-slate-500">sell: tiered</span>
-                                <span class="text-[10px]"
+                                <span class="text-[10px] shrink-0"
                                       :class="waveUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
                                       x-text="waveUsed(w) ? 'active' : 'not used'"></span>
                               </div>
+                              <!-- Flat/Tiered is a visible switch per side, not a
+                                   text link under the row. Tiering was there but
+                                   unfindable — especially on a phone, where the
+                                   link sat below the fold of its own row. -->
+                              <template x-for="side in ['buy', 'sell']" :key="w + side + 'h'">
+                                <div class="flex items-center gap-1.5">
+                                  <span class="text-slate-500 w-8 shrink-0" x-text="side"></span>
+                                  <template x-if="!isTiered(w, side)">
+                                    <label class="flex items-center gap-1 flex-1 min-w-0">
+                                      <span class="text-slate-500">$</span>
+                                      <input type="number" min="0" step="0.00001"
+                                             x-model.number="season.waves[w][side]"
+                                             class="form-control !py-0.5 !text-xs w-24"></label>
+                                  </template>
+                                  <template x-if="isTiered(w, side)">
+                                    <span class="flex-1 text-slate-500"
+                                          x-text="`${season.waves[w][side].length} tiers`"></span>
+                                  </template>
+                                  <span class="flex rounded overflow-hidden border border-white/10 shrink-0">
+                                    <button type="button" @click="makeFlat(w, side)"
+                                            class="px-1.5 py-0.5 text-[10px] transition-colors"
+                                            :class="!isTiered(w, side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Flat</button>
+                                    <button type="button" @click="isTiered(w, side) || makeTiered(w, side)"
+                                            class="px-1.5 py-0.5 text-[10px] transition-colors"
+                                            :class="isTiered(w, side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Tiered</button>
+                                  </span>
+                                </div>
+                              </template>
 
                               <!-- Tier ladders. Priced by cumulative import this
                                    billing period, so the last tier must be
                                    unbounded or consumption above it has no price. -->
                               <template x-for="side in ['buy', 'sell']" :key="w + side">
                                 <div>
-                                  <button type="button" x-show="!isTiered(w, side)"
-                                          @click="makeTiered(w, side)"
-                                          class="text-[10px] text-slate-500 hover:text-sky-300"
-                                          x-text="`make ${side} tiered`"></button>
                                   <!-- x-if, not x-show: x-show only hides, and the
                                        x-for inside still evaluates. Iterating a
                                        NUMBER (a flat rate like 0.21626) made Alpine
@@ -916,8 +930,6 @@
                                       <span class="flex gap-1">
                                         <button type="button" @click="addTier(w, side)"
                                                 class="text-[10px] text-sky-300 hover:text-sky-200">+ tier</button>
-                                        <button type="button" @click="makeFlat(w, side)"
-                                                class="text-[10px] text-slate-500 hover:text-slate-300">use one rate</button>
                                       </span>
                                     </div>
                                     <template x-for="(t, ti) in season.waves[w][side]" :key="ti">
@@ -966,10 +978,19 @@
                         </div>
                         <div class="space-y-1">
                           <template x-for="(b, bi) in season.blocks" :key="bi">
-                            <div class="flex flex-wrap items-center gap-1.5 text-xs">
-                              <input type="time" x-model="b.start" @change="checkRates()" class="form-control !py-0.5 !text-xs w-24">
+                            <!-- Two rows on a phone (times, then wave + days),
+                                 one row on a wide screen. It was four rows deep
+                                 per block because the selects stretched full
+                                 width once the flex wrapped — six blocks filled
+                                 a phone screen with almost no information. -->
+                            <div class="text-xs rounded border border-white/[0.06] p-1 space-y-1
+                                        sm:border-0 sm:p-0 sm:space-y-0 sm:flex sm:items-center sm:gap-1.5">
+                              <div class="flex items-center gap-1.5">
+                              <input type="time" x-model="b.start" @change="checkRates()" class="form-control !py-0.5 !text-xs w-[5.5rem]">
                               <span class="text-slate-500">to</span>
-                              <input type="time" x-model="b.end" @change="checkRates()" class="form-control !py-0.5 !text-xs w-24">
+                              <input type="time" x-model="b.end" @change="checkRates()" class="form-control !py-0.5 !text-xs w-[5.5rem]">
+                              </div>
+                              <div class="flex items-center gap-1.5">
                               <!-- Static options on purpose: x-model on a select
                                    whose options come from x-for loses the bound
                                    value on first render — every block displayed
@@ -977,20 +998,22 @@
                                    saving would have written that back. The wave
                                    vocabulary is fixed, so there is nothing to
                                    loop over anyway. -->
-                              <select x-model="b.wave" @change="checkRates()" class="form-control !py-0.5 !text-xs">
+                              <select x-model="b.wave" @change="checkRates()"
+                                      class="form-control !py-0.5 !text-xs flex-1 min-w-0 sm:flex-none sm:w-32">
                                 <option value="super_off_peak">Super Off-Peak</option>
                                 <option value="off_peak">Off-Peak</option>
                                 <option value="mid_peak">Mid-Peak</option>
                                 <option value="on_peak">On-Peak</option>
                               </select>
                               <select :value="blockDayPreset(b)" @change="setBlockDays(b, $event.target.value)"
-                                      class="form-control !py-0.5 !text-xs">
+                                      class="form-control !py-0.5 !text-xs flex-1 min-w-0 sm:flex-none sm:w-28">
                                 <option value="all">All days</option>
                                 <option value="weekdays">Weekdays</option>
                                 <option value="weekend">Weekend</option>
                               </select>
                               <button type="button" @click="removeBlock(bi)"
-                                      class="px-1.5 py-0.5 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">×</button>
+                                      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">×</button>
+                              </div>
                             </div>
                           </template>
                         </div>
