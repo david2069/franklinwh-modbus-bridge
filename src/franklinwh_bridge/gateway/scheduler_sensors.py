@@ -716,6 +716,21 @@ SENSORS: list[SensorDef] = [
         lambda p, n: _rate_now(p, n)["sell"],
     ),
 
+    # ── Grid connection (network's grant, not a plan term) ─
+    SensorDef(
+        "service.pto_status", "Permission To Operate (network approval)", None, "enum",
+        lambda p, _n: _text(p, "service_pto_status"),
+    ),
+    SensorDef(
+        "service.pto_approved",
+        "Network has approved export for this connection", None, "bool",
+        lambda p, _n: (
+            None if not _text(p, "service_pto_status")
+            or _text(p, "service_pto_status") == "unknown"
+            else _text(p, "service_pto_status") == "approved"
+        ),
+    ),
+
     # ── Where the service is billed (informational) ──
     SensorDef(
         "service.country", "Service country (ISO code)", None, "enum",

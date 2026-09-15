@@ -54,6 +54,8 @@ class BillingStore:
             "retailer": "",
             "network": "",
             "plan_version": 1,
+            # Network's grant against the connection point, not a plan term.
+            "pto_status": "unknown",
         }
 
     async def load(self) -> None:
@@ -84,6 +86,7 @@ class BillingStore:
                     "retailer": (s.get("retailer") or "").strip(),
                     "network": (s.get("network") or "").strip(),
                     "plan_version": int(s.get("plan_version") or 1),
+                    "pto_status": (s.get("pto_status") or "unknown").strip(),
                 }
             pricing = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
             cycle_day = int(_num(pricing.get("billing_cycle_day"), 1)) or 1
@@ -180,4 +183,5 @@ class BillingStore:
             # the other (see service.tz_matches_clock).
             "service_country": self._plan["country"],
             "service_timezone": self._plan["timezone"],
+            "service_pto_status": self._plan["pto_status"],
         }

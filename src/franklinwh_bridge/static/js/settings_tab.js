@@ -267,6 +267,12 @@ function settingsTab() {
         discharging_allowed: svc.discharging_allowed !== false,
         // where the service is billed (migration 38). Blank = not stated; the
         // form never pre-fills a guess, so an empty field means empty on file.
+        // Connection-level (network's grant) vs retail — kept distinct so a
+        // plan switch can preserve the first.
+        network: svc.network || '',
+        retailer: svc.retailer || '',
+        pto_status: svc.pto_status || 'unknown',
+        pto_reference: svc.pto_reference || '',
         country: svc.country || '',
         timezone: svc.timezone || '',
         // calculation method + rates (stored in the pricing JSON)
@@ -428,6 +434,61 @@ function settingsTab() {
         'info',
       );
     },
+
+    // ── Share a tariff profile ─────────────────────────────
+    async exportService(id) {
+      const data = await fetchJSON(`api/services/${id}/export`);
+      if (!data || data.error) {
+        Alpine.store('app').toast('Export failed', 'error');
+        return;
+      }
+      const name = (data.profile?.name || 'tariff').replace(/[^\w.-]+/g, '_');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${name}-tariff.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      Alpine.store('app').toast('Tariff profile exported', 'info');
+    },
+
+    importReport: null,
+    importBundle: null,
+    async pickImportFile(ev, serviceId) {
+      const file = ev.target.files?.[0];
+      ev.target.value = '';          // allow re-picking the same file
+      if (!file) return;
+      let bundle;
+      try {
+        bundle = JSON.parse(await file.text());
+      } catch (_) {
+        Alpine.store('app').toast('That file is not valid JSON', 'error');
+        return;
+      }
+      this.importBundle = { bundle, serviceId };
+      // Dry run FIRST, always: importing overwrites rates that price real
+      // money, so it must never be one unconfirmed click.
+      this.importReport = await fetchJSON('api/services/import', {
+        method: 'POST', body: JSON.stringify(bundle),
+      });
+    },
+    async confirmImport() {
+      const { bundle, serviceId } = this.importBundle || {};
+      const q = serviceId ? `?dry_run=false&service_id=${encodeURIComponent(serviceId)}`
+                          : '?dry_run=false';
+      const res = await fetchJSON(`api/services/import${q}`, {
+        method: 'POST', body: JSON.stringify(bundle),
+      });
+      if (res && res.applied_to) {
+        Alpine.store('app').toast('Tariff profile imported', 'info');
+        this.importReport = null; this.importBundle = null;
+        await this.loadServices();
+        if (this.serviceEditId) this.cancelServiceEdit();
+      } else {
+        Alpine.store('app').toast('Import failed: ' + (res?.detail || 'unknown'), 'error');
+      }
+    },
+    cancelImport() { this.importReport = null; this.importBundle = null; },
 
     async saveService() {
       const isNew = this.serviceEditId === 'new';

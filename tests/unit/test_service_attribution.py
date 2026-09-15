@@ -8,6 +8,8 @@ retire a provider was to delete it, taking its history with it.
 
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 
 from franklinwh_bridge.store.db import (
@@ -156,3 +158,52 @@ async def test_a_disabled_service_stops_pricing(db):
     await store.load()
 
     assert store.plan()["retailer"] != "AGL"
+
+
+# ── Connection vs retail ──────────────────────────────────────
+# PTO and the approved export limit are the NETWORK's grant against the
+# connection point. They are not terms of the retail plan and must outlive it.
+
+
+@pytest.mark.asyncio
+async def test_switching_retailer_preserves_the_network_grant(db):
+    """Switching AGL -> Origin leaves the Ausgrid approval alone. Previously
+    this held only because start_new_plan happened not to mention the fields."""
+    svc = await create_service(db, name="Home")
+    await update_service(
+        db, svc["id"], retailer="AGL", network="Ausgrid",
+        pto_status="approved", pto_reference="PTO-12345", export_limit_kw=5.0,
+    )
+
+    await start_new_plan(db, svc["id"], retailer="Origin")
+
+    row = await get_service(db, svc["id"])
+    assert row["retailer"] == "Origin", "the retailer did change"
+    assert row["network"] == "Ausgrid"
+    assert row["pto_status"] == "approved"
+    assert row["pto_reference"] == "PTO-12345"
+    assert row["export_limit_kw"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_pto_defaults_to_unknown_not_approved(db):
+    """An unrecorded approval must never read as granted."""
+    svc = await create_service(db, name="Fresh")
+
+    assert (await get_service(db, svc["id"]))["pto_status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_pto_sensor_treats_unknown_as_unknown(db):
+    """service.pto_approved is None when unrecorded — not False, which would
+    read as 'refused', and not True, which would invite exporting."""
+    from franklinwh_bridge.gateway.scheduler_sensors import snapshot
+
+    now = dt.datetime(2026, 1, 1)
+
+    def approved(status):
+        return snapshot({"service_pto_status": status}, now)["service.pto_approved"]
+
+    assert approved("unknown") is None
+    assert approved("approved") is True
+    assert approved("pending") is False

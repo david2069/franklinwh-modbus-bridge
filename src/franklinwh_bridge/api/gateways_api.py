@@ -8,6 +8,7 @@ endpoints (points, command, models, battery limits).
 from __future__ import annotations
 
 import logging
+import time
 from zoneinfo import ZoneInfo
 
 import aiosqlite
@@ -249,6 +250,13 @@ class ServiceUpdate(BaseModel):
     network: str | None = Field(default=None, max_length=120)
     # Retiring a service stops it pricing anything but keeps its history.
     enabled: bool | None = None
+    # ── Connection-level, granted by the NETWORK (migration 42) ──
+    # Not plan terms: these survive a change of retailer or plan.
+    pto_status: str | None = Field(
+        default=None, pattern=r"^(unknown|none|pending|approved)$"
+    )
+    pto_date: float | None = None
+    pto_reference: str | None = Field(default=None, max_length=120)
 
     @field_validator("country")
     @classmethod
@@ -329,6 +337,110 @@ async def switch_plan(service_id: str, body: PlanSwitch, request: Request):
     if store is not None:
         await store.load()
     return {"service": row, "period_closed": closed}
+
+
+# ── Tariff profile export / import ────────────────────────────
+# Mirrors the schedule bundle (schedules_api) so both share one idea of what a
+# shareable artefact looks like.
+_TARIFF_EXPORT_TYPE = "franklinwh-bridge/tariff-profile"
+_TARIFF_EXPORT_VERSION = 1
+
+#: What travels. Deliberately EXCLUDES anything identifying: meter number,
+#: account, PTO reference and the network's approval are specific to one
+#: connection and must not be shared with a plan. A profile describes a TARIFF,
+#: not a customer.
+_PORTABLE_SERVICE_FIELDS = (
+    "name", "retailer", "network", "plan_type", "country", "timezone",
+    "has_tou", "has_peak_demand", "has_export_bonus", "min_monthly_bill",
+    "demand_window", "bonus_window", "pricing",
+)
+
+
+@router.get("/services/{service_id}/export")
+async def export_service(service_id: str, request: Request):
+    """Export a service's tariff as a portable profile.
+
+    Identifying fields are stripped: sharing a plan should not share a meter
+    number, an account, or a network approval that belongs to one connection.
+    """
+    row = await get_service(request.app.state.db, service_id)
+    if row is None:
+        raise HTTPException(404, f"Service '{service_id}' not found")
+    profile = {k: row.get(k) for k in _PORTABLE_SERVICE_FIELDS}
+    return {
+        "type": _TARIFF_EXPORT_TYPE,
+        "version": _TARIFF_EXPORT_VERSION,
+        "exported_at": time.time(),
+        "profile": profile,
+    }
+
+
+class TariffImportBundle(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str | None = None
+    version: int | None = None
+    exported_at: float | None = None
+    profile: dict = Field(default_factory=dict)
+
+
+@router.post("/services/import")
+async def import_service(
+    bundle: TariffImportBundle, request: Request,
+    dry_run: bool = True, service_id: str | None = None,
+):
+    """Validate a tariff profile, and optionally apply it.
+
+    ``dry_run=true`` (the default) reports what would happen without touching
+    anything — importing a tariff overwrites rates that price real money, so it
+    should never be a single unconfirmed click.
+
+    With ``service_id`` the profile is applied to that service, leaving its
+    identity and network grant intact. Without one, a new service is created.
+    """
+    from franklinwh_bridge.gateway.rate_model import validate as validate_rates
+
+    if bundle.type and bundle.type != _TARIFF_EXPORT_TYPE:
+        raise HTTPException(400, f"unexpected bundle type '{bundle.type}'")
+
+    profile = {k: v for k, v in bundle.profile.items() if k in _PORTABLE_SERVICE_FIELDS}
+    unknown = sorted(set(bundle.profile) - set(_PORTABLE_SERVICE_FIELDS))
+    pricing = profile.get("pricing") if isinstance(profile.get("pricing"), dict) else {}
+    problems = validate_rates(pricing.get("seasons")) if pricing.get("seasons") else []
+
+    report = {
+        "ok": not problems,
+        "name": profile.get("name"),
+        "retailer": profile.get("retailer"),
+        "network": profile.get("network"),
+        "seasons": len(pricing.get("seasons") or []),
+        "rate_problems": problems,
+        # Named rather than silently dropped: a profile from a newer bridge may
+        # carry fields this one doesn't understand, and the user should know
+        # what didn't come across.
+        "ignored_fields": unknown,
+    }
+    if dry_run:
+        return report
+    if problems:
+        raise HTTPException(400, "profile has rate problems; fix them or import as dry run")
+
+    db: aiosqlite.Connection = request.app.state.db
+    if service_id:
+        if await get_service(db, service_id) is None:
+            raise HTTPException(404, f"Service '{service_id}' not found")
+        # Identity and the network's grant stay put — only the tariff lands.
+        applied = {k: v for k, v in profile.items() if k != "name" and v is not None}
+        row = await update_service(db, service_id, **applied)
+    else:
+        row = await create_service(db, name=profile.get("name") or "Imported tariff")
+        applied = {k: v for k, v in profile.items() if k != "name" and v is not None}
+        row = await update_service(db, row["id"], **applied)
+
+    store = getattr(request.app.state, "billing", None)
+    if store is not None:
+        await store.load()
+    return {**report, "applied_to": row["id"]}
 
 
 class RateValidateBody(BaseModel):

@@ -432,6 +432,40 @@
         </template>
       </div>
 
+      <!-- Import review. Always a dry run first: a tariff import overwrites
+           rates that price real money. -->
+      <template x-if="importReport">
+        <div class="rounded border p-2 mb-2 space-y-1"
+             :class="importReport.ok ? 'border-cyan-500/30 bg-cyan-500/10' : 'border-amber-500/30 bg-amber-500/10'">
+          <div class="text-xs" :class="importReport.ok ? 'text-cyan-300' : 'text-amber-300'">
+            Import <span class="font-semibold" x-text="importReport.name || 'profile'"></span>
+            <span class="text-slate-400" x-show="importReport.retailer"
+                  x-text="`· ${importReport.retailer}${importReport.network ? ' / ' + importReport.network : ''}`"></span>
+          </div>
+          <div class="text-[11px] text-slate-400">
+            <span x-text="`${importReport.seasons} season(s) of rates`"></span>
+            <span x-show="importReport.ignored_fields?.length"
+                  x-text="` · ignoring: ${importReport.ignored_fields.join(', ')}`"></span>
+          </div>
+          <template x-if="importReport.rate_problems?.length">
+            <div class="space-y-0.5">
+              <template x-for="(p, pi) in importReport.rate_problems" :key="pi">
+                <div class="text-[10px] text-amber-200/80" x-text="p"></div>
+              </template>
+            </div>
+          </template>
+          <div class="text-[10px] text-slate-500">
+            This replaces the tariff on that service. Its meter, account and network
+            approval are not touched.
+          </div>
+          <div class="flex gap-2 pt-0.5">
+            <button @click="confirmImport()" :disabled="!importReport.ok"
+                    class="btn btn-sm btn-primary disabled:opacity-40">Apply</button>
+            <button @click="cancelImport()" class="btn btn-sm btn-secondary">Cancel</button>
+          </div>
+        </div>
+      </template>
+
       <!-- Services list (customer-declared) -->
       <div class="space-y-2">
         <template x-for="svc in services" :key="svc.id">
@@ -439,6 +473,14 @@
             <div class="flex justify-between items-center mb-1.5">
               <span class="font-medium text-slate-200 text-sm" x-text="svc.name"></span>
               <div class="flex gap-2.5 items-center">
+                <button @click="exportService(svc.id)" class="btn btn-sm btn-secondary"
+                        title="Download this tariff as a shareable profile (no meter, account or network approval)">Export</button>
+                <label class="btn btn-sm btn-secondary cursor-pointer"
+                       title="Load a tariff profile into this service — you'll see what changes before anything is applied">
+                  Import
+                  <input type="file" accept="application/json" class="hidden"
+                         @change="pickImportFile($event, svc.id)">
+                </label>
                 <button @click="editService(svc)" class="btn btn-sm btn-secondary">Edit</button>
                 <button @click="deleteService(svc)" title="Delete service"
                         class="text-red-400/60 hover:text-red-400 transition-colors">
@@ -508,10 +550,45 @@
                     </button>
                   </div>
                 </div>
+                <!-- GRID CONNECTION — the network's grant against the connection
+                     point (your meter/NMI). Separate from the plan on purpose:
+                     PTO and the approved export limit survive a change of
+                     retailer or plan, and filing them under "Electricity plan"
+                     said otherwise. -->
+                <div class="rounded border border-white/[0.06] p-2 space-y-2">
+                  <div class="text-[11px] text-teal-400">Grid connection
+                    <span class="text-slate-500">→ granted by the network, survives a retailer or plan change</span></div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">Network / DNSP</span>
+                      <input type="text" maxlength="120" placeholder="e.g. Ausgrid"
+                             x-model="serviceEdit.network" class="form-control !py-0.5 !text-xs"></label>
+                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">Permission To Operate</span>
+                      <select x-model="serviceEdit.pto_status" class="form-control !py-0.5 !text-xs">
+                        <option value="unknown">— not recorded —</option>
+                        <option value="none">Not applied for</option>
+                        <option value="pending">Applied — pending</option>
+                        <option value="approved">Approved</option>
+                      </select></label>
+                    <label class="flex flex-col gap-0.5"><span class="text-slate-500">PTO reference</span>
+                      <input type="text" maxlength="120" x-model="serviceEdit.pto_reference"
+                             class="form-control !py-0.5 !text-xs"></label>
+                  </div>
+                  <div class="text-[10px] text-slate-600">
+                    Export permission and the approved kW limit below come from here, not
+                    from your plan — switching retailer doesn't change them.
+                    <code class="text-slate-500">service.pto_approved</code> is referenceable
+                    in Automations.
+                  </div>
+                </div>
+
                 <!-- Plan description + what the plan permits. plan_type is
                      informational; the permissions publish as service.* sensors. -->
                 <div class="rounded border border-white/[0.06] p-2 space-y-2">
-                  <div class="text-[11px] text-cyan-400">Electricity plan <span class="text-slate-500">→ service.* sensors for Automations</span></div>
+                  <div class="text-[11px] text-cyan-400">Retail plan
+                    <span class="text-slate-500">→ changes when you switch retailer or re-contract</span></div>
+                  <label class="flex flex-col gap-0.5 text-xs"><span class="text-slate-500">Retailer</span>
+                    <input type="text" maxlength="120" placeholder="e.g. AGL"
+                           x-model="serviceEdit.retailer" class="form-control !py-0.5 !text-xs"></label>
                   <div class="grid grid-cols-2 gap-3 text-xs">
                     <!-- Derived from the rates, not chosen. As a dropdown it could
                          say "Flat rate" over a four-season TOU plan and nothing
@@ -529,7 +606,7 @@
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
                     <label class="flex items-center gap-1.5"
-                           title="May energy leave the property at all — from solar OR the battery."><input type="checkbox" x-model="serviceEdit.export_allowed" class="accent-emerald-500"> Export to grid allowed</label>
+                           title="May energy leave the property at all — from solar OR the battery. Granted by the network, not the retailer."><input type="checkbox" x-model="serviceEdit.export_allowed" class="accent-emerald-500"> Export to grid allowed</label>
                     <label class="flex items-center gap-1.5"
                            title="May the battery charge from the grid."><input type="checkbox" x-model="serviceEdit.charging_allowed" class="accent-emerald-500"> Battery charging permitted</label>
                     <label class="flex items-center gap-1.5"

@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 41
+CURRENT_SCHEMA_VERSION = 42
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -643,6 +643,20 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE billing_periods ADD COLUMN energy_cost REAL NOT NULL DEFAULT 0;
     ALTER TABLE billing_periods ADD COLUMN energy_credit REAL NOT NULL DEFAULT 0;
     """,
+    42: """
+    -- Permission To Operate: the NETWORK's approval of the connection, not a
+    -- term of the retail plan. It is issued against the connection point (the
+    -- meter/NMI this service already identifies) and SURVIVES a change of
+    -- retailer or plan — which is exactly the distinction the service model
+    -- was missing, having filed every permission under "Electricity plan".
+    --
+    -- export_limit_kw is re-read as the network-APPROVED limit rather than a
+    -- plan preference; no second limit column, because two limits invite the
+    -- question of which one wins.
+    ALTER TABLE services ADD COLUMN pto_status TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE services ADD COLUMN pto_date REAL;
+    ALTER TABLE services ADD COLUMN pto_reference TEXT NOT NULL DEFAULT '';
+    """,
 }
 
 
@@ -992,6 +1006,8 @@ _SERVICE_FIELDS = (
     # Lifecycle + supplier identity (migration 40). A retired service keeps its
     # history; retailer and network change independently of each other.
     "enabled", "retailer", "network", "plan_version", "plan_started_at",
+    # Connection-level, granted by the network (migration 42).
+    "pto_status", "pto_date", "pto_reference",
     # Where the service is billed (migration 38). Advisory: records the
     # timezone the plan's TOU windows are written in so it can be checked
     # against the clock the engine actually runs on.
@@ -1405,6 +1421,12 @@ async def start_new_plan(
 
     History is untouched: closed periods carry their own snapshot of retailer,
     network and plan_version, so they keep reading as what they were.
+
+    CONNECTION-LEVEL fields are deliberately NOT touched: PTO, its date and
+    reference, and the approved export limit are the network's grant against
+    the connection point. They survive a change of retailer or plan, and a
+    test pins that — previously they were preserved only because this function
+    happened not to mention them.
     """
     row = await get_service(db, service_id)
     if row is None:
