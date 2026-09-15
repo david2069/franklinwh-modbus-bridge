@@ -344,3 +344,18 @@ def test_the_new_key_wins_when_both_are_present():
     }]
 
     assert resolve(both, at(1, 12))["buy"] == 0.25
+
+
+def test_midnight_end_is_accepted_both_ways():
+    """24:00 is how the FranklinWH cloud writes end-of-day; <input type="time">
+    can only show 00:00. Both must mean the same thing, or importing a
+    cloud-authored plan would silently change it."""
+    def day(end):
+        return [{"id": "s", "months": [], "time_periods": PEAK_PERIODS,
+                 "blocks": [{"start": "00:00", "end": "21:00", "time_period": "off_peak"},
+                            {"start": "21:00", "end": end, "time_period": "on_peak"}]}]
+
+    for end in ("24:00", "00:00"):
+        assert resolve(day(end), at(1, 22))["time_period"] == "on_peak", end
+        assert resolve(day(end), at(1, 10))["time_period"] == "off_peak", end
+        assert validate(day(end)) == [], end

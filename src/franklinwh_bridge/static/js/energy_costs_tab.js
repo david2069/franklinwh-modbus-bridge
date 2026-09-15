@@ -145,6 +145,43 @@ function energyCostsTab() {
     },
     get linked() { return this.overview?.linked || []; },
 
+    // ── history grouped by who supplied it ─────────────────
+    // Periods carry a snapshot of retailer / network / plan_version taken when
+    // they closed (migration 40), so a switch is visible in history rather
+    // than silently blending two plans into one trend.
+    get historyGroups() {
+      const out = [];
+      for (const p of this.history) {                     // newest first
+        const key = `${p.retailer || ''}|${p.network || ''}|${p.plan_version || 1}`;
+        const last = out[out.length - 1];
+        if (last && last.key === key) {
+          last.periods.push(p);
+        } else {
+          out.push({
+            key,
+            retailer: p.retailer || '',
+            network: p.network || '',
+            plan_version: p.plan_version || 1,
+            periods: [p],
+          });
+        }
+      }
+      // Totals per plan, so "what did AGL cost me" is answerable without
+      // adding up rows by eye.
+      for (const g of out) {
+        g.net = g.periods.reduce((t, p) => t + Number(p.net_total || 0), 0);
+        g.energy = g.periods.reduce((t, p) => t + Number(p.energy_cost || 0), 0);
+        g.credit = g.periods.reduce(
+          (t, p) => t + Number(p.energy_credit || 0) + Number(p.reward_credit || 0), 0);
+      }
+      return out;
+    },
+    groupLabel(g) {
+      const who = [g.retailer, g.network].filter(Boolean).join(' / ');
+      if (!who) return `Plan ${g.plan_version} — provider not recorded`;
+      return `${who} · plan ${g.plan_version}`;
+    },
+
     // ── history / reporting ────────────────────────────────
     /** Periods oldest→newest for the chart (history arrives newest-first). */
     get historyChrono() { return [...this.history].reverse(); },

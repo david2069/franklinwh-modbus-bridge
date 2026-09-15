@@ -100,3 +100,32 @@ def test_billable_defaults_to_true_when_the_flag_is_absent():
     windows = [{"months": [], "days": [], "start": "11:00", "end": "13:00"}]
 
     assert snapshot({"tariff_import_windows": windows}, MON_NOON)["tariff.import_billable"] is True
+
+
+# ── HA action phases ──────────────────────────────────────────
+
+
+def _phase_actions(actions, phase):
+    """Mirrors the engine's filter: which actions run in this phase."""
+    return [a for a in actions if (a.get("when") or "fire") in (phase, "both")]
+
+
+def test_both_runs_on_entry_and_on_exit():
+    """One action announcing the start AND end of a window, rather than two
+    rows the user has to keep in step."""
+    actions = [
+        {"name": "start only", "when": "fire"},
+        {"name": "end only", "when": "exit"},
+        {"name": "either end", "when": "both"},
+    ]
+
+    assert [a["name"] for a in _phase_actions(actions, "fire")] == ["start only", "either end"]
+    assert [a["name"] for a in _phase_actions(actions, "exit")] == ["end only", "either end"]
+
+
+def test_a_missing_phase_still_defaults_to_fire():
+    """Entries written before `when` existed must keep firing on activation."""
+    actions = [{"name": "legacy"}]
+
+    assert len(_phase_actions(actions, "fire")) == 1
+    assert _phase_actions(actions, "exit") == []

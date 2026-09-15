@@ -85,7 +85,8 @@ class HaActionItem(BaseModel):
     entity_id: str = ""          # required for kind=entity; unused for notify
     service: str = Field(..., min_length=1)
     data: dict = Field(default_factory=dict)
-    when: str = Field(default="fire", pattern=r"^(fire|exit)$")
+    # "both" = run on activation AND on window end (added 2026-09-15).
+    when: str = Field(default="fire", pattern=r"^(fire|exit|both)$")
     # Optional guard leaf {sensor, op, value}: run only if currently true.
     guard: dict | None = None
     # notify only. {sensor.id} placeholders are substituted from the live

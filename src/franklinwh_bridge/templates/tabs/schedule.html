@@ -733,9 +733,10 @@
             <div class="flex items-center justify-between">
               <label class="card-label !mb-0">Entry conditions <span class="text-slate-500 normal-case">(gate — must hold to fire)</span></label>
               <div class="flex items-center gap-2">
-                <select x-model="form.entry_conditions.match" class="form-control !py-1 !text-xs w-24">
-                  <option value="ALL">Match ALL</option>
-                  <option value="ANY">Match ANY</option>
+                <span class="text-[10px] uppercase tracking-wide text-slate-500 shrink-0">match</span>
+                <select x-model="form.entry_conditions.match" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
+                  <option value="ALL">ALL</option>
+                  <option value="ANY">ANY</option>
                 </select>
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCond('entry_conditions')">+ row</button>
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCondGroup('entry_conditions')">+ group</button>
@@ -766,7 +767,7 @@
                       <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
                     </div>
                   </div>
-                  <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
+                  <select x-model="c.op" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
                     <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                   </select>
                   <div class="inline-flex rounded overflow-hidden border border-white/10 text-[10px] flex-shrink-0">
@@ -811,9 +812,9 @@
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1.5">
                       <span class="text-[10px] uppercase text-cyan-300/70">group</span>
-                      <select x-model="c.match" class="form-control !py-1 !text-xs w-24">
-                        <option value="ALL">Match ALL</option>
-                        <option value="ANY">Match ANY</option>
+                      <select x-model="c.match" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
+                        <option value="ALL">ALL</option>
+                        <option value="ANY">ANY</option>
                       </select>
                     </div>
                     <div class="flex items-center gap-2">
@@ -844,7 +845,7 @@
                           <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
                         </div>
                       </div>
-                      <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
+                      <select x-model="cc.op" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
                         <option value="&lt;">&lt;</option><option value="&lt;=">&lt;=</option><option value="==">==</option><option value="!=">!=</option><option value="&gt;=">&gt;=</option><option value="&gt;">&gt;</option><option value="between">between</option>
                       </select>
                       <div class="inline-flex rounded overflow-hidden border border-white/10 text-[10px] flex-shrink-0">
@@ -936,15 +937,24 @@
                   <option value="::">— entity —</option>
                   <template x-for="grp in haControllableGroups" :key="grp.label">
                     <optgroup :label="grp.label">
+                      <!-- :selected for the same reason as the notify list below:
+                           the bound value is evaluated before x-for renders these,
+                           so without it a saved entity reads as "— entity —" and a
+                           save writes that emptiness back. This is the long-standing
+                           "HA Actions dropdown loses its selection on reopen". -->
                       <template x-for="ent in grp.items" :key="ent.instance_id + ent.entity_id">
-                        <option :value="ent.instance_id + '::' + ent.entity_id" x-text="ent.label"></option>
+                        <option :value="ent.instance_id + '::' + ent.entity_id"
+                                :selected="(ent.instance_id + '::' + ent.entity_id) === (a.instance_id + '::' + a.entity_id)"
+                                x-text="ent.label"></option>
                       </template>
                     </optgroup>
                   </template>
                 </select>
-                <select x-model="a.when" class="form-control !py-1 !text-xs w-24" title="Run on fire (activation) or on exit (window end)">
+                <select x-model="a.when" class="form-control !py-1 !text-xs w-auto min-w-[6rem]"
+                        title="Run when the window opens, when it ends, or both">
                   <option value="fire">on fire</option>
                   <option value="exit">on exit</option>
+                  <option value="both">entry &amp; exit</option>
                 </select>
                 <template x-if="haControlKind(a) === 'toggle'">
                   <select x-model="a.service" class="form-control !py-1 !text-xs w-28">
@@ -971,8 +981,11 @@
                         @change="onNotifyPick(a, $event.target.value)"
                         class="form-control !py-1 !text-xs">
                   <option value="::">— notify target —</option>
+                  <!-- :selected is required, not decorative: Alpine evaluates the select's bound value BEFORE x-for has rendered the options, so the browser finds nothing to select and falls back to the first one. The saved value then LOOKS unset and a save writes the fallback back. -->
                   <template x-for="t in notifyTargets" :key="t.instance_id + t.service">
-                    <option :value="t.instance_id + '::' + t.service" x-text="t.label"></option>
+                    <option :value="t.instance_id + '::' + t.service"
+                            :selected="(t.instance_id + '::' + t.service) === (a.instance_id + '::' + a.service)"
+                            x-text="t.label"></option>
                   </template>
                 </select>
                 <button type="button" x-show="!a.guard" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
@@ -1015,9 +1028,10 @@
             <div class="flex items-center justify-between">
               <label class="card-label !mb-0">Exit conditions <span class="text-slate-500 normal-case">(first true ends the window)</span></label>
               <div class="flex items-center gap-2">
-                <select x-model="form.exit_conditions.match" class="form-control !py-1 !text-xs w-24">
-                  <option value="ALL">Match ALL</option>
-                  <option value="ANY">Match ANY</option>
+                <span class="text-[10px] uppercase tracking-wide text-slate-500 shrink-0">match</span>
+                <select x-model="form.exit_conditions.match" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
+                  <option value="ALL">ALL</option>
+                  <option value="ANY">ANY</option>
                 </select>
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCond('exit_conditions')">+ row</button>
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addCondGroup('exit_conditions')">+ group</button>
@@ -1093,9 +1107,9 @@
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1.5">
                       <span class="text-[10px] uppercase text-cyan-300/70">group</span>
-                      <select x-model="c.match" class="form-control !py-1 !text-xs w-24">
-                        <option value="ALL">Match ALL</option>
-                        <option value="ANY">Match ANY</option>
+                      <select x-model="c.match" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
+                        <option value="ALL">ALL</option>
+                        <option value="ANY">ANY</option>
                       </select>
                     </div>
                     <div class="flex items-center gap-2">

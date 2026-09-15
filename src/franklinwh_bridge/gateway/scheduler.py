@@ -962,7 +962,9 @@ class ScheduleEngine:
             self._ha_fired[tkey] = win["id"]
             await self._run_ha_actions(win, tkey, "fire", now)
             # Remember the entry so its exit-tagged actions run when it ends.
-            if any((a.get("when") == "exit") for a in (win.get("ha_actions") or [])):
+            if any(
+                (a.get("when") in ("exit", "both")) for a in (win.get("ha_actions") or [])
+            ):
                 self._exit_entry[tkey] = win
         self._owned[tkey] = {
             "entry_id": win["id"],
@@ -1030,7 +1032,13 @@ class ScheduleEngine:
         (when the window/activation ends). Each is best-effort and audited so one
         failure (HA offline) can't abort the rest or the dispatch. An action with
         an optional ``guard`` leaf runs only if that guard is currently true."""
-        actions = [a for a in (win.get("ha_actions") or []) if (a.get("when") or "fire") == phase]
+        # "both" runs in EACH phase — a notification that should announce the
+        # start and the end of a window is one action, not two rows the user
+        # has to keep in step.
+        actions = [
+            a for a in (win.get("ha_actions") or [])
+            if (a.get("when") or "fire") in (phase, "both")
+        ]
         if not actions:
             return
         # Bail only when NEITHER hook is available. Checking just ha_action_fn
