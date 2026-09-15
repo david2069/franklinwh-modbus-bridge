@@ -194,15 +194,29 @@ function powerColour(watts, type) {
  *  silently showing stale values. Only a TRANSPORT failure counts: an HTTP 401
  *  or 500 means we reached the bridge and it answered, which is a different
  *  problem and must not raise the offline banner. */
-function _noteReachable(ok) {
+function _noteReachable(ok, info = {}) {
   try {
     const s = window.Alpine && Alpine.store('app');
     if (!s) return;
     if (ok) {
       s.connFailures = 0;
       s.connLastOk = Date.now() / 1000;
+      s.connLastError = null;
     } else {
-      s.connFailures = (s.connFailures || 0) + 1;
+      // A failure the USER triggered counts double, so one failed Save raises
+      // the banner immediately. The 2-failure threshold exists to stop the
+      // background poll flapping on a single blip — but a person who just
+      // pressed Save and got nothing is entitled to know at once, not after
+      // the next poll happens to fail too.
+      s.connFailures = (s.connFailures || 0) + (info.background ? 1 : 2);
+      s.connLastError = {
+        message: info.message || 'no response',
+        url: info.url || '',
+        ts: Date.now() / 1000,
+        // Distinguishes "your device is offline" from "the bridge is
+        // unreachable but your wifi is fine" — different fixes.
+        deviceOffline: typeof navigator !== 'undefined' && navigator.onLine === false,
+      };
     }
   } catch (_) { /* store not built yet — nothing to report to */ }
 }
@@ -241,10 +255,26 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
     // ourselves on timeout. An HTTP error status is neither — it means the
     // bridge answered.
     const timedOut = e.name === 'AbortError';
-    if (e instanceof TypeError || timedOut) _noteReachable(false);
-    const msg = timedOut ? `no response within ${Math.round(timeoutMs / 1000)}s` : e.message;
-    console.warn('[Bridge]', url, msg);
-    return { ok: false, error: msg };
+    if (e instanceof TypeError || timedOut) {
+      _noteReachable(false, {
+        background: !!options.background,
+        message: timedOut ? `no response within ${Math.round(timeoutMs / 1000)}s` : e.message,
+        url,
+      });
+    }
+    // What the USER sees. "Failed to fetch" and "Load failed" are the
+    // browser's words for "the request never left", which tells a person
+    // nothing and reads as though their work is gone. Callers prefix this
+    // with "Save failed: " etc., so it has to complete that sentence.
+    const transport = (e instanceof TypeError) || timedOut;
+    const technical = timedOut
+      ? `no response within ${Math.round(timeoutMs / 1000)}s`
+      : e.message;
+    const msg = transport
+      ? "couldn't reach the bridge — your changes are still here, see the banner above"
+      : technical;
+    console.warn('[Bridge]', url, technical);
+    return { ok: false, error: msg, technical };
   } finally {
     clearTimeout(timer);
   }
@@ -310,6 +340,8 @@ document.addEventListener('alpine:init', () => {
     // dropped request, and a banner that flickers gets ignored.
     connFailures: 0,
     connLastOk: null,
+    connLastError: null,
+    connDetailsOpen: false,
     connRetrying: false,
     get connLost() { return this.connFailures >= 2; },
 
@@ -328,6 +360,15 @@ document.addEventListener('alpine:init', () => {
     },
     /** "14:32" of the last successful call — what the screen is actually showing. */
     get connLastOkLabel() { return this.connLastOk ? fmt.clock(this.connLastOk) : 'never'; },
+    //: Where the page is actually talking to — the first thing to check when a
+    //: phone on a VPN can reach the page but not the API.
+    get connOrigin() { return location.origin; },
+    get connErrorLabel() {
+      const e = this.connLastError;
+      if (!e) return '';
+      const path = (e.url || '').replace(/^.*\/api\//, 'api/');
+      return path ? `${e.message} — ${path}` : e.message;
+    },
     async retryNow() {
       this.connRetrying = true;
       try {
@@ -589,7 +630,7 @@ document.addEventListener('alpine:init', () => {
         pointsUrl = 'api/points';
       }
 
-      const data = await fetchJSON(pointsUrl);
+      const data = await fetchJSON(pointsUrl, { background: true });
       if (data && !data.error) {
         this.points = data.points || {};
         this.quality = data.quality ?? null;
@@ -599,19 +640,19 @@ document.addEventListener('alpine:init', () => {
         this.connected = false;
       }
 
-      const health = await fetchJSON('api/health');
+      const health = await fetchJSON('api/health', { background: true });
       if (health && !health.error) {
         this.version = health.version || '--';
         this.env = health.environment || '';
       }
 
-      const stats = await fetchJSON('api/stats');
+      const stats = await fetchJSON('api/stats', { background: true });
       if (stats && !stats.error) {
         this.bridgeStats = stats;
       }
 
       // Refresh gateway list periodically
-      const gwData = await fetchJSON('api/gateways');
+      const gwData = await fetchJSON('api/gateways', { background: true });
       if (gwData && gwData.gateways) {
         this.gatewayList = gwData.gateways;
       }

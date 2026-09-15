@@ -70,10 +70,68 @@
         <!-- Shown at EVERY width: this is the one sentence that tells the user what
              to do, and a phone is where a VPN drop actually happens. -->
         <span class="w-full sm:w-auto text-red-300/70" x-text="$store.app.connCause + ' Retrying every 10s.'"></span>
-        <button @click="$store.app.retryNow()" :disabled="$store.app.connRetrying"
-                class="ml-auto px-2 py-0.5 rounded border border-red-400/40 hover:bg-red-500/20 disabled:opacity-50"
-                x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
+        <span class="ml-auto flex items-center gap-2">
+          <button @click="$store.app.connDetailsOpen = true"
+                  class="underline decoration-dotted hover:text-red-100">More info</button>
+          <button @click="$store.app.retryNow()" :disabled="$store.app.connRetrying"
+                  class="px-2 py-0.5 rounded border border-red-400/40 hover:bg-red-500/20 disabled:opacity-50"
+                  x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
+        </span>
       </div>
+
+      <!-- Connection details. The banner has to stay one line on a phone, but
+           "can't reach the bridge" has several distinct causes that need
+           different fixes — the device being offline, a VPN down, or the
+           bridge itself stopped. This says which, and what was last tried. -->
+      <template x-if="$store.app.connDetailsOpen">
+        <div class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60"
+             @click.self="$store.app.connDetailsOpen = false">
+          <div class="w-full max-w-md rounded-lg border border-red-500/30 shadow-2xl p-4 space-y-3"
+               style="background: var(--surface-0);">
+            <div class="flex items-center justify-between">
+              <h2 class="text-sm font-semibold text-red-200">Can't reach the bridge</h2>
+              <button @click="$store.app.connDetailsOpen = false"
+                      class="text-slate-500 hover:text-slate-300 text-lg leading-none">&times;</button>
+            </div>
+
+            <div class="text-xs text-slate-300 space-y-1.5">
+              <p x-show="$store.app.connLastError?.deviceOffline">
+                <span class="text-amber-300">This device is offline.</span>
+                Your phone or laptop has no network at all — reconnect wifi or mobile data.
+              </p>
+              <p x-show="!$store.app.connLastError?.deviceOffline">
+                Your device has a network, but the bridge did not answer. The usual causes are
+                a VPN that has dropped (Tailscale, WireGuard), the bridge being on a network you
+                are no longer on, or the bridge itself being stopped.
+              </p>
+              <p class="text-slate-400">
+                Nothing you typed has been lost — open forms keep their values, so you can retry
+                and save again once the connection is back.
+              </p>
+            </div>
+
+            <dl class="text-[11px] grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-slate-400">
+              <dt>Last reply</dt>
+              <dd class="font-mono text-slate-300" x-text="$store.app.connLastOkLabel"></dd>
+              <dt>Failed attempts</dt>
+              <dd class="font-mono text-slate-300" x-text="$store.app.connFailures"></dd>
+              <dt>Last error</dt>
+              <dd class="font-mono text-slate-300 break-all" x-text="$store.app.connErrorLabel || '—'"></dd>
+              <dt>Talking to</dt>
+              <dd class="font-mono text-slate-300 break-all" x-text="$store.app.connOrigin"></dd>
+            </dl>
+
+            <div class="flex gap-2">
+              <button @click="$store.app.retryNow()" :disabled="$store.app.connRetrying"
+                      class="btn btn-sm btn-primary disabled:opacity-50"
+                      x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
+              <button @click="location.reload()" class="btn btn-sm btn-secondary">Reload page</button>
+              <button @click="$store.app.connDetailsOpen = false"
+                      class="btn btn-sm btn-secondary ml-auto">Close</button>
+            </div>
+          </div>
+        </div>
+      </template>
 
       <!-- ── Timezone confirmation (first run) ────────────
            Schedules and TOU windows run on the bridge's local clock, which
