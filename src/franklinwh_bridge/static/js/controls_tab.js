@@ -18,9 +18,12 @@ function controlsTab() {
     init() {
       // Sync initial state from points (may not be loaded yet)
       this._syncFromPoints();
-      // Re-sync when data refreshes — also use $watch for immediate reactivity
+      // Re-sync when data refreshes. The $watch is sufficient: app.refresh()
+      // REPLACES store.points wholesale every 10s, so the watcher fires on
+      // every poll. A second 10s interval doing the same thing was redundant —
+      // and unlike every other tab timer it was never stopped, so it kept
+      // waking a hidden tab for the life of the page.
       this.$watch('$store.app.points', () => this._syncFromPoints());
-      setInterval(() => this._syncFromPoints(), 10000);
     },
 
     _syncFromPoints() {
