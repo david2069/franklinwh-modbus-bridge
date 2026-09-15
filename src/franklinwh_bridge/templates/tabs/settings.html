@@ -865,23 +865,23 @@
                       <!-- Rate grid -->
                       <div>
                         <div class="flex items-center justify-between mb-1">
-                          <div class="text-[10px] uppercase tracking-wide text-slate-500">Rates — buy &amp; sell per wave</div>
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500">Rates — buy &amp; sell per time period</div>
                           <button type="button" @click="copyRatesToAllSeasons()" x-show="seasons.length > 1"
                                   class="px-2 py-0.5 rounded text-[10px] border border-white/10 text-slate-400 hover:text-slate-200">
                             Copy rates → all seasons
                           </button>
                         </div>
                         <div class="rounded border border-white/[0.06] divide-y divide-white/[0.06]">
-                          <template x-for="w in WAVE_IDS" :key="w">
+                          <template x-for="w in PERIOD_IDS" :key="w">
                             <div class="px-2 py-1 text-xs space-y-1">
                               <div class="flex items-center justify-between gap-2">
                                 <span class="flex items-center gap-1.5">
-                                  <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${WAVE_DOTS[w]}`"></span>
-                                  <span x-text="WAVE_LABELS[w]"></span>
+                                  <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${PERIOD_DOTS[w]}`"></span>
+                                  <span x-text="PERIOD_LABELS[w]"></span>
                                 </span>
                                 <span class="text-[10px] shrink-0"
-                                      :class="waveUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
-                                      x-text="waveUsed(w) ? 'active' : 'not used'"></span>
+                                      :class="periodUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
+                                      x-text="periodUsed(w) ? 'active' : 'not used'"></span>
                               </div>
                               <!-- Flat/Tiered is a visible switch per side, not a
                                    text link under the row. Tiering was there but
@@ -894,12 +894,12 @@
                                     <label class="flex items-center gap-1 flex-1 min-w-0">
                                       <span class="text-slate-500">$</span>
                                       <input type="number" min="0" step="0.00001"
-                                             x-model.number="season.waves[w][side]"
+                                             x-model.number="season.time_periods[w][side]"
                                              class="form-control !py-0.5 !text-xs w-24"></label>
                                   </template>
                                   <template x-if="isTiered(w, side)">
                                     <span class="flex-1 text-slate-500"
-                                          x-text="`${season.waves[w][side].length} tiers`"></span>
+                                          x-text="`${season.time_periods[w][side].length} tiers`"></span>
                                   </template>
                                   <span class="flex rounded overflow-hidden border border-white/10 shrink-0">
                                     <button type="button" @click="makeFlat(w, side)"
@@ -932,7 +932,7 @@
                                                 class="text-[10px] text-sky-300 hover:text-sky-200">+ tier</button>
                                       </span>
                                     </div>
-                                    <template x-for="(t, ti) in season.waves[w][side]" :key="ti">
+                                    <template x-for="(t, ti) in season.time_periods[w][side]" :key="ti">
                                       <div class="flex items-center gap-1.5">
                                         <span class="text-slate-500 text-[10px] w-10"
                                               x-text="`#${ti + 1}`"></span>
@@ -962,15 +962,15 @@
                           </template>
                         </div>
                         <div class="text-[10px] text-slate-600 mt-0.5">
-                          A wave priced buy $0 is a free-import band. Waves are named, not
-                          price-derived — two may share a price and stay distinct.
+                          A time period priced buy $0 is a free-import band. Periods are named,
+                          not price-derived — two may share a price and stay distinct.
                         </div>
                       </div>
 
                       <!-- Time blocks -->
                       <div>
                         <div class="flex items-center justify-between mb-1">
-                          <div class="text-[10px] uppercase tracking-wide text-slate-500">Time blocks → wave</div>
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500">Time blocks → time period</div>
                           <button type="button" @click="addBlock()"
                                   class="px-2 py-0.5 rounded text-[10px] border border-sky-500/40 text-sky-300 hover:bg-sky-500/10">
                             + Add block
@@ -978,7 +978,7 @@
                         </div>
                         <div class="space-y-1">
                           <template x-for="(b, bi) in season.blocks" :key="bi">
-                            <!-- Two rows on a phone (times, then wave + days),
+                            <!-- Two rows on a phone (times, then period + days),
                                  one row on a wide screen. It was four rows deep
                                  per block because the selects stretched full
                                  width once the flex wrapped — six blocks filled
@@ -994,11 +994,11 @@
                               <!-- Static options on purpose: x-model on a select
                                    whose options come from x-for loses the bound
                                    value on first render — every block displayed
-                                   the FIRST wave regardless of its real one, and
-                                   saving would have written that back. The wave
+                                   the FIRST period regardless of its real one, and
+                                   saving would have written that back. The period
                                    vocabulary is fixed, so there is nothing to
                                    loop over anyway. -->
-                              <select x-model="b.wave" @change="checkRates()"
+                              <select x-model="b.time_period" @change="checkRates()"
                                       class="form-control !py-0.5 !text-xs flex-1 min-w-0 sm:flex-none sm:w-32">
                                 <option value="super_off_peak">Super Off-Peak</option>
                                 <option value="off_peak">Off-Peak</option>

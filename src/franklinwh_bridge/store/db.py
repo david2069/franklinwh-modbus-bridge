@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 42
+CURRENT_SCHEMA_VERSION = 43
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -657,7 +657,60 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE services ADD COLUMN pto_date REAL;
     ALTER TABLE services ADD COLUMN pto_reference TEXT NOT NULL DEFAULT '';
     """,
+    43: """
+    -- Rename the tariff band from "wave" to FranklinWH's own term, so the
+    -- bridge and the vendor app say the same thing. Data lives in the pricing
+    -- JSON, so the rewrite happens in Python below (SQLite cannot edit JSON
+    -- structurally here); this entry exists to pin the version.
+    --
+    -- Internally it is time_period, not period: this schema already uses
+    -- "period" throughout for the BILLING period (period_start, and the
+    -- billing_periods table), and one word for two concepts would be a
+    -- lasting trap.
+    SELECT 1;
+    """,
 }
+
+
+async def _rename_waves_to_time_periods(db: aiosqlite.Connection) -> int:
+    """Rewrite pricing JSON from the pre-rename shape. Idempotent.
+
+    Readers tolerate the old keys, so this is tidying rather than a fix — but
+    leaving two shapes in the database means every future reader has to know
+    about both, and eventually one won't.
+    """
+    db.row_factory = aiosqlite.Row
+    changed = 0
+    async with db.execute("SELECT id, pricing FROM services") as cur:
+        rows = await cur.fetchall()
+    for row in rows:
+        try:
+            pricing = json.loads(row["pricing"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        seasons = pricing.get("seasons")
+        if not isinstance(seasons, list):
+            continue
+        touched = False
+        for season in seasons:
+            if not isinstance(season, dict):
+                continue
+            if "waves" in season:
+                season["time_periods"] = season.pop("waves")
+                touched = True
+            for block in season.get("blocks") or []:
+                if isinstance(block, dict) and "wave" in block:
+                    block["time_period"] = block.pop("wave")
+                    touched = True
+        if touched:
+            await db.execute(
+                "UPDATE services SET pricing = ? WHERE id = ?",
+                (json.dumps(pricing), row["id"]),
+            )
+            changed += 1
+    if changed:
+        await db.commit()
+    return changed
 
 
 async def get_schema_version(db: aiosqlite.Connection) -> int:
@@ -708,6 +761,15 @@ async def init_db(db_path: Path) -> aiosqlite.Connection:
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
     await run_migrations(db)
+
+    # Structural JSON rewrite that migration 43 pins the version for. Runs
+    # after the DDL and is idempotent, so a repeat start is a no-op.
+    try:
+        renamed = await _rename_waves_to_time_periods(db)
+        if renamed:
+            logger.info("Renamed tariff waves -> time periods on %d service(s)", renamed)
+    except Exception as exc:  # never block startup on tidying
+        logger.warning("Tariff time-period rename skipped: %s", exc)
 
     # Safety: ensure metrics_archive exists even if v7 was applied before
     # the table was added to that migration's DDL.

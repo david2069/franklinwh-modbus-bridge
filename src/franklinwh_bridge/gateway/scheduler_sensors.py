@@ -704,8 +704,11 @@ SENSORS: list[SensorDef] = [
         lambda p, n: _rate_now(p, n)["season"],
     ),
     SensorDef(
-        "tariff.wave", "Rate band in force (Off-Peak, Mid-Peak, …)", None, "enum",
-        lambda p, n: _rate_now(p, n)["wave_label"],
+        # FranklinWH's own term, so the bridge and the vendor app agree.
+        # time_period, not period: "period" already means the BILLING period
+        # everywhere else in this registry.
+        "tariff.time_period", "Time period in force (Off-Peak, Mid-Peak, …)", None, "enum",
+        lambda p, n: _rate_now(p, n)["time_period_label"],
     ),
     SensorDef(
         "tariff.buy_rate", "Grid import price now ($/kWh)", "$/kWh", "number",

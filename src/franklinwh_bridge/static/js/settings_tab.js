@@ -920,16 +920,16 @@ function settingsTab() {
     },
 
     // Detection result for the gateway being edited: {detected, matches_declared, ...}
-    // ── Seasonal TOU rates (seasons -> blocks -> waves) ────
+    // ── Seasonal TOU rates (seasons -> blocks -> time periods) ─
     // Mirrors gateway/rate_model.py. The season owns months, a block owns
-    // hours (and optionally weekdays), a wave owns the {buy, sell} pair —
+    // hours (and optionally weekdays), a TIME PERIOD owns the {buy, sell} pair —
     // because a plan's import and export boundaries need not align.
-    WAVE_IDS: ['super_off_peak', 'off_peak', 'mid_peak', 'on_peak'],
-    WAVE_LABELS: {
+    PERIOD_IDS: ['super_off_peak', 'off_peak', 'mid_peak', 'on_peak'],
+    PERIOD_LABELS: {
       super_off_peak: 'Super Off-Peak', off_peak: 'Off-Peak',
       mid_peak: 'Mid-Peak', on_peak: 'On-Peak',
     },
-    WAVE_DOTS: {
+    PERIOD_DOTS: {
       super_off_peak: '#3b82f6', off_peak: '#64748b',
       mid_peak: '#f59e0b', on_peak: '#ef4444',
     },
@@ -945,7 +945,7 @@ function settingsTab() {
     get derivedPlanType() {
       const ss = this.seasons;
       if (!ss.length) return 'unknown';
-      const tiered = ss.some((s) => Object.values(s.waves || {}).some(
+      const tiered = ss.some((s) => Object.values(s.time_periods || {}).some(
         (w) => Array.isArray(w.buy) || Array.isArray(w.sell)));
       const timed = ss.length > 1 || ss.some((s) => (s.blocks || []).length > 1);
       if (tiered && timed) return 'hybrid';
@@ -963,25 +963,25 @@ function settingsTab() {
     get season() { return this.seasons[this.seasonIdx] || null; },
 
     _blankSeason(name) {
-      const waves = {};
-      for (const w of this.WAVE_IDS) waves[w] = { buy: 0, sell: 0 };
+      const periods = {};
+      for (const w of this.PERIOD_IDS) periods[w] = { buy: 0, sell: 0 };
       return {
         id: 'season_' + Date.now().toString(36),
         name: name || `Season ${this.seasons.length + 1}`,
         months: [],
-        waves,
+        time_periods: periods,
         // One all-day block so a new season is valid immediately rather than
         // failing validation before it has been touched.
-        blocks: [{ start: '00:00', end: '24:00', wave: 'off_peak', days: [] }],
+        blocks: [{ start: '00:00', end: '24:00', time_period: 'off_peak', days: [] }],
       };
     },
     // A flat plan is expressible in the same model — one catch-all season,
-    // one all-day block, one wave — so it needs a shortcut, not a second
+    // one all-day block, one time period — so it needs a shortcut, not a second
     // structure. Anything else would give two ways to mean the same thing.
     addFlatSeason() {
       const season = this._blankSeason('Flat rate');
       season.months = [];                       // catch-all: every month
-      season.blocks = [{ start: '00:00', end: '24:00', wave: 'off_peak', days: [] }];
+      season.blocks = [{ start: '00:00', end: '24:00', time_period: 'off_peak', days: [] }];
       if (!this.serviceEdit.pricing.seasons) this.serviceEdit.pricing.seasons = [];
       this.serviceEdit.pricing.seasons.push(season);
       this.seasonIdx = this.seasons.length - 1;
@@ -1018,7 +1018,7 @@ function settingsTab() {
       this.checkRates();
     },
     addBlock() {
-      this.season.blocks.push({ start: '00:00', end: '06:00', wave: 'off_peak', days: [] });
+      this.season.blocks.push({ start: '00:00', end: '06:00', time_period: 'off_peak', days: [] });
       this.checkRates();
     },
     removeBlock(i) { this.season.blocks.splice(i, 1); this.checkRates(); },
@@ -1035,32 +1035,32 @@ function settingsTab() {
       if (d === '5,6') return 'weekend';
       return 'all';
     },
-    // A wave nothing references is dead weight in the grid — say so rather
+    // A time period nothing references is dead weight in the grid — say so rather
     // than implying its price applies.
-    waveUsed(w) {
-      return (this.season?.blocks || []).some((b) => b.wave === w);
+    periodUsed(w) {
+      return (this.season?.blocks || []).some((b) => b.time_period === w);
     },
-    // ── Tier ladders on a wave's price ────────────────────
-    // A price is either a number or a list of tiers. Tiers live on the wave, so
+    // ── Tier ladders on a time period's price ─────────────
+    // A price is either a number or a list of tiers. Tiers live on the period, so
     // a TOU band with a tiered price IS a hybrid plan — no separate concept.
-    isTiered(wave, side) { return Array.isArray(this.season?.waves?.[wave]?.[side]); },
-    makeTiered(wave, side) {
-      const flat = Number(this.season.waves[wave][side]) || 0;
+    isTiered(period, side) { return Array.isArray(this.season?.time_periods?.[period]?.[side]); },
+    makeTiered(period, side) {
+      const flat = Number(this.season.time_periods[period][side]) || 0;
       // Seed with the existing rate so switching modes never silently changes
       // today's price — only the shape it's expressed in.
-      this.season.waves[wave][side] = [
+      this.season.time_periods[period][side] = [
         { up_to_kwh: 1000, rate: flat },
         { rate: flat },
       ];
       this.checkRates();
     },
-    makeFlat(wave, side) {
-      const ladder = this.season.waves[wave][side];
-      this.season.waves[wave][side] = Number(ladder?.[0]?.rate) || 0;
+    makeFlat(period, side) {
+      const ladder = this.season.time_periods[period][side];
+      this.season.time_periods[period][side] = Number(ladder?.[0]?.rate) || 0;
       this.checkRates();
     },
-    addTier(wave, side) {
-      const ladder = this.season.waves[wave][side];
+    addTier(period, side) {
+      const ladder = this.season.time_periods[period][side];
       const last = ladder[ladder.length - 1];
       // Insert BEFORE the unbounded tier — that one must stay last or the
       // ladder stops covering everything above the final threshold.
@@ -1069,17 +1069,17 @@ function settingsTab() {
       ladder.splice(ladder.length - 1, 0, { up_to_kwh: nextLimit, rate: last?.rate ?? 0 });
       this.checkRates();
     },
-    removeTier(wave, side, i) {
-      const ladder = this.season.waves[wave][side];
-      if (ladder.length <= 2) { this.makeFlat(wave, side); return; }
+    removeTier(period, side, i) {
+      const ladder = this.season.time_periods[period][side];
+      if (ladder.length <= 2) { this.makeFlat(period, side); return; }
       ladder.splice(i, 1);
       this.checkRates();
     },
 
     copyRatesToAllSeasons() {
       if (!this.season) return;
-      const src = JSON.parse(JSON.stringify(this.season.waves));
-      for (const s of this.seasons) if (s !== this.season) s.waves = JSON.parse(JSON.stringify(src));
+      const src = JSON.parse(JSON.stringify(this.season.time_periods));
+      for (const s of this.seasons) if (s !== this.season) s.time_periods = JSON.parse(JSON.stringify(src));
       Alpine.store('app').toast('Rates copied to every season', 'info');
     },
     async checkRates() {

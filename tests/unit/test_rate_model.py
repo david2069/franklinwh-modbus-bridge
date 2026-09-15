@@ -11,35 +11,40 @@ import datetime as dt
 
 import pytest
 
-from franklinwh_bridge.gateway.rate_model import WAVES, find_season, resolve, validate
+from franklinwh_bridge.gateway.rate_model import (
+    TIME_PERIODS,
+    find_season,
+    resolve,
+    validate,
+)
 
-PEAK_WAVES = {
+PEAK_PERIODS = {
     "super_off_peak": {"buy": 0.21626, "sell": 0.03},
     "off_peak": {"buy": 0.21626, "sell": 0.03},
     "mid_peak": {"buy": 0.54175, "sell": 0.28},
     "on_peak": {"buy": 0.54175, "sell": 0.03},
 }
 PEAK_BLOCKS = [
-    {"start": "00:00", "end": "07:00", "wave": "off_peak"},
-    {"start": "07:00", "end": "08:00", "wave": "super_off_peak"},
-    {"start": "08:00", "end": "15:00", "wave": "off_peak"},
-    {"start": "15:00", "end": "17:00", "wave": "on_peak"},
-    {"start": "17:00", "end": "21:00", "wave": "mid_peak"},
-    {"start": "21:00", "end": "24:00", "wave": "off_peak"},
+    {"start": "00:00", "end": "07:00", "time_period": "off_peak"},
+    {"start": "07:00", "end": "08:00", "time_period": "super_off_peak"},
+    {"start": "08:00", "end": "15:00", "time_period": "off_peak"},
+    {"start": "15:00", "end": "17:00", "time_period": "on_peak"},
+    {"start": "17:00", "end": "21:00", "time_period": "mid_peak"},
+    {"start": "21:00", "end": "24:00", "time_period": "off_peak"},
 ]
 AGL = [
     {"id": "peak", "name": "Peak season", "months": [11, 12, 1, 2, 3, 6, 7, 8],
-     "waves": PEAK_WAVES, "blocks": PEAK_BLOCKS},
+     "time_periods": PEAK_PERIODS, "blocks": PEAK_BLOCKS},
     {"id": "shoulder", "name": "Shoulder season", "months": [4, 5, 9, 10],
-     "waves": {**PEAK_WAVES,
+     "time_periods": {**PEAK_PERIODS,
                "mid_peak": {"buy": 0.21626, "sell": 0.28},
                "on_peak": {"buy": 0.0, "sell": 0.0}},
      "blocks": [
-         {"start": "00:00", "end": "07:00", "wave": "off_peak"},
-         {"start": "07:00", "end": "08:00", "wave": "super_off_peak"},
-         {"start": "08:00", "end": "17:00", "wave": "off_peak"},
-         {"start": "17:00", "end": "21:00", "wave": "mid_peak"},
-         {"start": "21:00", "end": "24:00", "wave": "off_peak"},
+         {"start": "00:00", "end": "07:00", "time_period": "off_peak"},
+         {"start": "07:00", "end": "08:00", "time_period": "super_off_peak"},
+         {"start": "08:00", "end": "17:00", "time_period": "off_peak"},
+         {"start": "17:00", "end": "21:00", "time_period": "mid_peak"},
+         {"start": "21:00", "end": "24:00", "time_period": "off_peak"},
      ]},
 ]
 
@@ -61,7 +66,7 @@ def test_import_peak_splits_where_the_feed_in_boundary_falls():
     assert early["buy"] == late["buy"] == 0.54175
     assert early["sell"] == 0.03
     assert late["sell"] == 0.28
-    assert (early["wave"], late["wave"]) == ("on_peak", "mid_peak")
+    assert (early["time_period"], late["time_period"]) == ("on_peak", "mid_peak")
 
 
 def test_base_feed_in_tariff_has_a_home():
@@ -81,12 +86,12 @@ def test_shoulder_season_has_no_peak_import_but_keeps_the_evening_feed_in():
     assert evening["sell"] == 0.28, "evening FiT applies year-round"
 
 
-def test_a_wave_is_named_not_price_derived():
+def test_a_time_period_is_named_not_price_derived():
     """AGL's 07:00-08:00 morning band prices identically to off-peak and is
-    still its own wave. Waves must never be deduped by price."""
+    still its own period. Periods must never be deduped by price."""
     r = resolve(AGL, at(1, 7))
 
-    assert r["wave"] == "super_off_peak"
+    assert r["time_period"] == "super_off_peak"
     assert (r["buy"], r["sell"]) == (0.21626, 0.03)
 
 
@@ -104,7 +109,7 @@ def test_month_picks_the_season(month, expected):
 def test_an_all_year_season_is_only_a_fallback():
     """Otherwise adding a catch-all would shadow every seasonal one."""
     seasons = [
-        {"id": "all", "name": "All year", "months": [], "waves": PEAK_WAVES,
+        {"id": "all", "name": "All year", "months": [], "time_periods": PEAK_PERIODS,
          "blocks": PEAK_BLOCKS},
         *AGL,
     ]
@@ -113,7 +118,7 @@ def test_an_all_year_season_is_only_a_fallback():
 
 
 def test_unmatched_month_says_so():
-    seasons = [{"id": "winter", "months": [6, 7], "waves": PEAK_WAVES, "blocks": PEAK_BLOCKS}]
+    seasons = [{"id": "winter", "months": [6, 7], "time_periods": PEAK_PERIODS, "blocks": PEAK_BLOCKS}]
 
     assert resolve(seasons, at(1, 12))["reason"] == "no_season_for_month"
 
@@ -122,31 +127,31 @@ def test_unmatched_month_says_so():
 
 
 def test_a_block_may_wrap_past_midnight():
-    seasons = [{"id": "s", "months": [], "waves": PEAK_WAVES,
-                "blocks": [{"start": "21:00", "end": "06:00", "wave": "off_peak"}]}]
+    seasons = [{"id": "s", "months": [], "time_periods": PEAK_PERIODS,
+                "blocks": [{"start": "21:00", "end": "06:00", "time_period": "off_peak"}]}]
 
-    assert resolve(seasons, at(1, 23))["wave"] == "off_peak"
-    assert resolve(seasons, at(1, 2))["wave"] == "off_peak"
+    assert resolve(seasons, at(1, 23))["time_period"] == "off_peak"
+    assert resolve(seasons, at(1, 2))["time_period"] == "off_peak"
     assert resolve(seasons, at(1, 12))["reason"] == "no_block_for_time"
 
 
 def test_blocks_can_differ_by_day_of_week():
     """Weekday/weekend rates, without a separate structure."""
-    seasons = [{"id": "s", "months": [], "waves": PEAK_WAVES, "blocks": [
-        {"start": "00:00", "end": "24:00", "wave": "on_peak", "days": [0, 1, 2, 3, 4]},
-        {"start": "00:00", "end": "24:00", "wave": "off_peak", "days": [5, 6]},
+    seasons = [{"id": "s", "months": [], "time_periods": PEAK_PERIODS, "blocks": [
+        {"start": "00:00", "end": "24:00", "time_period": "on_peak", "days": [0, 1, 2, 3, 4]},
+        {"start": "00:00", "end": "24:00", "time_period": "off_peak", "days": [5, 6]},
     ]}]
 
     # January 2026: the 5th is a Monday, the 10th a Saturday. (September's
     # weekday dates don't transfer — the first version of this test used them.)
-    assert resolve(seasons, at(1, 12, day=5))["wave"] == "on_peak"     # Monday
-    assert resolve(seasons, at(1, 12, day=10))["wave"] == "off_peak"   # Saturday
+    assert resolve(seasons, at(1, 12, day=5))["time_period"] == "on_peak"     # Monday
+    assert resolve(seasons, at(1, 12, day=10))["time_period"] == "off_peak"   # Saturday
 
 
 def test_an_uncovered_hour_is_reported_not_guessed():
     """A gap must not resolve to zero — that silently under-bills."""
-    seasons = [{"id": "s", "months": [], "waves": PEAK_WAVES,
-                "blocks": [{"start": "00:00", "end": "12:00", "wave": "off_peak"}]}]
+    seasons = [{"id": "s", "months": [], "time_periods": PEAK_PERIODS,
+                "blocks": [{"start": "00:00", "end": "12:00", "time_period": "off_peak"}]}]
 
     r = resolve(seasons, at(1, 18))
 
@@ -160,10 +165,10 @@ def test_an_uncovered_hour_is_reported_not_guessed():
 def test_a_zero_buy_wave_is_a_free_import_window():
     """The AU "free grid import" plan shape is just a wave priced at zero —
     no special-casing."""
-    free = {**PEAK_WAVES, "off_peak": {"buy": 0.0, "sell": 0.03}}
-    seasons = [{"id": "s", "months": [], "waves": free,
-                "blocks": [{"start": "11:00", "end": "13:00", "wave": "off_peak"},
-                           {"start": "13:00", "end": "11:00", "wave": "on_peak"}]}]
+    free = {**PEAK_PERIODS, "off_peak": {"buy": 0.0, "sell": 0.03}}
+    seasons = [{"id": "s", "months": [], "time_periods": free,
+                "blocks": [{"start": "11:00", "end": "13:00", "time_period": "off_peak"},
+                           {"start": "13:00", "end": "11:00", "time_period": "on_peak"}]}]
 
     assert resolve(seasons, at(1, 12))["billable"] is False
     assert resolve(seasons, at(1, 20))["billable"] is True
@@ -184,8 +189,8 @@ def test_the_real_plan_validates_clean():
 
 
 def test_a_coverage_gap_is_reported():
-    seasons = [{"id": "s", "name": "Partial", "months": [], "waves": PEAK_WAVES,
-                "blocks": [{"start": "00:00", "end": "12:00", "wave": "off_peak"}]}]
+    seasons = [{"id": "s", "name": "Partial", "months": [], "time_periods": PEAK_PERIODS,
+                "blocks": [{"start": "00:00", "end": "12:00", "time_period": "off_peak"}]}]
 
     problems = validate(seasons)
 
@@ -194,23 +199,25 @@ def test_a_coverage_gap_is_reported():
 
 def test_two_seasons_claiming_a_month_is_reported():
     seasons = [
-        {"id": "a", "name": "A", "months": [1], "waves": PEAK_WAVES, "blocks": PEAK_BLOCKS},
-        {"id": "b", "name": "B", "months": [1], "waves": PEAK_WAVES, "blocks": PEAK_BLOCKS},
+        {"id": "a", "name": "A", "months": [1], "time_periods": PEAK_PERIODS, "blocks": PEAK_BLOCKS},
+        {"id": "b", "name": "B", "months": [1], "time_periods": PEAK_PERIODS, "blocks": PEAK_BLOCKS},
     ]
 
     assert any("claimed by both" in p for p in validate(seasons))
 
 
-def test_a_block_naming_an_unpriced_wave_is_reported():
+def test_a_block_naming_an_unpriced_time_period_is_reported():
     seasons = [{"id": "s", "name": "S", "months": [],
-                "waves": {"off_peak": {"buy": 0.2, "sell": 0.03}},
-                "blocks": [{"start": "00:00", "end": "24:00", "wave": "on_peak"}]}]
+                "time_periods": {"off_peak": {"buy": 0.2, "sell": 0.03}},
+                "blocks": [{"start": "00:00", "end": "24:00", "time_period": "on_peak"}]}]
 
     assert any("prices no rate for it" in p for p in validate(seasons))
 
 
-def test_wave_vocabulary_is_fixed():
-    assert WAVES == ("super_off_peak", "off_peak", "mid_peak", "on_peak")
+def test_time_period_vocabulary_is_fixed():
+    """FranklinWH's own term — the bridge and the vendor app name the same
+    thing the same way."""
+    assert TIME_PERIODS == ("super_off_peak", "off_peak", "mid_peak", "on_peak")
 
 
 # ── Tiered + hybrid ───────────────────────────────────────────
@@ -220,8 +227,8 @@ def test_wave_vocabulary_is_fixed():
 LADDER = [{"up_to_kwh": 1000, "rate": 0.22}, {"up_to_kwh": 2000, "rate": 0.28},
           {"rate": 0.35}]
 TIERED = [{"id": "t", "name": "Tiered", "months": [],
-           "waves": {"off_peak": {"buy": LADDER, "sell": 0.03}},
-           "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+           "time_periods": {"off_peak": {"buy": LADDER, "sell": 0.03}},
+           "blocks": [{"start": "00:00", "end": "24:00", "time_period": "off_peak"}]}]
 
 
 @pytest.mark.parametrize("used,rate,tier", [
@@ -252,10 +259,10 @@ def test_unknown_consumption_uses_the_first_tier():
 def test_hybrid_is_tiers_inside_a_time_of_use_band():
     """The payoff of putting tiers on the wave: no separate hybrid concept."""
     hybrid = [{"id": "h", "name": "Hybrid", "months": [],
-               "waves": {"off_peak": {"buy": 0.20, "sell": 0.03},
+               "time_periods": {"off_peak": {"buy": 0.20, "sell": 0.03},
                          "on_peak": {"buy": LADDER, "sell": 0.03}},
-               "blocks": [{"start": "00:00", "end": "17:00", "wave": "off_peak"},
-                          {"start": "17:00", "end": "24:00", "wave": "on_peak"}]}]
+               "blocks": [{"start": "00:00", "end": "17:00", "time_period": "off_peak"},
+                          {"start": "17:00", "end": "24:00", "time_period": "on_peak"}]}]
 
     off = resolve(hybrid, at(1, 10), used_kwh=1500)
     on = resolve(hybrid, at(1, 18), used_kwh=1500)
@@ -268,16 +275,16 @@ def test_a_ladder_that_never_ends_is_reported():
     """Without an unbounded final tier, consumption past the last threshold has
     no price and would be recorded as unpriced rather than billed."""
     closed = [{"id": "c", "name": "Closed", "months": [],
-               "waves": {"off_peak": {"buy": [{"up_to_kwh": 1000, "rate": 0.22}], "sell": 0.03}},
-               "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+               "time_periods": {"off_peak": {"buy": [{"up_to_kwh": 1000, "rate": 0.22}], "sell": 0.03}},
+               "blocks": [{"start": "00:00", "end": "24:00", "time_period": "off_peak"}]}]
 
     assert any("add a final tier with no limit" in p for p in validate(closed))
 
 
 def test_a_tier_without_a_rate_is_reported():
     broken = [{"id": "b", "name": "Broken", "months": [],
-               "waves": {"off_peak": {"buy": [{"up_to_kwh": 1000}, {"rate": 0.3}], "sell": 0.03}},
-               "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+               "time_periods": {"off_peak": {"buy": [{"up_to_kwh": 1000}, {"rate": 0.3}], "sell": 0.03}},
+               "blocks": [{"start": "00:00", "end": "24:00", "time_period": "off_peak"}]}]
 
     assert any("no rate" in p for p in validate(broken))
 
@@ -289,12 +296,51 @@ def test_a_valid_ladder_validates_clean():
 def test_tiers_out_of_order_still_resolve():
     """Authoring order shouldn't matter; the ladder is sorted by threshold."""
     jumbled = [{"id": "j", "months": [],
-                "waves": {"off_peak": {"buy": [{"rate": 0.35},
+                "time_periods": {"off_peak": {"buy": [{"rate": 0.35},
                                                {"up_to_kwh": 2000, "rate": 0.28},
                                                {"up_to_kwh": 1000, "rate": 0.22}],
                                        "sell": 0.03}},
-                "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}]}]
+                "blocks": [{"start": "00:00", "end": "24:00", "time_period": "off_peak"}]}]
 
     assert resolve(jumbled, at(1, 12), used_kwh=500)["buy"] == 0.22
     assert resolve(jumbled, at(1, 12), used_kwh=1500)["buy"] == 0.28
     assert resolve(jumbled, at(1, 12), used_kwh=5000)["buy"] == 0.35
+
+
+# ── Backward compatibility with the pre-rename shape ──────────
+# The band was called a "wave" until it was aligned with FranklinWH's own
+# "Time Period". Tariff profiles exported before that, and any database not yet
+# rewritten, must keep pricing — an import that silently priced nothing would
+# be worse than the old name.
+
+
+OLD_SHAPE = [{
+    "id": "legacy", "name": "Legacy", "months": [],
+    "waves": {"off_peak": {"buy": 0.25, "sell": 0.05}},
+    "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}],
+}]
+
+
+def test_the_pre_rename_shape_still_prices():
+    r = resolve(OLD_SHAPE, at(1, 12))
+
+    assert r["buy"] == 0.25
+    assert r["sell"] == 0.05
+    assert r["time_period"] == "off_peak"
+
+
+def test_the_pre_rename_shape_still_validates():
+    assert validate(OLD_SHAPE) == []
+
+
+def test_the_new_key_wins_when_both_are_present():
+    """A half-migrated record must resolve to the new value, not the stale one."""
+    both = [{
+        "id": "both", "months": [],
+        "waves": {"off_peak": {"buy": 0.99, "sell": 0.99}},
+        "time_periods": {"off_peak": {"buy": 0.25, "sell": 0.05}},
+        "blocks": [{"start": "00:00", "end": "24:00",
+                    "wave": "on_peak", "time_period": "off_peak"}],
+    }]
+
+    assert resolve(both, at(1, 12))["buy"] == 0.25

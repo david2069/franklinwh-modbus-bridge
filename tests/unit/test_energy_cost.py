@@ -16,17 +16,17 @@ from franklinwh_bridge.gateway.demand import DemandTracker
 
 AGL_SEASONS = [{
     "id": "peak", "name": "Peak season", "months": [],
-    "waves": {
+    "time_periods": {
         "super_off_peak": {"buy": 0.21626, "sell": 0.03},
         "off_peak": {"buy": 0.21626, "sell": 0.03},
         "mid_peak": {"buy": 0.54175, "sell": 0.28},
         "on_peak": {"buy": 0.54175, "sell": 0.03},
     },
     "blocks": [
-        {"start": "00:00", "end": "15:00", "wave": "off_peak"},
-        {"start": "15:00", "end": "17:00", "wave": "on_peak"},
-        {"start": "17:00", "end": "21:00", "wave": "mid_peak"},
-        {"start": "21:00", "end": "24:00", "wave": "off_peak"},
+        {"start": "00:00", "end": "15:00", "time_period": "off_peak"},
+        {"start": "15:00", "end": "17:00", "time_period": "on_peak"},
+        {"start": "17:00", "end": "21:00", "time_period": "mid_peak"},
+        {"start": "21:00", "end": "24:00", "time_period": "off_peak"},
     ],
 }]
 
@@ -119,8 +119,8 @@ async def test_an_unpriced_hour_is_counted_not_discounted(tmp_path):
     from franklinwh_bridge.store.db import init_db
 
     db = await init_db(tmp_path / "gap.db")
-    partial = [{"id": "s", "months": [], "waves": {"off_peak": {"buy": 0.2, "sell": 0.03}},
-                "blocks": [{"start": "00:00", "end": "12:00", "wave": "off_peak"}]}]
+    partial = [{"id": "s", "months": [], "time_periods": {"off_peak": {"buy": 0.2, "sell": 0.03}},
+                "blocks": [{"start": "00:00", "end": "12:00", "time_period": "off_peak"}]}]
     t = DemandTracker(db, FakeBilling(partial), gateway_id="default")
 
     day = dt.datetime(2026, 1, 14, 18)
@@ -165,11 +165,11 @@ async def test_a_meter_reset_does_not_invent_cost(tracker):
 
 TIERED_SEASONS = [{
     "id": "t", "name": "Tiered", "months": [],
-    "waves": {"off_peak": {
+    "time_periods": {"off_peak": {
         "buy": [{"up_to_kwh": 10, "rate": 0.20}, {"rate": 0.40}],
         "sell": 0.03,
     }},
-    "blocks": [{"start": "00:00", "end": "24:00", "wave": "off_peak"}],
+    "blocks": [{"start": "00:00", "end": "24:00", "time_period": "off_peak"}],
 }]
 
 

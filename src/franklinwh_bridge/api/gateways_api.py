@@ -457,10 +457,13 @@ async def validate_rates(body: RateValidateBody):
     price — a UI that validated separately would drift from it. Returns
     ``{ok, problems: [...]}`` where problems are plain sentences.
     """
-    from franklinwh_bridge.gateway.rate_model import WAVE_LABELS, validate
+    from franklinwh_bridge.gateway.rate_model import TIME_PERIOD_LABELS, validate
 
     problems = validate(body.seasons)
-    return {"ok": not problems, "problems": problems, "wave_labels": WAVE_LABELS}
+    return {
+        "ok": not problems, "problems": problems,
+        "time_period_labels": TIME_PERIOD_LABELS,
+    }
 
 
 @router.get("/services/{service_id}/history-count")
