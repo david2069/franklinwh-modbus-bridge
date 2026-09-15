@@ -135,7 +135,13 @@ def _rate_now(points: Points, now: datetime) -> dict:
     # Tiered rates price against cumulative consumption this period, so the
     # resolver needs it — without it every tiered plan would read as tier 1.
     return resolve(
-        points.get("tariff_seasons"), now, points.get("energy_period_import_kwh"),
+        points.get("tariff_seasons"), now,
+        # Tiers count consumption AT THE METER (the grid_import_wh counter),
+        # accumulated across the billing period regardless of which time
+        # period the energy fell in — which is why the ladder belongs to the
+        # tariff, not to a band.
+        points.get("energy_period_import_kwh"),
+        points.get("tariff_default_rate"),
     )
 
 

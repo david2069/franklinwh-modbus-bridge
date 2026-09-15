@@ -220,13 +220,30 @@ class DemandTracker:
             self._last_persist = sample.ts
             await self._persist()
 
+    def _prices_export(self) -> bool:
+        """Does a rate model price exported energy?
+
+        When it does it is authoritative, and the legacy export-bonus window
+        must not also credit the same kWh.
+        """
+        try:
+            pts = self._billing.as_points()
+        except Exception:  # pragma: no cover - defensive
+            return False
+        if pts.get("tariff_seasons"):
+            return True
+        default = pts.get("tariff_default_rate") or {}
+        return default.get("sell") is not None
+
     def _rate_now(self, now: datetime, used_kwh: float | None = None) -> dict:
         """Resolved buy/sell for this instant, or empty if no plan is set up."""
         from franklinwh_bridge.gateway.rate_model import resolve
 
         try:
+            pts = self._billing.as_points()
             return resolve(
-                self._billing.as_points().get("tariff_seasons"), now, used_kwh,
+                pts.get("tariff_seasons"), now, used_kwh,
+                pts.get("tariff_default_rate"),
             )
         except Exception as exc:  # pragma: no cover - pricing must not stop tracking
             logger.debug("Rate resolve failed: %s", exc)
@@ -330,7 +347,13 @@ class DemandTracker:
                 "net_total": round(
                     demand_charge + charge_cost + fixed_charges
                     + _f(vals.get("energy_import_cost"))
-                    - reward_credit
+                    # The export bonus window and the rate model's sell price
+                    # are two ways of saying the same thing. Counting both
+                    # credited evening export TWICE — AGL's 28c bonus window
+                    # covers 17:00-21:00, and so does mid_peak.sell. The rate
+                    # model wins once configured; the bonus window is the
+                    # pre-rate-model way to express a time-varying feed-in.
+                    - (0.0 if self._prices_export() else reward_credit)
                     - _f(vals.get("energy_export_credit")),
                     2,
                 ),

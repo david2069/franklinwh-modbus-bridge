@@ -300,6 +300,8 @@ function settingsTab() {
           // Seasonal rate model — deep-copied so edits don't mutate the loaded
           // row before Save.
           seasons: JSON.parse(JSON.stringify((svc.pricing && svc.pricing.seasons) || [])),
+          default_rate: JSON.parse(JSON.stringify(
+            (svc.pricing && svc.pricing.default_rate) || { buy: 0, sell: 0 })),
           export_charge: (svc.pricing && svc.pricing.export_charge) || {
             window: { months: [], days: [], start: '10:00', end: '15:00' },
             rate: 0.0123, free_kwh_per_day: 6.84,
@@ -938,18 +940,73 @@ function settingsTab() {
 
     get seasons() { return (this.serviceEdit?.pricing?.seasons) || []; },
 
+    // ── Tariff-wide rate ───────────────────────────────────
+    // What a kWh costs when no time period overrides it. A flat or tiered
+    // tariff is complete with just this — seasons and time periods exist to
+    // OVERRIDE it, not as a prerequisite. Tiers here count consumption at the
+    // METER over the billing period, which is what a tiered plan actually
+    // bills on.
+    get defaultRate() {
+      const pr = this.serviceEdit?.pricing;
+      if (!pr) return null;
+      if (!pr.default_rate) pr.default_rate = { buy: 0, sell: 0 };
+      return pr.default_rate;
+    },
+    isDefaultTiered(side) { return Array.isArray(this.defaultRate?.[side]); },
+    makeDefaultTiered(side) {
+      const flat = Number(this.defaultRate[side]) || 0;
+      this.defaultRate[side] = [{ up_to_kwh: 1000, rate: flat }, { rate: flat }];
+      this.checkRates();
+    },
+    makeDefaultFlat(side) {
+      const l = this.defaultRate[side];
+      this.defaultRate[side] = Number(l?.[0]?.rate) || 0;
+      this.checkRates();
+    },
+    addDefaultTier(side) {
+      const l = this.defaultRate[side];
+      const bounded = l.filter((t) => typeof t.up_to_kwh === 'number');
+      const next = bounded.length ? Math.max(...bounded.map((t) => t.up_to_kwh)) * 2 : 1000;
+      l.splice(l.length - 1, 0, { up_to_kwh: next, rate: l[l.length - 1]?.rate ?? 0 });
+      this.checkRates();
+    },
+    removeDefaultTier(side, i) {
+      const l = this.defaultRate[side];
+      if (l.length <= 2) { this.makeDefaultFlat(side); return; }
+      l.splice(i, 1);
+      this.checkRates();
+    },
+    // Changing the tariff-wide rate does NOT silently rewrite the per-period
+    // overrides — that would throw away deliberate work. Offered, never
+    // assumed.
+    applyDefaultToAllPeriods() {
+      const src = JSON.parse(JSON.stringify(this.defaultRate));
+      let n = 0;
+      for (const s of this.seasons) {
+        for (const k of Object.keys(s.time_periods || {})) {
+          s.time_periods[k] = JSON.parse(JSON.stringify(src));
+          n += 1;
+        }
+      }
+      this.checkRates();
+      Alpine.store('app').toast(`Reset ${n} time period(s) to the tariff rate`, 'info');
+    },
+
     // Plan type DERIVED from the rates, not typed by hand. It was a dropdown
     // the user set and nothing read — it could say "Flat rate" over a
     // four-season TOU plan and nothing would notice. Deriving it means the
     // label cannot disagree with the configuration.
     get derivedPlanType() {
       const ss = this.seasons;
-      if (!ss.length) return 'unknown';
+      const dr = this.serviceEdit?.pricing?.default_rate;
+      const drTiered = Array.isArray(dr?.buy) || Array.isArray(dr?.sell);
+      const drSet = dr && (dr.buy || dr.sell || drTiered);
+      if (!ss.length) return drTiered ? 'tiered' : (drSet ? 'fixed' : 'unknown');
       const tiered = ss.some((s) => Object.values(s.time_periods || {}).some(
         (w) => Array.isArray(w.buy) || Array.isArray(w.sell)));
       const timed = ss.length > 1 || ss.some((s) => (s.blocks || []).length > 1);
-      if (tiered && timed) return 'hybrid';
-      if (tiered) return 'tiered';
+      if ((tiered || drTiered) && timed) return 'hybrid';
+      if (tiered || drTiered) return 'tiered';
       if (timed) return 'tou';
       return 'fixed';
     },
@@ -1085,7 +1142,10 @@ function settingsTab() {
     async checkRates() {
       const data = await fetchJSON('api/tariff/validate-rates', {
         method: 'POST',
-        body: JSON.stringify({ seasons: this.seasons }),
+        body: JSON.stringify({
+          seasons: this.seasons,
+          default_rate: this.serviceEdit?.pricing?.default_rate || null,
+        }),
       });
       this.rateProblems = (data && data.problems) || [];
     },

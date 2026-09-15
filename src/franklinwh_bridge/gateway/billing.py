@@ -31,6 +31,9 @@ class BillingStore:
         self._bonus: list[dict] = []
         self._imports: list[dict] = []
         self._seasons: list[dict] = []
+        #: Tariff-wide rate — what a kWh costs when no time period overrides.
+        #: A flat or tiered tariff needs nothing else.
+        self._default_rate: dict = {}
         # First service with each flag drives the demand/bonus/charge calc (v1).
         self._demand_cfg: dict | None = None
         self._bonus_cfg: dict | None = None
@@ -66,6 +69,7 @@ class BillingStore:
             return
         demand, bonus, imports = [], [], []
         seasons: list[dict] = []
+        default_rate: dict = {}
         demand_cfg = bonus_cfg = charge_cfg = None
         plan = None
         for s in services:
@@ -127,6 +131,8 @@ class BillingStore:
                 for sn in pricing.get("seasons") or []:
                     if isinstance(sn, dict):
                         seasons.append(sn)
+            if not default_rate and isinstance(pricing.get("default_rate"), dict):
+                default_rate = pricing["default_rate"]
 
             # Export CHARGE: {window, rate $/kWh, free_kwh_per_day} in pricing JSON.
             ec = pricing.get("export_charge")
@@ -140,6 +146,7 @@ class BillingStore:
         self._demand, self._bonus = demand, bonus
         self._imports = imports
         self._seasons = seasons
+        self._default_rate = default_rate
         self._demand_cfg, self._bonus_cfg = demand_cfg, bonus_cfg
         self._charge_cfg = charge_cfg
         if plan is not None:
@@ -167,6 +174,7 @@ class BillingStore:
             "tariff_charge_windows": [c["window"]] if c else [],
             "tariff_import_windows": self._imports,
             "tariff_seasons": self._seasons,
+            "tariff_default_rate": self._default_rate,
             "tariff_demand_rate": d.get("rate", 0.0),
             "tariff_export_bonus_rate": (self._bonus_cfg or {}).get("rate", 0.0),
             "tariff_export_charge_rate": c.get("rate", 0.0),

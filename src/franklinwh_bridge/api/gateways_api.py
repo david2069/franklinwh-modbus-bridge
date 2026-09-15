@@ -406,7 +406,7 @@ async def import_service(
     profile = {k: v for k, v in bundle.profile.items() if k in _PORTABLE_SERVICE_FIELDS}
     unknown = sorted(set(bundle.profile) - set(_PORTABLE_SERVICE_FIELDS))
     pricing = profile.get("pricing") if isinstance(profile.get("pricing"), dict) else {}
-    problems = validate_rates(pricing.get("seasons")) if pricing.get("seasons") else []
+    problems = validate_rates(pricing.get("seasons"), pricing.get("default_rate"))
 
     report = {
         "ok": not problems,
@@ -447,6 +447,7 @@ class RateValidateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     seasons: list[dict] = Field(default_factory=list)
+    default_rate: dict | None = None
 
 
 @router.post("/tariff/validate-rates")
@@ -459,7 +460,7 @@ async def validate_rates(body: RateValidateBody):
     """
     from franklinwh_bridge.gateway.rate_model import TIME_PERIOD_LABELS, validate
 
-    problems = validate(body.seasons)
+    problems = validate(body.seasons, body.default_rate)
     return {
         "ok": not problems, "problems": problems,
         "time_period_labels": TIME_PERIOD_LABELS,

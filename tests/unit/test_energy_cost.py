@@ -210,3 +210,43 @@ async def test_cumulative_import_is_tracked_for_tiering(tmp_path):
 
     assert t.as_points(now=day.replace(hour=11))["energy_period_import_kwh"] == pytest.approx(3.0)
     await db.close()
+
+
+# ── The export bonus window vs the rate model ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_export_is_not_credited_twice(tmp_path):
+    """AGL's 28c bonus window covers 17:00-21:00 and so does mid_peak.sell.
+    Counting both credited evening export twice and overstated the bill's
+    credit. The rate model wins once configured."""
+    from franklinwh_bridge.store.db import init_db
+
+    db = await init_db(tmp_path / "dbl.db")
+
+    class BonusAndRates(FakeBilling):
+        def bonus_config(self):
+            return {"window": {"months": [], "days": [], "start": "17:00", "end": "21:00"},
+                    "rate": 0.28, "cycle_day": 1}
+
+    t = DemandTracker(db, BonusAndRates(), gateway_id="default")
+    assert t._prices_export() is True, "a configured rate model prices export"
+
+    plain = DemandTracker(db, FakeBilling([]), gateway_id="default")
+    assert plain._prices_export() is False, "with no rate model the bonus window still applies"
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_a_tariff_wide_sell_also_supersedes_the_bonus_window(tmp_path):
+    """A flat tariff with a feed-in rate prices export too — no seasons needed."""
+    from franklinwh_bridge.store.db import init_db
+
+    db = await init_db(tmp_path / "flat.db")
+
+    class FlatWithFeedIn(FakeBilling):
+        def as_points(self):
+            return {"tariff_seasons": [], "tariff_default_rate": {"buy": 0.30, "sell": 0.05}}
+
+    assert DemandTracker(db, FlatWithFeedIn(), gateway_id="default")._prices_export() is True
+    await db.close()

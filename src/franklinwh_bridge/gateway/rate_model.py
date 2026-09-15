@@ -194,7 +194,12 @@ def find_season(seasons: Any, now: datetime) -> dict | None:
     return fallback
 
 
-def resolve(seasons: Any, now: datetime, used_kwh: float | None = None) -> dict:
+def resolve(
+    seasons: Any,
+    now: datetime,
+    used_kwh: float | None = None,
+    default_rate: Any = None,
+) -> dict:
     """What a kWh costs right now.
 
     Returns ``{season, wave, wave_label, buy, sell, billable, reason}``. Every
@@ -207,20 +212,43 @@ def resolve(seasons: Any, now: datetime, used_kwh: float | None = None) -> dict:
         "buy": None, "sell": None, "billable": None, "tier": None,
         "reason": "not_configured",
     }
+
+    def _from_default(reason: str) -> dict:
+        """The tariff-wide rate: what a plan costs when nothing more specific
+        applies. A flat or tiered tariff needs no seasons or time periods at
+        all — those exist to OVERRIDE this, not to be a prerequisite for it."""
+        rates = default_rate if isinstance(default_rate, dict) else {}
+        raw_buy, raw_sell = rates.get("buy"), rates.get("sell")
+        buy = tier_rate(raw_buy, used_kwh)
+        sell = tier_rate(raw_sell, used_kwh)
+        if buy is None and sell is None:
+            return {**blank, "reason": reason}
+        return {
+            "season": None, "time_period": None, "time_period_label": "Tariff rate",
+            "buy": buy, "sell": sell,
+            "billable": (None if buy is None else bool(buy > 0.0)),
+            "tier": tier_index(raw_buy, used_kwh),
+            "reason": "default_rate",
+        }
+
     if not seasons:
-        return blank
+        return _from_default("not_configured")
 
     season = find_season(seasons, now)
     if season is None:
-        return {**blank, "reason": "no_season_for_month"}
+        return _from_default("no_season_for_month")
 
     block = next(
         (b for b in (season.get("blocks") or []) if isinstance(b, dict) and _covers(b, now)),
         None,
     )
     if block is None:
-        # The plan covers this month but not this hour. Reported rather than
-        # defaulted, because guessing a rate produces a confident wrong bill.
+        # Falls back to the tariff-wide rate when one is set. Without it this
+        # stays an error rather than a guess: inventing a price produces a
+        # confident wrong bill, which is worse than a visible gap.
+        fallback = _from_default("no_block_for_time")
+        if fallback["reason"] == "default_rate":
+            return {**fallback, "season": season.get("name") or season.get("id")}
         return {
             **blank,
             "season": season.get("name") or season.get("id"),
@@ -247,7 +275,7 @@ def resolve(seasons: Any, now: datetime, used_kwh: float | None = None) -> dict:
     }
 
 
-def validate(seasons: Any) -> list[str]:
+def validate(seasons: Any, default_rate: Any = None) -> list[str]:
     """Problems a user should fix, in plain words. Empty list = usable.
 
     Coverage is checked at hourly resolution per season: a plan that prices
@@ -255,8 +283,13 @@ def validate(seasons: Any) -> list[str]:
     finding it in a month-end total.
     """
     problems: list[str] = []
+    has_default = bool(
+        isinstance(default_rate, dict)
+        and (default_rate.get("buy") is not None or default_rate.get("sell") is not None)
+    )
     if not isinstance(seasons, list) or not seasons:
-        return ["No seasons defined."]
+        # A flat or tiered tariff is complete without seasons.
+        return [] if has_default else ["No rates defined."]
 
     claimed: dict[int, str] = {}
     for s in seasons:
@@ -331,7 +364,9 @@ def validate(seasons: Any) -> list[str]:
                     for b in blocks
                 )
             ]
-            if missing:
+            if missing and not has_default:
+                # Only a problem when nothing backstops it — with a tariff-wide
+                # rate set, an uncovered hour simply falls back to it.
                 hours = ", ".join(f"{h:02d}:00" for h in missing[:4])
                 more = "…" if len(missing) > 4 else ""
                 problems.append(f"'{name}' prices no rate on {label} at {hours}{more}.")

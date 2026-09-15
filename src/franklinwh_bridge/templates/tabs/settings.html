@@ -741,6 +741,11 @@
                       <span class="text-slate-500 ml-2">Rate ($/kWh)</span><input type="number" min="0" step="0.0001" x-model.number="serviceEdit.pricing.export_bonus_rate" class="form-control !py-0.5 !text-xs w-24">
                     </div>
                     <div class="text-[10px] text-slate-600">v1 credits total grid export in-window (may include solar)</div>
+                    <div class="text-[10px] text-amber-400/80" x-show="seasons.length || defaultRate?.sell">
+                      Superseded: your Energy rates already price export (sell $/kWh), so this
+                      window no longer credits the bill — counting both would pay you twice for
+                      the same kWh. Set the feed-in rate on the time period instead.
+                    </div>
                     <div class="flex flex-wrap gap-1">
                       <template x-for="(mo, mi) in monthLabels" :key="'bm'+mi">
                         <button type="button" @click="toggleWinMonth(serviceEdit.bonus_window, mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
@@ -794,6 +799,88 @@
                      boundaries differ (AGL's peak import is 15:00-21:00 but its
                      evening feed-in is 17:00-21:00), and it priced nothing. -->
                 <div x-show="tariffTab === 'import'" x-cloak class="space-y-2">
+                  <!-- TARIFF-WIDE RATE. What a kWh costs when no time period
+                       overrides it. A flat or tiered tariff needs nothing
+                       below this — seasons exist to override, not as a
+                       prerequisite. Tiers here count consumption at the METER
+                       over the billing period, which is what a tiered plan
+                       bills on. -->
+                  <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
+                    <div class="text-[11px] text-sky-400">Tariff rate
+                      <span class="text-slate-500">— applies unless a time period below overrides it</span></div>
+                    <template x-for="side in ['buy', 'sell']" :key="'d' + side">
+                      <div class="flex items-center gap-1.5 text-xs">
+                        <span class="text-slate-500 w-8 shrink-0" x-text="side"></span>
+                        <template x-if="!isDefaultTiered(side)">
+                          <label class="flex items-center gap-1 flex-1 min-w-0">
+                            <span class="text-slate-500">$</span>
+                            <input type="number" min="0" step="0.00001"
+                                   x-model.number="defaultRate[side]" @change="checkRates()"
+                                   class="form-control !py-0.5 !text-xs w-24"></label>
+                        </template>
+                        <template x-if="isDefaultTiered(side)">
+                          <span class="flex-1 text-slate-500"
+                                x-text="`${defaultRate[side].length} tiers`"></span>
+                        </template>
+                        <span class="flex rounded overflow-hidden border border-white/10 shrink-0">
+                          <button type="button" @click="makeDefaultFlat(side)"
+                                  class="px-1.5 py-0.5 text-[10px]"
+                                  :class="!isDefaultTiered(side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Flat</button>
+                          <button type="button" @click="isDefaultTiered(side) || makeDefaultTiered(side)"
+                                  class="px-1.5 py-0.5 text-[10px]"
+                                  :class="isDefaultTiered(side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Tiered</button>
+                        </span>
+                      </div>
+                    </template>
+
+                    <template x-for="side in ['buy', 'sell']" :key="'dt' + side">
+                      <template x-if="isDefaultTiered(side)">
+                        <div class="pl-3 space-y-0.5">
+                          <div class="flex items-center justify-between">
+                            <span class="text-[10px] uppercase tracking-wide text-slate-500"
+                                  x-text="`${side} tiers — by kWh at the meter this billing period`"></span>
+                            <button type="button" @click="addDefaultTier(side)"
+                                    class="text-[10px] text-sky-300 hover:text-sky-200">+ tier</button>
+                          </div>
+                          <template x-for="(t, ti) in defaultRate[side]" :key="'dti' + ti">
+                            <div class="flex items-center gap-1.5 text-xs">
+                              <span class="text-slate-500 text-[10px] w-8" x-text="`#${ti + 1}`"></span>
+                              <template x-if="typeof t.up_to_kwh === 'number'">
+                                <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">up to</span>
+                                  <input type="number" min="0" step="1" x-model.number="t.up_to_kwh"
+                                         @change="checkRates()" class="form-control !py-0.5 !text-xs w-20">
+                                  <span class="text-slate-500 text-[10px]">kWh</span></label>
+                              </template>
+                              <template x-if="typeof t.up_to_kwh !== 'number'">
+                                <span class="text-slate-500 text-[10px]">and above</span>
+                              </template>
+                              <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">$</span>
+                                <input type="number" min="0" step="0.00001" x-model.number="t.rate"
+                                       @change="checkRates()" class="form-control !py-0.5 !text-xs w-24"></label>
+                              <button type="button" @click="removeDefaultTier(side, ti)"
+                                      class="text-[10px] text-red-300/70 hover:text-red-300">×</button>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                    </template>
+
+                    <div class="flex items-center justify-between gap-2" x-show="seasons.length">
+                      <span class="text-[10px] text-slate-600">
+                        Time periods below override this. Changing it here leaves them alone.
+                      </span>
+                      <button type="button" @click="applyDefaultToAllPeriods()"
+                              class="shrink-0 px-2 py-0.5 rounded text-[10px] border border-white/10 text-slate-400 hover:text-slate-200"
+                              title="Overwrite every time period in every season with this rate">
+                        Reset all time periods
+                      </button>
+                    </div>
+                    <div class="text-[10px] text-slate-600" x-show="!seasons.length">
+                      That's enough for a flat or tiered tariff. Add a TOU season below only
+                      if your rate changes by time of day.
+                    </div>
+                  </div>
+
                   <!-- Season tabs -->
                   <div class="flex flex-wrap items-center gap-1 border-b border-white/[0.06] pb-1">
                     <template x-for="(s, i) in seasons" :key="s.id || i">

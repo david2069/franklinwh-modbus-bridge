@@ -65,7 +65,7 @@ def _goto(page, url: str, problems: list) -> bool:
     return False
 
 
-def _wait_until_ready(url: str, settle_s: float = 6.0, timeout_s: float = 90.0) -> str | None:
+def _wait_until_ready(url: str, settle_s: float = 6.0, timeout_s: float = 90.0) -> str | None:  # noqa: E501
     """Block until the app has been up for `settle_s`, or report why not.
 
     Editing anything under src/ — including static JS — restarts uvicorn, and a
@@ -84,7 +84,16 @@ def _wait_until_ready(url: str, settle_s: float = 6.0, timeout_s: float = 90.0) 
             with urllib.request.urlopen(f"{url}/api/health", timeout=3) as r:
                 uptime = json.loads(r.read()).get("uptime_s", 0)
             if uptime >= settle_s:
-                return None
+                # Confirm it is STILL settled a moment later. A single check
+                # passes on a process that is about to be replaced: the reload
+                # begins after the probe and the run then reports buttons that
+                # simply aren't mounted yet. Two agreeing samples is the
+                # cheapest way to catch that.
+                time.sleep(2.0)
+                with urllib.request.urlopen(f"{url}/api/health", timeout=3) as r2:
+                    if json.loads(r2.read()).get("uptime_s", 0) >= uptime:
+                        return None
+                continue
         except (urllib.error.URLError, OSError, ValueError):
             pass
         time.sleep(1.5)
