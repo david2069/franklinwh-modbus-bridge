@@ -225,6 +225,12 @@ class ServiceUpdate(BaseModel):
         pattern=r"^(unknown|fixed|tiered|tou|hybrid|demand|dynamic|other)$",
     )
     export_allowed: bool | None = None
+    # Solar and BATTERY export are separate permissions. A subsidy commonly
+    # bans exporting battery energy while solar export stays fine, and it is
+    # battery export that a force-discharge depends on.
+    solar_export_allowed: bool | None = None
+    battery_export_allowed: bool | None = None
+    export_restriction_note: str | None = Field(default=None, max_length=200)
     export_limit_kw: float | None = Field(default=None, ge=0)  # None/0 → unlimited
     charging_allowed: bool | None = None
     discharging_allowed: bool | None = None

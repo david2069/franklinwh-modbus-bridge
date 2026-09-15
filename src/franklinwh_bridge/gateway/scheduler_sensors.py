@@ -617,8 +617,18 @@ SENSORS: list[SensorDef] = [
     # Referenceable so an automation can refuse to act against its own plan —
     # e.g. only force-discharge while service.export_allowed is true.
     SensorDef(
-        "service.export_allowed", "Plan allows export to grid", None, "bool",
+        "service.export_allowed", "Any export to grid permitted", None, "bool",
         lambda p, _n: bool(p.get("service_export_allowed", True)),
+    ),
+    SensorDef(
+        "service.solar_export_allowed", "Solar may export to grid", None, "bool",
+        lambda p, _n: bool(p.get("service_solar_export_allowed", True)),
+    ),
+    SensorDef(
+        # THE one a force-discharge depends on. Frequently banned on its own
+        # by a subsidy or rebate while solar export stays permitted.
+        "service.battery_export_allowed", "Battery may export to grid", None, "bool",
+        lambda p, _n: bool(p.get("service_battery_export_allowed", True)),
     ),
     SensorDef(
         "service.export_limit_kw", "Plan export limit (kW, 0 = unlimited)", "kW", "number",

@@ -262,6 +262,9 @@ function settingsTab() {
         // an older service edits exactly as it behaves.
         plan_type: svc.plan_type || 'unknown',
         export_allowed: svc.export_allowed !== false,
+        solar_export_allowed: svc.solar_export_allowed !== false && svc.solar_export_allowed !== 0,
+        battery_export_allowed: svc.battery_export_allowed !== false && svc.battery_export_allowed !== 0,
+        export_restriction_note: svc.export_restriction_note || '',
         export_limit_kw: Number(svc.export_limit_kw) || 0,
         charging_allowed: svc.charging_allowed !== false,
         discharging_allowed: svc.discharging_allowed !== false,

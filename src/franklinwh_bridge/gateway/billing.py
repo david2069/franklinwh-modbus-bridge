@@ -44,6 +44,9 @@ class BillingStore:
         self._plan: dict = {
             "plan_type": "unknown",
             "export_allowed": True,
+            "solar_export_allowed": True,
+            "battery_export_allowed": True,
+            "export_restriction_note": "",
             "export_limit_kw": 0.0,      # 0 = unlimited
             "charging_allowed": True,
             "discharging_allowed": True,
@@ -81,6 +84,9 @@ class BillingStore:
                 plan = {
                     "plan_type": s.get("plan_type") or "unknown",
                     "export_allowed": bool(s.get("export_allowed", 1)),
+                    "solar_export_allowed": bool(s.get("solar_export_allowed", 1)),
+                    "battery_export_allowed": bool(s.get("battery_export_allowed", 1)),
+                    "export_restriction_note": (s.get("export_restriction_note") or "").strip(),
                     "export_limit_kw": _num(s.get("export_limit_kw")),
                     "charging_allowed": bool(s.get("charging_allowed", 1)),
                     "discharging_allowed": bool(s.get("discharging_allowed", 1)),
@@ -182,6 +188,8 @@ class BillingStore:
             # Plan permissions → service.* sensors an automation can gate on.
             "service_plan_type": self._plan["plan_type"],
             "service_export_allowed": self._plan["export_allowed"],
+            "service_solar_export_allowed": self._plan["solar_export_allowed"],
+            "service_battery_export_allowed": self._plan["battery_export_allowed"],
             "service_export_limit_kw": self._plan["export_limit_kw"],
             "service_charging_allowed": self._plan["charging_allowed"],
             "service_discharging_allowed": self._plan["discharging_allowed"],

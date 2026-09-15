@@ -207,3 +207,52 @@ async def test_pto_sensor_treats_unknown_as_unknown(db):
     assert approved("unknown") is None
     assert approved("approved") is True
     assert approved("pending") is False
+
+
+# ── Solar export vs battery export ────────────────────────────
+# Different permissions with different sources. A subsidy commonly bans
+# exporting battery energy while solar export stays permitted, and it is
+# BATTERY export that a force-discharge to grid depends on.
+
+
+@pytest.mark.asyncio
+async def test_battery_export_can_be_banned_while_solar_is_allowed(db):
+    """The subsidy case, which one export flag could not express."""
+    svc = await create_service(db, name="Rebated")
+
+    row = await update_service(
+        db, svc["id"], solar_export_allowed=1, battery_export_allowed=0,
+        export_restriction_note="battery rebate — no export of subsidised storage",
+    )
+
+    assert row["solar_export_allowed"] == 1
+    assert row["battery_export_allowed"] == 0
+    assert "rebate" in row["export_restriction_note"]
+
+
+@pytest.mark.asyncio
+async def test_both_default_to_permitted(db):
+    svc = await create_service(db, name="Fresh")
+    row = await get_service(db, svc["id"])
+
+    assert row["solar_export_allowed"] == 1
+    assert row["battery_export_allowed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_sensors_report_them_separately(db):
+    """Updates the SEEDED service, not a new one: BillingStore takes its plan
+    from the FIRST service (the v1 single-service assumption), so a second
+    service would leave the first still driving every sensor."""
+    from franklinwh_bridge.gateway.billing import BillingStore
+    from franklinwh_bridge.store.db import get_services
+
+    first = (await get_services(db))[0]
+    await update_service(db, first["id"], solar_export_allowed=1, battery_export_allowed=0)
+
+    store = BillingStore(db)
+    await store.load()
+    pts = store.as_points()
+
+    assert pts["service_solar_export_allowed"] is True
+    assert pts["service_battery_export_allowed"] is False

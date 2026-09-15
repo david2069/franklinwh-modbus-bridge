@@ -606,7 +606,9 @@
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
                     <label class="flex items-center gap-1.5"
-                           title="May energy leave the property at all — from solar OR the battery. Granted by the network, not the retailer."><input type="checkbox" x-model="serviceEdit.export_allowed" class="accent-emerald-500"> Export to grid allowed</label>
+                           title="May PV export to the grid. A site without solar can leave this either way — it gates nothing on its own."><input type="checkbox" x-model="serviceEdit.solar_export_allowed" class="accent-emerald-500"> Solar export allowed</label>
+                    <label class="flex items-center gap-1.5"
+                           title="May BATTERY energy export to the grid. Often banned on its own — a subsidy or rebate commonly forbids exporting subsidised battery energy while solar export stays permitted. This is the one a force-discharge to grid depends on."><input type="checkbox" x-model="serviceEdit.battery_export_allowed" class="accent-emerald-500"> Battery export allowed</label>
                     <label class="flex items-center gap-1.5"
                            title="May the battery charge from the grid."><input type="checkbox" x-model="serviceEdit.charging_allowed" class="accent-emerald-500"> Battery charging permitted</label>
                     <label class="flex items-center gap-1.5"
@@ -615,9 +617,22 @@
                   <div class="text-[10px] text-slate-600">
                     Plan requirements, not preferences. Referenceable in Automations today;
                     they do not yet block a dispatch that breaks them.
-                    <span class="block">Export and discharging are different: a plan can allow
-                    the battery to discharge for your own load while forbidding export to the grid.</span>
+                    <span class="block">Solar export and BATTERY export are separate: a subsidy
+                    or rebate commonly bans exporting battery energy while solar export stays
+                    permitted, and it is battery export that a force-discharge depends on
+                    (<code class="text-slate-500">service.battery_export_allowed</code>).</span>
+                    <span class="block">Discharging is different again — a battery may be allowed
+                    to discharge for your own load while exporting nothing.</span>
                   </div>
+                  <label class="flex flex-col gap-0.5 text-xs"
+                         x-show="!serviceEdit.solar_export_allowed || !serviceEdit.battery_export_allowed">
+                    <span class="text-slate-500">Why is export restricted?</span>
+                    <input type="text" maxlength="200" x-model="serviceEdit.export_restriction_note"
+                           placeholder="e.g. battery rebate conditions — no export of subsidised storage"
+                           class="form-control !py-0.5 !text-xs">
+                    <span class="text-[10px] text-slate-600">An unticked box tells the next person
+                      nothing; the reason outlives whoever set it.</span>
+                  </label>
                   <!-- Where the service is billed. The timezone is what the
                        plan's TOU windows are WRITTEN in; the engine still runs
                        on the container clock, so we compare rather than convert. -->

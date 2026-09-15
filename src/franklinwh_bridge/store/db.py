@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 43
+CURRENT_SCHEMA_VERSION = 44
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -669,6 +669,27 @@ MIGRATIONS: dict[int, str] = {
     -- lasting trap.
     SELECT 1;
     """,
+    44: """
+    -- Solar export and BATTERY export are different permissions with
+    -- different sources, and one flag could not express either honestly.
+    --
+    -- Battery export is frequently banned on its own — a subsidy or rebate
+    -- commonly forbids exporting subsidised battery energy while solar export
+    -- stays permitted. That is the permission this bridge actually acts on: a
+    -- force-discharge to grid depends on BATTERY export, not solar.
+    --
+    -- Both default to the existing export_allowed so nothing changes meaning
+    -- for an install that already set it. export_allowed is kept as "any
+    -- export permitted" rather than dropped, because automations already
+    -- reference service.export_allowed.
+    ALTER TABLE services ADD COLUMN solar_export_allowed INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE services ADD COLUMN battery_export_allowed INTEGER NOT NULL DEFAULT 1;
+    -- Why it is restricted (subsidy scheme, network condition, plan term) —
+    -- a bare unticked box tells the next person nothing.
+    ALTER TABLE services ADD COLUMN export_restriction_note TEXT NOT NULL DEFAULT '';
+    UPDATE services SET solar_export_allowed = export_allowed,
+                        battery_export_allowed = export_allowed;
+    """,
 }
 
 
@@ -1064,6 +1085,9 @@ _SERVICE_FIELDS = (
     "demand_window", "bonus_window", "pricing",
     # plan description + what the plan permits (migration 36)
     "plan_type", "export_allowed", "export_limit_kw",
+    # Solar vs BATTERY export are separate permissions (migration 44): a
+    # subsidy commonly bans exporting battery energy while solar stays fine.
+    "solar_export_allowed", "battery_export_allowed", "export_restriction_note",
     "charging_allowed", "discharging_allowed",
     # Lifecycle + supplier identity (migration 40). A retired service keeps its
     # history; retailer and network change independently of each other.
