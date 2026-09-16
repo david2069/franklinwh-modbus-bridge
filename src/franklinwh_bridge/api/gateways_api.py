@@ -12,9 +12,10 @@ import time
 from zoneinfo import ZoneInfo
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.config import clock
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
@@ -40,6 +41,10 @@ from franklinwh_bridge.store.db import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["gateways"])
+
+# Built once at import: ruff's B008 permits Depends() in a default, but not
+# a factory call nested inside it (and rebuilding it per request is pointless).
+_REQUIRE_CONTROL = require_capability("control")
 
 
 def _registry(request: Request):
@@ -1029,7 +1034,10 @@ class GatewayCommandRequest(BaseModel):
 
 @router.post("/gateways/{gw_id}/command")
 async def send_gateway_command(
-    gw_id: str, body: GatewayCommandRequest, request: Request,
+    gw_id: str,
+    body: GatewayCommandRequest,
+    request: Request,
+    _user: dict = Depends(_REQUIRE_CONTROL),
 ):
     """Dispatch a control command to a specific gateway."""
     registry = _registry(request)

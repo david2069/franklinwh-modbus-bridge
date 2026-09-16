@@ -80,6 +80,60 @@
     .dropdown a, .dropdown button.link { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px;
       color: var(--text); font-size: 13px; text-decoration: none; background: none; border: 0; cursor: pointer; }
     .dropdown a:hover, .dropdown button.link:hover { background: rgba(255,255,255,.06); }
+
+    /* ── Day picker ─────────────────────────────────────────── */
+    .daybar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .daybar .step {
+      flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; cursor: pointer;
+      background: rgba(15,23,42,.6); border: 1px solid var(--border); color: var(--text);
+      display: grid; place-items: center; font-size: 15px;
+    }
+    .daybar .step:disabled { opacity: .35; cursor: default; }
+    .daybar .day {
+      flex: 1 1 auto; text-align: center; font-size: 13px; font-weight: 600;
+      background: rgba(15,23,42,.6); border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 6px; color: var(--text);
+    }
+    .daybar .today {
+      flex: 0 0 auto; padding: 8px 12px; border-radius: 10px; cursor: pointer; font-size: 12px;
+      background: rgba(34,211,238,.12); border: 1px solid rgba(34,211,238,.3); color: var(--accent);
+    }
+    .daybar .today:disabled { opacity: .35; cursor: default; }
+
+    /* ── Sankey ─────────────────────────────────────────────── */
+    .sankey-svg { display: block; width: 100%; overflow: visible; }
+    .sankey-arc { transition: fill-opacity .15s; }
+    .sankey-arc:hover, .sankey-arc:focus { fill-opacity: .75; outline: none; }
+    .sankey-label { font-size: 11px; font-weight: 600; fill: var(--text); }
+    .sankey-value { font-size: 10px; fill: var(--dim); font-variant-numeric: tabular-nums; }
+    .sankey-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 28px 0; margin: 0; }
+    .quality { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+    .quality.warn { color: var(--warn); }
+
+    /* ── Battery dispatch ───────────────────────────────────── */
+    .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .seg button {
+      padding: 14px 10px; border-radius: 13px; cursor: pointer; font-size: 14px; font-weight: 700;
+      background: rgba(15,23,42,.5); border: 1.5px solid var(--border); color: var(--dim);
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+    }
+    .seg button.on.charge { border-color: var(--ok); color: var(--ok); background: rgba(52,211,153,.1); }
+    .seg button.on.discharge { border-color: var(--warn); color: var(--warn); background: rgba(251,191,36,.1); }
+    .slider-row { margin-top: 14px; }
+    .slider-row .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+    .slider-row .head b { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .slider-row .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
+    input[type=range] { width: 100%; margin: 9px 0 0; accent-color: var(--accent); }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+    .actions button {
+      padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer;
+      border: 1.5px solid var(--border); background: rgba(15,23,42,.5); color: var(--text);
+    }
+    .actions .start { border-color: var(--accent); color: #062c33; background: var(--accent); }
+    .actions button:disabled { opacity: .4; cursor: default; }
+    .dispatch-state { margin-top: 13px; font-size: 12px; color: var(--dim); text-align: center; min-height: 17px; }
+    .dispatch-state.err { color: var(--danger); }
+    .dispatch-state.on { color: var(--ok); }
   </style>
 </head>
 <body>
@@ -157,17 +211,76 @@
       <div class="row" id="reserveRow" style="display:none"><span class="k">Reserve SOC</span><span class="v" id="reserveVal">—</span></div>
     </div>
 
-    <!-- Today's energy (optional; hidden until data arrives) -->
+    <!-- Battery dispatch (only for roles holding the `control` capability) -->
+    <div class="card" id="dispatchCard" style="display:none">
+      <h2>Battery Dispatch</h2>
+      <div class="seg">
+        <button id="btnCharge" class="charge" type="button">
+          <svg class="ico" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Charge
+        </button>
+        <button id="btnDischarge" class="discharge" type="button">
+          <svg class="ico" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/></svg>
+          Discharge
+        </button>
+      </div>
+
+      <div class="slider-row">
+        <div class="head"><span>Power</span><b id="powLabel">—</b></div>
+        <input type="range" id="powRange" min="500" max="5000" step="100" value="2000">
+        <div class="ends"><span id="powMin">0.5 kW</span><span id="powMax">5.0 kW</span></div>
+      </div>
+
+      <div class="slider-row">
+        <div class="head"><span>Duration</span><b id="durLabel">1h</b></div>
+        <input type="range" id="durRange" min="1" max="240" step="1" value="60">
+        <div class="ends"><span>1 min</span><span>4h</span></div>
+      </div>
+
+      <div class="actions">
+        <button id="btnStop" type="button" disabled>Stop</button>
+        <button id="btnStart" class="start" type="button" disabled>Start</button>
+      </div>
+      <div class="dispatch-state" id="dispatchState"></div>
+    </div>
+
+    <!-- Energy flow for a chosen day -->
+    <div class="card" id="flowCard">
+      <h2>Energy Flow</h2>
+      <div class="daybar">
+        <button class="step" id="dayPrev" type="button" aria-label="Previous day">‹</button>
+        <input class="day" id="dayInput" type="date">
+        <button class="step" id="dayNext" type="button" aria-label="Next day">›</button>
+        <button class="today" id="dayToday" type="button">Today</button>
+      </div>
+      <div id="sankey"></div>
+      <div class="quality" id="flowQuality"></div>
+    </div>
+
+    <!-- Totals for the selected day -->
     <div class="card" id="energyCard" style="display:none">
-      <h2>Today</h2>
+      <h2 id="energyHead">Today</h2>
       <div class="row"><span class="k">Solar produced</span><span class="v" id="enSolar">—</span></div>
       <div class="row"><span class="k">Grid imported</span><span class="v" id="enImport">—</span></div>
       <div class="row"><span class="k">Grid exported</span><span class="v" id="enExport">—</span></div>
+      <div class="row"><span class="k">Battery charged</span><span class="v" id="enCharge">—</span></div>
+      <div class="row"><span class="k">Battery discharged</span><span class="v" id="enDischarge">—</span></div>
+    </div>
+
+    <!-- Lifetime counters (measured, not reconstructed) -->
+    <div class="card" id="lifeCard" style="display:none">
+      <h2>Lifetime</h2>
+      <div class="row"><span class="k">Solar produced</span><span class="v" id="ltSolar">—</span></div>
+      <div class="row"><span class="k">Grid imported</span><span class="v" id="ltImport">—</span></div>
+      <div class="row"><span class="k">Grid exported</span><span class="v" id="ltExport">—</span></div>
+      <div class="row"><span class="k">Battery charged</span><span class="v" id="ltCharge">—</span></div>
+      <div class="row"><span class="k">Battery discharged</span><span class="v" id="ltDischarge">—</span></div>
     </div>
 
     <div class="foot" id="foot">—</div>
   </div>
 
+  <script src="static/js/sankey.js?v={{ cache_bust }}"></script>
   <script src="static/js/user_app.js?v={{ cache_bust }}"></script>
 </body>
 </html>

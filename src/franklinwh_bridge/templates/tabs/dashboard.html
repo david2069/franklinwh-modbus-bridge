@@ -79,6 +79,7 @@
         ['solarInputs', 'Solar Inputs'],
         ['battery', 'Battery'],
         ['lifetimeEnergy', 'Lifetime Energy'],
+        ['energyFlow', 'Energy Flow'],
         ['batteryControl', 'Battery Control'],
         ['operatingMode', 'Operating Mode'],
         ['livePoints', 'Live Points'],
@@ -544,6 +545,26 @@
           <span class="font-mono" x-text="($store.app.points.grid_import_wh != null ? ($store.app.points.grid_import_wh / 1000000).toFixed(2) : '--') + ' MWh'"></span>
         </div>
       </div>
+    </div>
+
+    <!-- Energy Flow (Sankey) — reconstructed arcs for a chosen day -->
+    <div class="card" x-show="cardVisible.energyFlow" x-data="energyFlowCard()"
+         draggable="true" :style="`order:${cardOrder.indexOf('energyFlow')}`"
+         @dragstart="dragStart('energyFlow')" @dragover.prevent="dragOver($event,'energyFlow')" @dragend="dragEnd()">
+      <div class="card-label mb-3">Energy Flow</div>
+
+      <div class="flex items-center gap-2 mb-3">
+        <button type="button" class="btn btn-sm btn-secondary" @click="shiftDay(-1)" aria-label="Previous day">‹</button>
+        <input type="date" class="form-control flex-1 text-center" x-model="day" :max="today" @change="load()">
+        <button type="button" class="btn btn-sm btn-secondary" @click="shiftDay(1)"
+                :disabled="day >= today" aria-label="Next day">›</button>
+        <button type="button" class="btn btn-sm btn-secondary" @click="goToday()" :disabled="day >= today">Today</button>
+      </div>
+
+      <div x-ref="sankey" class="fwh-sankey"></div>
+
+      <div class="text-xs text-center mt-2" :class="warn ? 'text-amber-400' : 'text-slate-400'"
+           x-text="quality"></div>
     </div>
 
     <!-- Battery Control -->

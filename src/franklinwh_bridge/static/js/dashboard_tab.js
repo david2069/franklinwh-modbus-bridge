@@ -236,6 +236,7 @@ function dashboardTab() {
     solarInputs: true,
     battery: true,
     lifetimeEnergy: true,
+    energyFlow: true,
     batteryControl: true,
     operatingMode: true,
     livePoints: true,
@@ -244,7 +245,7 @@ function dashboardTab() {
 
   const DEFAULT_CARD_ORDER = [
     'bridgeStatus', 'powerFlow', 'acPower', 'batterySoc',
-    'solarInputs', 'battery', 'lifetimeEnergy', 'batteryControl',
+    'solarInputs', 'battery', 'lifetimeEnergy', 'energyFlow', 'batteryControl',
     'operatingMode', 'livePoints', 'eventsHistory',
   ];
 

@@ -10,7 +10,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from franklinwh_bridge.api.auth import get_current_user, require_auth
+from franklinwh_bridge.api.auth import get_current_user, require_capability
+
+# Hoisted so it is built once at import rather than per-request: ruff's B008
+# allows Depends() itself in a default, but not a factory call nested in it.
+_REQUIRE_CONTROL = require_capability("control")
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 _STATIC_DIR = Path(__file__).parent.parent / "static"
@@ -92,7 +96,11 @@ async def login_page(request: Request, user: dict | None = Depends(get_current_u
 
 
 @router.post("/api/command")
-async def send_command(body: CommandRequest, request: Request, _user: dict = Depends(require_auth)):
+async def send_command(
+    body: CommandRequest,
+    request: Request,
+    _user: dict = Depends(_REQUIRE_CONTROL),
+):
     """Dispatch a control command (same path as MQTT commands).
 
     Defaults to the "default" gateway. Use POST /api/gateways/{gw_id}/command

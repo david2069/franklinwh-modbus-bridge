@@ -77,6 +77,26 @@ def require_role(*roles: str):
     return _dep
 
 
+def require_capability(capability: str):
+    """Dependency factory: require a capability from ``ROLE_CAPABILITIES``.
+
+    Prefer this over :func:`require_role` for anything that acts on hardware.
+    ROLE_CAPABILITIES has always reserved ``control`` to roles that may operate
+    the battery, but nothing enforced it at the routes — every control endpoint
+    asked only for a *session*, so any signed-in viewer could dispatch a forced
+    charge over the API. Naming the capability keeps the grant and the check in
+    one place instead of restating the role list at each call site.
+    """
+
+    async def _dep(user: dict = Depends(require_auth)) -> dict:
+        role = user.get("role", "")
+        if capability not in ROLE_CAPABILITIES.get(role, set()):
+            raise HTTPException(403, f"'{capability}' capability required")
+        return user
+
+    return _dep
+
+
 async def _read_credentials(request: Request) -> tuple[str, str]:
     ctype = request.headers.get("content-type", "")
     if "application/json" in ctype:

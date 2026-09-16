@@ -45,7 +45,10 @@ _PUBLIC = ("id", "label", "tab", "capability", "core")
 #: admin holds every capability. Kept here as the single source of truth.
 ROLE_CAPABILITIES: dict[str, set[str]] = {
     "admin": {m["capability"] for m in MODULES} | {"control", "users"},
-    "user": {"view"},
+    # "user" operates the system from the mobile dashboard — charge/discharge
+    # dispatch — but sees none of the admin surface. "viewer" is exactly what
+    # its name says and must never reach a control route.
+    "user": {"view", "control"},
     "viewer": {"view"},
 }
 

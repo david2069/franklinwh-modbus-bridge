@@ -694,3 +694,19 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 [data-theme="light"] input[type="range"]::-moz-range-thumb {
   border-color: rgba(255, 255, 255, 0.95);
 }
+
+/* ── Energy-flow Sankey ──────────────────────────────────── */
+/* Rendered by static/js/sankey.js, which is shared with the standalone /user
+   page. That page declares its own --text/--dim; here the labels have to ride
+   the admin theme tokens or they render black-on-black in dark mode. */
+.fwh-sankey { width: 100%; }
+.sankey-svg { display: block; width: 100%; overflow: visible; }
+.sankey-arc { transition: fill-opacity .15s; }
+.sankey-arc:hover,
+.sankey-arc:focus { fill-opacity: .75; outline: none; }
+.sankey-label { font-size: 11px; font-weight: 600; fill: var(--text-primary); }
+.sankey-value { font-size: 10px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+.sankey-empty {
+  color: var(--text-muted); font-size: 12px; text-align: center;
+  padding: 28px 0; margin: 0;
+}
