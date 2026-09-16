@@ -81,7 +81,16 @@
       color: var(--text); font-size: 13px; text-decoration: none; background: none; border: 0; cursor: pointer; }
     .dropdown a:hover, .dropdown button.link:hover { background: rgba(255,255,255,.06); }
 
-    /* ── Day picker ─────────────────────────────────────────── */
+    /* ── Period + day picker ────────────────────────────────── */
+    .span-label { text-transform: none; letter-spacing: 0; color: var(--dim); font-weight: 500; margin-left: 6px; }
+    .periodbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+    .periodbar button {
+      padding: 7px 4px; border-radius: 9px; cursor: pointer; font-size: 12px; font-weight: 600;
+      background: rgba(15,23,42,.6); border: 1px solid var(--border); color: var(--dim);
+    }
+    .periodbar button.on {
+      background: rgba(34,211,238,.14); border-color: rgba(34,211,238,.4); color: var(--accent);
+    }
     .daybar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
     .daybar .step {
       flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; cursor: pointer;
@@ -123,6 +132,30 @@
     .slider-row .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
     .slider-row .head b { font-weight: 700; font-variant-numeric: tabular-nums; }
     .slider-row .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .slider-row .hint { font-size: 11px; color: var(--dim); margin-top: 5px; min-height: 15px; }
+    .slider-row .hint.warn { color: var(--warn); }
+    .now-chip {
+      font-size: 10px; font-weight: 600; color: var(--accent); margin-left: 6px;
+      background: rgba(34,211,238,.12); border: 1px solid rgba(34,211,238,.25);
+      border-radius: 999px; padding: 1px 7px; vertical-align: 1px;
+      font-variant-numeric: tabular-nums;
+    }
+    /* The range thumb is 16px wide and travels between its own half-widths, so
+       a marker placed at a raw percentage of the full width drifts from the
+       thumb at both ends. Inset by half a thumb and scale into what's left. */
+    .soc-track { position: relative; height: 13px; margin: 2px 8px 0; }
+    .soc-now {
+      position: absolute; top: 0; transform: translateX(-50%);
+      font-size: 10px; color: var(--accent); white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .soc-now::before {
+      content: ''; position: absolute; left: 50%; top: -5px; width: 2px; height: 5px;
+      background: var(--accent); transform: translateX(-50%); border-radius: 1px;
+    }
+    .soc-toggle { font-size: 11px; color: var(--dim); margin-right: 8px; cursor: pointer; user-select: none; }
+    .soc-toggle input { vertical-align: -1px; margin-right: 3px; accent-color: var(--accent); }
+    input[type=range]:disabled { opacity: .4; }
     input[type=range] { width: 100%; margin: 9px 0 0; accent-color: var(--accent); }
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
     .actions button {
@@ -232,9 +265,26 @@
       </div>
 
       <div class="slider-row">
+        <div class="head">
+          <span>Stop at SoC <span class="now-chip" id="socNowChip">now --%</span></span>
+          <span>
+            <label class="soc-toggle"><input type="checkbox" id="socEnable"> use</label>
+            <b id="socLabel">Off</b>
+          </span>
+        </div>
+        <input type="range" id="socRange" min="5" max="100" step="5" value="80" disabled>
+        <!-- Live SoC marked on the same scale as the target, so "stop at 80%"
+             is read against where the battery actually is right now. -->
+        <div class="soc-track"><span class="soc-now" id="socNowMark" hidden></span></div>
+        <div class="ends"><span>5%</span><span>100%</span></div>
+        <div class="hint" id="socHint"></div>
+      </div>
+
+      <div class="slider-row">
         <div class="head"><span>Duration</span><b id="durLabel">1h</b></div>
         <input type="range" id="durRange" min="1" max="240" step="1" value="60">
         <div class="ends"><span>1 min</span><span>4h</span></div>
+        <div class="hint" id="durHint"></div>
       </div>
 
       <div class="actions">
@@ -246,7 +296,13 @@
 
     <!-- Energy flow for a chosen day -->
     <div class="card" id="flowCard">
-      <h2>Energy Flow</h2>
+      <h2>Energy Flow <span class="span-label" id="spanLabel"></span></h2>
+      <div class="periodbar" id="periodBar">
+        <button type="button" data-period="day" class="on">Day</button>
+        <button type="button" data-period="week">Week</button>
+        <button type="button" data-period="month">Month</button>
+        <button type="button" data-period="year">Year</button>
+      </div>
       <div class="daybar">
         <button class="step" id="dayPrev" type="button" aria-label="Previous day">‹</button>
         <input class="day" id="dayInput" type="date">

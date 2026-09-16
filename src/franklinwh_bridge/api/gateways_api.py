@@ -1029,7 +1029,23 @@ async def get_gateway_points(gw_id: str, request: Request):
 
 class GatewayCommandRequest(BaseModel):
     slug: str
+    # Half these commands carry a number (watts, seconds, percent) and half
+    # carry an action string, but the wire type was str-only — so a client that
+    # sent `{"value": 2000}` for a watts field got a 422 while the *action*
+    # command right after it succeeded, arming a dispatch at whatever power was
+    # already set. The admin tab only avoided this by calling String(value) at
+    # every call site. Accept the number and normalise here; the handler still
+    # sees the string it has always seen.
     value: str
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _stringify_scalars(cls, v):
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, (int, float)):
+            return str(v)
+        return v
 
 
 @router.post("/gateways/{gw_id}/command")

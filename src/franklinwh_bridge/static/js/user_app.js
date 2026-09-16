@@ -63,6 +63,8 @@
   function renderPoints(pts) {
     // SOC ring
     const soc = pts.soc;
+    lastSoc = (soc != null && !isNaN(soc)) ? soc : null;
+    if ($('dispatchCard').style.display === 'block') syncDispatchControls();
     const arc = $('socArc');
     if (soc != null && !isNaN(soc)) {
       const pct = Math.min(100, Math.max(0, soc)) / 100;
@@ -146,6 +148,46 @@
   };
 
   let selectedDay = todayISO();
+  let selectedPeriod = 'day';   // day | week | month | year
+  // Last /api/sensors payload. Switching back to Day has to restore the
+  // METERED today figures immediately; without this the card keeps showing
+  // the reconstructed year totals until the next 10s poll.
+  let lastSensors = null;
+
+  /** Local-midnight epoch seconds for the selected period, anchored on the
+   *  chosen date. Local, not UTC — the aGate's daily totals reset at local
+   *  midnight, so a UTC span disagrees with every other figure by the offset. */
+  function periodSpan() {
+    const [y, m, d] = selectedDay.split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    const end = new Date(y, m - 1, d);
+    if (selectedPeriod === 'week') {
+      start.setDate(start.getDate() - ((start.getDay() + 6) % 7));  // Monday-start
+      end.setTime(start.getTime()); end.setDate(end.getDate() + 7);
+    } else if (selectedPeriod === 'month') {
+      start.setDate(1);
+      end.setTime(start.getTime()); end.setMonth(end.getMonth() + 1);
+    } else if (selectedPeriod === 'year') {
+      start.setMonth(0, 1);
+      end.setTime(start.getTime()); end.setFullYear(end.getFullYear() + 1);
+    } else {
+      end.setDate(end.getDate() + 1);
+    }
+    return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)];
+  }
+
+  /** A week anchored on Thursday still starts on Monday; showing only the
+   *  anchor date would misdescribe what the diagram covers. */
+  function describeSpan(s, e) {
+    if (selectedPeriod === 'day') return '';
+    const d = (secs) => new Date(secs * 1000);
+    if (selectedPeriod === 'year') return String(d(s).getFullYear());
+    if (selectedPeriod === 'month') {
+      return d(s).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    }
+    const f = (secs) => d(secs).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+    return `${f(s)} – ${f(e - 1)}`;
+  }
 
   function shiftDay(days) {
     const [y, m, d] = selectedDay.split('-').map(Number);
@@ -161,7 +203,8 @@
     $('dayInput').value = selectedDay;
     $('dayNext').disabled = isToday;
     $('dayToday').disabled = isToday;
-    $('energyHead').textContent = isToday ? 'Today' : selectedDay;
+    $('energyHead').textContent =
+      selectedPeriod !== 'day' ? 'This period' : (isToday ? 'Today' : selectedDay);
   }
 
   function renderQuality(q) {
@@ -178,7 +221,7 @@
     const pct = Math.round((q.coverage || 0) * 100);
     if (pct < 95) {
       el.className = 'quality warn';
-      el.textContent = `Partial data — the bridge recorded ${pct}% of this day.`;
+      el.textContent = `Partial data — the bridge recorded ${pct}% of this ${selectedPeriod}.`;
     } else {
       el.className = 'quality';
       el.textContent = 'Derived from power samples; totals below are metered.';
@@ -187,7 +230,16 @@
 
   async function loadFlow() {
     const host = $('sankey');
-    const data = await getJSON(`api/energy/flow?day=${encodeURIComponent(selectedDay)}`);
+    let url;
+    if (selectedPeriod === 'day') {
+      url = `api/energy/flow?day=${encodeURIComponent(selectedDay)}`;
+      $('spanLabel').textContent = '';
+    } else {
+      const [a, z] = periodSpan();
+      url = `api/energy/flow?start=${a}&end=${z}`;
+      $('spanLabel').textContent = describeSpan(a, z);
+    }
+    const data = await getJSON(url);
     if (!data || data.error) {
       host.innerHTML = '<p class="sankey-empty">Energy flow unavailable.</p>';
       $('flowQuality').textContent = '';
@@ -196,6 +248,7 @@
     if (window.FWHSankey) window.FWHSankey.render(host, data.flows, { height: 250 });
     renderQuality(data.quality);
     renderDayTotals(data.nodes);
+    if (selectedPeriod === 'day' && selectedDay === todayISO()) renderEnergy(lastSensors);
   }
 
   function renderEnergy(sensors) {
@@ -206,7 +259,7 @@
     // The per-day totals are only published for *today*; for any other day the
     // Sankey's own node totals are what we have, so let the card follow the
     // selection rather than silently keep showing today under a past date.
-    const isToday = selectedDay === todayISO();
+    const isToday = selectedPeriod === 'day' && selectedDay === todayISO();
     if (!isToday) return;
 
     const rows = {
@@ -238,7 +291,8 @@
   }
 
   function renderDayTotals(nodes) {
-    if (!nodes || selectedDay === todayISO()) return;
+    if (!nodes) return;
+    if (selectedPeriod === 'day' && selectedDay === todayISO()) return;
     $('energyCard').style.display = 'block';
     $('enSolar').textContent = fmtKwh(nodes.solar);
     $('enImport').textContent = fmtKwh(nodes.grid_import);
@@ -252,6 +306,7 @@
   // actually reaches for. The API is the same; the capability gate is what
   // decides whether this card exists at all.
   let dispatchAction = null;   // 'Force Charge' | 'Force Discharge' | null
+  let lastSoc = null;          // live SoC, for the target-SoC hint
   let dispatchActive = false;
   let busy = false;
 
@@ -264,11 +319,64 @@
     return m ? `${h}h ${m}m` : `${h}h`;
   }
 
+  /** Target SoC in %, or 0 when the user hasn't opted in (0 = disabled). */
+  function targetSoc() {
+    return $('socEnable').checked ? Number($('socRange').value) : 0;
+  }
+
   function syncDispatchControls() {
     $('btnCharge').classList.toggle('on', dispatchAction === 'Force Charge');
     $('btnDischarge').classList.toggle('on', dispatchAction === 'Force Discharge');
     $('powLabel').textContent = fmtKw(Number($('powRange').value));
     $('durLabel').textContent = fmtDuration(Number($('durRange').value));
+
+    const target = targetSoc();
+    const range = $('socRange');
+    range.disabled = !$('socEnable').checked;
+    $('socLabel').textContent = target ? `${target}%` : 'Off';
+
+    // Current SoC, always — whether or not a target is engaged. Choosing
+    // "stop at 80%" is meaningless without knowing you're at 26%.
+    const mark = $('socNowMark');
+    if (lastSoc == null) {
+      $('socNowChip').textContent = 'now --%';
+      mark.hidden = true;
+    } else {
+      $('socNowChip').textContent = `now ${Math.round(lastSoc)}%`;
+      const lo = Number(range.min);
+      const hi = Number(range.max);
+      const clamped = Math.min(hi, Math.max(lo, lastSoc));
+      mark.hidden = false;
+      mark.style.left = `${((clamped - lo) / (hi - lo)) * 100}%`;
+      // Below the slider's floor the marker would pin to 5% and imply the
+      // battery is there; say so instead of quietly lying by one pixel.
+      mark.textContent = lastSoc < lo ? `${Math.round(lastSoc)}%` : 'now';
+    }
+
+    // Duration is the backstop, not the exit: the handler checks the watchdog
+    // first and the target second, so whichever lands first ends the dispatch.
+    // Say so, or "Stop at 80%" next to "1h" reads as a contradiction.
+    $('durHint').textContent = target
+      ? 'Backstop — whichever comes first ends the dispatch.'
+      : '';
+
+    // A target already passed in the chosen direction gets cleared by the
+    // handler with a warning, so the dispatch would silently run to its
+    // duration instead. Flag it here rather than let that surprise land.
+    const soc = lastSoc;
+    const hint = $('socHint');
+    if (target && soc != null && dispatchAction) {
+      const charging = dispatchAction === 'Force Charge';
+      const passed = charging ? soc >= target : soc <= target;
+      hint.className = 'hint' + (passed ? ' warn' : '');
+      hint.textContent = passed
+        ? `Already at ${Math.round(soc)}% — this target won't stop a ${charging ? 'charge' : 'discharge'}.`
+        : `Now ${Math.round(soc)}% → ${charging ? 'charge up to' : 'discharge down to'} ${target}%.`;
+    } else {
+      hint.className = 'hint';
+      hint.textContent = '';
+    }
+
     // Start needs a chosen direction; Stop needs something running. Leaving
     // Start live with no selection is how you dispatch the wrong direction.
     $('btnStart').disabled = busy || !dispatchAction;
@@ -305,12 +413,16 @@
 
     const watts = Number($('powRange').value);
     const seconds = Number($('durRange').value) * 60;
+    const target = targetSoc();
 
-    // Power and duration first: the action command is what arms the dispatch,
-    // so sending it last means it is never armed with stale limits.
+    // Power, duration and target first: the action command is what arms the
+    // dispatch, so sending it last means it is never armed with stale limits.
+    // The target is sent even when off (0 clears it) — otherwise a target from
+    // an earlier run stays armed and ends this one early.
     const steps = [
       { slug: 'battery_command_power', value: watts },
       { slug: 'battery_command_duration', value: seconds },
+      { slug: 'battery_command_target_soc', value: target },
       { slug: 'battery_command', value: dispatchAction },
     ];
     for (const s of steps) {
@@ -326,7 +438,10 @@
     busy = false;
     dispatchActive = true;
     const verb = dispatchAction === 'Force Charge' ? 'Charging' : 'Discharging';
-    setDispatchState(`${verb} at ${fmtKw(watts)} for ${fmtDuration(seconds / 60)}`, 'on');
+    const until = target
+      ? `to ${target}% (or ${fmtDuration(seconds / 60)})`
+      : `for ${fmtDuration(seconds / 60)}`;
+    setDispatchState(`${verb} at ${fmtKw(watts)} ${until}`, 'on');
     syncDispatchControls();
   }
 
@@ -359,6 +474,8 @@
     });
     $('powRange').addEventListener('input', syncDispatchControls);
     $('durRange').addEventListener('input', syncDispatchControls);
+    $('socRange').addEventListener('input', syncDispatchControls);
+    $('socEnable').addEventListener('change', syncDispatchControls);
     $('btnStart').addEventListener('click', startDispatch);
     $('btnStop').addEventListener('click', stopDispatch);
     syncDispatchControls();
@@ -398,6 +515,7 @@
     ]);
     if (pts && pts.points) renderPoints(pts.points);
     renderConnectivity(conn);
+    lastSensors = sensors;
     renderEnergy(sensors);
   }
 
@@ -410,6 +528,14 @@
     window.location.href = `${base}/login`;
   });
 
+  $('periodBar').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-period]');
+    if (!btn) return;
+    selectedPeriod = btn.dataset.period;
+    for (const b of $('periodBar').children) b.classList.toggle('on', b === btn);
+    syncDayControls();
+    loadFlow();
+  });
   $('dayPrev').addEventListener('click', () => shiftDay(-1));
   $('dayNext').addEventListener('click', () => shiftDay(1));
   $('dayToday').addEventListener('click', () => {

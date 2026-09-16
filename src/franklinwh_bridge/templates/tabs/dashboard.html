@@ -284,12 +284,65 @@
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
         <!-- Phase expand button — only for split/three-phase -->
-        <button x-show="$store.app.acTypeCode >= 1" @click="phaseExpanded = !phaseExpanded"
-                class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition"
-                :class="phaseExpanded ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'">
-          <span class="text-[8px]" x-text="phaseExpanded ? '▼' : '▶'"></span>
-          <span x-text="phaseExpanded ? 'Hide Phases' : 'Per-Phase'"></span>
-        </button>
+        <div class="flex items-center gap-1" x-data="metricsChart('ac')">
+          <button x-show="$store.app.acTypeCode >= 1" @click="phaseExpanded = !phaseExpanded"
+                  class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition"
+                  :class="phaseExpanded ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'">
+            <span class="text-[8px]" x-text="phaseExpanded ? '▼' : '▶'"></span>
+            <span x-text="phaseExpanded ? 'Hide Phases' : 'Per-Phase'"></span>
+          </button>
+          <button @click="show()" title="Live chart"
+                  class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition
+                         text-slate-500 hover:text-cyan-400 hover:bg-slate-700/30">
+            <span class="text-[11px]">📈</span><span>Chart</span>
+          </button>
+
+      <!-- Live metrics modal. x-if, not x-show: the canvas must not exist
+           while hidden, or Chart.js measures a zero-height parent and locks
+           the plot to it. -->
+      <template x-if="open">
+        <div class="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/60"
+             @click.self="hide()" @keydown.escape.window="hide()">
+          <div class="w-full max-w-4xl rounded-lg border shadow-2xl flex flex-col"
+               style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+            <div class="flex items-center justify-between p-3 border-b" style="border-color: var(--border);">
+              <h2 class="text-sm font-semibold" x-text="title"></h2>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-slate-500"
+                      x-text="sampleCount + ' samples · 2s'"></span>
+                <button @click="clear()" class="btn btn-sm btn-secondary">Clear</button>
+                <button @click="hide()" class="btn btn-sm btn-secondary">Close</button>
+              </div>
+            </div>
+
+            <div class="p-3 flex flex-wrap gap-1.5 border-b" style="border-color: var(--border);">
+              <template x-for="s in series" :key="s.key">
+                <button type="button" @click="toggle(s.key)"
+                        class="px-2 py-0.5 text-[11px] rounded border transition"
+                        :style="s.on ? `border-color:${s.colour}; color:${s.colour}; background:${s.colour}1f`
+                                     : 'border-color: var(--border);'"
+                        :class="s.on ? '' : 'text-slate-500 hover:text-slate-300'">
+                  <span x-text="s.label"></span>
+                  <span class="opacity-60" x-text="'· ' + s.unit"></span>
+                </button>
+              </template>
+            </div>
+
+            <div class="p-3 grow min-h-0">
+              <div style="height: 58vh; min-height: 260px;">
+                <canvas x-ref="canvas"></canvas>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length === 0">
+                Pick at least one metric above.
+              </p>
+              <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length > 0">
+                Live only — these points aren't historised, so the chart starts when you open it.
+              </p>
+            </div>
+          </div>
+        </div>
+      </template>
+        </div>
       </div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div class="flex justify-between">
@@ -464,7 +517,62 @@
     <div class="card" x-show="cardVisible.battery"
          draggable="true" :style="`order:${cardOrder.indexOf('battery')}`"
          @dragstart="dragStart('battery')" @dragover.prevent="dragOver($event,'battery')" @dragend="dragEnd()">
-      <div class="card-label mb-3" x-text="$store.app.batteryLabel || 'Battery'"></div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label !mb-0" x-text="$store.app.batteryLabel || 'Battery'"></div>
+        <div x-data="metricsChart('dc')">
+          <button @click="show()" title="Live chart"
+                  class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition
+                         text-slate-500 hover:text-cyan-400 hover:bg-slate-700/30">
+            <span class="text-[11px]">📈</span><span>Chart</span>
+          </button>
+
+      <!-- Live metrics modal. x-if, not x-show: the canvas must not exist
+           while hidden, or Chart.js measures a zero-height parent and locks
+           the plot to it. -->
+      <template x-if="open">
+        <div class="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/60"
+             @click.self="hide()" @keydown.escape.window="hide()">
+          <div class="w-full max-w-4xl rounded-lg border shadow-2xl flex flex-col"
+               style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+            <div class="flex items-center justify-between p-3 border-b" style="border-color: var(--border);">
+              <h2 class="text-sm font-semibold" x-text="title"></h2>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-slate-500"
+                      x-text="sampleCount + ' samples · 2s'"></span>
+                <button @click="clear()" class="btn btn-sm btn-secondary">Clear</button>
+                <button @click="hide()" class="btn btn-sm btn-secondary">Close</button>
+              </div>
+            </div>
+
+            <div class="p-3 flex flex-wrap gap-1.5 border-b" style="border-color: var(--border);">
+              <template x-for="s in series" :key="s.key">
+                <button type="button" @click="toggle(s.key)"
+                        class="px-2 py-0.5 text-[11px] rounded border transition"
+                        :style="s.on ? `border-color:${s.colour}; color:${s.colour}; background:${s.colour}1f`
+                                     : 'border-color: var(--border);'"
+                        :class="s.on ? '' : 'text-slate-500 hover:text-slate-300'">
+                  <span x-text="s.label"></span>
+                  <span class="opacity-60" x-text="'· ' + s.unit"></span>
+                </button>
+              </template>
+            </div>
+
+            <div class="p-3 grow min-h-0">
+              <div style="height: 58vh; min-height: 260px;">
+                <canvas x-ref="canvas"></canvas>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length === 0">
+                Pick at least one metric above.
+              </p>
+              <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length > 0">
+                Live only — these points aren't historised, so the chart starts when you open it.
+              </p>
+            </div>
+          </div>
+        </div>
+      </template>
+        </div>
+      </div>
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <!-- Power + Status -->
         <div class="flex justify-between">
@@ -552,6 +660,17 @@
          draggable="true" :style="`order:${cardOrder.indexOf('energyFlow')}`"
          @dragstart="dragStart('energyFlow')" @dragover.prevent="dragOver($event,'energyFlow')" @dragend="dragEnd()">
       <div class="card-label mb-3">Energy Flow</div>
+
+      <div class="flex items-center gap-1 mb-2">
+        <template x-for="p in ['day', 'week', 'month', 'year']" :key="p">
+          <button type="button" class="btn btn-sm"
+                  :class="period === p ? 'btn-primary' : 'btn-secondary'"
+                  @click="setPeriod(p)" x-text="p.charAt(0).toUpperCase() + p.slice(1)"></button>
+        </template>
+        <!-- Week/month/year are anchored on the chosen date, so the date stays
+             visible and meaningful in every period. -->
+        <span class="ml-auto text-xs text-slate-400" x-show="period !== 'day'" x-text="spanLabel"></span>
+      </div>
 
       <div class="flex items-center gap-2 mb-3">
         <button type="button" class="btn btn-sm btn-secondary" @click="shiftDay(-1)" aria-label="Previous day">‹</button>

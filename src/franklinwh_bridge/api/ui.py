@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from franklinwh_bridge.api.auth import get_current_user, require_capability
 
@@ -39,7 +39,18 @@ def _cache_bust() -> str:
 
 class CommandRequest(BaseModel):
     slug: str
+    # See GatewayCommandRequest: numeric commands (watts/seconds/percent)
+    # must not 422 just because the client sent a JSON number.
     value: str
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _stringify_scalars(cls, v):
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, (int, float)):
+            return str(v)
+        return v
 
 
 def _base_path(request: Request) -> str:
