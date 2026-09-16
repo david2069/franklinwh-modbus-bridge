@@ -7,20 +7,16 @@
   <base href="{{ base_path }}/">
   <link rel="stylesheet" href="static/css/design-system.css?v={{ cache_bust }}">
 
-  <!-- Tailwind 3.4.1 — local, no CDN -->
-  <script src="static/js/tailwind-3.4.1.min.js"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            primary: { DEFAULT: 'var(--primary-color)', dark: 'var(--primary-dark)', light: 'var(--primary-light)' },
-          }
-        }
-      }
-    };
-  </script>
+  <!-- Tailwind — COMPILED, not the browser JIT.
+       The JIT build shipped 403 KB and re-scanned the whole DOM through a
+       MutationObserver on every mutation. With all eight tabs permanently
+       mounted, 79% of that DOM is inert at any moment, so the scan was paid on
+       every timer tick — on a phone, for the life of the page. The compiled
+       sheet does none of it.
+       Regenerate with `python tools/build_css.py`; it pins the version so
+       Preflight keeps the zero-specificity `:where()` form that lets
+       design-system.css style buttons. See that file before changing it. -->
+  <link rel="stylesheet" href="static/css/tailwind.css?v={{ cache_bust }}">
 
   <!-- Chart.js — local -->
   <script src="static/js/chartjs-4.4.7.umd.min.js"></script>
