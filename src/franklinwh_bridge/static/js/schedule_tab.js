@@ -35,7 +35,12 @@ const TRIGGER_TYPES = [
   { id: 'always',   label: 'Always evaluate (sensor-driven)', kind: 'always' },
 ];
 
-const OPERATORS = ['<', '<=', '==', '!=', '>=', '>', 'between'];
+const OPERATORS = ['<', '<=', '==', '!=', '>=', '>', 'between',
+                   'in', 'not_in', 'like', 'not_like'];
+// Ops whose RHS is a list or a pattern, never a number — _coerceVal must
+// leave '10,20,30' and 'Self*' alone, and a Lookup RHS makes no sense for
+// them (a single live value is not a list).
+const TEXT_RHS_OPERATORS = ['in', 'not_in', 'like', 'not_like'];
 
 // FWHAI-parity quick presets. Selecting one fills the real fields below, which
 // stay editable. Sub-day/daily/weekly map onto interval/daily/weekly; the
@@ -1290,7 +1295,12 @@ function scheduleTab() {
             if (c.conditions.length) conds.push(build(c));  // skip empty groups
           } else {
             const row = { sensor: c.sensor, op: c.op };
-            if (c.value_kind === 'sensor') {
+            // A list or pattern RHS is text by definition, and a Lookup (one
+            // live value) can't be a list — so these ops always send the raw
+            // string rather than a coerced number or a sensor reference.
+            if (TEXT_RHS_OPERATORS.includes(c.op)) {
+              row.value = c.value == null ? '' : String(c.value);
+            } else if (c.value_kind === 'sensor') {
               row.value_kind = 'sensor';
               row.value_sensor = c.value_sensor || '';
             } else {

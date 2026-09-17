@@ -11,8 +11,17 @@ Shapes (JSON-serialisable, stored on the ``schedules`` row):
     ConditionTree { match: "ALL" | "ANY", conditions: (Condition | ConditionTree)[] }
     Condition     { sensor: str, op: str, value: ..., value2?: number }
 
-Operators: ``<  <=  ==  !=  >=  >  between``. ``between`` is inclusive and uses
-``value``/``value2`` as the (order-independent) bounds.
+Operators: ``<  <=  ==  !=  >=  >  between  in  not_in  like  not_like``.
+``between`` is inclusive and uses ``value``/``value2`` as the (order-independent)
+bounds. ``in`` takes a list — a JSON array or a delimited string, so
+``Battery SoC in (10,20,30,40,50)`` can be typed as it reads — and compares
+members with the same numeric-aware equality as ``==``. ``like`` is a
+case-insensitive wildcard match (``*``/``%`` for many, ``?``/``_`` for one) and
+falls back to *contains* when the pattern has no wildcard.
+
+``in`` pairs with the engine's edge-triggered one-shot HA actions: a job
+conditioned on ``soc in (10,20,...)`` notifies once per level entered and
+re-arms when the level is left, rather than repeating every tick.
 
 Two deliberate semantics, both chosen so a scheduler never drives the battery on
 missing/indeterminate data:
@@ -37,7 +46,15 @@ from typing import Any
 
 MATCH_ALL = "ALL"
 MATCH_ANY = "ANY"
-OPERATORS = frozenset({"<", "<=", "==", "!=", ">=", ">", "between"})
+OPERATORS = frozenset({
+    "<", "<=", "==", "!=", ">=", ">", "between",
+    "in", "not_in", "like", "not_like",
+})
+
+#: Members of an ``in`` list may be written as a delimited string. Comma is the
+#: documented separator; semicolon and newline are accepted because a user
+#: pasting a list from elsewhere should not have to reformat it.
+_LIST_SEPARATORS = ",;\n"
 
 # Snapshot: sensor id -> live value (number | str | bool | None).
 Snapshot = dict[str, Any]
@@ -71,6 +88,49 @@ def _eq(a: Any, b: Any) -> bool:
     return a == b
 
 
+def _members(value: Any) -> list[Any]:
+    """The members of an ``in`` list.
+
+    Accepts a real JSON array, or a delimited string — ``"10,20,30"`` and
+    ``"(10, 20, 30)"`` both work, because the natural way to write this by hand
+    is the way you'd say it. Surrounding brackets are stripped, blanks dropped.
+    """
+    if isinstance(value, (list, tuple, set)):
+        return [v for v in value if v is not None and v != ""]
+    if isinstance(value, str):
+        s = value.strip()
+        if len(s) >= 2 and s[0] in "([{" and s[-1] in ")]}":
+            s = s[1:-1]
+        for sep in _LIST_SEPARATORS[1:]:
+            s = s.replace(sep, _LIST_SEPARATORS[0])
+        return [p.strip().strip("'\"") for p in s.split(_LIST_SEPARATORS[0]) if p.strip()]
+    if value is None:
+        return []
+    return [value]
+
+
+def _like(live: Any, pattern: Any) -> bool:
+    """Case-insensitive wildcard match against a string sensor.
+
+    ``*`` and ``%`` both mean "any run of characters" and ``?``/``_`` mean "any
+    one" — SQL's LIKE and shell globbing are the two spellings people arrive
+    with, and silently matching nothing because they guessed the other dialect
+    is a poor lesson. A pattern with no wildcard at all is treated as
+    *contains*, since "like" reads that way to almost everyone.
+    """
+    if pattern is None:
+        return False
+    text = str(live)
+    pat = str(pattern)
+    if not any(ch in pat for ch in "*%?_"):
+        return pat.casefold() in text.casefold()
+
+    import fnmatch
+
+    glob = pat.replace("%", "*").replace("_", "?")
+    return fnmatch.fnmatch(text.casefold(), glob.casefold())
+
+
 def _apply_op(op: str, live: Any, value: Any, value2: Any) -> bool:
     """Evaluate one operator. ``None`` live value fails closed for every op."""
     if live is None:
@@ -79,6 +139,16 @@ def _apply_op(op: str, live: Any, value: Any, value2: Any) -> bool:
         return _eq(live, value)
     if op == "!=":
         return not _eq(live, value)
+    if op in ("in", "not_in"):
+        members = _members(value)
+        # An empty list matches nothing. `not_in ()` is therefore True, which is
+        # consistent — but an empty `in` must never read as "any", or a cleared
+        # field would silently arm the condition for every value.
+        hit = any(_eq(live, m) for m in members)
+        return hit if op == "in" else not hit
+    if op in ("like", "not_like"):
+        hit = _like(live, value)
+        return hit if op == "like" else not hit
     if op in ("<", "<=", ">=", ">", "between"):
         lv = _coerce_number(live)
         rv = _coerce_number(value)
