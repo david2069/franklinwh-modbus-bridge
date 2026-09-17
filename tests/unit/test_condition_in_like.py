@@ -48,10 +48,10 @@ def test_numeric_comparison_ignores_formatting():
     assert check("s", "in", [20], {"s": 20.000})
 
 
-def test_it_works_on_enums_not_just_numbers():
-    assert check("mode.name", "in", "TOU,Self-Consumption",
+def test_enums_belong_to_matchlist():
+    assert check("mode.name", "matchlist", "TOU,Self-Consumption",
                  {"mode.name": "Self-Consumption"})
-    assert not check("mode.name", "in", "TOU,Self-Consumption",
+    assert not check("mode.name", "matchlist", "TOU,Self-Consumption",
                      {"mode.name": "Emergency Backup"})
 
 
@@ -123,7 +123,8 @@ def test_like_with_no_pattern_fails_closed():
 def test_the_new_operators_are_registered():
     """OPERATORS gates what the API will accept; an unlisted op is rejected
     before it ever reaches the evaluator."""
-    assert {"in", "not_in", "like", "not_like"} <= OPERATORS
+    assert {"in", "not_in", "matchlist", "not_matchlist",
+            "like", "not_like"} <= OPERATORS
 
 
 def test_an_unknown_operator_still_fails_closed():
@@ -148,3 +149,133 @@ def test_the_trace_reports_the_list_for_test_verification():
     assert trace[0]["live_value"] == 20
     assert trace[0]["result"] is True
     assert trace[0]["cid"] == "c1"
+
+
+# ── ranges inside a list ──────────────────────────────────────
+
+
+def test_a_range_member_matches_anything_inside_it():
+    """The user's example: `in (49-42, 229-230.2)` — voltage bands."""
+    lst = "49-42, 229-230.2"
+
+    assert check("v", "in", lst, {"v": 45})
+    assert check("v", "in", lst, {"v": 229.5})
+    assert not check("v", "in", lst, {"v": 50})
+    assert not check("v", "in", lst, {"v": 231})
+
+
+def test_range_bounds_are_inclusive():
+    for v in (42, 49, 229, 230.2):
+        assert check("v", "in", "49-42, 229-230.2", {"v": v}), v
+
+
+def test_bounds_order_does_not_matter():
+    """`49-42` is written high-low; it means the same band as `42-49`."""
+    assert check("v", "in", "49-42", {"v": 45})
+    assert check("v", "in", "42-49", {"v": 45})
+
+
+def test_ranges_and_exact_levels_mix_in_one_list():
+    lst = "10, 20, 49-42, 100"
+
+    assert check("v", "in", lst, {"v": 10})
+    assert check("v", "in", lst, {"v": 44})
+    assert check("v", "in", lst, {"v": 100})
+    assert not check("v", "in", lst, {"v": 15})
+
+
+def test_a_dash_in_a_name_is_never_a_range():
+    """The reason numbers and text are separate operators: on the text path no
+    range parsing exists, so `Self-Consumption` cannot become a band."""
+    assert check("mode.name", "matchlist", "Self-Consumption",
+                 {"mode.name": "Self-Consumption"})
+    # ...and the numeric operator refuses it outright rather than guessing.
+    assert not check("mode.name", "in", "Self-Consumption", {"mode.name": 5})
+    assert not check("mode.name", "in", "TOU,Self-Consumption",
+                     {"mode.name": "Self-Consumption"})
+
+
+def test_negative_bounds_resolve_when_unambiguous():
+    assert check("w", "in", "-5000--1000", {"w": -3000})
+    assert not check("w", "in", "-5000--1000", {"w": -500})
+
+
+def test_a_dotdot_range_is_accepted():
+    """Unambiguous for negative bounds, and a common way to write a span."""
+    assert check("w", "in", "-5000..-1000", {"w": -3000})
+    assert check("v", "in", "229..230.2", {"v": 230})
+
+
+def test_an_ambiguous_member_is_rejected_rather_than_guessed():
+    """`1-2-3` has no single sensible reading, so the numeric operator drops
+    it instead of picking one."""
+    assert not check("v", "in", "1-2-3", {"v": 2})
+    assert not check("v", "in", "1-2-3", {"v": 1})
+    # As text it is just a string, and matches itself.
+    assert check("v", "matchlist", "1-2-3", {"v": "1-2-3"})
+
+
+def test_a_lone_negative_number_is_still_a_value():
+    assert check("w", "in", "-10, 5", {"w": -10})
+    assert not check("w", "in", "-10, 5", {"w": -7})
+
+
+def test_not_in_excludes_a_whole_band():
+    """'alert unless voltage is in the normal band' — the obvious use."""
+    assert check("v", "not_in", "229-230.2", {"v": 250})
+    assert not check("v", "not_in", "229-230.2", {"v": 230})
+
+
+def test_a_non_numeric_live_value_fails_closed_on_the_numeric_operator():
+    """A name is never inside a number list — and `not_in` must not report
+    True for it either, or "alert when SoC is outside the band" would fire on
+    a sensor returning a string."""
+    assert not check("mode.name", "in", "10-20", {"mode.name": "TOU"})
+    assert not check("mode.name", "not_in", "10-20", {"mode.name": "TOU"})
+
+
+def test_a_json_pair_is_also_a_range():
+    """So a UI or an import can send bounds structurally."""
+    assert check("v", "in", [[42, 49], 100], {"v": 45})
+    assert check("v", "in", [[42, 49], 100], {"v": 100})
+    assert not check("v", "in", [[42, 49], 100], {"v": 50})
+
+
+# ── matchlist (text) ──────────────────────────────────────────
+
+
+def test_matchlist_is_exact_not_contains():
+    """`like` is the contains/wildcard operator; matchlist is membership."""
+    assert check("m", "matchlist", "TOU,Self-Consumption", {"m": "Self-Consumption"})
+    assert not check("m", "matchlist", "Self", {"m": "Self-Consumption"})
+
+
+def test_matchlist_ignores_case():
+    """Device enums arrive with fixed casing; demanding it exactly buys
+    nothing, and `like` already sets this precedent."""
+    assert check("m", "matchlist", "tou, self-consumption", {"m": "Self-Consumption"})
+
+
+def test_matchlist_never_interprets_a_range():
+    """The whole point of the split — on this path `10-20` is a name."""
+    assert not check("v", "matchlist", "10-20", {"v": 15})
+    assert check("v", "matchlist", "10-20", {"v": "10-20"})
+
+
+def test_not_matchlist_is_the_complement():
+    assert check("m", "not_matchlist", "TOU", {"m": "Self-Consumption"})
+    assert not check("m", "not_matchlist", "TOU,Self-Consumption",
+                     {"m": "Self-Consumption"})
+
+
+def test_matchlist_fails_closed_on_a_missing_sensor():
+    assert not check("m", "matchlist", "TOU", {})
+    assert not check("m", "not_matchlist", "TOU", {})
+
+
+def test_matchlist_on_a_number_compares_its_text():
+    assert check("n", "matchlist", "10,20", {"n": 20})
+
+
+def test_an_empty_matchlist_matches_nothing():
+    assert not check("m", "matchlist", "", {"m": "TOU"})

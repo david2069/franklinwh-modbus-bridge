@@ -36,11 +36,13 @@ const TRIGGER_TYPES = [
 ];
 
 const OPERATORS = ['<', '<=', '==', '!=', '>=', '>', 'between',
-                   'in', 'not_in', 'like', 'not_like'];
+                   'in', 'not_in', 'matchlist', 'not_matchlist',
+                   'like', 'not_like'];
 // Ops whose RHS is a list or a pattern, never a number — _coerceVal must
 // leave '10,20,30' and 'Self*' alone, and a Lookup RHS makes no sense for
 // them (a single live value is not a list).
-const TEXT_RHS_OPERATORS = ['in', 'not_in', 'like', 'not_like'];
+const TEXT_RHS_OPERATORS = ['in', 'not_in', 'matchlist', 'not_matchlist',
+                            'like', 'not_like'];
 
 // FWHAI-parity quick presets. Selecting one fills the real fields below, which
 // stay editable. Sub-day/daily/weekly map onto interval/daily/weekly; the

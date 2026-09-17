@@ -11,17 +11,35 @@ Shapes (JSON-serialisable, stored on the ``schedules`` row):
     ConditionTree { match: "ALL" | "ANY", conditions: (Condition | ConditionTree)[] }
     Condition     { sensor: str, op: str, value: ..., value2?: number }
 
-Operators: ``<  <=  ==  !=  >=  >  between  in  not_in  like  not_like``.
-``between`` is inclusive and uses ``value``/``value2`` as the (order-independent)
-bounds. ``in`` takes a list — a JSON array or a delimited string, so
-``Battery SoC in (10,20,30,40,50)`` can be typed as it reads — and compares
-members with the same numeric-aware equality as ``==``. ``like`` is a
-case-insensitive wildcard match (``*``/``%`` for many, ``?``/``_`` for one) and
-falls back to *contains* when the pattern has no wildcard.
+Operators: ``<  <=  ==  !=  >=  >  between``, the list operators ``in``,
+``not_in``, ``matchlist``, ``not_matchlist``, and the pattern operators
+``like``, ``not_like``. ``between`` is inclusive and uses ``value``/``value2``
+as the (order-independent) bounds.
+
+**Numbers and text have separate list operators, on purpose.** A single ``in``
+has to decide, per member, whether a hyphen means "to" or is part of a name —
+and gets ``Self-Consumption`` wrong silently, turning a mode name into a
+numeric band that matches nothing. Choosing the operator states the intent:
+
+- ``in`` / ``not_in`` — **numeric**. Members are numbers or inclusive ranges:
+  ``in (10, 20, 49-42, 229-230.2)``. Bounds are order-independent like
+  ``between``, so ``49-42`` and ``42-49`` are the same band, and ``..`` is
+  accepted for unambiguous negatives (``-5000..-1000``). A non-numeric live
+  value fails closed.
+- ``matchlist`` / ``not_matchlist`` — **text**. Members are compared verbatim
+  (case-insensitively); no range parsing exists on this path at all, so a dash
+  is simply a character: ``mode.name matchlist (TOU, Self-Consumption)``.
+- ``like`` / ``not_like`` — case-insensitive wildcard (``*``/``%`` for many,
+  ``?``/``_`` for one), falling back to *contains* with no wildcard.
+
+Both list operators accept a JSON array or a delimited string, so a list can be
+typed the way it is said. An empty list matches nothing.
 
 ``in`` pairs with the engine's edge-triggered one-shot HA actions: a job
 conditioned on ``soc in (10,20,...)`` notifies once per level entered and
-re-arms when the level is left, rather than repeating every tick.
+re-arms when the level is left, rather than repeating every tick. Note it tests
+membership, not *crossing* — on a fast-moving sensor a listed value can fall
+between polls; a range member is the robust form there.
 
 Two deliberate semantics, both chosen so a scheduler never drives the battery on
 missing/indeterminate data:
@@ -48,7 +66,14 @@ MATCH_ALL = "ALL"
 MATCH_ANY = "ANY"
 OPERATORS = frozenset({
     "<", "<=", "==", "!=", ">=", ">", "between",
-    "in", "not_in", "like", "not_like",
+    # Numbers and text are deliberately separate operators. One "in" that
+    # inspected each member to decide whether a hyphen meant "to" or was
+    # part of a name works until it doesn't, and the failure is silent:
+    # "Self-Consumption" quietly becomes a numeric band matching nothing.
+    # Choosing the operator states the intent instead of inferring it.
+    "in", "not_in",                 # numeric: scalars and a-b ranges
+    "matchlist", "not_matchlist",   # text: verbatim names, no ranges
+    "like", "not_like",
 })
 
 #: Members of an ``in`` list may be written as a delimited string. Comma is the
@@ -88,8 +113,8 @@ def _eq(a: Any, b: Any) -> bool:
     return a == b
 
 
-def _members(value: Any) -> list[Any]:
-    """The members of an ``in`` list.
+def _list_items(value: Any) -> list[Any]:
+    """Split a list into its raw members, interpreting none of them.
 
     Accepts a real JSON array, or a delimited string — ``"10,20,30"`` and
     ``"(10, 20, 30)"`` both work, because the natural way to write this by hand
@@ -107,6 +132,74 @@ def _members(value: Any) -> list[Any]:
     if value is None:
         return []
     return [value]
+
+
+def _number_members(value: Any) -> list[float | tuple[float, float]]:
+    """Numeric members of an ``in`` list: scalars and inclusive ranges.
+
+    A member that is neither is dropped rather than compared as text — this is
+    the number operator, and silently matching a name here would re-create the
+    ambiguity the split exists to remove.
+    """
+    out: list[float | tuple[float, float]] = []
+    for m in _list_items(value):
+        span = _as_range(m)
+        if span is not None:
+            out.append(span)
+            continue
+        n = _coerce_number(m)
+        if n is not None:
+            out.append(n)
+    return out
+
+
+def _text_members(value: Any) -> list[str]:
+    """Text members of a ``matchlist``, verbatim.
+
+    No range parsing whatsoever, so ``Self-Consumption`` is a name and a dash
+    is just a character in it.
+    """
+    return [str(m) for m in _list_items(value)]
+
+
+def _as_range(member: Any) -> tuple[float, float] | None:
+    """Parse a list member as an inclusive numeric range, or ``None``.
+
+    Only reachable from the numeric operators. Keeping range parsing out of the
+    text operator is the whole point of the split: a hyphen means "to" in a
+    number list and means nothing at all in a name list, and no amount of
+    cleverness makes one function serve both without guessing.
+
+    ``..`` is accepted alongside ``-`` and an en-dash. For ``-`` every possible
+    split position is tried and the range is taken only if **exactly one**
+    yields two numbers — so ``-5--1`` resolves (only one split works) while a
+    genuinely ambiguous ``1-2-3`` is rejected rather than guessed at.
+
+    Bounds are order-independent, matching ``between``: ``49-42`` is the same
+    range as ``42-49``.
+    """
+    if isinstance(member, (list, tuple)) and len(member) == 2:
+        lo, hi = _coerce_number(member[0]), _coerce_number(member[1])
+        return (min(lo, hi), max(lo, hi)) if lo is not None and hi is not None else None
+    if not isinstance(member, str):
+        return None
+
+    text = member.strip()
+    for sep in ("..", "–", "—"):   # .., en dash, em dash
+        if sep in text:
+            left, _, right = text.partition(sep)
+            lo, hi = _coerce_number(left.strip()), _coerce_number(right.strip())
+            return (min(lo, hi), max(lo, hi)) if lo is not None and hi is not None else None
+
+    hits = []
+    for i, ch in enumerate(text):
+        if ch != "-" or i == 0:
+            continue
+        lo = _coerce_number(text[:i].strip())
+        hi = _coerce_number(text[i + 1:].strip())
+        if lo is not None and hi is not None:
+            hits.append((min(lo, hi), max(lo, hi)))
+    return hits[0] if len(hits) == 1 else None
 
 
 def _like(live: Any, pattern: Any) -> bool:
@@ -140,12 +233,23 @@ def _apply_op(op: str, live: Any, value: Any, value2: Any) -> bool:
     if op == "!=":
         return not _eq(live, value)
     if op in ("in", "not_in"):
-        members = _members(value)
+        lv = _coerce_number(live)
+        if lv is None:
+            return False  # a name is never inside a number list; fail closed
         # An empty list matches nothing. `not_in ()` is therefore True, which is
         # consistent — but an empty `in` must never read as "any", or a cleared
         # field would silently arm the condition for every value.
-        hit = any(_eq(live, m) for m in members)
+        hit = any(
+            (m[0] <= lv <= m[1]) if isinstance(m, tuple) else (lv == m)
+            for m in _number_members(value)
+        )
         return hit if op == "in" else not hit
+    if op in ("matchlist", "not_matchlist"):
+        # Case-insensitive, like `like` — device enums arrive with fixed casing
+        # and making someone match it exactly buys nothing.
+        text = str(live).casefold()
+        hit = any(text == m.casefold() for m in _text_members(value))
+        return hit if op == "matchlist" else not hit
     if op in ("like", "not_like"):
         hit = _like(live, value)
         return hit if op == "like" else not hit
