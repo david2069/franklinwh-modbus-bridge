@@ -10,6 +10,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +51,7 @@ from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.security import seed_admin, session_secret_key
+from franklinwh_bridge.store import point_history
 from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
@@ -235,6 +237,11 @@ async def lifespan(app: FastAPI):
     # Alarm tracker — writes alarm_events rows on state changes
     alarm_tracker = AlarmTracker(db)
 
+    # Point-history cadence state + a cached config (re-read once a minute
+    # so a settings change takes effect without a restart).
+    _ph_last: dict[str, float] = {}
+    _ph_cfg: dict[str, Any] = {"value": None, "loaded_at": 0.0}
+
     # Metrics recorder — writes power readings to the metrics table
     async def _record_metrics(sample: Sample) -> None:
         # Mock gateways emit synthetic data — never persist it, so it can't
@@ -259,6 +266,28 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.debug("Metrics record failed: %s", exc)
             stats.record_sample_rejected()
+
+        # Per-point history (voltage/current/frequency/PF/DC...), when the
+        # user has enabled it. Off by default: it can add hundreds of MB to a
+        # ~20MB database, so it is opt-in with its own cadence and retention.
+        try:
+            cfg = _ph_cfg["value"]
+            if cfg is None or sample.ts - _ph_cfg["loaded_at"] > 60:
+                cfg = await point_history.get_config(db)
+                _ph_cfg["value"] = cfg
+                _ph_cfg["loaded_at"] = sample.ts
+            if cfg["enabled"] and cfg["points"]:
+                last = _ph_last.get(sample.gateway_id, 0.0)
+                # Its own cadence, independent of the poll rate: the poller may
+                # run every 10s while the user asked to keep a point every 60.
+                if sample.ts - last >= cfg["interval_s"]:
+                    _ph_last[sample.gateway_id] = sample.ts
+                    await point_history.record_points(
+                        db, sample.points, gateway_id=sample.gateway_id,
+                        ts=sample.ts, point_ids=cfg["points"],
+                    )
+        except Exception as exc:
+            logger.debug("Point history record failed: %s", exc)
 
         # Log grid_mode state changes as discrete events
         gw_id = sample.gateway_id
@@ -324,6 +353,15 @@ async def lifespan(app: FastAPI):
                 await purge_old(db, retention)
             except Exception as exc:
                 logger.warning("Metrics purge failed: %s", exc)
+
+            # Point history retires on its own clock — it is far larger per
+            # day than `metrics`, so a user may well keep less of it.
+            try:
+                ph_cfg = await point_history.get_config(db)
+                if ph_cfg["enabled"]:
+                    await point_history.purge_points(db, ph_cfg["retention_days"])
+            except Exception as exc:
+                logger.warning("Point history purge failed: %s", exc)
             await asyncio.sleep(3600)
 
     purge_task = asyncio.create_task(_metrics_purge_loop())
