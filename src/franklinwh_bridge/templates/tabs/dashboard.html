@@ -303,13 +303,30 @@
       <template x-if="open">
         <div class="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/60"
              @click.self="hide()" @keydown.escape.window="hide()">
-          <div class="w-full max-w-4xl rounded-lg border shadow-2xl flex flex-col"
-               style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+          <div class="w-full rounded-lg border shadow-2xl flex flex-col"
+               :class="expanded ? 'max-w-none' : 'max-w-4xl'"
+               style="background: var(--surface-0); border-color: var(--border); max-height: 96vh;">
             <div class="flex items-center justify-between p-3 border-b" style="border-color: var(--border);">
               <h2 class="text-sm font-semibold" x-text="title"></h2>
               <div class="flex items-center gap-2">
                 <span class="text-[11px] text-slate-500"
-                      x-text="sampleCount + ' samples · 2s'"></span>
+                      x-text="sampleCount + ' samples' + (windowLabel ? ' · ' + windowLabel : '')"></span>
+                <!-- Sampling interval. The buffer holds a fixed number of
+                     points, so this also chooses how far back the window
+                     reaches: ~10 min at 1s, ~5 h at 30s. -->
+                <div class="inline-flex rounded overflow-hidden border text-[11px]"
+                     style="border-color: var(--border);">
+                  <template x-for="iv in intervals" :key="iv.ms">
+                    <button type="button" @click="setInterval_(iv.ms)"
+                            class="px-2 py-0.5 border-l first:border-l-0"
+                            style="border-color: var(--border);"
+                            :class="intervalMs === iv.ms ? 'bg-cyan-500/20 text-cyan-300'
+                                                         : 'text-slate-500 hover:text-slate-300'"
+                            x-text="iv.label"></button>
+                  </template>
+                </div>
+                <button @click="toggleExpand()" class="btn btn-sm btn-secondary"
+                        x-text="expanded ? 'Shrink' : 'Expand'"></button>
                 <button @click="clear()" class="btn btn-sm btn-secondary">Clear</button>
                 <button @click="hide()" class="btn btn-sm btn-secondary">Close</button>
               </div>
@@ -329,7 +346,8 @@
             </div>
 
             <div class="p-3 grow min-h-0">
-              <div style="height: 58vh; min-height: 260px;">
+              <div :style="expanded ? 'height: 78vh; min-height: 320px'
+                                     : 'height: 58vh; min-height: 260px'">
                 <canvas x-ref="canvas"></canvas>
               </div>
               <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length === 0">
@@ -337,6 +355,7 @@
               </p>
               <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length > 0">
                 Live only — these points aren't historised, so the chart starts when you open it.
+                The time axis is real, so changing the interval doesn't distort what's already plotted.
               </p>
             </div>
           </div>
@@ -532,13 +551,30 @@
       <template x-if="open">
         <div class="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/60"
              @click.self="hide()" @keydown.escape.window="hide()">
-          <div class="w-full max-w-4xl rounded-lg border shadow-2xl flex flex-col"
-               style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+          <div class="w-full rounded-lg border shadow-2xl flex flex-col"
+               :class="expanded ? 'max-w-none' : 'max-w-4xl'"
+               style="background: var(--surface-0); border-color: var(--border); max-height: 96vh;">
             <div class="flex items-center justify-between p-3 border-b" style="border-color: var(--border);">
               <h2 class="text-sm font-semibold" x-text="title"></h2>
               <div class="flex items-center gap-2">
                 <span class="text-[11px] text-slate-500"
-                      x-text="sampleCount + ' samples · 2s'"></span>
+                      x-text="sampleCount + ' samples' + (windowLabel ? ' · ' + windowLabel : '')"></span>
+                <!-- Sampling interval. The buffer holds a fixed number of
+                     points, so this also chooses how far back the window
+                     reaches: ~10 min at 1s, ~5 h at 30s. -->
+                <div class="inline-flex rounded overflow-hidden border text-[11px]"
+                     style="border-color: var(--border);">
+                  <template x-for="iv in intervals" :key="iv.ms">
+                    <button type="button" @click="setInterval_(iv.ms)"
+                            class="px-2 py-0.5 border-l first:border-l-0"
+                            style="border-color: var(--border);"
+                            :class="intervalMs === iv.ms ? 'bg-cyan-500/20 text-cyan-300'
+                                                         : 'text-slate-500 hover:text-slate-300'"
+                            x-text="iv.label"></button>
+                  </template>
+                </div>
+                <button @click="toggleExpand()" class="btn btn-sm btn-secondary"
+                        x-text="expanded ? 'Shrink' : 'Expand'"></button>
                 <button @click="clear()" class="btn btn-sm btn-secondary">Clear</button>
                 <button @click="hide()" class="btn btn-sm btn-secondary">Close</button>
               </div>
@@ -558,7 +594,8 @@
             </div>
 
             <div class="p-3 grow min-h-0">
-              <div style="height: 58vh; min-height: 260px;">
+              <div :style="expanded ? 'height: 78vh; min-height: 320px'
+                                     : 'height: 58vh; min-height: 260px'">
                 <canvas x-ref="canvas"></canvas>
               </div>
               <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length === 0">
@@ -566,6 +603,7 @@
               </p>
               <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length > 0">
                 Live only — these points aren't historised, so the chart starts when you open it.
+                The time axis is real, so changing the interval doesn't distort what's already plotted.
               </p>
             </div>
           </div>

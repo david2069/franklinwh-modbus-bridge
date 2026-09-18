@@ -59,13 +59,51 @@
 
   // kind -> Chart instance. Outside Alpine's reactive scope, deliberately.
   const _charts = {};
-  // kind -> {labels: [], byKey: {key: []}} ring buffers.
+  // kind -> {byKey: {key: [{x: epoch_ms, y}]}} ring buffers.
   const _buf = {};
-  const MAX_POINTS = 240;   // 2s cadence → ~8 minutes of history
+  // A cap on points, not on time: the window the user actually gets is this
+  // many samples at whatever interval they chose (10 min at 1s, 5 h at 30s).
+  const MAX_POINTS = 600;
+
+  const INTERVALS = [
+    { ms: 1000,  label: '1s' },
+    { ms: 2000,  label: '2s' },
+    { ms: 5000,  label: '5s' },
+    { ms: 10000, label: '10s' },
+    { ms: 30000, label: '30s' },
+  ];
+  const PREFS_KEY = 'fwh-metrics-chart';
+
+  function loadPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function savePrefs(patch) {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), ...patch }));
+    } catch (_) { /* private mode — the chart still works, it just won't persist */ }
+  }
 
   function bufFor(kind) {
-    if (!_buf[kind]) _buf[kind] = { labels: [], byKey: {} };
+    if (!_buf[kind]) _buf[kind] = { byKey: {} };
     return _buf[kind];
+  }
+
+  function clockLabel(ms) {
+    return new Date(ms).toLocaleTimeString([], { hour12: false });
+  }
+
+  /** Human span for the header, so "600 samples" means something. */
+  function spanLabel(ms) {
+    if (!(ms > 0)) return '';
+    const m = ms / 60000;
+    if (m < 1) return `${Math.round(ms / 1000)}s`;
+    if (m < 90) return `${Math.round(m)} min`;
+    return `${(m / 60).toFixed(1)} h`;
   }
 
   /**
@@ -90,6 +128,10 @@
       title: cfg.title,
       series: cfg.series.map((s) => ({ ...s, on: !!s.on })),
       sampleCount: 0,
+      intervals: INTERVALS,
+      intervalMs: loadPrefs().intervalMs || 2000,
+      expanded: !!loadPrefs().expanded,
+      windowLabel: '',
       _timer: null,
 
       get selected() {
@@ -103,7 +145,32 @@
         this.$nextTick(() => {
           this._build();
           this._sample();
-          this._timer = setInterval(() => this._sample(), 2000);
+          this._restartTimer();
+        });
+      },
+
+      _restartTimer() {
+        if (this._timer) clearInterval(this._timer);
+        this._timer = setInterval(() => this._sample(), this.intervalMs);
+      },
+
+      setInterval_(ms) {
+        this.intervalMs = ms;
+        savePrefs({ intervalMs: ms });
+        this._restartTimer();
+        // The buffer is NOT cleared: points carry their own timestamp and the
+        // x axis is real time, so a stretch sampled at 2s and one at 30s are
+        // drawn at their true spacing rather than being flattened together.
+        this._refreshMeta();
+      },
+
+      toggleExpand() {
+        this.expanded = !this.expanded;
+        savePrefs({ expanded: this.expanded });
+        // Let the modal resize first, then let Chart.js re-measure it.
+        this.$nextTick(() => {
+          const ch = _charts[this.kind];
+          if (ch) ch.resize();
         });
       },
 
@@ -123,9 +190,19 @@
       },
 
       clear() {
-        _buf[this.kind] = { labels: [], byKey: {} };
+        _buf[this.kind] = { byKey: {} };
         this.sampleCount = 0;
+        this.windowLabel = '';
         this._build();
+      },
+
+      /** Sample count + the real time span they cover. */
+      _refreshMeta() {
+        const any = Object.values(bufFor(this.kind).byKey)[0] || [];
+        this.sampleCount = any.length;
+        this.windowLabel = any.length > 1
+          ? spanLabel(any[any.length - 1].x - any[0].x)
+          : '';
       },
 
       _build() {
@@ -140,9 +217,19 @@
         // sides so two units stay readable and more than two still resolve.
         const units = [...new Set(chosen.map((s) => s.unit))];
         const axisOf = axisIds(units);
+        // Linear on epoch-ms rather than a category axis of time strings.
+        // Categories are spaced evenly whatever the real gap, so a stretch
+        // sampled at 2s and one at 30s would be drawn identically, and a gap
+        // from the modal being closed would vanish. (Chart.js's `time` scale
+        // would need the date-fns adapter — another bundle to vendor for no
+        // gain over formatting the ticks here.)
         const scales = {
           x: {
-            ticks: { maxTicksLimit: 6, color: '#94a3b8', font: { size: 10 } },
+            type: 'linear',
+            ticks: {
+              maxTicksLimit: 7, color: '#94a3b8', font: { size: 10 },
+              callback: (v) => clockLabel(v),
+            },
             grid: { color: 'rgba(148,163,184,.12)' },
           },
         };
@@ -161,7 +248,6 @@
         _charts[this.kind] = new window.Chart(canvas.getContext('2d'), {
           type: 'line',
           data: {
-            labels: [...buf.labels],
             datasets: chosen.map((s) => ({
               label: `${s.label} (${s.unit})`,
               data: [...(buf.byKey[s.key] || [])],
@@ -170,7 +256,11 @@
               yAxisID: axisOf[s.unit],
               borderWidth: 1.6,
               pointRadius: 0,
-              tension: 0.25,
+              // Straight segments, not a spline. Chart.js's bezier smoothing
+              // overshoots between points, so a curve can peak above any
+              // sample actually taken — on a chart used to spot voltage and
+              // frequency excursions, that invents the excursion.
+              tension: 0,
               spanGaps: true,
             })),
           },
@@ -181,7 +271,10 @@
             interaction: { mode: 'index', intersect: false },
             plugins: {
               legend: { labels: { color: '#cbd5e1', boxWidth: 10, font: { size: 11 } } },
-              tooltip: { enabled: true },
+              tooltip: {
+                enabled: true,
+                callbacks: { title: (items) => clockLabel(items[0].parsed.x) },
+              },
             },
             scales,
           },
@@ -191,9 +284,7 @@
       _sample() {
         const pts = (window.Alpine && Alpine.store('app') && Alpine.store('app').points) || {};
         const buf = bufFor(this.kind);
-        const now = new Date();
-        buf.labels.push(now.toLocaleTimeString([], { hour12: false }));
-        if (buf.labels.length > MAX_POINTS) buf.labels.shift();
+        const now = Date.now();
 
         for (const s of this.series) {
           if (!buf.byKey[s.key]) buf.byKey[s.key] = [];
@@ -201,14 +292,13 @@
           const v = pts[s.key];
           // null, not 0 — a point the poller failed to read is a gap in the
           // line, and plotting it as zero invents a fault that isn't there.
-          arr.push(typeof v === 'number' ? v : null);
+          arr.push({ x: now, y: typeof v === 'number' ? v : null });
           if (arr.length > MAX_POINTS) arr.shift();
         }
-        this.sampleCount = buf.labels.length;
+        this._refreshMeta();
 
         const ch = _charts[this.kind];
         if (!ch) return;
-        ch.data.labels = [...buf.labels];
         const chosen = this.series.filter((x) => x.on);
         ch.data.datasets.forEach((ds, i) => {
           const s = chosen[i];
