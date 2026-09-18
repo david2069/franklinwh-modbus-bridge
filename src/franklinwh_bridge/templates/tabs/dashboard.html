@@ -306,25 +306,34 @@
           <div class="w-full rounded-lg border shadow-2xl flex flex-col"
                :class="expanded ? 'max-w-none' : 'max-w-4xl'"
                style="background: var(--surface-0); border-color: var(--border); max-height: 96vh;">
-            <div class="flex items-center justify-between p-3 border-b" style="border-color: var(--border);">
-              <h2 class="text-sm font-semibold" x-text="title"></h2>
+            <div class="flex items-center justify-between gap-3 flex-wrap p-3 border-b" style="border-color: var(--border);">
+              <h2 class="text-sm font-semibold whitespace-nowrap" x-text="title"></h2>
               <div class="flex items-center gap-2">
-                <span class="text-[11px] text-slate-500"
-                      x-text="sampleCount + ' samples' + (windowLabel ? ' · ' + windowLabel : '')"></span>
-                <!-- Sampling interval. The buffer holds a fixed number of
-                     points, so this also chooses how far back the window
-                     reaches: ~10 min at 1s, ~5 h at 30s. -->
-                <div class="inline-flex rounded overflow-hidden border text-[11px]"
-                     style="border-color: var(--border);">
-                  <template x-for="iv in intervals" :key="iv.ms">
-                    <button type="button" @click="setInterval_(iv.ms)"
-                            class="px-2 py-0.5 border-l first:border-l-0"
-                            style="border-color: var(--border);"
-                            :class="intervalMs === iv.ms ? 'bg-cyan-500/20 text-cyan-300'
-                                                         : 'text-slate-500 hover:text-slate-300'"
-                            x-text="iv.label"></button>
-                  </template>
-                </div>
+                <span class="text-[11px] whitespace-nowrap"
+                      :class="filling ? 'text-amber-400/80' : 'text-slate-500'"
+                      x-text="sampleCount + ' samples · ' + windowLabel + (filling ? ' — filling' : '')"></span>
+                <!-- Selects, not button rows: two 5-button groups plus three
+                     actions overflow a narrow modal and clip ("6h" → "6").
+                     A closed select also keeps the current choice visible,
+                     which is the feedback the rows lacked. -->
+                <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+                  span
+                  <select class="form-control !py-0.5 !text-[11px] w-[4.75rem]"
+                          @change="setWindow(Number($event.target.value))">
+                    <template x-for="w in windows" :key="w.ms">
+                      <option :value="w.ms" :selected="windowMs === w.ms" x-text="w.label"></option>
+                    </template>
+                  </select>
+                </label>
+                <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+                  every
+                  <select class="form-control !py-0.5 !text-[11px] w-[4.5rem]"
+                          @change="setInterval_(Number($event.target.value))">
+                    <template x-for="iv in intervals" :key="iv.ms">
+                      <option :value="iv.ms" :selected="intervalMs === iv.ms" x-text="iv.label"></option>
+                    </template>
+                  </select>
+                </label>
                 <button @click="toggleExpand()" class="btn btn-sm btn-secondary"
                         x-text="expanded ? 'Shrink' : 'Expand'"></button>
                 <button @click="clear()" class="btn btn-sm btn-secondary">Clear</button>
@@ -554,25 +563,34 @@
           <div class="w-full rounded-lg border shadow-2xl flex flex-col"
                :class="expanded ? 'max-w-none' : 'max-w-4xl'"
                style="background: var(--surface-0); border-color: var(--border); max-height: 96vh;">
-            <div class="flex items-center justify-between p-3 border-b" style="border-color: var(--border);">
-              <h2 class="text-sm font-semibold" x-text="title"></h2>
+            <div class="flex items-center justify-between gap-3 flex-wrap p-3 border-b" style="border-color: var(--border);">
+              <h2 class="text-sm font-semibold whitespace-nowrap" x-text="title"></h2>
               <div class="flex items-center gap-2">
-                <span class="text-[11px] text-slate-500"
-                      x-text="sampleCount + ' samples' + (windowLabel ? ' · ' + windowLabel : '')"></span>
-                <!-- Sampling interval. The buffer holds a fixed number of
-                     points, so this also chooses how far back the window
-                     reaches: ~10 min at 1s, ~5 h at 30s. -->
-                <div class="inline-flex rounded overflow-hidden border text-[11px]"
-                     style="border-color: var(--border);">
-                  <template x-for="iv in intervals" :key="iv.ms">
-                    <button type="button" @click="setInterval_(iv.ms)"
-                            class="px-2 py-0.5 border-l first:border-l-0"
-                            style="border-color: var(--border);"
-                            :class="intervalMs === iv.ms ? 'bg-cyan-500/20 text-cyan-300'
-                                                         : 'text-slate-500 hover:text-slate-300'"
-                            x-text="iv.label"></button>
-                  </template>
-                </div>
+                <span class="text-[11px] whitespace-nowrap"
+                      :class="filling ? 'text-amber-400/80' : 'text-slate-500'"
+                      x-text="sampleCount + ' samples · ' + windowLabel + (filling ? ' — filling' : '')"></span>
+                <!-- Selects, not button rows: two 5-button groups plus three
+                     actions overflow a narrow modal and clip ("6h" → "6").
+                     A closed select also keeps the current choice visible,
+                     which is the feedback the rows lacked. -->
+                <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+                  span
+                  <select class="form-control !py-0.5 !text-[11px] w-[4.75rem]"
+                          @change="setWindow(Number($event.target.value))">
+                    <template x-for="w in windows" :key="w.ms">
+                      <option :value="w.ms" :selected="windowMs === w.ms" x-text="w.label"></option>
+                    </template>
+                  </select>
+                </label>
+                <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+                  every
+                  <select class="form-control !py-0.5 !text-[11px] w-[4.5rem]"
+                          @change="setInterval_(Number($event.target.value))">
+                    <template x-for="iv in intervals" :key="iv.ms">
+                      <option :value="iv.ms" :selected="intervalMs === iv.ms" x-text="iv.label"></option>
+                    </template>
+                  </select>
+                </label>
                 <button @click="toggleExpand()" class="btn btn-sm btn-secondary"
                         x-text="expanded ? 'Shrink' : 'Expand'"></button>
                 <button @click="clear()" class="btn btn-sm btn-secondary">Clear</button>

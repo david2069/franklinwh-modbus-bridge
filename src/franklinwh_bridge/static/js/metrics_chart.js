@@ -61,9 +61,18 @@
   const _charts = {};
   // kind -> {byKey: {key: [{x: epoch_ms, y}]}} ring buffers.
   const _buf = {};
-  // A cap on points, not on time: the window the user actually gets is this
-  // many samples at whatever interval they chose (10 min at 1s, 5 h at 30s).
-  const MAX_POINTS = 600;
+  // Safety cap only. The visible span is the WINDOW, and the buffer is
+  // trimmed by age rather than by count — 6h at 1s would be 21,600 points,
+  // far more than is useful or drawable, so the cap bounds memory while the
+  // window bounds meaning.
+  const MAX_POINTS = 2000;
+
+  const WINDOWS = [
+    { ms: 5 * 60000,   label: '5m' },
+    { ms: 15 * 60000,  label: '15m' },
+    { ms: 60 * 60000,  label: '1h' },
+    { ms: 360 * 60000, label: '6h' },
+  ];
 
   const INTERVALS = [
     { ms: 1000,  label: '1s' },
@@ -97,6 +106,10 @@
     return new Date(ms).toLocaleTimeString([], { hour12: false });
   }
 
+  // Never zoom tighter than this, however little has been collected —
+  // three points across a full-width axis is its own kind of misleading.
+  const MIN_VISIBLE_MS = 60000;
+
   /** Human span for the header, so "600 samples" means something. */
   function spanLabel(ms) {
     if (!(ms > 0)) return '';
@@ -129,9 +142,15 @@
       series: cfg.series.map((s) => ({ ...s, on: !!s.on })),
       sampleCount: 0,
       intervals: INTERVALS,
+      windows: WINDOWS,
       intervalMs: loadPrefs().intervalMs || 2000,
+      // 5 min by default: the axis is pinned, so a longer default means
+      // opening onto a mostly-empty plot. Wider spans are one click away
+      // and the choice persists.
+      windowMs: loadPrefs().windowMs || 5 * 60000,
       expanded: !!loadPrefs().expanded,
       windowLabel: '',
+      filling: true,
       _timer: null,
 
       get selected() {
@@ -162,6 +181,63 @@
         // x axis is real time, so a stretch sampled at 2s and one at 30s are
         // drawn at their true spacing rather than being flattened together.
         this._refreshMeta();
+      },
+
+      setWindow(ms) {
+        this.windowMs = ms;
+        savePrefs({ windowMs: ms });
+        // Redraw immediately rather than waiting for the span to fill. The
+        // axis is pinned to [now - window, now], so picking 6h shows a 6h
+        // axis at once with whatever has been collected sitting at its right
+        // edge — the alternative (an axis that floats to the data) means the
+        // choice appears to do nothing for hours.
+        this._trim();
+        this._applyWindow();
+        const ch = _charts[this.kind];
+        if (ch) ch.update('none');
+        this._refreshMeta();
+      },
+
+      /** Milliseconds actually collected. */
+      _heldMs() {
+        const any = Object.values(bufFor(this.kind).byKey)[0] || [];
+        return any.length > 1 ? any[any.length - 1].x - any[0].x : 0;
+      },
+
+      /**
+       * Pin the x axis to the trailing window — but treat the span as a
+       * CEILING, not a promise.
+       *
+       * Pinning the full span regardless meant picking 6h with 32s collected
+       * drew the data as a 0.15%-wide sliver: technically a correct 6h axis,
+       * visually an empty chart, and clicking the button looked like it did
+       * nothing. So the axis shows what exists and grows into the chosen span
+       * as the data arrives, then scrolls. Picking a SMALLER span still takes
+       * effect immediately, which is the direction that has data to cut.
+       */
+      _applyWindow() {
+        const ch = _charts[this.kind];
+        if (!ch) return;
+        const now = Date.now();
+        const visible = Math.min(
+          this.windowMs, Math.max(this._heldMs(), MIN_VISIBLE_MS),
+        );
+        ch.options.scales.x.min = now - visible;
+        ch.options.scales.x.max = now;
+      },
+
+      /** Drop points older than the window (plus one, so the line still
+       *  enters from the left edge instead of starting inside the plot). */
+      _trim() {
+        const cutoff = Date.now() - this.windowMs;
+        const buf = bufFor(this.kind);
+        for (const key of Object.keys(buf.byKey)) {
+          const arr = buf.byKey[key];
+          let drop = 0;
+          while (drop + 1 < arr.length && arr[drop + 1].x < cutoff) drop++;
+          if (drop) arr.splice(0, drop);
+          if (arr.length > MAX_POINTS) arr.splice(0, arr.length - MAX_POINTS);
+        }
       },
 
       toggleExpand() {
@@ -196,13 +272,17 @@
         this._build();
       },
 
-      /** Sample count + the real time span they cover. */
+      /** Sample count, and how much of the chosen window is actually filled.
+       *  Saying "15m" when 40s has been collected would misdescribe an axis
+       *  that is mostly empty by design. */
       _refreshMeta() {
         const any = Object.values(bufFor(this.kind).byKey)[0] || [];
         this.sampleCount = any.length;
-        this.windowLabel = any.length > 1
-          ? spanLabel(any[any.length - 1].x - any[0].x)
-          : '';
+        const held = this._heldMs();
+        this.filling = held < this.windowMs * 0.98;
+        this.windowLabel = held > 0
+          ? `${spanLabel(held)} of ${spanLabel(this.windowMs)}`
+          : `0s of ${spanLabel(this.windowMs)}`;
       },
 
       _build() {
@@ -226,6 +306,11 @@
         const scales = {
           x: {
             type: 'linear',
+            // Pinned to the trailing window rather than floating to the data,
+            // so the span is what the user chose from the moment they choose
+            // it. Refreshed on every sample so it scrolls.
+            min: Date.now() - this.windowMs,
+            max: Date.now(),
             ticks: {
               maxTicksLimit: 7, color: '#94a3b8', font: { size: 10 },
               callback: (v) => clockLabel(v),
@@ -293,12 +378,13 @@
           // null, not 0 — a point the poller failed to read is a gap in the
           // line, and plotting it as zero invents a fault that isn't there.
           arr.push({ x: now, y: typeof v === 'number' ? v : null });
-          if (arr.length > MAX_POINTS) arr.shift();
         }
+        this._trim();
         this._refreshMeta();
 
         const ch = _charts[this.kind];
         if (!ch) return;
+        this._applyWindow();
         const chosen = this.series.filter((x) => x.on);
         ch.data.datasets.forEach((ds, i) => {
           const s = chosen[i];
