@@ -1,7 +1,8 @@
 """Hardware test fixtures — require a real aGate on the network.
 
 Environment variables:
-    FRANKLINWH_TEST_HOST  aGate IP (default: 192.168.1.100)
+    FRANKLINWH_TEST_HOST  aGate IP (default: 192.168.1.100 — a placeholder,
+                          not a real device; set this to your own aGate)
     FRANKLINWH_TEST_PORT  Modbus port (default: 502)
     FRANKLINWH_TEST_UNIT  Unit ID (default: 1)
 """
