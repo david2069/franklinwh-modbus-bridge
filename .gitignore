@@ -33,3 +33,7 @@ tests/results/
 
 # Personal utility bills / statements (PII — never commit)
 *.pdf
+
+# Third-party conformance-review material — not redistributable
+PICS_span*
+*SPANcomments*

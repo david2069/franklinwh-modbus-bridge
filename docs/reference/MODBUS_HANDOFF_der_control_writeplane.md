@@ -157,8 +157,7 @@ Suggested read-only-then-minimal sequence (each step gated on the prior result):
   enroll the aGate for controlled testing?
 
 ## 8. Cross-references
-- SPAN PICS spreadsheet: `~/Downloads/PICS_span_20230711_SPANcomments20230803.xlsx`
-  (SPAN Lab notes quoted in §2).
+- Conformance-review notes (quoted in §2).
 - SunSpec models in `~/Downloads/sunspec_model_704.json`, `...713*.json`, `...714.json`,
   and the DER Information Model spec PDFs (V1.0 / V1.2) — 715 DERCtl semantics.
 - franklinwh-local `docs/PROTOCOL.md`: reserve-coupled-to-mode note; sendMqtt has no local
