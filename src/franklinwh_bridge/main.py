@@ -36,7 +36,7 @@ from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.clock import check_and_record
 from franklinwh_bridge.config.manager import AppConfig
-from franklinwh_bridge.config.supervisor import discover_mqtt
+from franklinwh_bridge.config.supervisor import apply_timezone, discover_mqtt
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.billing import BillingStore
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
@@ -668,6 +668,24 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Bridge started (env=%s, v%s)", config.environment, __version__)
+
+    # Take the host timezone from the Supervisor BEFORE reading the clock or
+    # recording the expected zone. run.sh asks bashio for this, but on a real
+    # add-on install that call returns "forbidden" and its `> /dev/null` guard
+    # cannot tell that from "not configured" — so the container silently stays
+    # on UTC. If check_and_record() then ran first it would record UTC as the
+    # expected zone and confirm the wrong clock, turning a caught bug into a
+    # blessed one. Inert outside an add-on.
+    try:
+        applied_tz = await apply_timezone()
+        if applied_tz:
+            logger.info(
+                "Timezone taken from the Supervisor: %s (run.sh had left TZ=%s)",
+                applied_tz, "unset/UTC",
+            )
+    except Exception as exc:  # never block startup on auto-config
+        logger.warning("Supervisor timezone auto-config failed: %s", exc)
+
     # Schedule triggers and TOU windows run on this clock — log it, then check
     # it against the timezone recorded at install so a drift is caught at boot
     # rather than by a missed dispatch hours later.

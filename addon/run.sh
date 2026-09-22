@@ -12,8 +12,16 @@ set -e
 export APP_ENV="ha_addon"
 
 # Timezone. Schedule triggers and TOU windows are evaluated in LOCAL time, so a
-# wrong TZ silently runs every automation at the wrong hour. Take the host's
-# timezone from the Supervisor rather than trusting the container default.
+# wrong TZ silently runs every automation at the wrong hour.
+#
+# This bashio attempt is BEST-EFFORT ONLY and must not be trusted as the fix.
+# On real add-on installs this call has been observed returning "Unable to
+# access the API, forbidden" while the identical token works from Python, and
+# the `> /dev/null` guard below cannot tell that from "no timezone set" — it
+# just falls through, leaving the container on UTC. The authoritative path is
+# config/supervisor.py:apply_timezone(), which runs at startup BEFORE the
+# clock guard records the expected zone. Leave this in (when it works it
+# agrees, and Python then no-ops), but do not "fix" the timezone here.
 if bashio::info.timezone > /dev/null 2>&1; then
   TZ="$(bashio::info.timezone)"
   if [ -n "${TZ}" ] && [ "${TZ}" != "null" ]; then

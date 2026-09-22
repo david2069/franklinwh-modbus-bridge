@@ -1,16 +1,26 @@
-"""Home Assistant Supervisor API — MQTT broker auto-discovery.
+"""Home Assistant Supervisor API — MQTT broker and timezone auto-discovery.
 
-Running as an add-on, the broker details are already known to the Supervisor:
-whoever set up the Mosquitto add-on configured them once. Asking the user to
-retype host/port/username/password into a second form is both friction and a
-way to get it subtly wrong.
+Running as an add-on, both are already known to the Supervisor: whoever set up
+the Mosquitto add-on configured the broker once, and the host's timezone is a
+Supervisor-level setting. Asking the user to retype either into a second form is
+both friction and a way to get it subtly wrong.
+
+**Resolved here in Python, deliberately, rather than via bashio in run.sh.**
+FWHAI shipped the bashio version and found that on a real install every such
+call returned ``ERROR: Unable to access the API, forbidden`` — while the
+identical token worked from Python in the same boot. The failure is silent:
+``if bashio::info.timezone > /dev/null 2>&1`` cannot tell "forbidden" from "not
+configured", so it falls through and the container stays on UTC. That is not
+cosmetic here — schedule triggers, TOU blocks, demand and export windows are all
+evaluated in local wall-clock, so a Sydney site runs every automation ten hours
+out, and ``config/clock.py`` then records UTC as the expected zone at first run.
 
 Only used when ``detect_environment() == "ha_addon"`` and a SUPERVISOR_TOKEN is
-present. Everywhere else (docker, dev) this is inert and MQTT stays manual, so
-a non-addon install behaves exactly as before.
+present. Everywhere else (docker, dev) this is inert, so a non-addon install
+behaves exactly as before.
 
 Discovered values sit BELOW explicit configuration in precedence: an operator
-who typed a broker address meant it.
+who typed a broker address, or set TZ, meant it.
 """
 
 from __future__ import annotations
@@ -71,3 +81,62 @@ async def discover_mqtt() -> dict[str, Any] | None:
     }
     logger.info("MQTT auto-configured from Supervisor: %s:%s", found["host"], found["port"])
     return found
+
+
+async def discover_timezone() -> str | None:
+    """Ask the Supervisor for the host timezone (IANA name), or None.
+
+    Never raises and never guesses: outside an add-on there is no Supervisor,
+    which is a normal state rather than a failure. Returns None so the caller
+    keeps whatever TZ it already had.
+    """
+    token = supervisor_token()
+    if not token:
+        return None
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+            resp = await client.get(
+                f"{_SUPERVISOR_URL}/info",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        resp.raise_for_status()
+        tz = ((resp.json() or {}).get("data") or {}).get("timezone")
+    except Exception as exc:  # pragma: no cover - network/env dependent
+        logger.warning(
+            "Supervisor timezone lookup failed (%s) — keeping TZ=%s. Schedules and "
+            "TOU windows run on this clock, so check it if automations fire at the "
+            "wrong hour.", exc, os.environ.get("TZ") or "unset",
+        )
+        return None
+
+    if not tz or tz == "null":
+        return None
+    return str(tz)
+
+
+async def apply_timezone() -> str | None:
+    """Set ``TZ`` from the Supervisor when the user has not set it themselves.
+
+    Returns the applied zone, or None if nothing changed. An operator who set TZ
+    explicitly meant it — the Supervisor value is a default, not an override.
+    """
+    existing = os.environ.get("TZ")
+    if existing and existing != "UTC":
+        return None
+
+    tz = await discover_timezone()
+    if not tz or tz == existing:
+        return None
+
+    os.environ["TZ"] = tz
+    try:
+        import time as _time
+
+        _time.tzset()  # make the change visible to datetime.now() immediately
+    except AttributeError:  # pragma: no cover - non-POSIX
+        pass
+    logger.info("Timezone auto-configured from Supervisor: %s", tz)
+    return tz
