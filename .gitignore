@@ -34,6 +34,9 @@ tests/results/
 # Personal utility bills / statements (PII — never commit)
 *.pdf
 
-# Third-party conformance-review material — not redistributable
-PICS_span*
-*SPANcomments*
+# Third-party review material is not ours to redistribute. Ignore spreadsheets
+# under docs/reference/ by default and allow only what we've confirmed is
+# publishable — a denylist would have to name the documents it excludes, which
+# is itself the disclosure. Findings belong in docs/vendor-issues.md, not here.
+docs/reference/*.xlsx
+!docs/reference/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx
