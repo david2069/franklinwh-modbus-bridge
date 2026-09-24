@@ -17,6 +17,9 @@ function settingsTab() {
     gwTesting: false,
     gwTestResult: null,
     entities: [],
+    mqttGateways: [],
+    mqttGatewayPoints: null,
+    selectedMqttGateway: '',
     entityFilter: '',
     metricsRetention: 30,
     metricsRawAge: 7,
@@ -117,7 +120,21 @@ function settingsTab() {
       if (appStatus && appStatus.components && appStatus.components.poller) {
         this.poller = appStatus.components.poller;
       }
-      if (topics && topics.topics) this.entities = topics.topics;
+      // Multi-gateway: `gateways` carries every publishing gateway. The flat
+      // `topics` remains the selected one for back-compat. Without this the
+      // panel only ever showed the default gateway, so a second gateway
+      // publishing dozens of entities looked identical to one publishing none.
+      if (topics && Array.isArray(topics.gateways)) {
+        this.mqttGateways = topics.gateways;
+        const keep = this.mqttGateways.find(g => g.gateway_id === this.selectedMqttGateway);
+        if (!keep) {
+          this.selectedMqttGateway = topics.gateway_id
+            || (this.mqttGateways[0] || {}).gateway_id || '';
+        }
+        this.applyMqttGateway();
+      } else if (topics && topics.topics) {
+        this.entities = topics.topics;
+      }
     },
 
     async loadMqttConfig() {
@@ -1482,6 +1499,22 @@ function settingsTab() {
       }
     },
 
+    /** Point the entity table at one gateway's entities AND its values. */
+    async applyMqttGateway() {
+      const g = (this.mqttGateways || []).find(x => x.gateway_id === this.selectedMqttGateway);
+      this.entities = g ? g.topics : [];
+
+      // Values must come from the gateway whose entities are on screen, not
+      // from whatever the topbar happens to be showing. Without this the mock's
+      // rows rendered the REAL gateway's readings — verified against the broker:
+      // mock SoC 30.3 / SoH 96.0 displayed as 37 / 94.9. Rows that silently
+      // belong to a different device are worse than no rows at all.
+      this.mqttGatewayPoints = null;
+      if (!g) return;
+      const data = await fetchJSON(`api/gateways/${encodeURIComponent(g.gateway_id)}/points`);
+      if (data && data.points) this.mqttGatewayPoints = data.points;
+    },
+
     get filteredEntities() {
       if (!this.entityFilter) return this.entities;
       const q = this.entityFilter.toLowerCase();
@@ -1494,7 +1527,9 @@ function settingsTab() {
     },
 
     getEntityValue(entity) {
-      const pts = Alpine.store('app').points;
+      // Prefer the selected MQTT gateway's own points; fall back to the store
+      // only before that fetch lands.
+      const pts = this.mqttGatewayPoints || Alpine.store('app').points;
       const key = entity.stat_key || entity.slug;
       const raw = pts[key];
       if (raw === undefined || raw === null) return '--';

@@ -469,6 +469,11 @@ class MqttPublisher:
         else:
             logger.info("Unregistered MQTT device: %s", gateway_id)
 
+    @property
+    def gateway_id(self) -> str:
+        """The gateway this publisher owns via the legacy single-device path."""
+        return self._gateway_id
+
     def devices(self) -> list[str]:
         """Gateway ids with a registered MQTT device (snapshot, safe to mutate
         the registry while iterating the result)."""

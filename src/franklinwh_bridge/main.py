@@ -539,22 +539,88 @@ async def lifespan(app: FastAPI):
                 )
                 mqtt_publisher.set_command_handler(default.command_handler)
 
-            # Wait briefly for the init task to discover device info
+            # Wait briefly for the init task to discover device info. If the
+            # aGate is slow or reconnecting we must NOT give up quietly — that
+            # left the publisher unbound and every real sample was dropped
+            # while the mock kept publishing, with nothing in the log to say so.
+            wired = False
             for _ in range(20):
-                if default.device_info:
-                    mqtt_publisher.set_device_info(default.device_info)
-                    mqtt_publisher.set_ac_type(default.status.ac_type)
-                    gw_row = await get_gateway(db, "default")
-                    if gw_row:
-                        mqtt_publisher.set_phase_view(gw_row.get("phase_view", "both"))
+                if await wire_default_mqtt():
+                    wired = True
                     break
                 await asyncio.sleep(0.5)
+
+            if not wired:
+                logger.warning(
+                    "Default gateway device info not available after 10s — MQTT "
+                    "publishing for it is INACTIVE until it is. Retrying in the "
+                    "background; HA entities for the real gateway will be stale "
+                    "until this succeeds."
+                )
+
+                async def _retry_wire_default() -> None:
+                    # Bounded: ~10 minutes. A gateway that never reports device
+                    # info is a connectivity problem, not something to poll for
+                    # ever, and the warning above has already been logged.
+                    for _ in range(120):
+                        await asyncio.sleep(5)
+                        if await wire_default_mqtt():
+                            logger.info(
+                                "Default gateway MQTT wiring recovered — publishing resumed"
+                            )
+                            return
+                    logger.error(
+                        "Default gateway never reported device info — its MQTT "
+                        "entities will not update. Check the gateway connection."
+                    )
+
+                asyncio.create_task(_retry_wire_default())
 
             # Wire reader_fn for POST /api/models/refresh
             if default.reader_fn:
                 app.state.reader_fn = default.reader_fn
 
         await sync_mqtt_devices()
+
+    async def wire_default_mqtt() -> bool:
+        """Bind the default gateway's device info to the publisher. Idempotent.
+
+        The default gateway does NOT go through register_device() — it keeps the
+        legacy single-device path so its topics and unique_ids never move. That
+        path is gated on ``self._device_info`` being set, and this is the only
+        thing that sets it.
+
+        Two ways that used to fail silently, both of which dropped every real
+        sample while the mock kept publishing:
+
+        1. Startup raced the aGate. The caller polled for 10s and, on a slow or
+           reconnecting gateway, simply fell out of the loop — no else branch,
+           no warning, no retry — leaving _device_info None for the life of the
+           process. queue_sample then took its "unregistered gateway" branch
+           and discarded the samples.
+        2. A gateway restart re-created the instance with fresh device_info,
+           but the wiring only ever ran once during lifespan startup, so the
+           publisher kept a stale binding or none at all.
+
+        Now callable repeatedly and from anywhere a gateway (re)starts.
+        """
+        inst = registry.get("default")
+        if inst is None or not inst.device_info:
+            return False
+        mqtt_publisher.set_device_info(inst.device_info)
+        mqtt_publisher.set_ac_type(inst.status.ac_type)
+        if inst.command_handler:
+            inst.command_handler._on_state_changed = mqtt_publisher.publish_command_state
+            mqtt_publisher.set_command_handler(inst.command_handler)
+        try:
+            gw_row = await get_gateway(db, "default")
+            if gw_row:
+                mqtt_publisher.set_phase_view(gw_row.get("phase_view", "both"))
+        except Exception as exc:
+            logger.debug("phase_view lookup failed: %s", exc)
+        return True
+
+    app.state.wire_default_mqtt = wire_default_mqtt
 
     async def sync_mqtt_devices() -> None:
         """Give every opted-in NON-DEFAULT gateway its own MQTT/HA device.
@@ -571,6 +637,11 @@ async def lifespan(app: FastAPI):
         Safe to call repeatedly — used at startup and after a gateway is added,
         edited or toggled.
         """
+        # The default gateway is wired here too, not just at startup: a restart
+        # replaces the instance, and without this the publisher keeps a stale
+        # binding (or none) and silently drops every real sample.
+        await wire_default_mqtt()
+
         try:
             rows = {g["id"]: g for g in await get_gateways(db)}
         except Exception as exc:

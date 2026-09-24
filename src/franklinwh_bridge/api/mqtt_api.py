@@ -150,30 +150,80 @@ async def get_topics(request: Request):
     if publisher is None:
         return {"topics": []}
 
-    device_info = publisher.device_info
-    if device_info is None:
-        return {"topics": [], "note": "No device info set yet"}
+    def _describe(entities, short_id) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for entity in entities or []:
+            entry: dict[str, Any] = {
+                "slug": entity.slug,
+                "name": entity.name,
+                "ha_type": entity.ha_type,
+                "source": entity.source,
+                "stat_key": entity.stat_key,
+                "value_scale": entity.value_scale,
+                "value_precision": entity.value_precision,
+                "state_topic": entity.state_topic(short_id),
+                "discovery_topic": entity.discovery_topic(short_id),
+            }
+            cmd = entity.command_topic(short_id)
+            if cmd:
+                entry["command_topic"] = cmd
+            out.append(entry)
+        return out
 
-    short_id = device_info.short_id
-    topics = []
-    for entity in publisher.entities:
-        entry: dict[str, Any] = {
-            "slug": entity.slug,
-            "name": entity.name,
-            "ha_type": entity.ha_type,
-            "source": entity.source,
-            "stat_key": entity.stat_key,
-            "value_scale": entity.value_scale,
-            "value_precision": entity.value_precision,
-            "state_topic": entity.state_topic(short_id),
-            "discovery_topic": entity.discovery_topic(short_id),
-        }
-        cmd = entity.command_topic(short_id)
-        if cmd:
-            entry["command_topic"] = cmd
-        topics.append(entry)
+    # Every gateway that publishes, not just the default one.
+    #
+    # This endpoint used to read publisher.device_info / .entities only — the
+    # legacy single-device path — so a second gateway registered through
+    # register_device() was structurally invisible here and in the Settings UI.
+    # A mock publishing 61 entities showed as nothing at all, which made it
+    # impossible to tell "not publishing" from "not displayed".
+    gateways: list[dict[str, Any]] = []
 
-    return {"short_id": short_id, "entity_count": len(topics), "topics": topics}
+    default_info = publisher.device_info
+    if default_info is not None:
+        gateways.append({
+            "gateway_id": publisher.gateway_id,
+            "short_id": default_info.short_id,
+            "name": getattr(default_info, "name", None) or publisher.gateway_id,
+            "is_default": True,
+            "topics": _describe(publisher.entities, default_info.short_id),
+        })
+
+    for gw_id in publisher.devices():
+        dev = publisher.get_device(gw_id)
+        if dev is None or dev.device_info is None:
+            continue
+        gateways.append({
+            "gateway_id": gw_id,
+            "short_id": dev.device_info.short_id,
+            "name": getattr(dev.device_info, "name", None) or gw_id,
+            "is_default": False,
+            "topics": _describe(dev.entities, dev.device_info.short_id),
+        })
+
+    for g in gateways:
+        g["entity_count"] = len(g["topics"])
+
+    if not gateways:
+        return {"topics": [], "gateways": [], "note": "No device info set yet"}
+
+    # Back-compat: `topics`/`short_id` keep describing ONE gateway — the one
+    # asked for, else the default — so existing callers are unaffected while
+    # `gateways` carries the full picture.
+    wanted = request.query_params.get("gateway")
+    sel = next((g for g in gateways if g["gateway_id"] == wanted), None) or gateways[0]
+
+    return {
+        "short_id": sel["short_id"],
+        "gateway_id": sel["gateway_id"],
+        "entity_count": sel["entity_count"],
+        "topics": sel["topics"],
+        "gateways": [
+            {k: v for k, v in g.items() if k != "topics"} | {"topics": g["topics"]}
+            for g in gateways
+        ],
+        "total_entity_count": sum(g["entity_count"] for g in gateways),
+    }
 
 
 async def _detect_mosquitto_addon() -> dict:
