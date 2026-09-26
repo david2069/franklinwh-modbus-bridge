@@ -141,9 +141,20 @@ class DeviceInfo:
 
     def ha_device_block(self, app_version: str = "") -> dict:
         name = self.name or f"FranklinWH {self.short_id}"
+
+        # Name this bridge explicitly as the producer.
+        #
+        # Several projects publish HA discovery for the SAME physical aGate —
+        # this bridge, FWHAI, the local bridge — and all of them namespace under
+        # `franklinwh_<id>_<key>`. On a shared broker their device identifiers
+        # collide and HA merges them into one device whose metadata is written
+        # by whoever published last. When that happens the only way to tell what
+        # produced an entity is this field, so it must say so unambiguously
+        # rather than burying it in parentheses after the aGate's own firmware.
         sw = self.firmware
         if app_version:
-            sw = f"{self.firmware} (bridge: v{app_version})" if sw else f"bridge: v{app_version}"
+            label = f"Modbus Bridge v{app_version}"
+            sw = f"{label} · aGate {self.firmware}" if sw else label
         # Device identifier mirrors short_id's namespacing so duplicate serials
         # don't merge into one HA device.
         if self.gateway_id and self.gateway_id != "default":

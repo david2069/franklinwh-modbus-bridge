@@ -164,6 +164,15 @@ def test_device_info_ha_block(device_info):
     assert block["name"] == "FHP"
     assert "V10R01B04D00" in block["sw_version"]
     assert "0.1.0" in block["sw_version"]
+    # Names THIS bridge as the producer, and leads with it.
+    #
+    # FWHAI and the local bridge publish discovery for the same physical aGate
+    # and share the `franklinwh_<id>_<key>` namespace, so on a shared broker
+    # their device identifiers collide and HA merges them into one device whose
+    # metadata is last-writer-wins. sw_version is then the only field that says
+    # what produced an entity — burying it after the aGate firmware, or dropping
+    # it, makes that undiagnosable.
+    assert block["sw_version"].startswith("Modbus Bridge v")
 
 
 def test_duplicate_serial_does_not_collide():
