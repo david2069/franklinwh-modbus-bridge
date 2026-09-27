@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 44
+CURRENT_SCHEMA_VERSION = 45
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -669,6 +669,64 @@ MIGRATIONS: dict[int, str] = {
     -- lasting trap.
     SELECT 1;
     """,
+    45: """
+    -- Tariff plans get a DATE RANGE and a history of their own.
+    --
+    -- A service row holds only the CURRENT plan, and start_new_plan()
+    -- overwrites retailer/network on it, so a previous plan survived nowhere
+    -- except inside already-closed billing_periods snapshots. Two things were
+    -- therefore impossible:
+    --
+    --   * recording that a plan ran from X to Y at all, and
+    --   * backdating a switch. plan_started_at was stamped with "now", but a
+    --     real switch is discovered after the fact: the user moved from Amber
+    --     Electric to AGL on 09 Sep 2026 and told the bridge later.
+    --
+    -- Consequence: a billing period spanning the switch was priced entirely by
+    -- whichever plan happened to be current, silently attributing one
+    -- retailer's energy to another. Cycle day is the 1st; real switches do not
+    -- respect it.
+    --
+    -- valid_to NULL means "still in force". pricing is a JSON snapshot of the
+    -- rates as they were, so editing today's rates cannot rewrite what a past
+    -- period was charged.
+    CREATE TABLE IF NOT EXISTS service_plans (
+        id           TEXT PRIMARY KEY,
+        service_id   TEXT NOT NULL,
+        plan_version INTEGER NOT NULL DEFAULT 1,
+        retailer     TEXT NOT NULL DEFAULT '',
+        network      TEXT NOT NULL DEFAULT '',
+        plan_type    TEXT NOT NULL DEFAULT '',
+        valid_from   REAL NOT NULL,
+        valid_to     REAL,
+        pricing      TEXT NOT NULL DEFAULT '',
+        note         TEXT NOT NULL DEFAULT '',
+        created_at   REAL NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_service_plans_range
+        ON service_plans(service_id, valid_from);
+
+    -- Backfill one open plan per existing service from what it currently
+    -- holds, so resolution works from day one rather than returning "no plan"
+    -- for every historical timestamp.
+    INSERT INTO service_plans
+        (id, service_id, plan_version, retailer, network, plan_type,
+         valid_from, valid_to, pricing, note, created_at)
+    SELECT
+        'plan_' || s.id || '_v' || COALESCE(s.plan_version, 1),
+        s.id,
+        COALESCE(s.plan_version, 1),
+        COALESCE(s.retailer, ''),
+        COALESCE(s.network, ''),
+        COALESCE(s.plan_type, ''),
+        COALESCE(NULLIF(s.plan_started_at, 0), s.created_at, 0),
+        NULL,
+        COALESCE(s.pricing, ''),
+        'backfilled from the service row at migration 45',
+        COALESCE(s.created_at, 0)
+    FROM services s
+    WHERE NOT EXISTS (SELECT 1 FROM service_plans sp WHERE sp.service_id = s.id);
+    """,
     44: """
     -- Solar export and BATTERY export are different permissions with
     -- different sources, and one flag could not express either honestly.
@@ -1160,6 +1218,16 @@ async def create_service(
         "(id, name, meter_number, account, ac_service, rated_amps, display_order, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (service_id, name, meter_number, account, int(ac_service), int(rated_amps), order, now),
+    )
+    # Open its first plan immediately. Migration 45 backfills services that
+    # already existed, but without this a service created AFTERWARDS would have
+    # no plan history at all — so plan_at() returns None for every instant and
+    # a later switch has no predecessor to close. The invariant the resolver
+    # relies on is "every service has at least one plan".
+    await db.execute(
+        "INSERT INTO service_plans (id, service_id, plan_version, valid_from, "
+        "valid_to, note, created_at) VALUES (?, ?, 1, ?, NULL, ?, ?)",
+        (f"plan_{service_id}_v1", service_id, now, "opened with the service", now),
     )
     await db.commit()
     return await get_service(db, service_id)  # type: ignore[return-value]
@@ -2493,3 +2561,186 @@ async def get_catalog_points(db: aiosqlite.Connection, gateway_id: str = "defaul
         return rows
     finally:
         db.row_factory = aiosqlite.Row
+
+
+# ── Tariff plan history (migration 45) ────────────────────────
+
+
+async def get_service_plans(
+    db: aiosqlite.Connection, service_id: str
+) -> list[dict]:
+    """Every plan recorded for a service, oldest first."""
+    async with db.execute(
+        "SELECT * FROM service_plans WHERE service_id = ? "
+        "ORDER BY valid_from, plan_version",
+        (service_id,),
+    ) as cur:
+        cur.row_factory = aiosqlite.Row
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def plan_at(
+    db: aiosqlite.Connection, service_id: str, ts: float
+) -> dict | None:
+    """The plan in force at ``ts``, or None if no plan covers that instant.
+
+    None rather than "the nearest plan": pricing energy with a tariff that was
+    not in force is worse than declining to price it, and the caller can say so.
+    Ranges are half-open — ``valid_from <= ts < valid_to`` — so the instant a
+    plan ends belongs to its successor and a period boundary cannot be counted
+    twice.
+    """
+    async with db.execute(
+        "SELECT * FROM service_plans WHERE service_id = ? AND valid_from <= ? "
+        "AND (valid_to IS NULL OR valid_to > ?) "
+        "ORDER BY valid_from DESC LIMIT 1",
+        (service_id, ts, ts),
+    ) as cur:
+        cur.row_factory = aiosqlite.Row
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def plans_overlapping(
+    db: aiosqlite.Connection, service_id: str, start_ts: float, end_ts: float
+) -> list[dict]:
+    """Plans covering any part of ``[start_ts, end_ts)``, oldest first.
+
+    More than one means a billing period spans a switch, and its cost is an
+    average of tariffs that were never both in force. The caller decides
+    whether to split or to report the span — but it can no longer be unaware.
+    """
+    async with db.execute(
+        "SELECT * FROM service_plans WHERE service_id = ? AND valid_from < ? "
+        "AND (valid_to IS NULL OR valid_to > ?) ORDER BY valid_from",
+        (service_id, end_ts, start_ts),
+    ) as cur:
+        cur.row_factory = aiosqlite.Row
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def record_plan_change(
+    db: aiosqlite.Connection,
+    service_id: str,
+    *,
+    valid_from: float,
+    retailer: str | None = None,
+    network: str | None = None,
+    plan_type: str | None = None,
+    pricing: str | None = None,
+    note: str = "",
+) -> dict | None:
+    """Close the plan in force at ``valid_from`` and open a new one there.
+
+    ``valid_from`` may be in the PAST — a switch is usually discovered after it
+    happened, and stamping it with "now" is what made Amber-to-AGL on 09 Sep
+    unrepresentable. The predecessor's ``valid_to`` is set to exactly the new
+    plan's ``valid_from``, so the two abut with no gap and no overlap.
+
+    Returns the new plan row, or None if the service does not exist.
+    """
+    svc = await get_service(db, service_id)
+    if svc is None:
+        return None
+
+    prior = await plan_at(db, service_id, valid_from)
+    if prior is not None:
+        # Abut, don't overlap. A plan that would be closed before it opened is
+        # a nonsense range, so refuse rather than write it.
+        if valid_from <= float(prior["valid_from"]):
+            raise ValueError(
+                f"valid_from {valid_from} is not after the prior plan's start "
+                f"{prior['valid_from']} — plans must not overlap"
+            )
+        await db.execute(
+            "UPDATE service_plans SET valid_to = ? WHERE id = ?",
+            (valid_from, prior["id"]),
+        )
+
+    # The new plan is not necessarily the latest. Recording history you did not
+    # capture at the time means inserting BEFORE existing plans, so bound the
+    # new one by whichever plan starts next — otherwise two open-ended plans
+    # overlap and plan_at() silently returns whichever the index yields first.
+    async with db.execute(
+        "SELECT MIN(valid_from) FROM service_plans WHERE service_id = ? "
+        "AND valid_from > ?",
+        (service_id, valid_from),
+    ) as cur:
+        successor_start = (await cur.fetchone())[0]
+
+    version = int(svc.get("plan_version") or 1) + 1
+    now = time.time()
+    plan_id = f"plan_{service_id}_v{version}_{int(valid_from)}"
+    await db.execute(
+        "INSERT INTO service_plans (id, service_id, plan_version, retailer, "
+        "network, plan_type, valid_from, valid_to, pricing, note, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            plan_id, service_id, version,
+            (retailer if retailer is not None else svc.get("retailer") or "").strip(),
+            (network if network is not None else svc.get("network") or "").strip(),
+            (plan_type if plan_type is not None else svc.get("plan_type") or ""),
+            valid_from,
+            successor_start,
+            pricing if pricing is not None else (svc.get("pricing") or ""),
+            note, now,
+        ),
+    )
+    await db.commit()
+
+    async with db.execute(
+        "SELECT * FROM service_plans WHERE id = ?", (plan_id,)
+    ) as cur:
+        cur.row_factory = aiosqlite.Row
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def correct_plan_start(
+    db: aiosqlite.Connection, plan_id: str, valid_from: float
+) -> dict | None:
+    """Move a plan's start date, keeping it from overlapping its neighbours.
+
+    Needed because a backfilled plan has ``valid_from = 0`` — migration 45 has
+    nothing better to use when a service never recorded when its plan began,
+    and 0 at least covers all prior time rather than leaving history
+    unresolvable. But it also means there is no earlier instant at which to
+    insert a predecessor, so the real start has to be settable: "AGL began on
+    09 Sep" first, THEN Amber can be recorded before it.
+
+    The predecessor, if any, is closed at the new start so the two still abut.
+    """
+    async with db.execute(
+        "SELECT * FROM service_plans WHERE id = ?", (plan_id,)
+    ) as cur:
+        cur.row_factory = aiosqlite.Row
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    plan = dict(row)
+
+    if plan["valid_to"] is not None and valid_from >= float(plan["valid_to"]):
+        raise ValueError(
+            f"valid_from {valid_from} is not before this plan's end "
+            f"{plan['valid_to']}"
+        )
+
+    # Any plan that ended at the old start must follow it to the new one, or a
+    # gap opens where no plan resolves.
+    await db.execute(
+        "UPDATE service_plans SET valid_to = ? WHERE service_id = ? "
+        "AND valid_to = ? AND id != ?",
+        (valid_from, plan["service_id"], plan["valid_from"], plan_id),
+    )
+    await db.execute(
+        "UPDATE service_plans SET valid_from = ? WHERE id = ?",
+        (valid_from, plan_id),
+    )
+    await db.commit()
+
+    async with db.execute(
+        "SELECT * FROM service_plans WHERE id = ?", (plan_id,)
+    ) as cur:
+        cur.row_factory = aiosqlite.Row
+        row = await cur.fetchone()
+    return dict(row) if row else None
