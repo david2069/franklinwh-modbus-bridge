@@ -306,3 +306,82 @@ async def test_a_start_after_its_own_end_is_refused(db, svc):
 
     with pytest.raises(ValueError, match="not before"):
         await correct_plan_start(db, amber["id"], ts(2026, 10, 1))
+
+
+# ── Every plan needs a real start date ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_migration_46_replaces_epoch_zero_with_a_real_start(db, svc):
+    """Migration 45 used 0 for "start unknown", which asserts the plan was in
+    force in 1970 and would price historical queries against a tariff nobody
+    was on. 46 resolves it to when billing tracking actually began."""
+    from franklinwh_bridge.store.db import MIGRATIONS, get_services
+
+    plan = (await get_service_plans(db, svc))[0]
+    await db.execute("UPDATE service_plans SET valid_from = 0 WHERE id = ?", (plan["id"],))
+    await db.execute(
+        "INSERT INTO billing_periods (gateway_id, period_start, period_end, created_at) "
+        "VALUES ('default', ?, ?, 0)",
+        (ts(2026, 8, 1), ts(2026, 9, 1)),
+    )
+    await db.commit()
+
+    await db.executescript(MIGRATIONS[46])
+    await db.commit()
+
+    fixed = (await get_service_plans(db, svc))[0]
+    assert fixed["valid_from"] == ts(2026, 8, 1), "earliest billing period"
+    assert await get_services(db) is not None
+
+
+@pytest.mark.asyncio
+async def test_migration_46_falls_back_to_now_when_there_is_nothing_to_go_on(db, svc):
+    """No plan start, no billing periods, no creation time. "Now" is the
+    earliest defensible claim — the moment the feature arrived."""
+    import time as _time
+
+    from franklinwh_bridge.store.db import MIGRATIONS
+
+    plan = (await get_service_plans(db, svc))[0]
+    await db.execute("UPDATE service_plans SET valid_from = 0 WHERE id = ?", (plan["id"],))
+    await db.execute("UPDATE services SET created_at = 0, plan_started_at = 0 WHERE id = ?", (svc,))
+    await db.commit()
+
+    await db.executescript(MIGRATIONS[46])
+    await db.commit()
+
+    got = (await get_service_plans(db, svc))[0]["valid_from"]
+    assert abs(got - _time.time()) < 120, got
+
+
+@pytest.mark.asyncio
+async def test_migration_46_leaves_real_dates_alone(db, svc):
+    from franklinwh_bridge.store.db import MIGRATIONS
+
+    await record_plan_change(db, svc, valid_from=SWITCH, retailer="AGL Energy")
+    before = await get_service_plans(db, svc)
+
+    await db.executescript(MIGRATIONS[46])
+    await db.commit()
+
+    assert [p["valid_from"] for p in await get_service_plans(db, svc)] == \
+           [p["valid_from"] for p in before]
+
+
+@pytest.mark.asyncio
+async def test_a_plan_cannot_be_created_without_a_real_start(db, svc):
+    """Accepting 0 would just recreate what 46 exists to clean up."""
+    for bad in (0, 0.0, None):
+        with pytest.raises(ValueError, match="real timestamp"):
+            await record_plan_change(db, svc, valid_from=bad, retailer="X")
+
+
+@pytest.mark.asyncio
+async def test_a_start_cannot_be_corrected_to_zero(db, svc):
+    from franklinwh_bridge.store.db import correct_plan_start
+
+    plan = (await get_service_plans(db, svc))[0]
+
+    with pytest.raises(ValueError, match="real timestamp"):
+        await correct_plan_start(db, plan["id"], 0)

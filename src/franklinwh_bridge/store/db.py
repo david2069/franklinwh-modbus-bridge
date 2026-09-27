@@ -26,7 +26,7 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 45
+CURRENT_SCHEMA_VERSION = 46
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -668,6 +668,36 @@ MIGRATIONS: dict[int, str] = {
     -- billing_periods table), and one word for two concepts would be a
     -- lasting trap.
     SELECT 1;
+    """,
+    46: """
+    -- Every plan needs a real start date.
+    --
+    -- Migration 45 backfilled valid_from = 0 where a service had never
+    -- recorded when its plan began. That made history resolvable, but it
+    -- asserts the plan was in force in 1970, which is simply untrue and would
+    -- price any historical query against a tariff nobody was on.
+    --
+    -- The honest floor is when this bridge started tracking billing at all.
+    -- Prefer, in order: the service's own recorded plan start; the earliest
+    -- billing period for that service; the earliest billing period recorded at
+    -- all (billing_periods.service_id is NULL on rows written before
+    -- attribution existed, so a per-service lookup alone misses them); the
+    -- service's creation time; and failing all of that, now — the moment the
+    -- feature arrived, which is the earliest defensible claim.
+    UPDATE service_plans
+       SET valid_from = COALESCE(
+           (SELECT NULLIF(s.plan_started_at, 0) FROM services s
+             WHERE s.id = service_plans.service_id),
+           (SELECT MIN(bp.period_start) FROM billing_periods bp
+             WHERE bp.service_id = service_plans.service_id
+               AND bp.period_start > 0),
+           (SELECT MIN(bp.period_start) FROM billing_periods bp
+             WHERE bp.period_start > 0),
+           (SELECT NULLIF(s.created_at, 0) FROM services s
+             WHERE s.id = service_plans.service_id),
+           CAST(strftime('%s', 'now') AS REAL)
+       )
+     WHERE valid_from IS NULL OR valid_from <= 0;
     """,
     45: """
     -- Tariff plans get a DATE RANGE and a history of their own.
@@ -2639,6 +2669,12 @@ async def record_plan_change(
 
     Returns the new plan row, or None if the service does not exist.
     """
+    # Every plan needs a real start. 0/epoch is what migration 45 used as a
+    # placeholder for "unknown", and migration 46 exists to clean that up —
+    # accepting it here would just recreate the problem.
+    if not valid_from or valid_from <= 0:
+        raise ValueError("valid_from must be a real timestamp, not 0/None")
+
     svc = await get_service(db, service_id)
     if svc is None:
         return None
@@ -2718,6 +2754,9 @@ async def correct_plan_start(
     if row is None:
         return None
     plan = dict(row)
+
+    if not valid_from or valid_from <= 0:
+        raise ValueError("valid_from must be a real timestamp, not 0/None")
 
     if plan["valid_to"] is not None and valid_from >= float(plan["valid_to"]):
         raise ValueError(
