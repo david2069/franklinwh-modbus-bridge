@@ -162,8 +162,10 @@ def test_device_info_short_id(device_info):
 def test_device_info_ha_block(device_info):
     block = device_info.ha_device_block(app_version="0.1.0")
     assert block["name"] == "FHP"
-    assert "V10R01B04D00" in block["sw_version"]
-    assert "0.1.0" in block["sw_version"]
+    # Split across HA's two device slots, which it renders as "Firmware" and
+    # "Hardware" — one long concatenated line wrapped badly on the device page.
+    assert block["sw_version"] == "Modbus Bridge v0.1.0"
+    assert block["hw_version"] == "aGate V10R01B04D00"
     # Names THIS bridge as the producer, and leads with it.
     #
     # FWHAI and the local bridge publish discovery for the same physical aGate

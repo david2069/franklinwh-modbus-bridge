@@ -151,10 +151,18 @@ class DeviceInfo:
         # by whoever published last. When that happens the only way to tell what
         # produced an entity is this field, so it must say so unambiguously
         # rather than burying it in parentheses after the aGate's own firmware.
-        sw = self.firmware
-        if app_version:
-            label = f"Modbus Bridge v{app_version}"
-            sw = f"{label} · aGate {self.firmware}" if sw else label
+        # HA renders sw_version as "Firmware" and hw_version as "Hardware", so
+        # the two facts get a line each instead of one long concatenation:
+        #
+        #   Firmware: Modbus Bridge v0.1.0
+        #   Hardware: aGate V10R01B04D00
+        #
+        # Calling the aGate's own firmware "Hardware" is a slight stretch, but
+        # HA offers only these two slots and the alternative — dropping the
+        # producer — is what made a merged device undiagnosable in the first
+        # place. Both facts stay visible and neither line wraps.
+        sw = f"Modbus Bridge v{app_version}" if app_version else self.firmware
+        hw = f"aGate {self.firmware}" if (app_version and self.firmware) else ""
         # Device identifier mirrors short_id's namespacing so duplicate serials
         # don't merge into one HA device.
         if self.gateway_id and self.gateway_id != "default":
@@ -171,6 +179,8 @@ class DeviceInfo:
             block["serial_number"] = self.serial
         if sw:
             block["sw_version"] = sw
+        if hw:
+            block["hw_version"] = hw
         return block
 
 
