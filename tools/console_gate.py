@@ -277,7 +277,10 @@ def run(url: str, user: str, password: str) -> int:
         # gate must not make one.
         _goto(page, f"{url}?tab=settings", problems)
         page.wait_for_timeout(1000)
-        if not page.locator("[x-model='ph.interval_s']").count():
+        # Match on the modifier form actually used in the markup:
+        # x-model.number, not x-model — the bare selector silently never
+        # matches, which reads as "panel missing" for a panel that is there.
+        if not page.locator("[x-model\\.number='ph.interval_s']").count():
             problems.append("settings: Point History panel missing")
 
         browser.close()
