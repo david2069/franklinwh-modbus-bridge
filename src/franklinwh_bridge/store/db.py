@@ -1611,18 +1611,56 @@ async def start_new_plan(
     the connection point. They survive a change of retailer or plan, and a
     test pins that — previously they were preserved only because this function
     happened not to mention them.
+
+    A ``service_plans`` row is written too. Without it this function — which is
+    what the Settings "switch plan" button calls — would move the service row
+    forward while leaving the plan history behind, so the dated history added in
+    migration 45 would be complete only for switches recorded through the newer
+    plans API and silently stale for every one made through the UI.
     """
     row = await get_service(db, service_id)
     if row is None:
         return None
+    stamp = started_at if started_at is not None else time.time()
     updates: dict = {
         "plan_version": int(row.get("plan_version") or 1) + 1,
-        "plan_started_at": started_at if started_at is not None else time.time(),
+        "plan_started_at": stamp,
     }
     if retailer is not None:
         updates["retailer"] = retailer.strip()
     if network is not None:
         updates["network"] = network.strip()
+
+    # Record the plan BEFORE the service row moves: record_plan_change derives
+    # the new plan's version from the service's current one, so doing it after
+    # the bump would skip a version.
+    current = await plan_at(db, service_id, stamp)
+    if current is not None and stamp <= float(current["valid_from"]):
+        # The switch lands on the very instant the plan in force began — there
+        # is no interval to split, and inserting a second plan there would be a
+        # zero-length range record_plan_change rightly refuses. Amend that plan
+        # instead; no history is lost because none elapsed.
+        await db.execute(
+            "UPDATE service_plans SET plan_version = ?, retailer = ?, network = ? "
+            "WHERE id = ?",
+            (
+                updates["plan_version"],
+                updates.get("retailer", current["retailer"]),
+                updates.get("network", current["network"]),
+                current["id"],
+            ),
+        )
+        await db.commit()
+    else:
+        await record_plan_change(
+            db,
+            service_id,
+            valid_from=stamp,
+            retailer=updates.get("retailer"),
+            network=updates.get("network"),
+            note="switched via start_new_plan",
+        )
+
     return await update_service(db, service_id, **updates)
 
 

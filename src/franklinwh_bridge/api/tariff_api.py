@@ -25,15 +25,30 @@ import io
 from datetime import datetime
 
 import aiosqlite
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
+from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.api.scheduler_api import _gateway_points
 from franklinwh_bridge.api.schedules_api import _collect_sensor_refs, _decorate
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog
-from franklinwh_bridge.store.db import get_billing_periods, get_schedules, get_services
+from franklinwh_bridge.store.db import (
+    correct_plan_start,
+    get_billing_periods,
+    get_schedules,
+    get_service,
+    get_service_plans,
+    get_services,
+    plans_overlapping,
+    record_plan_change,
+)
 
 router = APIRouter(prefix="/api", tags=["tariff"])
+
+# Hoisted: Depends() in an argument default is evaluated at import, and building
+# it inline trips ruff B008.
+_REQUIRE_CONTROL = Depends(require_capability("control"))
 
 #: Sensor-id prefixes this tab owns.
 _TARIFF_PREFIXES = ("tariff.", "demand.", "bonus.", "fixed.")
@@ -123,12 +138,162 @@ _HISTORY_COLS = (
 )
 
 
+async def _default_service_id(db: aiosqlite.Connection) -> str | None:
+    """The service plan history is read against when none is named."""
+    services = await get_services(db)
+    return services[0]["id"] if services else None
+
+
+async def _annotate_plans(
+    db: aiosqlite.Connection, service_id: str | None, periods: list[dict]
+) -> list[dict]:
+    """Tag each period with the tariff plan(s) in force during it.
+
+    A period that spans a retailer switch was snapshotted ONCE, by whichever
+    plan was current when it closed — so its figures attribute the whole period
+    to one retailer. That is the defect migration 45 exists to expose, and the
+    honest thing for this endpoint to do is say so per row rather than present a
+    single-retailer total as though it were unambiguous. ``spans_switch`` is what
+    the UI puts a warning marker on.
+    """
+    if not service_id:
+        return periods
+
+    out = []
+    for p in periods:
+        plans = await plans_overlapping(db, service_id, p["period_start"], p["period_end"])
+        out.append(
+            p
+            | {
+                "plans": [
+                    {
+                        "id": pl["id"],
+                        "retailer": pl["retailer"],
+                        "network": pl["network"],
+                        "valid_from": pl["valid_from"],
+                        "valid_to": pl["valid_to"],
+                    }
+                    for pl in plans
+                ],
+                "spans_switch": len(plans) > 1,
+            }
+        )
+    return out
+
+
 @router.get("/tariff/history")
-async def tariff_history(request: Request, gateway: str = "default", limit: int = 36):
-    """Closed billing periods (reporting/history), most-recent first."""
+async def tariff_history(
+    request: Request,
+    gateway: str = "default",
+    limit: int = 36,
+    service: str | None = None,
+):
+    """Closed billing periods (reporting/history), most-recent first.
+
+    Each period carries the plan(s) in force during it, so a period that
+    straddles a retailer switch can be flagged rather than silently reported
+    under one retailer's name.
+    """
     db: aiosqlite.Connection = request.app.state.db
     periods = await get_billing_periods(db, gateway, max(1, min(limit, 240)))
-    return {"gateway": gateway, "periods": periods}
+    service_id = service or await _default_service_id(db)
+    return {
+        "gateway": gateway,
+        "service": service_id,
+        "periods": await _annotate_plans(db, service_id, periods),
+    }
+
+
+# ── Plan history (who billed you, and when) ───────────────────
+
+
+class PlanChange(BaseModel):
+    """A retailer/plan switch, recorded at the date it actually happened.
+
+    ``valid_from`` is almost always in the past: a switch is discovered after
+    the fact, and stamping it "now" is what made the owner's own Amber → AGL
+    change on 09 Sep unrepresentable.
+    """
+
+    valid_from: float = Field(gt=0, description="epoch seconds; may be in the past")
+    retailer: str | None = None
+    network: str | None = None
+    plan_type: str | None = None
+    pricing: str | dict | None = None
+    note: str = ""
+
+
+class PlanStartCorrection(BaseModel):
+    """Move a plan's start date without creating a new plan."""
+
+    valid_from: float = Field(gt=0)
+
+
+@router.get("/tariff/plans")
+async def tariff_plans(request: Request, service: str | None = None):
+    """Plan history for a service, oldest first."""
+    db: aiosqlite.Connection = request.app.state.db
+    service_id = service or await _default_service_id(db)
+    if not service_id:
+        return {"service": None, "plans": []}
+    if await get_service(db, service_id) is None:
+        raise HTTPException(404, f"No such service '{service_id}'")
+    return {"service": service_id, "plans": await get_service_plans(db, service_id)}
+
+
+@router.post("/tariff/plans")
+async def create_tariff_plan(
+    request: Request,
+    body: PlanChange,
+    service: str | None = None,
+    _user: dict = _REQUIRE_CONTROL,
+):
+    """Record a plan change, closing the plan that was in force at that date.
+
+    Inserting *between* two existing plans is supported — that is what recording
+    history you did not capture at the time means.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    service_id = service or await _default_service_id(db)
+    if not service_id:
+        raise HTTPException(400, "No service to record a plan against")
+
+    try:
+        plan = await record_plan_change(
+            db, service_id, **body.model_dump(exclude_none=True)
+        )
+    except ValueError as exc:
+        # Overlapping/zero-length ranges are refused by the store rather than
+        # written and left for the resolver to pick arbitrarily between.
+        raise HTTPException(400, str(exc)) from None
+
+    if plan is None:
+        raise HTTPException(404, f"No such service '{service_id}'")
+    return {"service": service_id, "plan": plan}
+
+
+@router.patch("/tariff/plans/{plan_id}")
+async def patch_tariff_plan(
+    request: Request,
+    plan_id: str,
+    body: PlanStartCorrection,
+    _user: dict = _REQUIRE_CONTROL,
+):
+    """Correct a plan's start date.
+
+    Needed because a backfilled plan starts at the placeholder migration 45 had
+    nothing better to use, leaving no earlier instant at which to insert a
+    predecessor. The real start has to be settable *first*, then the earlier
+    retailer can be recorded before it.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    try:
+        plan = await correct_plan_start(db, plan_id, body.valid_from)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    if plan is None:
+        raise HTTPException(404, f"No such plan '{plan_id}'")
+    return {"plan": plan}
 
 
 @router.get("/tariff/history.csv")
