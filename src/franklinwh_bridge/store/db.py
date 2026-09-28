@@ -2649,6 +2649,20 @@ async def plans_overlapping(
         return [dict(r) for r in await cur.fetchall()]
 
 
+def _pricing_text(value: object) -> str:
+    """Coerce a pricing value to the TEXT the column actually stores.
+
+    ``get_service()`` decodes ``pricing`` to an object, so anything inheriting
+    the service's pricing gets a dict back, not the JSON string SQLite can
+    bind. Re-encode rather than letting the driver reject the parameter.
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
 async def record_plan_change(
     db: aiosqlite.Connection,
     service_id: str,
@@ -2657,7 +2671,7 @@ async def record_plan_change(
     retailer: str | None = None,
     network: str | None = None,
     plan_type: str | None = None,
-    pricing: str | None = None,
+    pricing: str | dict | None = None,
     note: str = "",
 ) -> dict | None:
     """Close the plan in force at ``valid_from`` and open a new one there.
@@ -2718,7 +2732,7 @@ async def record_plan_change(
             (plan_type if plan_type is not None else svc.get("plan_type") or ""),
             valid_from,
             successor_start,
-            pricing if pricing is not None else (svc.get("pricing") or ""),
+            _pricing_text(pricing if pricing is not None else svc.get("pricing")),
             note, now,
         ),
     )

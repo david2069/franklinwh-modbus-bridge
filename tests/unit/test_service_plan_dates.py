@@ -13,6 +13,7 @@ was priced entirely by whichever plan happened to be current.
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pytest
 
@@ -239,6 +240,22 @@ async def test_fields_not_supplied_carry_forward_from_the_service(db, svc):
     plan = await record_plan_change(db, svc, valid_from=SWITCH, retailer="AGL Energy")
 
     assert plan["network"] == "Ausgrid"
+
+
+@pytest.mark.asyncio
+async def test_pricing_carries_forward_when_the_service_already_has_some(db, svc):
+    """The carry-forward reads pricing back DECODED, so it must be re-encoded.
+
+    get_service() json-decodes the column, so inheriting it hands a dict to the
+    driver — which refuses to bind it. Only reproducible when the service
+    actually has pricing, which is why the plain carry-forward test missed it.
+    """
+    await update_service(db, svc, pricing='{"buy": 0.42}')
+
+    plan = await record_plan_change(db, svc, valid_from=SWITCH, retailer="AGL Energy")
+
+    assert isinstance(plan["pricing"], str)
+    assert json.loads(plan["pricing"]) == {"buy": 0.42}
 
 
 @pytest.mark.asyncio
