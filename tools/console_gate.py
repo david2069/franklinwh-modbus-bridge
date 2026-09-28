@@ -223,6 +223,63 @@ def run(url: str, user: str, password: str) -> int:
                 cancel.click()
             page.wait_for_timeout(500)
 
+        # Dashboard → the AC/DC metrics chart modal, in BOTH modes. Opened
+        # twice for the usual teardown reason, and History is exercised because
+        # it is the mode that fetches: a broken request, an axis built from an
+        # undefined span, or a series the API won't serve all surface here and
+        # nowhere else.
+        _goto(page, f"{url}?tab=dashboard", problems)
+        page.wait_for_timeout(1200)
+        charts = page.locator("button:has-text('Chart'):visible")
+        if not charts.count():
+            problems.append("dashboard: no visible Chart button — UI changed?")
+        for idx in range(min(charts.count(), 2)):   # AC and DC
+            for attempt in (1, 2):
+                page.locator("button:has-text('Chart'):visible").nth(idx).click()
+                page.wait_for_timeout(700)
+
+                hist = page.locator("button:has-text('History'):visible").first
+                if not hist.count():
+                    problems.append(f"chart {idx}: History mode button missing")
+                else:
+                    hist.click()
+                    page.wait_for_timeout(1100)   # lets the fetch land
+                    # Presets re-anchor the range and refetch each time.
+                    for preset in ("Yesterday", "Last 24h", "Today"):
+                        opt = page.locator(f"button:has-text('{preset}'):visible").first
+                        if opt.count():
+                            opt.click()
+                            page.wait_for_timeout(700)
+                    if attempt == 1 and not page.locator(
+                        "input[type='datetime-local']:visible"
+                    ).count():
+                        problems.append(f"chart {idx}: history range inputs missing")
+                    # Toggling a series in history mode must not refetch or
+                    # rebuild against a stale axis.
+                    series = page.locator("button:has-text('· V'):visible").first
+                    if series.count():
+                        series.click()
+                        page.wait_for_timeout(450)
+                    back = page.locator("button:has-text('Live'):visible").first
+                    if back.count():
+                        back.click()
+                        page.wait_for_timeout(800)
+
+                close = page.locator("button:has-text('Close'):visible").first
+                if close.count():
+                    close.click()
+                else:
+                    page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+
+        # Settings → the Point History panel that switches recording on. Read
+        # only: enabling it on the live bridge is a disk-consuming change, and a
+        # gate must not make one.
+        _goto(page, f"{url}?tab=settings", problems)
+        page.wait_for_timeout(1000)
+        if not page.locator("[x-model='ph.interval_s']").count():
+            problems.append("settings: Point History panel missing")
+
         browser.close()
 
     if problems:

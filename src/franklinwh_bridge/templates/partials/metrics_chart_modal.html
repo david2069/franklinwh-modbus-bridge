@@ -1,0 +1,162 @@
+{#
+  Metrics chart modal — shared by the AC and DC/inverter cards.
+
+  Extracted because the two were byte-identical copies: adding history mode
+  meant editing the same 73 lines twice, which is how they drift. Both include
+  this inside an `x-data="metricsChart('ac'|'dc')"` scope, so every binding here
+  resolves against that component.
+
+  x-if, not x-show: the canvas must not exist while hidden, or Chart.js measures
+  a zero-height parent and locks the plot to it.
+#}
+<template x-if="open">
+  <div class="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/60"
+       @click.self="hide()" @keydown.escape.window="hide()">
+    <div class="w-full rounded-lg border shadow-2xl flex flex-col"
+         :class="expanded ? 'max-w-none' : 'max-w-4xl'"
+         style="background: var(--surface-0); border-color: var(--border); max-height: 96vh;">
+
+      <div class="flex items-center justify-between gap-3 flex-wrap p-3 border-b" style="border-color: var(--border);">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-semibold whitespace-nowrap" x-text="title"></h2>
+          {# Live and history answer different questions, so they are a mode
+             switch rather than another span option: one scrolls and follows
+             `now`, the other is a fixed range with both ends chosen. #}
+          <div class="flex rounded border overflow-hidden" style="border-color: var(--border);">
+            <button type="button" @click="setMode('live')"
+                    class="px-2 py-0.5 text-[10px] font-medium transition"
+                    :class="mode === 'live' ? 'bg-cyan-500/15 text-cyan-400'
+                                            : 'text-slate-500 hover:text-slate-300'">Live</button>
+            <button type="button" @click="setMode('history')"
+                    class="px-2 py-0.5 text-[10px] font-medium transition border-l"
+                    style="border-color: var(--border);"
+                    :class="mode === 'history' ? 'bg-cyan-500/15 text-cyan-400'
+                                               : 'text-slate-500 hover:text-slate-300'">History</button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="text-[11px] whitespace-nowrap" x-show="mode === 'live'"
+                :class="filling ? 'text-amber-400/80' : 'text-slate-500'"
+                x-text="sampleCount + ' samples · ' + windowLabel + (filling ? ' — filling' : '')"></span>
+          <span class="text-[11px] whitespace-nowrap text-slate-500" x-show="mode === 'history'"
+                x-text="historyLoading ? 'Loading…' : windowLabel + (historyBucketLabel ? ' · ' + historyBucketLabel : '')"></span>
+
+          {# Live-only controls. Selects, not button rows: two 5-button groups
+             plus three actions overflow a narrow modal and clip ("6h" → "6").
+             A closed select also keeps the current choice visible. #}
+          <template x-if="mode === 'live'">
+            <div class="flex items-center gap-2">
+              <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+                span
+                <select class="form-control !py-0.5 !text-[11px] w-[4.75rem]"
+                        @change="setWindow(Number($event.target.value))">
+                  <template x-for="w in windows" :key="w.ms">
+                    <option :value="w.ms" :selected="windowMs === w.ms" x-text="w.label"></option>
+                  </template>
+                </select>
+              </label>
+              <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+                every
+                <select class="form-control !py-0.5 !text-[11px] w-[4.5rem]"
+                        @change="setInterval_(Number($event.target.value))">
+                  <template x-for="iv in intervals" :key="iv.ms">
+                    <option :value="iv.ms" :selected="intervalMs === iv.ms" x-text="iv.label"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+          </template>
+
+          <button @click="toggleExpand()" class="btn btn-sm btn-secondary"
+                  x-text="expanded ? 'Shrink' : 'Expand'"></button>
+          <button @click="clear()" class="btn btn-sm btn-secondary"
+                  x-text="mode === 'history' ? 'Reload' : 'Clear'"></button>
+          <button @click="hide()" class="btn btn-sm btn-secondary">Close</button>
+        </div>
+      </div>
+
+      {# History range picker. Presets for the common asks, plus explicit
+         start/end for anything else — the original request was a point in time
+         to a point in time, which no trailing-window control can express. #}
+      <template x-if="mode === 'history'">
+        <div class="p-3 border-b flex flex-wrap items-end gap-3" style="border-color: var(--border);">
+          <div class="flex flex-wrap gap-1.5">
+            <template x-for="p in historyPresets" :key="p.key">
+              <button type="button" @click="setHistoryPreset(p.key)"
+                      class="px-2 py-0.5 text-[11px] rounded border transition"
+                      :class="historyPreset === p.key
+                        ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10'
+                        : 'text-slate-500 hover:text-slate-300'"
+                      :style="historyPreset === p.key ? '' : 'border-color: var(--border);'"
+                      x-text="p.label"></button>
+            </template>
+          </div>
+          <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+            from
+            <input type="datetime-local" class="form-control !py-0.5 !text-[11px]"
+                   x-model="historyStart" @change="applyCustomRange()">
+          </label>
+          <label class="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide">
+            to
+            <input type="datetime-local" class="form-control !py-0.5 !text-[11px]"
+                   x-model="historyEnd" @change="applyCustomRange()">
+          </label>
+        </div>
+      </template>
+
+      <div class="p-3 flex flex-wrap gap-1.5 border-b" style="border-color: var(--border);">
+        <template x-for="s in series" :key="s.key">
+          {# A series that isn't recorded can't be charted from history. Shown
+             disabled rather than hidden, so the reason is visible instead of
+             the button silently vanishing between modes. #}
+          <button type="button" @click="toggle(s.key)"
+                  :disabled="!available(s.key)"
+                  :title="available(s.key) ? '' : 'Not recorded — live only'"
+                  class="px-2 py-0.5 text-[11px] rounded border transition"
+                  :style="s.on && available(s.key)
+                    ? `border-color:${s.colour}; color:${s.colour}; background:${s.colour}1f`
+                    : 'border-color: var(--border);'"
+                  :class="!available(s.key) ? 'text-slate-600 opacity-40 cursor-not-allowed'
+                                            : (s.on ? '' : 'text-slate-500 hover:text-slate-300')">
+            <span x-text="s.label"></span>
+            <span class="opacity-60" x-text="'· ' + s.unit"></span>
+          </button>
+        </template>
+      </div>
+
+      <div class="p-3 grow min-h-0">
+        <div :style="expanded ? 'height: 78vh; min-height: 320px'
+                               : 'height: 58vh; min-height: 260px'">
+          <canvas x-ref="canvas"></canvas>
+        </div>
+
+        <p class="text-[11px] text-rose-400 mt-2" x-show="historyError" x-text="historyError"></p>
+
+        {# An empty history chart has two very different causes and the user
+           should not have to guess which. #}
+        <p class="text-[11px] text-amber-400/90 mt-2"
+           x-show="mode === 'history' && recordingEnabled === false">
+          Point history is switched off, so nothing has been recorded. Turn it on in
+          Settings → Point history; the chart can only show data captured after that.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2"
+           x-show="mode === 'history' && recordingEnabled && historyRows === 0 && !historyLoading && !historyError">
+          Nothing recorded in this range.
+        </p>
+
+        <p class="text-[11px] text-slate-500 mt-2" x-show="selected.length === 0">
+          Pick at least one metric above.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2" x-show="mode === 'live' && selected.length > 0">
+          Live buffers in the browser, so the chart starts when you open it. The time axis is
+          real, so changing the interval doesn't distort what's already plotted. Switch to
+          History to chart a past period from stored metrics.
+        </p>
+        <p class="text-[11px] text-slate-500 mt-2"
+           x-show="mode === 'history' && unavailableSelected.length > 0"
+           x-text="'Not recorded, so omitted: ' + unavailableSelected.join(', ') + '.'"></p>
+      </div>
+    </div>
+  </div>
+</template>

@@ -29,6 +29,7 @@ from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.modules_api import require_module
 from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
+from franklinwh_bridge.api.point_history_api import router as point_history_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.tariff_api import router as tariff_router
@@ -866,6 +867,7 @@ app.include_router(groups_router, dependencies=_AUTH)
 app.include_router(gateways_router, dependencies=_AUTH)
 app.include_router(modules_router, dependencies=_AUTH)
 app.include_router(energy_router, dependencies=_AUTH)
+app.include_router(point_history_router, dependencies=_AUTH)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(
     schedules_router, dependencies=[require_module("automations"), Depends(require_auth)]

@@ -23,6 +23,13 @@ function settingsTab() {
     entityFilter: '',
     metricsRetention: 30,
     metricsRawAge: 7,
+    // Point history (per-point electrical readings). Off by default: it can
+    // add hundreds of MB to a ~20MB database, so an upgrade must not start
+    // consuming that on an add-on running from an SD card.
+    ph: null,
+    phPoints: [],
+    phStorage: null,
+    phSaving: false,
     republishing: false,
     unpublishing: false,
     showTopics: false,
@@ -89,6 +96,7 @@ function settingsTab() {
       await this.loadMqttConfig();
       await this.loadMetricsSettings();
       await this.loadStorage();
+      await this.loadPointHistory();
       await this.loadBackups();
       await this.loadGroups();
       await this.loadGateway();
@@ -1297,6 +1305,81 @@ function settingsTab() {
           `Raw ${this.metricsRawAge}d · retention ${this.metricsRetention}d`, 'info');
       } else {
         Alpine.store('app').toast('Save failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
+      }
+    },
+
+    async loadPointHistory() {
+      const [cfg, storage] = await Promise.all([
+        fetchJSON('api/point-history/config'),
+        fetchJSON('api/point-history/storage'),
+      ]);
+      if (cfg && !cfg.error) {
+        this.ph = cfg.config;
+        this.phPoints = cfg.available_points || [];
+      }
+      if (storage && !storage.error) this.phStorage = storage;
+    },
+
+    /** Projected size of the CURRENT form values, so the cost of a choice is
+     *  visible while it is still a choice rather than discovered afterwards.
+     *  Computed client-side from the row size the API reports — asking the
+     *  server on every keystroke would be a request per digit typed. */
+    get phProjectedBytes() {
+      if (!this.ph || !this.phStorage) return 0;
+      const rowBytes = this.phStorage.bytes_per_row || 0;
+      const interval = Number(this.ph.interval_s) || 0;
+      if (interval <= 0) return 0;
+      const rows = (86400 / interval) * (this.ph.points?.length || 0)
+        * (Number(this.ph.retention_days) || 0);
+      return Math.round(rows * rowBytes);
+    },
+
+    /** Bytes as something readable. The projection reaches GB at the upper end
+     *  of the settings (every point, 5s, a year), so a fixed MB unit would show
+     *  "512000 MB" exactly where the number matters most. */
+    phBytesHuman(n) {
+      if (!(n > 0)) return '0 MB';
+      const mb = n / (1024 * 1024);
+      if (mb < 1) return `${Math.round(n / 1024)} KB`;
+      if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+      return `${(mb / 1024).toFixed(2)} GB`;
+    },
+
+    phTogglePoint(key) {
+      if (!this.ph) return;
+      const at = this.ph.points.indexOf(key);
+      if (at >= 0) this.ph.points.splice(at, 1);
+      else this.ph.points.push(key);
+    },
+
+    async savePointHistory() {
+      if (!this.ph) return;
+      this.phSaving = true;
+      try {
+        const data = await fetchJSON('api/point-history/config', {
+          method: 'PUT',
+          body: JSON.stringify({
+            enabled: !!this.ph.enabled,
+            points: this.ph.points,
+            interval_s: Number(this.ph.interval_s),
+            retention_days: Number(this.ph.retention_days),
+          }),
+        });
+        if (data && !data.error) {
+          // Re-read rather than trusting the echo: enabling it changes what the
+          // actual stored figure will become, and the panel should not keep
+          // showing the stale one beside the new projection.
+          await this.loadPointHistory();
+          Alpine.store('app').toast(
+            this.ph.enabled
+              ? `Recording ${this.ph.points.length} points every ${this.ph.interval_s}s`
+              : 'Point history off', 'info');
+        } else {
+          Alpine.store('app').toast(
+            'Save failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.phSaving = false;
       }
     },
 

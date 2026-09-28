@@ -1,10 +1,20 @@
 /**
- * Live metrics chart — AC and DC/inverter, user picks the series.
+ * Metrics chart — AC and DC/inverter, user picks the series.
  *
- * These points have no stored history: `metrics` keeps only the four power
- * channels plus SoC and temperatures, and `metric_samples` is empty. So this
- * buffers in the browser from the store's live points rather than pretending
- * it can backfill — the chart starts when you open it.
+ * Two modes over one chart:
+ *
+ * - **Live** buffers in the browser from the store's live points. The chart
+ *   starts when you open it, because that is when sampling starts.
+ * - **History** reads `/api/point-history/series`, which serves the
+ *   `metric_samples` rows the poller records once point history is switched on.
+ *   This is the "chart yesterday afternoon" case, and it is a genuinely
+ *   different question from the live one: a fixed span with a start and an end,
+ *   no scrolling, and an answer that exists before the modal was opened.
+ *
+ * History can only answer for points that are actually recorded — the per-phase
+ * L1/L2/L3 series are deliberately not, since they triple the row count and are
+ * redundant on a single-phase site. The recorded set comes from the API rather
+ * than a second copy of the list here, so the two cannot drift.
  *
  * The hard part is the axes. Volts (~246), amps (~2), hertz (~50), power
  * factor (0–1) and VA (~570) share no scale: on one axis everything except VA
@@ -24,7 +34,7 @@
 
   const CATALOG = {
     ac: {
-      title: 'AC Power — live',
+      title: 'AC Power',
       series: [
         { key: 'voltage_v',     label: 'Voltage',        unit: 'V',  colour: '#38bdf8', on: true },
         { key: 'current_a',     label: 'Current',        unit: 'A',  colour: '#fbbf24', on: true },
@@ -43,7 +53,7 @@
       ],
     },
     dc: {
-      title: 'DC / Inverter — live',
+      title: 'DC / Inverter',
       series: [
         { key: 'dc_power_w',          label: 'DC power',      unit: 'W',  colour: '#22d3ee', on: true },
         { key: 'battery_dc_power_w',  label: 'Battery DC',    unit: 'W',  colour: '#34d399', on: true },
@@ -106,6 +116,49 @@
     return new Date(ms).toLocaleTimeString([], { hour12: false });
   }
 
+  /** Tick label for a historical axis: a multi-day span needs the date too,
+   *  or every tick reads as the same handful of clock times. */
+  function stampLabel(ms, spanMs) {
+    const d = new Date(ms);
+    const time = d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+    if (spanMs <= 36 * 3600000) return time;
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
+  }
+
+  /** `datetime-local` wants local wall-clock with no zone suffix, so the usual
+   *  toISOString() (which converts to UTC) shifts the value by the offset. */
+  function toLocalInput(ms) {
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function fromLocalInput(value) {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  //: Quick spans, relative to "now" when chosen. Anchored once on selection
+  //  rather than re-evaluated on refresh, so a historical view stays put.
+  const HISTORY_PRESETS = [
+    { key: 'today',     label: 'Today' },
+    { key: 'yesterday', label: 'Yesterday' },
+    { key: '24h',       label: 'Last 24h' },
+    { key: '7d',        label: 'Last 7 days' },
+  ];
+
+  function presetRange(key) {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    switch (key) {
+      case 'today':     return [midnight, now.getTime()];
+      case 'yesterday': return [midnight - 86400000, midnight];
+      case '7d':        return [now.getTime() - 7 * 86400000, now.getTime()];
+      default:          return [now.getTime() - 86400000, now.getTime()];
+    }
+  }
+
   // Never zoom tighter than this, however little has been collected —
   // three points across a full-width axis is its own kind of misleading.
   const MIN_VISIBLE_MS = 60000;
@@ -138,7 +191,12 @@
     return {
       open: false,
       kind,
-      title: cfg.title,
+      // A getter, not a fixed string: the heading said "— live" in both
+      // modes once history existed, which is the one place a user looks
+      // to confirm what they are looking at.
+      get title() {
+        return `${cfg.title} — ${this.mode === 'history' ? 'history' : 'live'}`;
+      },
       series: cfg.series.map((s) => ({ ...s, on: !!s.on })),
       sampleCount: 0,
       intervals: INTERVALS,
@@ -153,8 +211,36 @@
       filling: true,
       _timer: null,
 
+      // ── History mode ──
+      mode: loadPrefs().mode === 'history' ? 'history' : 'live',
+      _histFrom: Date.now() - 86400000,
+      _histTo: Date.now(),
+      historyPresets: HISTORY_PRESETS,
+      historyPreset: '24h',
+      historyStart: toLocalInput(Date.now() - 86400000),
+      historyEnd: toLocalInput(Date.now()),
+      // null until the API has told us, so the UI can avoid claiming a series
+      // is unavailable before it knows.
+      recordedPoints: null,
+      recordingEnabled: null,
+      historyLoading: false,
+      historyError: '',
+      historyBucketLabel: '',
+      historyRows: 0,
+
       get selected() {
         return this.series.filter((s) => s.on);
+      },
+
+      /** Whether this series can be charted in the mode currently chosen. */
+      available(key) {
+        if (this.mode === 'live') return true;
+        if (!this.recordedPoints) return true;   // not known yet
+        return this.recordedPoints.includes(key);
+      },
+
+      get unavailableSelected() {
+        return this.selected.filter((s) => !this.available(s.key)).map((s) => s.label);
       },
 
       show() {
@@ -162,10 +248,113 @@
         // Build after the modal is in the DOM, or the canvas has no size and
         // Chart.js locks in a 0-height layout.
         this.$nextTick(() => {
+          if (this.mode === 'history') { this._loadHistory(); return; }
           this._build();
           this._sample();
           this._restartTimer();
         });
+      },
+
+      setMode(mode) {
+        if (mode === this.mode) return;
+        this.mode = mode;
+        savePrefs({ mode });
+        // Live and history are different buffers of different things; carrying
+        // one into the other would draw yesterday's samples on a scrolling
+        // "now" axis.
+        _buf[this.kind] = { byKey: {} };
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+
+        if (mode === 'live') {
+          this.historyError = '';
+          this._build();
+          this._sample();
+          this._restartTimer();
+        } else {
+          this._loadHistory();
+        }
+      },
+
+      setHistoryPreset(key) {
+        this.historyPreset = key;
+        const [from, to] = presetRange(key);
+        this.historyStart = toLocalInput(from);
+        this.historyEnd = toLocalInput(to);
+        this._loadHistory();
+      },
+
+      /** Custom start/end edited by hand — the preset no longer describes it. */
+      applyCustomRange() {
+        this.historyPreset = '';
+        this._loadHistory();
+      },
+
+      async _loadHistory() {
+        const from = fromLocalInput(this.historyStart);
+        const to = fromLocalInput(this.historyEnd);
+        if (from === null || to === null) {
+          this.historyError = 'Enter a valid start and end.';
+          return;
+        }
+        if (to <= from) {
+          this.historyError = 'The end must be after the start.';
+          return;
+        }
+
+        this.historyLoading = true;
+        this.historyError = '';
+        try {
+          // Ask for every series in the catalogue the API actually records, not
+          // just the ones ticked — toggling one on afterwards then needs no
+          // second round trip.
+          if (!this.recordedPoints) {
+            const cfgResp = await fetch('api/point-history/config');
+            if (!cfgResp.ok) throw new Error(`config ${cfgResp.status}`);
+            const cfg = await cfgResp.json();
+            this.recordedPoints = cfg.available_points || [];
+          }
+          const wanted = this.series
+            .map((s) => s.key)
+            .filter((k) => this.recordedPoints.includes(k));
+          if (!wanted.length) {
+            this.historyError = 'None of these series are recorded.';
+            return;
+          }
+
+          const url = `api/point-history/series?points=${encodeURIComponent(wanted.join(','))}`
+            + `&start=${Math.floor(from / 1000)}&end=${Math.ceil(to / 1000)}`;
+          const resp = await fetch(url);
+          if (!resp.ok) {
+            const detail = await resp.json().catch(() => ({}));
+            throw new Error(detail.detail || `HTTP ${resp.status}`);
+          }
+          const body = await resp.json();
+
+          this.recordingEnabled = body.recording_enabled;
+          this.historyBucketLabel = body.bucket_s
+            ? `${spanLabel(body.bucket_s * 1000)} buckets` : 'raw samples';
+          this.historyRows = Object.values(body.counts || {})
+            .reduce((a, b) => a + b, 0);
+
+          const buf = { byKey: {} };
+          for (const [key, rows] of Object.entries(body.series || {})) {
+            buf.byKey[key] = rows.map((r) => ({ x: r.ts * 1000, y: r.value }));
+          }
+          _buf[this.kind] = buf;
+
+          this._histFrom = body.start_ts * 1000;
+          this._histTo = body.end_ts * 1000;
+          this.windowLabel = `${spanLabel(this._histTo - this._histFrom)}`
+            + ` · ${this.historyRows} points`;
+          this.filling = false;
+          this._build();
+        } catch (err) {
+          this.historyError = String(err.message || err);
+          // Leave the chart as it was rather than blanking it — an error that
+          // erases the previous answer is worse than one that sits beside it.
+        } finally {
+          this.historyLoading = false;
+        }
       },
 
       _restartTimer() {
@@ -218,6 +407,9 @@
       _applyWindow() {
         const ch = _charts[this.kind];
         if (!ch) return;
+        // History's axis is the span that was requested, not a trailing window
+        // ending at `now`; re-pinning it here would scroll a fixed view.
+        if (this.mode === 'history') return;
         const now = Date.now();
         const visible = Math.min(
           this.windowMs, Math.max(this._heldMs(), MIN_VISIBLE_MS),
@@ -262,10 +454,15 @@
         s.on = !s.on;
         // Rebuild rather than patch: adding a series can introduce a whole new
         // unit axis, which Chart.js will not create on a dataset update.
+        // No refetch is needed in history mode — every recorded series was
+        // fetched, not just the ticked ones.
         this._build();
       },
 
       clear() {
+        // In history mode there is nothing to clear: the data is on the server,
+        // so the useful action is to fetch it again.
+        if (this.mode === 'history') { this._loadHistory(); return; }
         _buf[this.kind] = { byKey: {} };
         this.sampleCount = 0;
         this.windowLabel = '';
@@ -291,12 +488,24 @@
         if (_charts[this.kind]) { _charts[this.kind].destroy(); delete _charts[this.kind]; }
 
         const buf = bufFor(this.kind);
-        const chosen = this.series.filter((s) => s.on);
+        // In history mode a ticked series that isn't recorded has no data to
+        // draw; including it would put an empty entry in the legend and an
+        // unexplained gap on the axis.
+        const chosen = this.series.filter((s) => s.on && this.available(s.key));
 
         // One axis per distinct unit in the current selection, alternating
         // sides so two units stay readable and more than two still resolve.
         const units = [...new Set(chosen.map((s) => s.unit))];
         const axisOf = axisIds(units);
+
+        // Live scrolls a trailing window; history is a fixed span with both
+        // ends chosen, so the axis must be exactly what was asked for — the
+        // "grow into the span" behaviour that keeps live charts readable would
+        // here silently redraw a different range than the one requested.
+        const isHistory = this.mode === 'history';
+        const xMin = isHistory ? this._histFrom : Date.now() - this.windowMs;
+        const xMax = isHistory ? this._histTo : Date.now();
+        const xSpan = xMax - xMin;
         // Linear on epoch-ms rather than a category axis of time strings.
         // Categories are spaced evenly whatever the real gap, so a stretch
         // sampled at 2s and one at 30s would be drawn identically, and a gap
@@ -306,14 +515,14 @@
         const scales = {
           x: {
             type: 'linear',
-            // Pinned to the trailing window rather than floating to the data,
-            // so the span is what the user chose from the moment they choose
-            // it. Refreshed on every sample so it scrolls.
-            min: Date.now() - this.windowMs,
-            max: Date.now(),
+            // Pinned rather than floating to the data, so the span is what the
+            // user chose from the moment they choose it. In live mode it is
+            // refreshed on every sample so it scrolls; in history it is fixed.
+            min: xMin,
+            max: xMax,
             ticks: {
               maxTicksLimit: 7, color: '#94a3b8', font: { size: 10 },
-              callback: (v) => clockLabel(v),
+              callback: (v) => (isHistory ? stampLabel(v, xSpan) : clockLabel(v)),
             },
             grid: { color: 'rgba(148,163,184,.12)' },
           },
@@ -358,7 +567,11 @@
               legend: { labels: { color: '#cbd5e1', boxWidth: 10, font: { size: 11 } } },
               tooltip: {
                 enabled: true,
-                callbacks: { title: (items) => clockLabel(items[0].parsed.x) },
+                callbacks: {
+                  title: (items) => (isHistory
+                    ? new Date(items[0].parsed.x).toLocaleString([], { hour12: false })
+                    : clockLabel(items[0].parsed.x)),
+                },
               },
             },
             scales,
@@ -367,6 +580,9 @@
       },
 
       _sample() {
+        // History is a fixed span that has already been fetched; appending a
+        // "now" point to it would tack live data onto the end of yesterday.
+        if (this.mode === 'history') return;
         const pts = (window.Alpine && Alpine.store('app') && Alpine.store('app').points) || {};
         const buf = bufFor(this.kind);
         const now = Date.now();
