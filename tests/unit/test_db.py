@@ -4,6 +4,7 @@ import pytest
 
 from franklinwh_bridge.store.db import (
     CURRENT_SCHEMA_VERSION,
+    MIGRATIONS,
     get_mqtt_config,
     get_pics_compliance,
     get_schema_version,
@@ -30,6 +31,26 @@ async def test_init_creates_db(tmp_path):
     conn = await init_db(db_path)
     assert db_path.exists()
     await conn.close()
+
+
+def test_current_schema_version_matches_the_migrations():
+    """The constant must track the highest migration.
+
+    Adding a migration and forgetting to bump this was caught only by three
+    async tests deep in a 35-minute suite run — and the constant is not
+    cosmetic: backup manifests are stamped with it and restore compares
+    against it, so a stale value makes every backup claim the wrong schema.
+    This fails instantly, at the point the mistake is made.
+    """
+    assert max(MIGRATIONS) == CURRENT_SCHEMA_VERSION
+
+
+def test_migrations_are_numbered_without_gaps():
+    """A missing number means a migration was dropped or mis-keyed; the runner
+    applies whatever keys exist, so the gap would never surface at runtime."""
+    keys = sorted(MIGRATIONS)
+
+    assert keys == list(range(1, max(keys) + 1))
 
 
 async def test_schema_version_after_init(db):

@@ -26,7 +26,11 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
-CURRENT_SCHEMA_VERSION = 46
+#: Must equal the highest key in MIGRATIONS. It is not derived from the dict
+#: because it is also what backup manifests are stamped with and what restore
+#: compares against — a value that silently follows the code would let a backup
+#: claim whatever schema happened to be loaded when it was written.
+CURRENT_SCHEMA_VERSION = 47
 
 MIGRATIONS: dict[int, str] = {
     1: """
