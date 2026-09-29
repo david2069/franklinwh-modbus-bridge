@@ -33,6 +33,12 @@ Issues 8 and 11.
 
 ---
 
+> **SunSpec certification:** FranklinWH's certification listing and PICS are at
+> <https://sunspec.org/contributing-members/franklin-wh/>. The PICS is the
+> authority for which models and points a firmware is certified for, and is the
+> reference these issues are written against. The 15500+ extension registers are
+> NOT SunSpec and fall outside it.
+
 ## 1. SAFETY-CRITICAL: WSetRvrtTms (M704, Register 327)
 
 **Status:** Cosmetic — countdown timer counts down but **reversion never fires**.

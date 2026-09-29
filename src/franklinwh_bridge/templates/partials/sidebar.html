@@ -156,6 +156,30 @@
 
   <!-- Footer -->
   <div class="border-t border-white/[0.08] px-3 py-3">
+    <!-- Repo + docs. Also the only in-app route to where defects should go:
+         this is unofficial software and the vendor's support line is the wrong
+         place for it, so that destination has to be reachable from the product
+         rather than only from the README. -->
+    <div x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms
+         class="flex items-center justify-center gap-2 text-[10px] text-slate-600 mb-1.5">
+      <a href="https://github.com/david2069/franklinwh-modbus-bridge"
+         target="_blank" rel="noopener noreferrer"
+         class="hover:text-cyan-400 transition" title="Source code on GitHub">GitHub</a>
+      <span class="opacity-40">&middot;</span>
+      <a href="https://github.com/david2069/franklinwh-modbus-bridge#readme"
+         target="_blank" rel="noopener noreferrer"
+         class="hover:text-cyan-400 transition" title="Documentation">Docs</a>
+      <span class="opacity-40">&middot;</span>
+      <a href="https://github.com/david2069/franklinwh-modbus-bridge/issues"
+         target="_blank" rel="noopener noreferrer"
+         class="hover:text-amber-400 transition"
+         title="Report a bug or request a feature here — NOT to FranklinWH support">Issues</a>
+    </div>
+    <div x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms
+         class="text-[9px] text-slate-600 text-center leading-tight mb-1.5"
+         title="Unofficial software, not endorsed by or affiliated with FranklinWH. Provided AS IS, without warranty. Do not contact FranklinWH support about it.">
+      Unofficial &middot; not affiliated with FranklinWH
+    </div>
     <div x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms
          class="text-[10px] text-slate-500 font-mono text-center"
          x-text="'v' + $store.app.version"></div>

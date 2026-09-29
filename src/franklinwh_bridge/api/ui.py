@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, field_validator
 
+from franklinwh_bridge import disclaimer
 from franklinwh_bridge.api.auth import get_current_user, require_capability
 
 # Hoisted so it is built once at import rather than per-request: ruff's B008
@@ -18,6 +20,8 @@ _REQUIRE_CONTROL = require_capability("control")
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 _STATIC_DIR = Path(__file__).parent.parent / "static"
+logger = logging.getLogger(__name__)
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(tags=["ui"])
@@ -66,9 +70,32 @@ def _home_for(base_path: str, user: dict) -> str:
     return f"{base_path}/"
 
 
+#: Whether this process has already logged the notice for a browser client.
+#: Per-process, deliberately: the point is that somebody opening the UI sees it
+#: recorded once per run, not that it is repeated on every page load until the
+#: log is useless.
+_disclaimer_shown = False
+
+
+def _log_disclaimer_once(request: Request) -> None:
+    """Record the legal notice the first time a browser reaches the UI.
+
+    Startup already logs it, but a bridge that has been up for weeks has that
+    line long since scrolled away — and the person who needs to read it is
+    whoever just opened the page, who may not be whoever started the service.
+    """
+    global _disclaimer_shown
+    if _disclaimer_shown:
+        return
+    _disclaimer_shown = True
+    client = request.client.host if request.client else "unknown"
+    logger.warning("First UI connection from %s. %s", client, disclaimer.SHORT)
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, user: dict | None = Depends(get_current_user)):
     """Serve the main SPA shell. Unauthenticated → /login; non-admin → /user."""
+    _log_disclaimer_once(request)
     base_path = _base_path(request)
     if user is None:
         return RedirectResponse(f"{base_path}/login", status_code=302)

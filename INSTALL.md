@@ -10,6 +10,33 @@ Three supported ways to run it. Pick one:
 
 ---
 
+> ## ⚠️ Unofficial software — please read
+>
+> `franklinwh-modbus-bridge` is **unofficial** and is **not endorsed, supported, or
+> affiliated with FranklinWH** in any way. FranklinWH and aGate are trademarks
+> of their respective owners, used here only to describe what this software
+> talks to.
+>
+> It is provided **"AS IS"**, for **educational and informational purposes
+> only**, without warranty of any kind, express or implied, including but not
+> limited to warranties of merchantability or **fitness for any particular
+> purpose**. The authors and contributors accept **no responsibility or
+> liability** for any consequences of its use.
+>
+> By running it you acknowledge that you are accessing an interface not
+> intended for your use, assume all risk associated with that — including risk
+> to your hardware, your warranty and your electricity supply — and will use it
+> responsibly.
+>
+> **This software issues write commands to grid-connected battery hardware.**
+> Incorrect use can discharge your battery when you need it, import power when
+> you did not intend to, or leave the system in an unexpected state.
+>
+> **Do not contact FranklinWH support about this software.** Bugs, defects and
+> feature requests belong here, not with the vendor:
+> <https://github.com/david2069/franklinwh-modbus-bridge/issues>
+
+
 ## 1. Home Assistant add-on (recommended if you run HA)
 
 ### Prerequisites

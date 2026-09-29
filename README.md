@@ -6,6 +6,50 @@ Home Assistant entities via MQTT Discovery.
 Runs as a **Home Assistant Add-on** or **standalone Docker** container from a
 single codebase.
 
+> ## ⚠️ Unofficial software — please read
+>
+> `franklinwh-modbus-bridge` is **unofficial** and is **not endorsed, supported, or
+> affiliated with FranklinWH** in any way. FranklinWH and aGate are trademarks
+> of their respective owners, used here only to describe what this software
+> talks to.
+>
+> It is provided **"AS IS"**, for **educational and informational purposes
+> only**, without warranty of any kind, express or implied, including but not
+> limited to warranties of merchantability or **fitness for any particular
+> purpose**. The authors and contributors accept **no responsibility or
+> liability** for any consequences of its use.
+>
+> By running it you acknowledge that you are accessing an interface not
+> intended for your use, assume all risk associated with that — including risk
+> to your hardware, your warranty and your electricity supply — and will use it
+> responsibly.
+>
+> **This software issues write commands to grid-connected battery hardware.**
+> Incorrect use can discharge your battery when you need it, import power when
+> you did not intend to, or leave the system in an unexpected state.
+>
+> **Do not contact FranklinWH support about this software.** Bugs, defects and
+> feature requests belong here, not with the vendor:
+> <https://github.com/david2069/franklinwh-modbus-bridge/issues>
+
+## Standards & certification
+
+The aGate implements **SunSpec Modbus**, which is what makes this bridge
+possible: the data model is a published standard rather than something
+reverse-engineered. FranklinWH's certification and PICS (Protocol
+Implementation Conformance Statement) are listed on SunSpec's site:
+
+- **FranklinWH on SunSpec** — <https://sunspec.org/contributing-members/franklin-wh/>
+
+The PICS is the authority on which models and points a given firmware is
+certified for. Where this bridge's behaviour and the PICS disagree, that
+difference is recorded in [docs/vendor-issues.md](docs/vendor-issues.md)
+rather than silently worked around.
+
+Note that the **extension registers (15500+) are not SunSpec** — they are
+vendor-proprietary and outside the certification. Their behaviour is documented
+from observation, not from a spec.
+
 ## Before You Start
 
 ### Hardware Requirements

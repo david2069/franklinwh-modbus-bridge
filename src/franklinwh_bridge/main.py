@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from franklinwh_bridge import __version__
+from franklinwh_bridge import __version__, disclaimer
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.auth import require_auth
 from franklinwh_bridge.api.auth import router as auth_router
@@ -139,8 +139,15 @@ async def lifespan(app: FastAPI):
         getattr(logging, config.settings.log_level.upper(), logging.INFO)
     )
 
+    # Before anything else: the notice is only useful if it is the first thing
+    # in the log, not buried under a minute of poller output.
+    logger.warning(disclaimer.banner())
+
     db = await init_db(config.db_path)
     await log_startup_event(db, "startup", f"v{__version__} env={config.environment}")
+    # Also as a persisted event, so it survives a log-buffer roll and is
+    # visible in the Logs tab rather than only on the console at boot.
+    await log_startup_event(db, "disclaimer", disclaimer.SHORT)
     await seed_admin(db)  # first-run admin (no lockout); logs a generated pw once
 
     # Ensure the default gateway exists in the DB
@@ -838,6 +845,9 @@ app = FastAPI(
     title="franklinwh-modbus-bridge",
     version=__version__,
     lifespan=lifespan,
+    # Carried in the OpenAPI schema, so anyone reaching the API through /docs
+    # or a generated client sees the notice — not only readers of the README.
+    description=disclaimer.MARKDOWN,
 )
 
 # Signed-cookie sessions (Starlette). `Secure` when SESSION_COOKIE_SECURE=1

@@ -41,6 +41,38 @@ from franklinwh_bridge.store.db import log_control_event, save_control_state
 
 logger = logging.getLogger(__name__)
 
+#: The library appends an explanation to extension-register write failures that
+#: this project cannot stand behind: that the write was refused because "SPAN
+#: Modbus" is locked in installer settings. That is a hypothesis, not a finding.
+#: What IS established (docs/vendor-issues.md, issue 11) is narrower: writes to
+#: 15507-15509 are acknowledged at the protocol level but the register does not
+#: change, on every real aGate tested — and an exhaustive sweep, including
+#: cloud-shaped payloads, never found a sequence that made them stick. The cause
+#: is unknown.
+#:
+#: Telling a user to go ask their installer to flip a setting sends them after a
+#: fix that has never been shown to exist. So the speculation is stripped on the
+#: way out; the factual half of the library's message is kept verbatim.
+#:
+#: Written as a suffix strip rather than a rewrite so it simply stops matching
+#: once the library drops the sentence, instead of needing to be removed in
+#: lockstep.
+_SPECULATION = "Ensure 'SPAN Modbus' is unlocked in installer settings."
+
+_UNKNOWN_CAUSE = (
+    "The aGate acknowledged the write but the register did not change. "
+    "This affects the mode/reserve extension registers on all hardware tested "
+    "so far; the cause is not established. See docs/vendor-issues.md."
+)
+
+
+def _strip_speculation(msg: str) -> str:
+    """Replace the library's unverified SPAN-lock explanation with what is known."""
+    if not msg or _SPECULATION not in msg:
+        return msg
+    return f"{msg.replace(_SPECULATION, '').strip()} {_UNKNOWN_CAUSE}".strip()
+
+
 DEFAULT_WATCHDOG_S = 0  # 0 = no time limit (run until explicitly released)
 DEFAULT_MAX_POWER_W = 5000
 SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
@@ -318,7 +350,10 @@ class CommandHandler:
         self._state.action = display_action
         self._state.power_w = abs(watts)
         self._state.started_at = time.time()
-        self._state.last_result = msg
+        # The dispatch path (M704) is not the one the SPAN sentence is attached
+        # to, but route it through the same filter anyway — a message the user
+        # reads should not depend on which code path produced it.
+        self._state.last_result = _strip_speculation(msg)
         self._state.last_success = success
 
         # Audit a superseded dispatch — a new command replacing a *different*
@@ -479,12 +514,12 @@ class CommandHandler:
             try:
                 async with self._modbus_lock:
                     success, msg = await asyncio.to_thread(method, mode_val)
-                self._state.last_result = msg
+                self._state.last_result = _strip_speculation(msg)
                 self._state.last_success = success
                 if success:
                     logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
                 else:
-                    logger.error("Operating mode failed: %s", msg)
+                    logger.error("Operating mode failed: %s", self._state.last_result)
             except Exception as exc:
                 self._state.last_result = f"Mode change error: {exc}"
                 self._state.last_success = False
@@ -513,12 +548,12 @@ class CommandHandler:
             try:
                 async with self._modbus_lock:
                     success, msg = await asyncio.to_thread(method, pct)
-                self._state.last_result = msg
+                self._state.last_result = _strip_speculation(msg)
                 self._state.last_success = success
                 if success:
                     logger.info("%s reserve set to %d%%", reserve_type, pct)
                 else:
-                    logger.error("Reserve write failed: %s", msg)
+                    logger.error("Reserve write failed: %s", self._state.last_result)
             except Exception as exc:
                 self._state.last_result = f"Reserve write error: {exc}"
                 self._state.last_success = False
