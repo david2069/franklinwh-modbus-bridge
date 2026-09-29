@@ -243,11 +243,25 @@ function dashboardTab() {
     eventsHistory: true,
   };
 
-  const DEFAULT_CARD_ORDER = [
-    'bridgeStatus', 'powerFlow', 'acPower', 'batterySoc',
-    'solarInputs', 'battery', 'lifetimeEnergy', 'energyFlow', 'batteryControl',
-    'operatingMode', 'livePoints', 'eventsHistory',
-  ];
+  // Key -> display label, in default order. Single source: the config panel
+  // used to hardcode its own copy of this list, so a card added to one and not
+  // the other either lost its label or vanished from the picker.
+  const CARD_LABELS = {
+    bridgeStatus: 'Bridge Status',
+    powerFlow: 'Power Flow',
+    acPower: 'AC Power',
+    batterySoc: 'Battery SoC',
+    solarInputs: 'Solar Inputs',
+    battery: 'Battery',
+    lifetimeEnergy: 'Lifetime Energy',
+    energyFlow: 'Energy Flow',
+    batteryControl: 'Battery Control',
+    operatingMode: 'Operating Mode',
+    livePoints: 'Live Points',
+    eventsHistory: 'Events History',
+  };
+
+  const DEFAULT_CARD_ORDER = Object.keys(CARD_LABELS);
 
   function loadCardPrefs() {
     try {
@@ -263,8 +277,9 @@ function dashboardTab() {
       if (saved) {
         const parsed = JSON.parse(saved);
         // Merge: keep saved order, append any new keys not yet in saved order
-        const known = new Set(parsed);
-        const merged = [...parsed];
+        const valid = parsed.filter((k) => k in CARD_LABELS);
+        const known = new Set(valid);
+        const merged = [...valid];
         for (const k of DEFAULT_CARD_ORDER) { if (!known.has(k)) merged.push(k); }
         return merged;
       }
@@ -443,6 +458,38 @@ function dashboardTab() {
       localStorage.removeItem('fwh-dashboard-order');
     },
 
+    cardLabel(key) {
+      return CARD_LABELS[key] || key;
+    },
+
+    /**
+     * Move a card one place in the order.
+     *
+     * Drag-to-reorder is desktop-only in practice: HTML5 dragstart/dragover
+     * never fire from a touch drag, so on a tablet the order was fixed with no
+     * way to see that anything was meant to be draggable. These buttons are the
+     * only reorder control that works on the device, and they double as the
+     * keyboard-accessible path on desktop.
+     */
+    moveCard(key, delta) {
+      const from = this.cardOrder.indexOf(key);
+      if (from < 0) return;
+      const to = from + delta;
+      if (to < 0 || to >= this.cardOrder.length) return;
+      this.cardOrder.splice(from, 1);
+      this.cardOrder.splice(to, 0, key);
+      this._persistCardOrder();
+    },
+
+    canMoveCard(key, delta) {
+      const at = this.cardOrder.indexOf(key);
+      return at >= 0 && at + delta >= 0 && at + delta < this.cardOrder.length;
+    },
+
+    _persistCardOrder() {
+      localStorage.setItem('fwh-dashboard-order', JSON.stringify(this.cardOrder));
+    },
+
     dragStart(key) {
       this._dragKey = key;
     },
@@ -459,7 +506,7 @@ function dashboardTab() {
 
     dragEnd() {
       this._dragKey = null;
-      localStorage.setItem('fwh-dashboard-order', JSON.stringify(this.cardOrder));
+      this._persistCardOrder();
     },
 
     async _loadGateway() {

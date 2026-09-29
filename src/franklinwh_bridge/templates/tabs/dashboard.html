@@ -64,33 +64,43 @@
   <!-- Card Visibility Config (slide down) -->
   <div x-show="showCardConfig" x-transition.duration.200ms class="card !p-3 mb-4">
     <div class="flex items-center justify-between mb-2">
-      <span class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider">Visible Cards</span>
+      <span class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider">Cards — Show &amp; Reorder</span>
       <div class="flex items-center gap-3">
         <button @click="resetCardOrder()" class="text-[10px] text-slate-500 hover:text-amber-400 transition" title="Reset card order to default">Reset Order</button>
         <button @click="resetCardDefaults()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition" title="Reset card visibility to defaults">Reset Defaults</button>
       </div>
     </div>
-    <div class="flex flex-wrap gap-3">
-      <template x-for="[key, label] in [
-        ['bridgeStatus', 'Bridge Status'],
-        ['powerFlow', 'Power Flow'],
-        ['acPower', 'AC Power'],
-        ['batterySoc', 'Battery SoC'],
-        ['solarInputs', 'Solar Inputs'],
-        ['battery', 'Battery'],
-        ['lifetimeEnergy', 'Lifetime Energy'],
-        ['energyFlow', 'Energy Flow'],
-        ['batteryControl', 'Battery Control'],
-        ['operatingMode', 'Operating Mode'],
-        ['livePoints', 'Live Points'],
-        ['eventsHistory', 'Events History'],
-      ]" :key="key">
-        <label class="flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
-               :class="cardVisible[key] ? 'text-slate-300' : 'text-slate-600'">
-          <input type="checkbox" :checked="cardVisible[key]" @change="toggleCard(key)"
-                 class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-cyan-500">
-          <span x-text="label"></span>
-        </label>
+
+    <!-- Iterates cardOrder, NOT a fixed list: the arrows move a card's position
+         in this very list, so a panel ordered any other way would show the
+         result of a move somewhere the user isn't looking. Hidden cards stay
+         listed — you often want to place one before switching it on. -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+      <template x-for="key in cardOrder" :key="key">
+        <div class="flex items-center gap-2 py-0.5">
+          <label class="flex items-center gap-1.5 text-[11px] cursor-pointer select-none grow min-w-0"
+                 :class="cardVisible[key] ? 'text-slate-300' : 'text-slate-600'">
+            <input type="checkbox" :checked="cardVisible[key]" @change="toggleCard(key)"
+                   class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-cyan-500 shrink-0">
+            <span class="truncate" x-text="cardLabel(key)"></span>
+          </label>
+          <!-- Touch devices never fire HTML5 drag events, so these are the only
+               reorder control that works on a tablet — and the keyboard path
+               on desktop. Disabled at the ends rather than hidden, so the row
+               doesn't reflow as cards move. -->
+          <div class="flex items-center gap-0.5 shrink-0">
+            <button type="button" @click="moveCard(key, -1)"
+                    :disabled="!canMoveCard(key, -1)"
+                    :aria-label="'Move ' + cardLabel(key) + ' up'"
+                    class="px-1 leading-none text-slate-500 hover:text-cyan-400 transition
+                           disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:text-slate-500">&#8963;</button>
+            <button type="button" @click="moveCard(key, 1)"
+                    :disabled="!canMoveCard(key, 1)"
+                    :aria-label="'Move ' + cardLabel(key) + ' down'"
+                    class="px-1 leading-none text-slate-500 hover:text-cyan-400 transition
+                           disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:text-slate-500">&#8964;</button>
+          </div>
+        </div>
       </template>
     </div>
   </div>

@@ -100,6 +100,49 @@ def _wait_until_ready(url: str, settle_s: float = 6.0, timeout_s: float = 90.0) 
     return f"app never settled for {settle_s}s within {timeout_s}s"
 
 
+#: Present only once the SPA shell has actually mounted. Used as the proof that
+#: login worked, because the URL is not one: a successful submit can leave the
+#: browser sitting on /login while the app renders underneath.
+_APP_ROOT = "[x-data*=dashboardTab]"
+
+
+def _login(page, url: str, user: str, password: str, problems: list) -> bool:
+    """Log in and confirm the app actually mounted.
+
+    Submitting and calling it done is not enough. networkidle can return before
+    the session is established, and the next navigation then redirects back to
+    /login — so every element lookup that follows fails and the gate reports a
+    dozen missing buttons for a UI that is fine. That is indistinguishable from
+    a real regression at the point of reading the output, and it is what teaches
+    people to re-run a gate until it goes green.
+
+    So: submit, then verify the shell is present, retrying the whole sequence a
+    couple of times before declaring the run unable to proceed. A gate that
+    cannot run must say so rather than emit findings.
+    """
+    for attempt in (1, 2, 3):
+        if page.locator("input[type=password]").count():
+            page.fill("input[name=username], input[type=text]", user)
+            page.fill("input[type=password]", password)
+            page.click("button[type=submit]")
+            page.wait_for_load_state("networkidle")
+
+        for _ in range(8):
+            page.wait_for_timeout(500)
+            if page.locator(_APP_ROOT).count():
+                return True
+        _goto(page, url, problems)
+
+        if attempt < 3:
+            page.wait_for_timeout(1000)
+
+    problems.append(
+        f"login never mounted the app shell ({_APP_ROOT} absent) — "
+        f"check the credentials passed via --user/--password"
+    )
+    return False
+
+
 def run(url: str, user: str, password: str) -> int:
     problems: list[str] = []
 
@@ -147,12 +190,10 @@ def run(url: str, user: str, password: str) -> int:
 
         _goto(page, url, problems)
 
-        # Log in if we landed on the login page.
-        if page.locator("input[type=password]").count():
-            page.fill("input[name=username], input[type=text]", user)
-            page.fill("input[type=password]", password)
-            page.click("button[type=submit]")
-            page.wait_for_load_state("networkidle")
+        if not _login(page, url, user, password, problems):
+            print(f"CONSOLE GATE COULD NOT RUN — {problems[-1]}")
+            browser.close()
+            return 1
 
         for tab in ("dashboard", "schedule", "settings", "logs", "events"):
             _goto(page, f"{url}?tab={tab}", problems)
@@ -271,6 +312,49 @@ def run(url: str, user: str, password: str) -> int:
                 else:
                     page.keyboard.press("Escape")
                 page.wait_for_timeout(500)
+
+        # Dashboard → the Cards show/reorder panel. The arrows mutate the same
+        # cardOrder the dashboard renders from, so a broken move shows up as a
+        # card vanishing rather than a console error — assert the order really
+        # changed and really came back.
+        _goto(page, f"{url}?tab=dashboard", problems)
+        page.wait_for_timeout(1000)
+        cards_btn = page.locator("button:has-text('Cards'):visible").first
+        if not cards_btn.count():
+            problems.append("dashboard: Cards config button missing")
+        else:
+            cards_btn.click()
+            page.wait_for_timeout(500)
+            _ORDER_JS = (
+                "() => Alpine.$data(document.querySelector("
+                "'[x-data*=dashboardTab]')).cardOrder.join(',')"
+            )
+
+            def order():
+                return page.evaluate(_ORDER_JS)
+            before = order()
+            down = page.locator("button[aria-label^='Move '][aria-label$=' down']:visible")
+            if not down.count():
+                problems.append("dashboard: card reorder arrows missing")
+            else:
+                down.first.click()
+                page.wait_for_timeout(300)
+                if order() == before:
+                    problems.append("dashboard: moving a card down changed nothing")
+                page.locator(
+                    "button[aria-label^='Move '][aria-label$=' up']:visible"
+                ).nth(1).click()
+                page.wait_for_timeout(300)
+                if order() != before:
+                    problems.append("dashboard: move down then up did not round-trip")
+                # The first card can't move up and the last can't move down.
+                first_up = page.locator(
+                    "button[aria-label^='Move '][aria-label$=' up']:visible"
+                ).first
+                if first_up.count() and first_up.is_enabled():
+                    problems.append("dashboard: first card's up arrow is not disabled")
+            cards_btn.click()
+            page.wait_for_timeout(300)
 
         # Settings → the Point History panel that switches recording on. Read
         # only: enabling it on the live bridge is a disk-consuming change, and a
