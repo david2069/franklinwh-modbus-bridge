@@ -1,0 +1,59 @@
+{#
+  Legal-notice modal — blocks the UI until the notice has been seen.
+
+  Self-contained x-data so it can be dropped into any shell (the admin SPA and
+  the /user dashboard) without either needing to know about it.
+
+  The wording is NOT written here: it comes from GET /api/disclaimer, so the
+  text and the version it is recorded against can never disagree.
+#}
+<div x-data="disclaimerGate()" x-init="load()" x-cloak>
+  <template x-if="open">
+    <div class="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60"
+         role="dialog" aria-modal="true" aria-labelledby="disclaimer-title">
+      {#
+        No @click.self="close()" and no Escape handler: every other modal here
+        dismisses that way, and inheriting the habit would let someone skip a
+        legal notice with a stray click without it ever registering. Continue is
+        the only way out, and it is always enabled — refusing to let a dialog
+        close is not consent, it is a hostage situation.
+      #}
+      <div class="w-full max-w-lg rounded-lg border shadow-2xl flex flex-col"
+           style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+
+        <div class="flex items-center gap-2 p-4 border-b" style="border-color: var(--border);">
+          <span class="text-amber-400 text-lg leading-none" aria-hidden="true">&#9888;</span>
+          <h2 id="disclaimer-title" class="text-sm font-semibold" x-text="title"></h2>
+        </div>
+
+        <div class="p-4 space-y-3 overflow-y-auto text-[13px] leading-relaxed text-slate-300">
+          <template x-for="(para, i) in paragraphs" :key="i">
+            <p x-text="para"></p>
+          </template>
+        </div>
+
+        <div class="px-4 py-3 border-t" style="border-color: var(--border);">
+          <label class="flex items-start gap-2 text-[13px] cursor-pointer select-none">
+            <input type="checkbox" x-model="agreed"
+                   class="mt-0.5 rounded border-slate-600 bg-slate-700 w-4 h-4 accent-cyan-500 shrink-0">
+            <span x-text="agreeLabel"></span>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-t"
+             style="border-color: var(--border);">
+          <div class="flex items-center gap-3 text-[11px]">
+            <a :href="docsUrl" target="_blank" rel="noopener noreferrer"
+               class="text-cyan-400 hover:underline">Documentation</a>
+            <a :href="issuesUrl" target="_blank" rel="noopener noreferrer"
+               class="text-cyan-400 hover:underline">GitHub Issues</a>
+          </div>
+          <button type="button" @click="submit()" :disabled="saving"
+                  class="btn btn-sm btn-primary disabled:opacity-50">
+            <span x-text="saving ? 'Saving…' : 'Continue'"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

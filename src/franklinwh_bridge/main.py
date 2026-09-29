@@ -20,6 +20,7 @@ from franklinwh_bridge import __version__, disclaimer
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.auth import require_auth
 from franklinwh_bridge.api.auth import router as auth_router
+from franklinwh_bridge.api.disclaimer_api import router as disclaimer_router
 from franklinwh_bridge.api.energy_api import router as energy_router
 from franklinwh_bridge.api.gateways_api import router as gateways_router
 from franklinwh_bridge.api.groups_api import router as groups_router
@@ -878,6 +879,9 @@ app.include_router(gateways_router, dependencies=_AUTH)
 app.include_router(modules_router, dependencies=_AUTH)
 app.include_router(energy_router, dependencies=_AUTH)
 app.include_router(point_history_router, dependencies=_AUTH)
+# No _AUTH here: the router's own deps already require a user, and the GET
+# must stay reachable for any signed-in role so the modal can render.
+app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(
     schedules_router, dependencies=[require_module("automations"), Depends(require_auth)]

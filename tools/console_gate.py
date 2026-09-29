@@ -56,6 +56,11 @@ def _goto(page, url: str, problems: list) -> bool:
     for attempt in (1, 2):
         try:
             page.goto(url, wait_until="networkidle" if attempt == 1 else "domcontentloaded")
+            # Declining is deliberately not persisted, so the notice returns on
+            # every page load. Clear it here or the overlay silently swallows
+            # the next click and the failure reads as a missing button.
+            if _disclaimer_seen:
+                _dismiss_disclaimer(page, problems, attempts=6)
             return True
         except Exception as exc:
             if attempt == 2:
@@ -143,6 +148,49 @@ def _login(page, url: str, user: str, password: str, problems: list) -> bool:
     return False
 
 
+_DISCLAIMER = "[role=dialog][aria-labelledby=disclaimer-title]"
+
+#: Set once the notice has actually been seen, so _goto only pays the polling
+#: cost on deployments where it is still being shown.
+_disclaimer_seen = False
+
+
+def _dismiss_disclaimer(page, problems: list, attempts: int = 16) -> None:
+    """Answer the legal notice so the rest of the UI is reachable.
+
+    It is a full-screen overlay that deliberately ignores click-outside and
+    Escape, so anything left underneath is unclickable while it is up — an
+    un-dismissed notice turns every later step into "element intercepts pointer
+    events" rather than an honest finding.
+
+    It renders after its fetch resolves, so this polls instead of checking once;
+    a single check races the fetch and passes while the modal is still on its
+    way, leaving the overlay to break the next click.
+
+    DECLINES rather than accepts: the gate runs against the operator's own
+    bridge, and a test harness must not manufacture somebody's consent or write
+    an acknowledgement row on their behalf.
+    """
+    for _ in range(attempts):
+        if page.locator(_DISCLAIMER).count():
+            break
+        page.wait_for_timeout(250)
+    else:
+        return  # never appeared — already acknowledged for this user
+
+    global _disclaimer_seen
+    _disclaimer_seen = True
+
+    cont = page.locator(f"{_DISCLAIMER} button:has-text('Continue')")
+    if not cont.count():
+        problems.append("disclaimer: modal has no Continue button")
+        return
+    cont.first.click()
+    page.wait_for_timeout(800)
+    if page.locator(_DISCLAIMER).count():
+        problems.append("disclaimer: modal did not close on Continue")
+
+
 def run(url: str, user: str, password: str) -> int:
     problems: list[str] = []
 
@@ -194,6 +242,12 @@ def run(url: str, user: str, password: str) -> int:
             print(f"CONSOLE GATE COULD NOT RUN — {problems[-1]}")
             browser.close()
             return 1
+
+        # The legal notice blocks the UI until answered, so it has to be dealt
+        # with before anything else is clickable. Answer it by DECLINING —
+        # accepting would write a row to the operator's database every time the
+        # gate runs, and a test harness must not manufacture someone's consent.
+        _dismiss_disclaimer(page, problems)
 
         for tab in ("dashboard", "schedule", "settings", "logs", "events"):
             _goto(page, f"{url}?tab={tab}", problems)

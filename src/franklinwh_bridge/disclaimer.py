@@ -17,7 +17,36 @@ from __future__ import annotations
 
 PROJECT_NAME = "franklinwh-modbus-bridge"
 ISSUES_URL = "https://github.com/david2069/franklinwh-modbus-bridge/issues"
+DOCS_URL = "https://github.com/david2069/franklinwh-modbus-bridge#readme"
 CLOUD_DOCS_URL = "https://david2069.github.io/franklinwh-cloud/"
+SUNSPEC_URL = "https://sunspec.org/contributing-members/franklin-wh/"
+
+#: Bump ONLY when the meaning changes, not for a typo. Acknowledgements are
+#: stored against this, so bumping re-prompts every user — which is the point
+#: when the terms change, and pure noise when they haven't. Consent to wording
+#: somebody never read is not consent.
+VERSION = "1"
+
+#: The modal's body. A list, not one blob, so the template renders paragraphs
+#: without parsing prose — and so this file stays the only place the wording
+#: lives.
+MODAL_PARAGRAPHS: tuple[str, ...] = (
+    "This is an UNOFFICIAL app — NOT affiliated with, or endorsed by, FranklinWH.",
+    "It talks to the aGate over SunSpec Modbus, including undocumented vendor "
+    "extension registers, which may change, break, or become unavailable "
+    "without notice.",
+    "It issues WRITE commands to grid-connected battery hardware. Incorrect use "
+    "can discharge your battery when you need it, import power when you did not "
+    "intend to, or leave the system in an unexpected state.",
+    "Provided AS-IS, without warranty of any kind. Use entirely at your own "
+    "risk — the authors accept no liability for data loss, equipment damage, or "
+    "service loss.",
+    "Do NOT contact FranklinWH support about this app. Raise issues, defects, or "
+    "feature requests on GitHub instead.",
+)
+
+MODAL_TITLE = "Unofficial software"
+MODAL_AGREE = "I have read and agree to the above — don't show this again."
 
 #: One line, for places with no room — log prefixes, page footers.
 SHORT = (

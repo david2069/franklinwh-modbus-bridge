@@ -669,6 +669,28 @@ MIGRATIONS: dict[int, str] = {
     -- lasting trap.
     SELECT 1;
     """,
+    47: """
+    -- Acknowledgement of the legal notice, per user and per notice version.
+    --
+    -- A table rather than a column on users: an acknowledgement is a record of
+    -- something someone did at a point in time, so it must accumulate rather
+    -- than be overwritten. Keeping the version means a material change to the
+    -- notice re-prompts instead of silently inheriting consent to wording the
+    -- user never saw.
+    --
+    -- client_ip is recorded for the same reason a login is: "who accepted, and
+    -- from where" is the whole value of an acknowledgement after the fact.
+    CREATE TABLE IF NOT EXISTS disclaimer_acks (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    TEXT NOT NULL,
+        version    TEXT NOT NULL,
+        acked_at   REAL NOT NULL,
+        client_ip  TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_disclaimer_acks_user
+        ON disclaimer_acks(user_id, version);
+    """,
     46: """
     -- Every plan needs a real start date.
     --
@@ -897,6 +919,64 @@ async def init_db(db_path: Path) -> aiosqlite.Connection:
     """)
 
     return db
+
+
+# ── Legal-notice acknowledgement ─────────────────────────────
+
+
+async def has_acked_disclaimer(
+    db: aiosqlite.Connection, user_id: str, version: str
+) -> bool:
+    """Whether this user has accepted THIS version of the notice.
+
+    Version-scoped on purpose: consent to wording someone never read is not
+    consent, so changing the notice materially re-prompts everyone.
+    """
+    async with db.execute(
+        "SELECT 1 FROM disclaimer_acks WHERE user_id = ? AND version = ? LIMIT 1",
+        (user_id, version),
+    ) as cur:
+        return await cur.fetchone() is not None
+
+
+async def record_disclaimer_ack(
+    db: aiosqlite.Connection,
+    user_id: str,
+    version: str,
+    client_ip: str = "",
+    user_agent: str = "",
+) -> dict:
+    """Record that a user accepted the notice. Idempotent per (user, version).
+
+    Re-accepting does not write a second row — a user who clears their browser
+    and sees the modal again has not consented twice, and duplicate rows would
+    make the audit trail read as though they had.
+    """
+    if not await has_acked_disclaimer(db, user_id, version):
+        await db.execute(
+            "INSERT INTO disclaimer_acks (user_id, version, acked_at, client_ip, "
+            "user_agent) VALUES (?, ?, ?, ?, ?)",
+            (user_id, version, time.time(), client_ip, user_agent[:400]),
+        )
+        await db.commit()
+
+    db.row_factory = aiosqlite.Row
+    async with db.execute(
+        "SELECT * FROM disclaimer_acks WHERE user_id = ? AND version = ? "
+        "ORDER BY acked_at LIMIT 1",
+        (user_id, version),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else {}
+
+
+async def get_disclaimer_acks(db: aiosqlite.Connection, limit: int = 200) -> list[dict]:
+    """The acknowledgement trail, most recent first."""
+    db.row_factory = aiosqlite.Row
+    async with db.execute(
+        "SELECT * FROM disclaimer_acks ORDER BY acked_at DESC LIMIT ?", (limit,)
+    ) as cur:
+        return [dict(r) for r in await cur.fetchall()]
 
 
 async def log_startup_event(db: aiosqlite.Connection, event: str, detail: str | None = None):
