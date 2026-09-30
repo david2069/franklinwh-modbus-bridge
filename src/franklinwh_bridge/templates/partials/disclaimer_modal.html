@@ -47,6 +47,10 @@
                class="text-cyan-400 hover:underline">Documentation</a>
             <a :href="issuesUrl" target="_blank" rel="noopener noreferrer"
                class="text-cyan-400 hover:underline">GitHub Issues</a>
+            {# The modal is a summary; this is where the authoritative text
+               lives, so it has to be reachable from the dialog itself. #}
+            <a :href="termsUrl" x-show="termsUrl" target="_blank" rel="noopener noreferrer"
+               class="text-cyan-400 hover:underline">Full terms</a>
           </div>
           <button type="button" @click="submit()" :disabled="saving"
                   class="btn btn-sm btn-primary disabled:opacity-50">

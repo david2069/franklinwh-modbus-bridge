@@ -20,12 +20,28 @@ ISSUES_URL = "https://github.com/david2069/franklinwh-modbus-bridge/issues"
 DOCS_URL = "https://github.com/david2069/franklinwh-modbus-bridge#readme"
 CLOUD_DOCS_URL = "https://david2069.github.io/franklinwh-cloud/"
 SUNSPEC_URL = "https://sunspec.org/contributing-members/franklin-wh/"
+#: The conformance documents themselves, not just the landing page. This is the
+#: Modbus project, so the PICS is the spec it implements and the authority
+#: docs/vendor-issues.md is written against — a link to a members page makes the
+#: reader go hunting for the document that actually settles the question.
+PICS_URL = (
+    "https://sunspec.org/wp-content/uploads/2009/03/"
+    "UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx"
+)
+IEEE_1547_URL = (
+    "https://sunspec.org/wp-content/uploads/2009/03/"
+    "UPDATED_FranklinWH_Modbus_1547_Certificate_SM-000028.pdf"
+)
+PICS_DOC_ID = "SM-000028"
+TERMS_URL = (
+    "https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE"
+)
 
 #: Bump ONLY when the meaning changes, not for a typo. Acknowledgements are
 #: stored against this, so bumping re-prompts every user — which is the point
 #: when the terms change, and pure noise when they haven't. Consent to wording
 #: somebody never read is not consent.
-VERSION = "1"
+VERSION = "2"
 
 #: The modal's body. A list, not one blob, so the template renders paragraphs
 #: without parsing prose — and so this file stays the only place the wording
@@ -43,6 +59,12 @@ MODAL_PARAGRAPHS: tuple[str, ...] = (
     "service loss.",
     "Do NOT contact FranklinWH support about this app. Raise issues, defects, or "
     "feature requests on GitHub instead.",
+    "Keep your system compliant with the settings your official FranklinWH app "
+    "or installer configured. Those settings may exist to protect battery and "
+    "gateway safety, to enforce your local grid profile and any import/export "
+    "limits, or to honour incentive, subsidy or VPP programme conditions. Using "
+    "this tool to bypass them — deliberately or inadvertently — is entirely at "
+    "your own risk, and is neither condoned nor encouraged.",
 )
 
 MODAL_TITLE = "Unofficial software"
@@ -81,10 +103,19 @@ This software issues WRITE commands to grid-connected battery hardware.
 Incorrect use can discharge your battery when you need it, import power when
 you did not intend to, or leave the system in an unexpected state.
 
+COMPLIANCE. Keep your system compliant with the settings your official
+FranklinWH app or installer configured. Those settings may exist to protect
+battery and gateway safety, to enforce your local grid profile and any
+import/export limits, or to honour incentive, subsidy or VPP programme
+conditions. Using this software to bypass them — deliberately or inadvertently
+— is entirely at your own risk, and is neither condoned nor encouraged.
+
 DO NOT CONTACT FRANKLINWH SUPPORT about this software. Bugs, defects and
 feature requests belong here, not with the vendor:
   {ISSUES_URL}
 
+Full terms: {TERMS_URL}
+SunSpec conformance (PICS {PICS_DOC_ID}): {PICS_URL}
 Related project documentation: {CLOUD_DOCS_URL}
 """
 
@@ -100,8 +131,17 @@ This API issues **write commands to grid-connected battery hardware**. You
 assume all risk, including risk to your hardware, your warranty and your
 electricity supply.
 
+**Compliance.** Keep your system compliant with the settings your official
+FranklinWH app or installer configured — they may enforce battery and gateway
+safety, your local grid profile and import/export limits, or incentive/VPP
+programme conditions. Using this API to bypass them is entirely at your own
+risk and is neither condoned nor encouraged.
+
 **Do not contact FranklinWH support about this software.** Report bugs and
 request features at [{ISSUES_URL}]({ISSUES_URL}).
+
+Full terms: [LICENSE]({TERMS_URL}) · SunSpec conformance:
+[PICS {PICS_DOC_ID}]({PICS_URL})
 """
 
 

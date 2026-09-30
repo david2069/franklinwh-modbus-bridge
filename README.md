@@ -39,7 +39,11 @@ possible: the data model is a published standard rather than something
 reverse-engineered. FranklinWH's certification and PICS (Protocol
 Implementation Conformance Statement) are listed on SunSpec's site:
 
-- **FranklinWH on SunSpec** — <https://sunspec.org/contributing-members/franklin-wh/>
+- **Modbus PICS** (Protocol Implementation Conformance Statement, `SM-000028`) —
+  [`UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx`](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx)
+- **IEEE 1547 certificate** (`SM-000028`) —
+  [`UPDATED_FranklinWH_Modbus_1547_Certificate_SM-000028.pdf`](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_1547_Certificate_SM-000028.pdf)
+- Vendor listing — <https://sunspec.org/contributing-members/franklin-wh/>
 
 The PICS is the authority on which models and points a given firmware is
 certified for. Where this bridge's behaviour and the PICS disagree, that
@@ -49,6 +53,9 @@ rather than silently worked around.
 Note that the **extension registers (15500+) are not SunSpec** — they are
 vendor-proprietary and outside the certification. Their behaviour is documented
 from observation, not from a spec.
+
+See [`LICENSE`](LICENSE) (Additional Notices) for the unofficial-software and
+compliance notices in full.
 
 ## Before You Start
 

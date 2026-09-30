@@ -53,12 +53,43 @@ async def test_it_carries_the_links_the_modal_offers(client):
     assert body["docs_url"]
 
 
-async def test_the_paragraphs_say_the_three_things_that_matter(client):
+async def test_the_paragraphs_say_the_things_that_matter(client):
     joined = " ".join((await client.get("/api/disclaimer")).json()["paragraphs"]).lower()
 
     assert "unofficial" in joined
     assert "as-is" in joined or "as is" in joined
     assert "do not contact franklinwh support" in joined
+
+
+async def test_it_covers_compliance_and_anti_circumvention(client):
+    """This bridge is the write plane — it sets mode, reserve and power, and can
+    schedule those unattended. A user must be told not to drive it through their
+    grid profile, export limit or VPP programme conditions."""
+    joined = " ".join((await client.get("/api/disclaimer")).json()["paragraphs"]).lower()
+
+    assert "compliant" in joined
+    assert "bypass" in joined
+    assert "vpp" in joined or "programme" in joined
+
+
+async def test_it_does_not_claim_to_use_apis_it_never_touches(client):
+    """The sibling projects' wording names FranklinWH's Direct Connect and cloud
+    APIs. This bridge speaks Modbus only, and copying that text verbatim would
+    have the notice assert something untrue about what it connects to."""
+    joined = " ".join((await client.get("/api/disclaimer")).json()["paragraphs"]).lower()
+
+    assert "direct connect" not in joined
+    assert "cloud api" not in joined
+    assert "modbus" in joined
+
+
+async def test_the_modal_links_to_the_authoritative_terms(client):
+    """The modal is a summary; the binding text is in LICENSE, so it has to be
+    reachable from the dialog rather than only from the repo root."""
+    body = (await client.get("/api/disclaimer")).json()
+
+    assert body["terms_url"] == disclaimer.TERMS_URL
+    assert body["terms_url"].endswith("LICENSE")
 
 
 # ── Accepting ────────────────────────────────────────────────
@@ -136,12 +167,13 @@ async def test_a_new_notice_version_prompts_again(client, monkeypatch):
 async def test_accepting_a_new_version_does_not_erase_the_old_record(client, monkeypatch):
     """An acknowledgement is a record of something that happened; a later one
     does not make the earlier one untrue."""
+    original = disclaimer.VERSION
     await client.post("/api/disclaimer", json={"agreed": True})
     monkeypatch.setattr(disclaimer, "VERSION", "99-changed-terms")
     await client.post("/api/disclaimer", json={"agreed": True})
 
     versions = {a["version"] for a in (await client.get("/api/disclaimer/acks")).json()["acks"]}
-    assert versions == {"1", "99-changed-terms"}
+    assert versions == {original, "99-changed-terms"}
 
 
 # ── It is persisted, not browser state ───────────────────────

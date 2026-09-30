@@ -27,6 +27,7 @@
       agreeLabel: '',
       docsUrl: '',
       issuesUrl: '',
+      termsUrl: '',
 
       async load() {
         try {
@@ -40,6 +41,7 @@
           this.agreeLabel = d.agree_label || 'I have read and agree to the above.';
           this.docsUrl = d.docs_url || '';
           this.issuesUrl = d.issues_url || '';
+          this.termsUrl = d.terms_url || '';
           this.open = !d.acknowledged;
         } catch (_) {
           // A notice that can't load must not wedge the UI behind a blank

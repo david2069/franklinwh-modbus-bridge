@@ -79,6 +79,7 @@ async def get_disclaimer(request: Request, user: dict = Depends(require_auth)):
         "agree_label": disclaimer.MODAL_AGREE,
         "docs_url": disclaimer.DOCS_URL,
         "issues_url": disclaimer.ISSUES_URL,
+        "terms_url": disclaimer.TERMS_URL,
     }
 
 

@@ -19,3 +19,65 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+================================================================================
+ADDITIONAL NOTICES
+================================================================================
+
+These notices accompany the MIT License above. They allocate risk and state
+facts about what this Software is; they do NOT add restrictions to the MIT
+grant, which continues to permit commercial use, modification and
+redistribution.
+
+1. UNOFFICIAL — NO AFFILIATION
+
+   This is UNOFFICIAL software, NOT affiliated with, endorsed by, or supported
+   by FranklinWH. It interfaces with the aGate over the standard SunSpec Modbus
+   TCP API, including undocumented FranklinWH extension registers (the 15500+
+   range) that are outside SunSpec conformance. Either may change, break, or
+   become unavailable without notice.
+
+   FranklinWH, aGate and aPower are trademarks of their respective owners, used
+   here only to describe what this Software communicates with.
+
+   Do NOT contact FranklinWH support about this Software. Raise issues, defects
+   or feature requests at:
+   https://github.com/david2069/franklinwh-modbus-bridge/issues
+
+2. COMPLIANCE & ANTI-CIRCUMVENTION
+
+   This Software issues WRITE commands to grid-connected battery hardware. It
+   can change operating mode, reserve state of charge, and charge/discharge
+   power, and can schedule those changes unattended.
+
+   You are responsible for keeping your gateway and battery settings, controls
+   and operation compliant with the configuration set through the official
+   FranklinWH mobile app and the installer/support portal.
+
+   FranklinWH-managed settings may exist to, among other things:
+     - protect the safety and longevity of the battery and gateway;
+     - apply software updates and restrict your ability to view or change
+       battery, grid-import or grid-export controls;
+     - enforce your local electricity grid profile and any import/export limits
+       or prohibitions;
+     - enforce restrictions tied to contractual incentives, subsidies, or
+       VPP/grid programmes.
+
+   If you use this Software to bypass or override any such control, restriction
+   or compliance measure — deliberately or inadvertently — you do so entirely at
+   your own risk. This is neither condoned nor encouraged by the authors.
+
+3. CONFORMANCE REFERENCES
+
+   FranklinWH's SunSpec Modbus conformance is published by the SunSpec Alliance
+   as document SM-000028:
+     - Modbus PICS (Protocol Implementation Conformance Statement):
+       https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx
+     - IEEE 1547 certificate:
+       https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_1547_Certificate_SM-000028.pdf
+
+   The PICS is the authority for which models and points a firmware is certified
+   for. The 15500+ extension registers are NOT SunSpec and fall outside it;
+   their behaviour is documented in docs/vendor-issues.md from observation, not
+   from a specification.

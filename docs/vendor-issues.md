@@ -33,8 +33,10 @@ Issues 8 and 11.
 
 ---
 
-> **SunSpec certification:** FranklinWH's certification listing and PICS are at
-> <https://sunspec.org/contributing-members/franklin-wh/>. The PICS is the
+> **SunSpec certification:** FranklinWH's conformance is published as document
+> `SM-000028` — [Modbus PICS](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx) and [IEEE 1547 certificate](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_1547_Certificate_SM-000028.pdf);
+> vendor listing at <https://sunspec.org/contributing-members/franklin-wh/>.
+> The PICS is the
 > authority for which models and points a firmware is certified for, and is the
 > reference these issues are written against. The 15500+ extension registers are
 > NOT SunSpec and fall outside it.

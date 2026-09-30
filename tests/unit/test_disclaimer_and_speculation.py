@@ -7,6 +7,8 @@ other is an explanation it was passing on without evidence.
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from franklinwh_bridge import disclaimer
@@ -131,3 +133,47 @@ def test_no_double_space_where_the_sentence_was_cut():
     out = _strip_speculation(_LIB_MESSAGE)
 
     assert "  " not in out
+
+
+def test_the_conformance_documents_are_cited_not_just_the_vendor_page():
+    """A link to a members listing makes the reader hunt for the document that
+    actually settles the question; this IS the Modbus project, so the PICS is
+    the spec it implements."""
+    assert disclaimer.PICS_DOC_ID == "SM-000028"
+    assert disclaimer.PICS_URL.endswith(".xlsx")
+    assert disclaimer.IEEE_1547_URL.endswith(".pdf")
+    assert disclaimer.PICS_DOC_ID in disclaimer.PICS_URL
+    assert disclaimer.PICS_DOC_ID in disclaimer.IEEE_1547_URL
+
+
+def test_the_full_notice_carries_compliance_and_the_pics():
+    assert "COMPLIANCE" in disclaimer.FULL
+    assert "bypass" in disclaimer.FULL
+    assert disclaimer.PICS_URL in disclaimer.FULL
+    assert disclaimer.TERMS_URL in disclaimer.FULL
+
+
+def test_the_api_description_carries_compliance_too():
+    """All three surfaces state the same terms; one lagging is how they drift."""
+    assert "Compliance" in disclaimer.MARKDOWN
+    assert disclaimer.PICS_URL in disclaimer.MARKDOWN
+
+
+def test_the_licence_states_the_notices_add_no_restrictions():
+    """They allocate risk and state facts. If they restricted use, the package
+    metadata declaring MIT would be wrong — see pyproject."""
+    licence = pathlib.Path("LICENSE").read_text()
+
+    assert "ADDITIONAL NOTICES" in licence
+    assert "do NOT add restrictions to the MIT" in licence
+    assert "COMPLIANCE & ANTI-CIRCUMVENTION" in licence
+    assert "SM-000028" in licence
+
+
+def test_the_licence_does_not_smuggle_in_a_non_commercial_clause():
+    """MIT grants commercial use. A non-commercial restriction here would make
+    the declared licence inaccurate on PyPI."""
+    licence = pathlib.Path("LICENSE").read_text().lower()
+
+    assert "non-commercial" not in licence
+    assert "not-for-profit" not in licence
