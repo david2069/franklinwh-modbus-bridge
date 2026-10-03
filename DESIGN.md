@@ -2,7 +2,7 @@
 
 **Status:** Draft v2.0
 **Date:** 2026-05-21
-**Owner:** David Hona
+**Owner:** david2069
 **Repo (target path):** `~/dev/Claude/Projects/franklinwh-modbus-bridge`
 
 ---
