@@ -1,6 +1,6 @@
 # franklinwh-modbus documentation update proposal
 
-**Status:** Proposal only. `franklinwh-modbus` (`/Users/davidhona/dev/modbus`) is
+**Status:** Proposal only. `franklinwh-modbus` (`~/dev/modbus`) is
 read-only from this bridge session — apply these from a dedicated session for
 that repo, per the multi-session repo workflow.
 
@@ -148,7 +148,7 @@ fields with heavy overlap with `power_flow` plus several new ones (`bms_work`,
 `pe_stat`, `sinHTemp`/`sinLTemp`, `soChBat`, `soOutGrid`, `batOutGrid`,
 `gridChBat`, `genChBat`, `genVoltage`, `remoteSolarEn`, `report_type`,
 relay states). **Before assuming any of these are undocumented, check
-`/Users/davidhona/dev/franklinwh-cloud` first** — unlike `franklinwh-local`'s
+`~/dev/franklinwh-cloud` first** — unlike `franklinwh-local`'s
 `power_flow`, most of this is already named, typed, and in some cases decoded
 in that repo's code (not just its markdown docs, which don't cover this
 endpoint at all — `API_FIELD_REGISTRY.md`'s own header scopes it to
@@ -200,7 +200,7 @@ just isn't a mystery in its own right.
 ## C. Local API (franklinwh-local, TCP/9000) write inventory
 
 For the empirical test in section D, here's what can actually be changed via
-the Local API today (`/Users/davidhona/dev/franklinwh-local`):
+the Local API today (`~/dev/franklinwh-local`):
 
 | Setting | cmd_type (req→resp) | Method | Fields |
 |---|---|---|---|

@@ -19,7 +19,7 @@ on the same FranklinWHController sharing one TCP connection.
 
 Upstream library issue: The franklinwh-modbus library should ideally
 provide its own internal locking or connection pool, rather than requiring
-callers to coordinate.  See: https://github.com/davidhona/franklinwh-modbus
+callers to coordinate.  See: https://github.com/david2069/franklinwh-modbus
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 # FranklinWH aGate Real Device Reference
 
 Captured 2026-05-21 from a live aGate X unit.
-Source library: `franklinwh-modbus` (`/Users/davidhona/dev/modbus`).
+Source library: `franklinwh-modbus` (`~/dev/modbus`).
 SunSpec spec: SunSpec Alliance Modbus Specification V1.2 PDF.
 
 ## Device Identity

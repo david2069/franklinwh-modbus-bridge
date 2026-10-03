@@ -24,7 +24,7 @@ Usage:
     python tools/test_cloud_soc_persistence.py --gateway-ip 192.168.1.100
 
 Requires:
-    - franklinwh_cloud importable (pip install -e /Users/davidhona/dev/franklinwh-cloud)
+    - franklinwh_cloud importable (pip install -e ~/dev/franklinwh-cloud)
     - Cloud credentials loadable via franklinwh_cloud.cli.load_credentials()
     - pymodbus (already a bridge dependency)
 
@@ -89,7 +89,7 @@ async def main() -> int:
         from franklinwh_cloud.const.modes import MODBUS_TO_CLOUD_MODE, SELF_CONSUMPTION
     except ImportError as exc:
         print(f"ERROR: franklinwh_cloud not importable ({exc}). "
-              f"pip install -e /Users/davidhona/dev/franklinwh-cloud")
+              f"pip install -e ~/dev/franklinwh-cloud")
         return 1
 
     email, password, gateway = load_credentials()
