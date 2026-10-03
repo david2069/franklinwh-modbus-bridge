@@ -8,9 +8,9 @@ Device: aGate X, Firmware V10R01B04D00, tested 2026-03-13.
 Serial: 10060006A02F00000001. Connection: 192.168.1.100:502 unit 1.
 
 Documented in `franklinwh-modbus` library at
-`/Users/davidhona/dev/modbus/src/franklinwh_modbus/types.py` (PICS_STATUS dict,
+`~/dev/modbus/src/franklinwh_modbus/types.py` (PICS_STATUS dict,
 line 200+). SunSpec spec PDF at
-`/Users/davidhona/Downloads/Secure-SunSpec-Modbus-Specification_final.pdf`.
+`~/Downloads/Secure-SunSpec-Modbus-Specification_final.pdf`.
 
 **FranklinWH's official SunSpec PICS certificate (SM-000028)** — the ground
 truth used to confirm Issue 12's findings — is checked into this repo at
@@ -331,7 +331,7 @@ that the CLOUD path is the one that works.** Specifically:
 - **The `franklinwh-hybrid` bridge therefore routes reserve-SoC setting to the
   FranklinWH Cloud API** (`update_soc(soc, workMode, electricityType)`) rather
   than the local transport. Its cross-transport table
-  (`/Users/davidhona/dev/franklinwh-hybrid/docs/CROSS_REFERENCE.md:149`) lists
+  (`~/dev/franklinwh-hybrid/docs/CROSS_REFERENCE.md:149`) lists
   local, cloud and REST equivalents; the author's report is what identifies
   cloud as the one used in practice for this capability.
 
@@ -420,7 +420,7 @@ mechanism, neither confirmed by readback yet:**
    note above: a *partial* write may be what triggers the reset, not any write.
 
 2. **`franklinwh-cloud`** (the Cloud API client repo,
-   `/Users/davidhona/dev/franklinwh-cloud`) has exactly the "set together"
+   `~/dev/franklinwh-cloud`) has exactly the "set together"
    mechanism that characterisation implies should matter:
    - `ModesMixin.set_mode(requestedOperatingMode, requestedSOC=None, ...)`
      (`franklinwh_cloud/mixins/modes.py:39`) accepts an **optional SOC**

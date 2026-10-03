@@ -100,7 +100,7 @@ smart-circuit + any Cloud-only figures come from (b).
 
 **FIRST STEP when picked up:** inspect the FranklinWH Cloud reporting/analytics
 endpoint to capture its exact period definitions (FWHAI —
-`/Users/davidhona/dev/franklinwh-ha-integrator` — likely already calls it;
+`~/dev/franklinwh-ha-integrator` — likely already calls it;
 READ-ONLY per CLAUDE.md) before choosing (a)/(b).
 
 ## 5. Data model

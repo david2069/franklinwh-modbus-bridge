@@ -92,7 +92,7 @@ Package name `franklinwh_bridge`; distribution name `franklinwh-modbus-bridge`.
   pip install -e ".[dev]"
   ```
 - `franklinwh-modbus` installed from PyPI for normal work; for co-development
-  against local changes, `pip install -e /Users/davidhona/dev/modbus`
+  against local changes, `pip install -e ~/dev/modbus`
   (reference repo stays read-only -- editable install does not modify it).
 - Frontend: Node 20+, `npm install` in `webui/`, `npm run build` emits to
   `src/franklinwh_bridge/web/`.
