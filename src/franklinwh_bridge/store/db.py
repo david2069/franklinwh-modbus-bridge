@@ -1856,10 +1856,11 @@ async def create_ha_instance(
     token: str | None = None,
     is_default: bool = False,
     enabled: bool = True,
+    ha_id: str | None = None,
 ) -> dict:
     import uuid
 
-    ha_id = f"ha_{uuid.uuid4().hex[:8]}"
+    ha_id = ha_id or f"ha_{uuid.uuid4().hex[:8]}"
     now = time.time()
     if is_default:  # only one default
         await db.execute("UPDATE ha_instances SET is_default = 0")

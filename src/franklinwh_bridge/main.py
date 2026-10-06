@@ -38,7 +38,11 @@ from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.clock import check_and_record
 from franklinwh_bridge.config.manager import AppConfig
-from franklinwh_bridge.config.supervisor import apply_timezone, discover_mqtt
+from franklinwh_bridge.config.supervisor import (
+    apply_timezone,
+    discover_mqtt,
+    ensure_local_ha_instance,
+)
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.billing import BillingStore
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
@@ -734,6 +738,13 @@ async def lifespan(app: FastAPI):
             await schedule_engine.start()
         except Exception as exc:
             logger.error("Schedule engine start failed: %s", exc)
+
+        try:
+            # As an add-on, the HA we run under is an entity source with no
+            # setup at all (Supervisor proxy + token). Inert elsewhere.
+            await ensure_local_ha_instance(db)
+        except Exception as exc:
+            logger.warning("HA auto-configuration via the Supervisor failed: %s", exc)
 
         try:
             # Multi-HA: start polling configured HA instances (no-op if none).

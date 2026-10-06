@@ -30,6 +30,7 @@ from typing import Any
 import httpx
 from websockets.asyncio.client import connect as ws_connect
 
+from franklinwh_bridge.config.supervisor import SUPERVISOR_CORE_URL, supervisor_token
 from franklinwh_bridge.store.db import (
     get_all_exposed_entities,
     get_ha_instances,
@@ -88,6 +89,10 @@ class HaInstance:
         self.name: str = cfg["name"]
         self.base_url: str = str(cfg["base_url"]).rstrip("/")
         self.token: str | None = cfg.get("token")
+        if not self.token and self.base_url == SUPERVISOR_CORE_URL:
+            # The add-on's own HA, via the Supervisor proxy. Its token is issued
+            # per add-on start, so it's read from the environment, never stored.
+            self.token = supervisor_token()
         self._timeout = timeout
         self.connected = False
         self.last_error: str | None = None
