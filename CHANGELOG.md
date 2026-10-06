@@ -98,6 +98,12 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **HA controls for additional gateways**: only the default gateway's MQTT
+  command topics were subscribed, so the controls HA showed for a second aGate
+  (or a mock) did nothing — and the command handler ignored which device a
+  topic named, so subscribing them would have driven the *default* gateway.
+  Every commandable gateway is now subscribed, and commands are routed by the
+  device id in the topic.
 - **No phantom default gateway**: with no gateway host configured, the bridge
   no longer creates "Default Gateway" at a made-up `192.168.1.100` and polls
   it forever (it could not be deleted). The default gateway is now created
