@@ -50,38 +50,18 @@ Three supported ways to run it. Pick one:
 
 ### Install
 
-This repository is **private**, so Home Assistant cannot fetch it as an add-on
-repository (it has no credentials) and the add-on cannot `pip install` the
-bridge from git. It installs as a **local add-on** instead.
+[![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdavid2069%2Ffranklinwh-modbus-bridge)
 
-The add-on also cannot simply live in `addon/`: the Supervisor builds an add-on
-with *its own directory* as the Docker build context, and `COPY` cannot reach
-`..` for `src/`. Nor can the manifest sit at the repo root — `settings.py`
-already reads `./config.yaml` as the bridge's own configuration.
+Click the button above, or add the repository by hand:
 
-So assemble a self-contained add-on folder first:
-
-```bash
-python tools/build_addon.py --verify     # --verify docker-builds it locally
-```
-
-That writes `dist/addon/` containing the manifest plus the source it needs.
-Copy it to your HA host's `/addons` share, under any folder name:
-
-```bash
-scp -r dist/addon root@homeassistant:/addons/franklinwh_modbus_bridge
-```
-
-(Or use the **Samba share** / **Advanced SSH** add-on to drop it in `/addons`.)
-
-Then in HA: **Settings → Add-ons → Add-on Store → ⋮ → Check for updates**. The
-add-on appears under *Local add-ons*. Click **Install** — the first build
-compiles a few Python wheels and takes several minutes.
-
-To update after changing the code, re-run `build_addon.py`, re-copy, then
-**Rebuild** the add-on.
-
-3. On the **Configuration** tab set:
+1. In Home Assistant go to **Settings → Apps → App store** (called
+   **Add-ons → Add-on Store** in older versions).
+2. Open **⋮ → Repositories**, paste
+   `https://github.com/david2069/franklinwh-modbus-bridge` and click **Add**.
+3. Find **FranklinWH Modbus Bridge** in the store and click **Install**. The
+   first install builds the image on your HA host and compiles a few Python
+   wheels, so it takes several minutes (longer on a Raspberry Pi).
+4. On the **Configuration** tab set:
 
    | Option | Meaning |
    |---|---|
@@ -91,7 +71,7 @@ To update after changing the code, re-run `build_addon.py`, re-copy, then
    | `poll_interval` | Seconds between polls. `10` is a sensible default. |
    | `log_level` | `INFO` normally; `DEBUG` when diagnosing. |
 
-4. **Start**, then open the panel from the sidebar.
+5. **Start**, then open **FranklinWH** from the sidebar.
 
 ### What the add-on does for you
 
@@ -173,8 +153,11 @@ Automations can reference the identity of whichever gateway they target:
 
 ## Upgrading
 
-**Add-on:** Settings → Add-ons → FranklinWH Modbus Bridge → **Update**. Database
-migrations run automatically at startup.
+**Add-on:** when a new version is released, Home Assistant shows an update for
+FranklinWH Modbus Bridge — click **Update**. Database migrations run
+automatically at startup. (Maintainers: Home Assistant only offers the update
+when `version` in `addon/config.yaml` is bumped — the add-on rebuilds from the
+bridge source at `BRIDGE_REF` in `addon/Dockerfile`.)
 
 **Docker:** `git pull && docker compose up -d --build`.
 
