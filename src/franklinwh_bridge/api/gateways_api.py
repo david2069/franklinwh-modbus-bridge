@@ -8,7 +8,6 @@ endpoints (points, command, models, battery limits).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from zoneinfo import ZoneInfo
@@ -629,6 +628,27 @@ class GatewayUpdate(BaseModel):
     publish_to_ha: bool | None = None
 
 
+async def _after_gateway_started(request: Request, gw_id: str) -> None:
+    """Bind a just-started gateway to MQTT so its entities reach HA.
+
+    Every path that starts a gateway (add, start, restart, setting a host) must
+    call this. Before it existed only startup and a few PATCHes synced, so a
+    gateway added at runtime — a mock, typically — ran for its whole life with
+    "no registered MQTT device" and never appeared in Home Assistant.
+    """
+    # The default gateway is wired once it reports device info, which takes
+    # ~10s on a real aGate — don't hold the response for it.
+    wire = getattr(request.app.state, "wire_default_gateway", None)
+    if gw_id == "default" and wire is not None:
+        asyncio.create_task(wire())
+    sync = getattr(request.app.state, "sync_mqtt_devices", None)
+    if sync is not None:
+        try:
+            await sync()
+        except Exception as exc:  # never fail the start over the side effect
+            logger.warning("MQTT device sync after starting %s failed: %s", gw_id, exc)
+
+
 def _idle_health(row: dict) -> str:
     """Health for a gateway with no running instance."""
     if not row.get("enabled"):
@@ -733,6 +753,8 @@ async def add_gateway(body: GatewayCreate, request: Request):
             logger.warning(
                 "Gateway %s created but failed to start: %s", body.gateway_id, exc
             )
+        else:
+            await _after_gateway_started(request, body.gateway_id)
     return gw
 
 
@@ -791,15 +813,8 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
                 await registry.start_gateway(gw_id)
             except Exception as exc:  # the edit itself succeeded
                 logger.warning("Gateway %s configured but failed to start: %s", gw_id, exc)
-            # Bind it to MQTT once it reports device info. That can take ~10s on
-            # a real aGate, so don't hold the response for it.
-            wire = getattr(request.app.state, "wire_default_gateway", None)
-            if gw_id == "default" and wire is not None:
-                asyncio.create_task(wire())
-            sync = getattr(request.app.state, "sync_mqtt_devices", None)
-            if sync is not None:
-                with contextlib.suppress(Exception):
-                    await sync()
+            else:
+                await _after_gateway_started(request, gw_id)
 
     # Apply a phase-view change to the live publisher (default gateway only —
     # that's the one wired to the MQTT publisher today). Re-publishes discovery.
@@ -887,6 +902,7 @@ async def start_gateway_endpoint(gw_id: str, request: Request):
     inst = await registry.start_gateway(gw_id)
     if inst is None:
         raise HTTPException(500, f"Failed to start gateway '{gw_id}'")
+    await _after_gateway_started(request, gw_id)
     return {"started": True, "gateway_id": gw_id}
 
 
@@ -935,6 +951,7 @@ async def restart_gateway_endpoint(gw_id: str, request: Request):
     inst = await registry.start_gateway(gw_id)
     if inst is None:
         raise HTTPException(500, f"Failed to restart gateway '{gw_id}'")
+    await _after_gateway_started(request, gw_id)
     return {"restarted": True, "gateway_id": gw_id}
 
 
