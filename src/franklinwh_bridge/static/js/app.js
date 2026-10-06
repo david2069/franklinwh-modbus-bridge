@@ -476,6 +476,7 @@ document.addEventListener('alpine:init', () => {
 
     // Multi-gateway
     activeGateway: 'default',  // 'default', gateway_id, or 'site'
+    gatewayChosen: false,      // set once the user picks; stops auto-selection
     gatewayList: [],            // [{id, name, health, polling, ...}]
 
     // Data cache
@@ -600,7 +601,23 @@ document.addEventListener('alpine:init', () => {
 
     setGateway(gwId) {
       this.activeGateway = gwId;
+      this.gatewayChosen = true;  // the user's pick — stop auto-selecting
       this.refresh();
+    },
+
+    // Until the user picks one, view a gateway that is actually producing
+    // data: with the default gateway unconfigured (or offline) and a mock or
+    // second aGate polling, showing "Default Gateway" with empty cards is the
+    // least useful thing we could do.
+    autoSelectGateway() {
+      if (this.gatewayChosen || this.activeGateway === 'site') return;
+      const current = this.gatewayList.find(g => g.id === this.activeGateway);
+      if (current && current.polling) return;
+      const polling = this.gatewayList.find(g => g.polling);
+      if (polling && polling.id !== this.activeGateway) {
+        this.activeGateway = polling.id;
+        this.refresh();
+      }
     },
 
     get multiGateway() {
@@ -656,6 +673,7 @@ document.addEventListener('alpine:init', () => {
       const gwData = await fetchJSON('api/gateways', { background: true });
       if (gwData && gwData.gateways) {
         this.gatewayList = gwData.gateways;
+        this.autoSelectGateway();
       }
     },
 

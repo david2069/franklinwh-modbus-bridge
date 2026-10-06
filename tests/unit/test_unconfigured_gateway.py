@@ -86,6 +86,10 @@ async def test_unconfigured_default_still_allows_a_mock(unconfigured_client):
     assert resp.status_code == 201
     assert app.state.registry.get("demo") is not None
     assert app.state.registry.get("default") is None
+    # Registered with MQTT at once — not only after a restart. Without this the
+    # mock's samples were dropped ("no registered MQTT device") and it never
+    # appeared in Home Assistant.
+    assert app.state.mqtt_publisher.get_device("demo") is not None
 
 
 async def test_migration_48_unphantoms_only_the_placeholder_row(tmp_path):
