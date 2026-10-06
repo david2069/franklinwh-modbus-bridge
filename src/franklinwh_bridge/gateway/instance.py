@@ -158,7 +158,12 @@ class GatewayInstance:
 
         No connection is opened, so a mock never contends for a real aGate's
         session, and it gets a synthetic ``MOCK-<id>`` serial that can't clash
-        in HA Discovery.  Control is not wired (you can't command a mock).
+        in HA Discovery.
+
+        Control IS wired, to simulated state: a real ``CommandHandler`` drives
+        the ``MockController``, so mode/reserve/battery commands — from HA, the
+        Controls tab or a schedule — take the same path as on a real aGate and
+        the synthetic samples follow them.
         """
         from franklinwh_bridge.gateway.mock_gateway import MockController, MockPoller
 
@@ -190,7 +195,13 @@ class GatewayInstance:
 
         self.poller = MockPoller(
             self.sample_bus, self.gateway_id, self.config.poll_interval,
-            ac_type=ac_type,
+            ac_type=ac_type, controller=self.controller,
+        )
+        self.command_handler = CommandHandler(
+            self.controller,
+            self._db,
+            points_getter=self._get_cached_points,
+            modbus_lock=self.modbus_lock,
         )
         # Fan-in to the global bus so the Site aggregator picks up the mock.
         self.sample_bus.subscribe(self._forward_to_global)

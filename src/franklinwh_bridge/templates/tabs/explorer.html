@@ -1,6 +1,16 @@
 <!-- ── SunSpec Explorer Tab — two-panel layout ──────────── -->
 <div x-data="explorerTab()">
 
+  <!-- Needs real Modbus registers: a mock gateway has none. -->
+  <div x-show="!$store.app.hasRealGateway" x-cloak
+       class="mb-4 rounded-xl border px-4 py-3 bg-amber-500/10 border-amber-500/30">
+    <p class="text-sm font-semibold text-amber-300">Needs a connected aGate</p>
+    <p class="text-xs mt-0.5 text-slate-300">
+      The SunSpec Explorer works with real Modbus registers. Mock gateways don't have any, so there's
+      nothing to browse until a real aGate is set up in Settings → Gateways.
+    </p>
+  </div>
+
   <!-- Connection bar -->
   <div class="card !p-3 mb-4">
     <div class="flex items-center gap-4 flex-wrap">

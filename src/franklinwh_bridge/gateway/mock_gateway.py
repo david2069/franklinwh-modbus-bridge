@@ -5,6 +5,13 @@ WITHOUT opening any Modbus connection.  It therefore never contends for a
 real aGate's single Modbus session and gets a synthetic, collision-free
 serial — making it safe to run alongside the real gateway purely to exercise
 the multi-gateway selector and Site aggregation in the UI.
+
+It also accepts control — simulated. ``MockController`` implements the write
+methods the real ``CommandHandler`` calls (battery command, operating mode,
+reserves) against in-memory state, and the samples follow it: a forced
+charge/discharge sets battery power, moves SoC and rebalances the grid; mode
+and reserves read back. So HA controls, the Controls tab and schedules all
+work on a mock, through the same code path as a real aGate.
 """
 
 from __future__ import annotations
@@ -13,6 +20,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import threading
 import time
 
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
@@ -25,13 +33,148 @@ def mock_serial(gateway_id: str) -> str:
     return f"MOCK-{gateway_id.upper()}"
 
 
+#: Native mode codes, as the real library's set_native_mode takes them.
+_NATIVE_MODE_NAMES = {1: "Emergency Backup", 2: "Self-Consumption", 3: "TOU"}
+
+#: One aPower, as the synthetic nameplate reports it.
+MOCK_CAPACITY_WH = 13600.0
+
+#: How fast a commanded SoC offset relaxes back to the synthetic day curve once
+#: the command ends (fraction per hour). Keeps a long demo from drifting to 0/100.
+_SOC_RELAX_PER_H = 0.5
+
+
 class MockController:
-    """Stand-in controller for a mock gateway — no real Modbus I/O."""
+    """Stand-in controller for a mock gateway — no real Modbus I/O.
+
+    Holds simulated control state. The write methods are called from a worker
+    thread (``asyncio.to_thread``) while the poller reads on the event loop, so
+    state changes are guarded by a lock.
+    """
 
     def __init__(self, gateway_id: str, ac_type: int = 0) -> None:
         # 0 single phase, 1 split phase (US aGate: L1+L2), 2 three phase.
         self.ac_type = ac_type
         self.gateway_id = gateway_id
+        self._lock = threading.Lock()
+        #: None → follow the synthetic day schedule; else a fixed mode name.
+        self.mode: str | None = None
+        self.self_reserve_pct = 20
+        self.tou_reserve_pct = 30
+        #: Commanded battery power, POSITIVE = charge (BatteryCommand's sign);
+        #: None = no dispatch. 0 = forced standby.
+        self.command_w: int | None = None
+        self.command_until: float | None = None
+        #: SoC added to the synthetic curve by dispatches, in percent.
+        self.soc_offset = 0.0
+
+    # ── what CommandHandler calls (real library signatures) ────────────────
+
+    def send_command(self, cmd, duration_s: int | None = None) -> tuple[bool, str]:
+        watts = int(getattr(cmd, "power_watts", 0) or 0)
+        with self._lock:
+            self.command_w = watts
+            self.command_until = time.time() + duration_s if duration_s else None
+        verb = "charge" if watts > 0 else "discharge" if watts < 0 else "standby"
+        return True, f"Simulated {verb} {abs(watts)} W (mock gateway)"
+
+    def reset_control_state(self, handshake_wait_s: float | None = None) -> bool:
+        with self._lock:
+            self.command_w = None
+            self.command_until = None
+        return True
+
+    def read_control_status(self) -> dict:
+        with self._lock:
+            return {
+                "mock": True,
+                "command_w": self.command_w,
+                "mode": self.mode,
+                "self_reserve_pct": self.self_reserve_pct,
+                "tou_reserve_pct": self.tou_reserve_pct,
+            }
+
+    def get_model(self, model_id: int):
+        return None  # no SunSpec models; CommandHandler skips the 704 writes
+
+    def set_native_mode(self, mode_val: int) -> tuple[bool, str]:
+        name = _NATIVE_MODE_NAMES.get(int(mode_val))
+        if name is None:
+            return False, f"Unknown mode {mode_val}"
+        with self._lock:
+            self.mode = name
+        return True, f"Simulated mode change to {name} (mock gateway)"
+
+    def set_self_consumption_reserve(self, pct: int) -> tuple[bool, str]:
+        with self._lock:
+            self.self_reserve_pct = int(pct)
+        return True, f"Simulated Self-Consumption reserve {pct}% (mock gateway)"
+
+    def set_tou_reserve(self, pct: int) -> tuple[bool, str]:
+        with self._lock:
+            self.tou_reserve_pct = int(pct)
+        return True, f"Simulated TOU reserve {pct}% (mock gateway)"
+
+    # ── what MockPoller calls ────────────────────────────────────────────
+
+    def active_command_w(self, now: float | None = None) -> int | None:
+        """The commanded power if a dispatch is in force (expiring it if due)."""
+        now = now or time.time()
+        with self._lock:
+            if self.command_until is not None and now >= self.command_until:
+                self.command_w = None
+                self.command_until = None
+            return self.command_w
+
+    def step(self, dt_s: float, synthetic_battery_w: float, base_soc: float) -> None:
+        """Advance SoC by the gap between commanded and synthetic battery power.
+
+        Points convention: battery_power_w NEGATIVE = charging. A dispatch is
+        held back by physics the real aGate enforces too — no charging past
+        100%, no discharging below the active reserve.
+        """
+        cmd = self.active_command_w()
+        with self._lock:
+            if cmd is None:
+                self.soc_offset *= max(0.0, 1.0 - _SOC_RELAX_PER_H * dt_s / 3600.0)
+                return
+            soc = base_soc + self.soc_offset
+            reserve = self._reserve_locked()
+            # The same limits overrides() reports: a full battery takes no more
+            # charge, and a discharge stops at the reserve.
+            commanded_points_w = float(-cmd)
+            if (cmd > 0 and soc >= 100.0) or (cmd < 0 and soc <= reserve):
+                commanded_points_w = 0.0
+            delta_w = synthetic_battery_w - commanded_points_w  # >0 → charging more
+            soc += delta_w * dt_s / 3600.0 / MOCK_CAPACITY_WH * 100.0
+            if cmd < 0:
+                soc = max(soc, min(reserve, base_soc + self.soc_offset))
+            soc = max(0.0, min(100.0, soc))
+            self.soc_offset = soc - base_soc
+
+    def _reserve_locked(self) -> int:
+        """The reserve for the current mode (caller holds the lock)."""
+        return self.tou_reserve_pct if self.mode == "TOU" else self.self_reserve_pct
+
+    def overrides(self, base_soc: float) -> dict:
+        """What synthetic_points should use instead of its day schedule."""
+        cmd = self.active_command_w()
+        with self._lock:
+            soc = max(0.0, min(100.0, base_soc + self.soc_offset))
+            reserve = self._reserve_locked()
+            battery_w = None
+            if cmd is not None:
+                battery_w = float(-cmd)
+                if (cmd > 0 and soc >= 100.0) or (cmd < 0 and soc <= reserve):
+                    battery_w = 0.0  # full, or at the reserve floor
+            return {
+                "battery_w": battery_w,
+                "soc": round(soc, 1),
+                "mode_name": self.mode,
+                "self_reserve_pct": self.self_reserve_pct,
+                "tou_reserve_pct": self.tou_reserve_pct,
+                "remote": cmd is not None,
+            }
 
     @property
     def serial(self) -> str:
@@ -58,6 +201,7 @@ def synthetic_points(
     ts: float | None = None,
     ac_type: int = 0,
     pv_channels: bool = True,
+    controls: dict | None = None,
 ) -> dict:
     """Build one synthetic sample for *gateway_id* at *tick*.
 
@@ -104,6 +248,8 @@ def synthetic_points(
     net_surplus = solar_w - home_w
     raw_batt = -net_surplus * 0.75   # negative = charging (convention)
     battery_w = round(max(-batt_cap_kw * 1000, min(batt_cap_kw * 1000, raw_batt)), 1)
+    if controls and controls.get("battery_w") is not None:
+        battery_w = round(controls["battery_w"], 1)  # a simulated dispatch
 
     # ── SOC: integrate battery power across the day from a morning base ──
     # Approximate: morning low → afternoon high (solar charging) → evening low
@@ -113,6 +259,8 @@ def synthetic_points(
     )) ** 0.7
     soc_jitter = 0.3 * math.sin(tick / 25.0 + seed * 0.5)
     soc = round(max(5.0, min(98.0, soc_curve + soc_jitter)), 1)
+    if controls and controls.get("soc") is not None:
+        soc = controls["soc"]
 
     grid_w = round(home_w - solar_w - battery_w, 1)
 
@@ -139,6 +287,9 @@ def synthetic_points(
     else:
         mode_name = "Self-Consumption"   # daytime self-use
 
+    if controls and controls.get("mode_name"):
+        mode_name = controls["mode_name"]  # set via the operating-mode control
+
     # Grid mode: Forming only when island/backup mode active, rare otherwise
     grid_mode = "Grid Forming" if mode_name == "Emergency Backup" else "Grid Following"
 
@@ -154,6 +305,9 @@ def synthetic_points(
         "inverter_state":     "Running",
         "mode_name":          mode_name,
         "grid_mode":          grid_mode,
+        "self_reserve_pct":   (controls or {}).get("self_reserve_pct", 20),
+        "tou_reserve_pct":    (controls or {}).get("tou_reserve_pct", 30),
+        "loc_rem_ctl_name":   "Remote" if (controls or {}).get("remote") else "Local",
         "ambient_temp_c":     ambient_temp,
         "cabinet_temp_c":     cabinet_temp,
     }
@@ -161,7 +315,7 @@ def synthetic_points(
     # ── Battery nameplate + health ────────────────────────────────
     # Without these, 11 entities (capacity, SoH, rates, per-battery stats) sit
     # at "unknown" in HA on a mock device.
-    capacity_wh = 13600.0            # one aPower ≈ 13.6 kWh
+    capacity_wh = MOCK_CAPACITY_WH   # one aPower ≈ 13.6 kWh
     points.update({
         "soh":                   96.0,
         "wh_rating":             capacity_wh,
@@ -255,8 +409,10 @@ class MockPoller:
         gateway_id: str,
         poll_interval: int,
         ac_type: int = 0,
+        controller: MockController | None = None,
     ) -> None:
         self._bus = sample_bus
+        self._controller = controller
         self._gateway_id = gateway_id
         self._interval = max(1, poll_interval)
         self._task: asyncio.Task | None = None
@@ -267,11 +423,21 @@ class MockPoller:
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run())
 
+    def sample_points(self, dt_s: float) -> dict:
+        """One synthetic sample, steered by any simulated control in force."""
+        base = synthetic_points(self._gateway_id, self._tick, ac_type=self.ac_type)
+        ctl = self._controller
+        if ctl is None:
+            return base
+        ctl.step(dt_s, base["battery_power_w"], base["soc"])
+        return synthetic_points(
+            self._gateway_id, self._tick, ac_type=self.ac_type,
+            controls=ctl.overrides(base["soc"]),
+        )
+
     async def _run(self) -> None:
         while True:
-            pts = synthetic_points(
-                self._gateway_id, self._tick, ac_type=self.ac_type,
-            )
+            pts = self.sample_points(self._interval)
             self._tick += 1
             self.state.last_poll_ts = time.time()
             await self._bus.publish(Sample.now(self._gateway_id, pts))

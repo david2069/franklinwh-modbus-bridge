@@ -45,6 +45,7 @@
             class="nav-item w-full"
             :class="[
               $store.app.activeTab === 'explorer' ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-cyan-400' : 'border-l-2 border-transparent',
+              $store.app.hasRealGateway ? '' : 'opacity-60',
               $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
             ]">
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -79,6 +80,7 @@
             class="nav-item w-full"
             :class="[
               $store.app.activeTab === 'sequencer' ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-cyan-400' : 'border-l-2 border-transparent',
+              $store.app.hasRealGateway ? '' : 'opacity-60',
               $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
             ]">
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
