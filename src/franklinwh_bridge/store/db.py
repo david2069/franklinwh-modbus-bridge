@@ -7,6 +7,7 @@ import json
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -26,11 +27,26 @@ def device_is_battery_capable(device_type: str | None) -> bool:
     return bool(DEVICE_TYPES.get(device_type or "agate", DEVICE_TYPES["agate"])["battery"])
 
 
+#: Description given to a gateway row that exists but has no address yet.
+UNCONFIGURED_DESCRIPTION = "Not configured — set the aGate address (Edit)"
+
+
+def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
+    """True for a real (non-mock) gateway with no host: it cannot be started.
+
+    The default gateway is created this way when no host is configured, rather
+    than pointed at a made-up address it would poll forever.
+    """
+    if row is None:
+        return False
+    return not row.get("mock") and not str(row.get("host") or "").strip()
+
+
 #: Must equal the highest key in MIGRATIONS. It is not derived from the dict
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 47
+CURRENT_SCHEMA_VERSION = 48
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -694,6 +710,28 @@ MIGRATIONS: dict[int, str] = {
     );
     CREATE INDEX IF NOT EXISTS idx_disclaimer_acks_user
         ON disclaimer_acks(user_id, version);
+    """,
+    48: """
+    -- Un-phantom the default gateway.
+    --
+    -- With no host configured, the bridge used to create "Default Gateway" at
+    -- a made-up 192.168.1.100 and poll it forever — someone else's device, or
+    -- nothing — and the default gateway cannot be deleted. It is now created
+    -- with an empty host, which the registry never starts. Bring existing
+    -- installs into line, but only a row that is unmistakably that phantom:
+    -- the auto-created description AND the placeholder address AND it never
+    -- once connected or reported a serial. A real aGate that happens to live
+    -- at 192.168.1.100 will have connected; and if MODBUS_HOST still names it,
+    -- startup fills the host straight back in.
+    UPDATE gateways
+       SET host = '',
+           description = 'Not configured — set the aGate address (Edit)'
+     WHERE id = 'default'
+       AND host = '192.168.1.100'
+       AND description = 'Auto-created from environment config'
+       AND COALESCE(mock, 0) = 0
+       AND last_connected_at IS NULL
+       AND (serial IS NULL OR serial = '');
     """,
     46: """
     -- Every plan needs a real start date.

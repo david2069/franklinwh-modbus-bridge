@@ -132,14 +132,34 @@
     </div>
   </div>
 
+  <!-- Gateway setup banner — an unconfigured gateway (no address yet) and
+       nothing polling: the first thing a new install sees. -->
+  <template x-if="$store.app.gatewayList.some(g => g.health === 'unconfigured') && !$store.app.gatewayList.some(g => g.polling)">
+    <div class="mb-4 rounded-xl border px-4 py-3 flex items-start gap-3 bg-cyan-500/10 border-cyan-500/40">
+      <svg class="w-5 h-5 mt-0.5 shrink-0 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/>
+      </svg>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-cyan-300">Connect your aGate</p>
+        <p class="text-xs mt-0.5 text-slate-300">
+          Enter its IP address in Settings → Gateways (Edit on the gateway), or add a mock gateway to explore without hardware.
+        </p>
+      </div>
+      <a href="#" @click.prevent="Alpine.store('app').setTab('settings')"
+         class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25">
+        Set up →
+      </a>
+    </div>
+  </template>
+
   <!-- Gateway Health Alert Banner — shown when any enabled gateway is not polling -->
-  <template x-if="$store.app.gatewayList.some(g => g.enabled && !g.polling)">
+  <template x-if="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured')">
     <div class="mb-4 rounded-xl border px-4 py-3 flex items-start gap-3"
-         :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+         :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                    ? 'bg-red-950/60 border-red-500/40' : 'bg-amber-950/60 border-amber-500/40'">
       <!-- Icon -->
       <svg class="w-5 h-5 mt-0.5 shrink-0"
-           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                      ? 'text-red-400' : 'text-amber-400'"
            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round"
@@ -148,19 +168,19 @@
       <!-- Message -->
       <div class="flex-1 min-w-0">
         <p class="text-sm font-semibold"
-           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                      ? 'text-red-300' : 'text-amber-300'">
-          <template x-if="$store.app.gatewayList.filter(g => g.enabled && !g.polling).length === 1">
-            <span x-text="'Gateway not running: ' + ($store.app.gatewayList.find(g => g.enabled && !g.polling)?.name || 'unknown')"></span>
+          <template x-if="$store.app.gatewayList.filter(g => g.enabled && !g.polling && g.health !== 'unconfigured').length === 1">
+            <span x-text="'Gateway not running: ' + ($store.app.gatewayList.find(g => g.enabled && !g.polling && g.health !== 'unconfigured')?.name || 'unknown')"></span>
           </template>
-          <template x-if="$store.app.gatewayList.filter(g => g.enabled && !g.polling).length > 1">
-            <span x-text="$store.app.gatewayList.filter(g => g.enabled && !g.polling).length + ' gateways not running: ' + $store.app.gatewayList.filter(g => g.enabled && !g.polling).map(g => g.name).join(', ')"></span>
+          <template x-if="$store.app.gatewayList.filter(g => g.enabled && !g.polling && g.health !== 'unconfigured').length > 1">
+            <span x-text="$store.app.gatewayList.filter(g => g.enabled && !g.polling && g.health !== 'unconfigured').length + ' gateways not running: ' + $store.app.gatewayList.filter(g => g.enabled && !g.polling && g.health !== 'unconfigured').map(g => g.name).join(', ')"></span>
           </template>
         </p>
         <p class="text-xs mt-0.5"
-           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+           :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                      ? 'text-red-400/80' : 'text-amber-400/80'"
-           x-text="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+           x-text="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                      ? 'Device unreachable — check network and aGate power.'
                      : 'Gateway stopped — go to Settings → Gateways to start it.'">
         </p>
@@ -168,7 +188,7 @@
       <!-- Direct link to settings -->
       <a href="#" @click.prevent="Alpine.store('app').setTab('settings')"
          class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition"
-         :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health === 'unreachable')
+         :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                    ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30' : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'">
         Fix →
       </a>

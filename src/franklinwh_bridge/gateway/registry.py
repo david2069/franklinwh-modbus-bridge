@@ -18,7 +18,11 @@ import aiosqlite
 
 from franklinwh_bridge.gateway.instance import GatewayConfig, GatewayInstance
 from franklinwh_bridge.modbus.sample import SampleBus
-from franklinwh_bridge.store.db import get_gateway, get_gateways
+from franklinwh_bridge.store.db import (
+    gateway_is_unconfigured,
+    get_gateway,
+    get_gateways,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +74,14 @@ class GatewayRegistry:
 
         if not gw_row.get("enabled", True):
             logger.info("Gateway %s is disabled, skipping", gateway_id)
+            return None
+
+        if gateway_is_unconfigured(gw_row):
+            # No address to connect to. Starting it would only produce an
+            # endless stream of connection timeouts and an "unreachable" alarm.
+            logger.info(
+                "Gateway %s has no host configured, not starting it", gateway_id,
+            )
             return None
 
         config = GatewayConfig(

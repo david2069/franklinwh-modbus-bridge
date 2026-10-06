@@ -44,7 +44,7 @@ services:
       - MQTT_USERNAME=${MQTT_USERNAME:-}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       # ── Modbus gateway ────────────────────────────────────────
-      - MODBUS_HOST=${MODBUS_HOST:-192.168.1.100}
+      - MODBUS_HOST=${MODBUS_HOST:-}
       - MODBUS_PORT=${MODBUS_PORT:-502}
       - MODBUS_UNIT_ID=${MODBUS_UNIT_ID:-1}
       # ── Logging ───────────────────────────────────────────────

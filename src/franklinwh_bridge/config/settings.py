@@ -14,7 +14,12 @@ from franklinwh_bridge.config.environment import detect_environment
 class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MODBUS_")
 
-    host: str = "192.168.1.100"
+    # No default address. A made-up host (this used to be 192.168.1.100) put a
+    # phantom "Default Gateway" in every install that hadn't configured one,
+    # polling an address that is someone else's device or nothing at all, and
+    # it could not be deleted. Empty means "not configured": the gateway row is
+    # created but never started until a host is set.
+    host: str = ""
     port: int = 502
     unit_id: int = 1
     poll_interval: int = 10

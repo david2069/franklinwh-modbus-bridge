@@ -30,6 +30,18 @@ def _auth_bypass():
     app.dependency_overrides.pop(get_current_user, None)
 
 
+@pytest.fixture(autouse=True)
+def _configured_default_gateway(monkeypatch):
+    """Give the default gateway an address, as a configured install has.
+
+    With no MODBUS_HOST the default gateway is created unconfigured and never
+    started (no phantom 192.168.1.100). Most of the suite exercises a running
+    default gateway, so configure one — at a TEST-NET-1 address that can never
+    be a real device. Tests of the unconfigured path delete this variable.
+    """
+    monkeypatch.setenv("MODBUS_HOST", "192.0.2.10")
+
+
 @pytest.fixture
 def default_gateway_bus():
     """Wait for the default gateway and return its own sample bus.
