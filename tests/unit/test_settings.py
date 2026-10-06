@@ -12,9 +12,11 @@ from franklinwh_bridge.config.settings import (
 )
 
 
-def test_default_settings():
+def test_default_settings(monkeypatch):
+    monkeypatch.delenv("MODBUS_HOST", raising=False)
     settings = BridgeSettings()
-    assert settings.gateway.host == "192.168.1.100"
+    # No made-up address: an unset host means "not configured".
+    assert settings.gateway.host == ""
     assert settings.gateway.port == 502
     assert settings.mqtt.host == "localhost"
     assert settings.mqtt.port == 1883

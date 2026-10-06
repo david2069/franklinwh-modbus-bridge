@@ -160,6 +160,7 @@ function gwStatusText(gw) {
   if (gw.polling) return 'Polling';
   if (gw.connected) return 'Connected';
   if (gw.health === 'unreachable') return 'Offline';
+  if (gw.health === 'unconfigured') return 'Not configured';
   if (gw.health === 'disabled' || gw.enabled === false) return 'Disabled';
   return 'Stopped';
 }

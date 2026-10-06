@@ -57,6 +57,7 @@ from franklinwh_bridge.store import point_history
 from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
+    UNCONFIGURED_DESCRIPTION,
     get_gateway,
     get_gateways,
     get_mqtt_config,
@@ -151,30 +152,49 @@ async def lifespan(app: FastAPI):
     await log_startup_event(db, "disclaimer", disclaimer.SHORT)
     await seed_admin(db)  # first-run admin (no lockout); logs a generated pw once
 
-    # Ensure the default gateway exists in the DB
+    # Ensure the default gateway exists in the DB. With no host configured it is
+    # created UNCONFIGURED (empty host): the registry won't start it, so there
+    # is no phantom gateway polling a made-up address.
     gateway_id = "default"
+    gw = config.settings.gateway
     async with db.execute(
-        "SELECT id FROM gateways WHERE id = ?", (gateway_id,)
+        "SELECT host, mock FROM gateways WHERE id = ?", (gateway_id,)
     ) as cur:
-        if not await cur.fetchone():
-            gw = config.settings.gateway
+        existing = await cur.fetchone()
+    if existing is not None:
+        # A host set AFTER first boot (e.g. the add-on's gateway_host option)
+        # used to be ignored, because the row was only ever written once. Fill
+        # it in — but only into an unconfigured row, never over a host the user
+        # has since set in the UI.
+        if not (existing[0] or "").strip() and not existing[1] and gw.host:
             await db.execute(
-                "INSERT INTO gateways "
-                "(id, name, host, port, unit_id, enabled, created_at, "
-                " poll_interval, description) "
-                "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+                "UPDATE gateways SET host = ?, port = ?, unit_id = ?, "
+                "poll_interval = ?, description = ? WHERE id = ?",
                 (
-                    gateway_id,
-                    "Default Gateway",
-                    gw.host,
-                    gw.port,
-                    gw.unit_id,
-                    time.time(),
-                    gw.poll_interval,
-                    "Auto-created from environment config",
+                    gw.host, gw.port, gw.unit_id, gw.poll_interval,
+                    "Auto-created from environment config", gateway_id,
                 ),
             )
             await db.commit()
+    else:
+        await db.execute(
+            "INSERT INTO gateways "
+            "(id, name, host, port, unit_id, enabled, created_at, "
+            " poll_interval, description) "
+            "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+            (
+                gateway_id,
+                "Default Gateway",
+                gw.host,
+                gw.port,
+                gw.unit_id,
+                time.time(),
+                gw.poll_interval,
+                "Auto-created from environment config" if gw.host
+                else UNCONFIGURED_DESCRIPTION,
+            ),
+        )
+        await db.commit()
 
     stats = await OperationalStats.load(db)
     backup_manager = BackupManager(config.db_path, config.backup_dir)
@@ -524,6 +544,66 @@ async def lifespan(app: FastAPI):
 
     # ── Start All Gateways ────────────────────────────────────
 
+    async def wire_default_gateway() -> None:
+        """Bind the running default gateway to MQTT, waiting for its device info.
+
+        Runs at startup, and again whenever the default gateway is started
+        later — e.g. it was created unconfigured and the user has just set its
+        address. Without the second call it would poll happily while publishing
+        nothing to HA.
+        """
+        default = registry.get("default")
+        if not default:
+            return
+        if default.command_handler:
+            default.command_handler._on_state_changed = (
+                mqtt_publisher.publish_command_state
+            )
+            mqtt_publisher.set_command_handler(default.command_handler)
+
+        # Wait briefly for the init task to discover device info. If the
+        # aGate is slow or reconnecting we must NOT give up quietly — that
+        # left the publisher unbound and every real sample was dropped
+        # while the mock kept publishing, with nothing in the log to say so.
+        wired = False
+        for _ in range(20):
+            if await wire_default_mqtt():
+                wired = True
+                break
+            await asyncio.sleep(0.5)
+
+        if not wired:
+            logger.warning(
+                "Default gateway device info not available after 10s — MQTT "
+                "publishing for it is INACTIVE until it is. Retrying in the "
+                "background; HA entities for the real gateway will be stale "
+                "until this succeeds."
+            )
+
+            async def _retry_wire_default() -> None:
+                # Bounded: ~10 minutes. A gateway that never reports device
+                # info is a connectivity problem, not something to poll for
+                # ever, and the warning above has already been logged.
+                for _ in range(120):
+                    await asyncio.sleep(5)
+                    if await wire_default_mqtt():
+                        logger.info(
+                            "Default gateway MQTT wiring recovered — publishing resumed"
+                        )
+                        return
+                logger.error(
+                    "Default gateway never reported device info — its MQTT "
+                    "entities will not update. Check the gateway connection."
+                )
+
+            asyncio.create_task(_retry_wire_default())
+
+        # Wire reader_fn for POST /api/models/refresh
+        if default.reader_fn:
+            app.state.reader_fn = default.reader_fn
+
+    app.state.wire_default_gateway = wire_default_gateway
+
     async def _bring_up_gateways() -> None:
         """Start enabled gateways + wire the default's MQTT/command handler.
 
@@ -539,55 +619,7 @@ async def lifespan(app: FastAPI):
         for gw in await get_gateways(db):
             site_aggregator.set_gateway_phase(gw["id"], gw.get("phase", "all"))
 
-        # Wire the default gateway's command handler + device info to MQTT
-        default = registry.get("default")
-        if default:
-            if default.command_handler:
-                default.command_handler._on_state_changed = (
-                    mqtt_publisher.publish_command_state
-                )
-                mqtt_publisher.set_command_handler(default.command_handler)
-
-            # Wait briefly for the init task to discover device info. If the
-            # aGate is slow or reconnecting we must NOT give up quietly — that
-            # left the publisher unbound and every real sample was dropped
-            # while the mock kept publishing, with nothing in the log to say so.
-            wired = False
-            for _ in range(20):
-                if await wire_default_mqtt():
-                    wired = True
-                    break
-                await asyncio.sleep(0.5)
-
-            if not wired:
-                logger.warning(
-                    "Default gateway device info not available after 10s — MQTT "
-                    "publishing for it is INACTIVE until it is. Retrying in the "
-                    "background; HA entities for the real gateway will be stale "
-                    "until this succeeds."
-                )
-
-                async def _retry_wire_default() -> None:
-                    # Bounded: ~10 minutes. A gateway that never reports device
-                    # info is a connectivity problem, not something to poll for
-                    # ever, and the warning above has already been logged.
-                    for _ in range(120):
-                        await asyncio.sleep(5)
-                        if await wire_default_mqtt():
-                            logger.info(
-                                "Default gateway MQTT wiring recovered — publishing resumed"
-                            )
-                            return
-                    logger.error(
-                        "Default gateway never reported device info — its MQTT "
-                        "entities will not update. Check the gateway connection."
-                    )
-
-                asyncio.create_task(_retry_wire_default())
-
-            # Wire reader_fn for POST /api/models/refresh
-            if default.reader_fn:
-                app.state.reader_fn = default.reader_fn
+        await wire_default_gateway()
 
         await sync_mqtt_devices()
 

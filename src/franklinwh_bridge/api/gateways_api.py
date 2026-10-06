@@ -7,6 +7,8 @@ endpoints (points, command, models, battery limits).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import time
 from zoneinfo import ZoneInfo
@@ -26,6 +28,7 @@ from franklinwh_bridge.store.db import (
     create_service,
     delete_gateway,
     delete_service,
+    gateway_is_unconfigured,
     get_gateway,
     get_gateways,
     get_service,
@@ -626,6 +629,15 @@ class GatewayUpdate(BaseModel):
     publish_to_ha: bool | None = None
 
 
+def _idle_health(row: dict) -> str:
+    """Health for a gateway with no running instance."""
+    if not row.get("enabled"):
+        return "disabled"
+    if gateway_is_unconfigured(row):
+        return "unconfigured"
+    return "stopped"
+
+
 @router.get("/gateways")
 async def list_gateways(request: Request):
     """List all gateways with live status from the registry."""
@@ -659,7 +671,7 @@ async def list_gateways(request: Request):
                 entry.update({
                     "connected": False,
                     "polling": False,
-                    "health": "stopped" if entry.get("enabled") else "disabled",
+                    "health": _idle_health(entry),
                 })
         gateways.append(entry)
 
@@ -738,6 +750,10 @@ async def get_single_gateway(gw_id: str, request: Request):
         inst = registry.get(gw_id)
         if inst:
             entry.update(inst.to_dict())
+        else:
+            entry.update(
+                {"connected": False, "polling": False, "health": _idle_health(entry)}
+            )
     return entry
 
 
@@ -756,9 +772,34 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
             raise HTTPException(404, f"Gateway '{gw_id}' not found")
         return row
 
+    before = await get_gateway(db, gw_id)
     result = await update_gateway(db, gw_id, **updates)
     if result is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
+
+    # Setting the address of an unconfigured gateway is the moment it becomes
+    # usable: start it, rather than leave the user to find a second switch.
+    if (
+        gateway_is_unconfigured(before)
+        and not gateway_is_unconfigured(result)
+        and result.get("enabled")
+        and result.get("autostart", 1)
+    ):
+        registry = getattr(request.app.state, "registry", None)
+        if registry is not None and registry.get(gw_id) is None:
+            try:
+                await registry.start_gateway(gw_id)
+            except Exception as exc:  # the edit itself succeeded
+                logger.warning("Gateway %s configured but failed to start: %s", gw_id, exc)
+            # Bind it to MQTT once it reports device info. That can take ~10s on
+            # a real aGate, so don't hold the response for it.
+            wire = getattr(request.app.state, "wire_default_gateway", None)
+            if gw_id == "default" and wire is not None:
+                asyncio.create_task(wire())
+            sync = getattr(request.app.state, "sync_mqtt_devices", None)
+            if sync is not None:
+                with contextlib.suppress(Exception):
+                    await sync()
 
     # Apply a phase-view change to the live publisher (default gateway only —
     # that's the one wired to the MQTT publisher today). Re-publishes discovery.
@@ -833,6 +874,12 @@ async def start_gateway_endpoint(gw_id: str, request: Request):
     row = await get_gateway(db, gw_id)
     if row is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
+    if gateway_is_unconfigured(row):
+        raise HTTPException(
+            400,
+            f"Gateway '{gw_id}' has no host — set the aGate address (Edit) "
+            "before starting it.",
+        )
 
     # Enable + clear any prior "user stopped" pause so it auto-starts on boot.
     await update_gateway(db, gw_id, enabled=1, autostart=1)
