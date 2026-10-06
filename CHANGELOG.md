@@ -15,6 +15,11 @@ lands, not backfilled later.
 
 ### Added
 
+- **HA entity access configures itself in the add-on**: the Home Assistant the
+  add-on runs in is added automatically as instance `local` ("This Home
+  Assistant"), through the Supervisor — no URL or long-lived token to create.
+  Its entities are `ha:local:<entity>` conditions. Docker/standalone installs
+  still add instances in Settings → Home Assistant.
 - **Fixed / standing charges**: per-service `pricing.fixed_charges` (daily
   supply, metering, membership, …) accrued over the billing period and
   published as `fixed.*` sensors (per-day, accrued, projected, left to
