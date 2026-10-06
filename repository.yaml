@@ -1,0 +1,6 @@
+# Home Assistant add-on repository manifest. Its presence at the repo root lets
+# users add this repo's URL under Add-on Store -> Repositories; the Supervisor
+# then finds the add-on in addon/ (addon/config.yaml).
+name: FranklinWH Modbus Bridge
+url: https://github.com/david2069/franklinwh-modbus-bridge
+maintainer: david2069 <david2069@users.noreply.github.com>
