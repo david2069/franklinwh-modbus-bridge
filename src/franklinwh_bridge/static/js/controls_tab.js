@@ -90,7 +90,7 @@ function controlsTab() {
       if (this.sending) return;
       this.sending = true;
 
-      const data = await fetchJSON('api/command', {
+      const data = await fetchJSON(Alpine.store('app').commandUrl, {
         method: 'POST',
         body: JSON.stringify({ slug, value: String(value) }),
       });

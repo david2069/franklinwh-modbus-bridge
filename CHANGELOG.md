@@ -98,6 +98,11 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Controls command the gateway you're viewing**: the Controls tab and the
+  Battery Control *Force Release* always sent to the *default* gateway, so
+  viewing a mock or a second aGate showed its state but released or forced a
+  different gateway (or failed with "Command handler not available"). Error
+  toasts now stay until dismissed, and refused commands are logged.
 - **HA controls for additional gateways**: only the default gateway's MQTT
   command topics were subscribed, so the controls HA showed for a second aGate
   (or a mock) did nothing — and the command handler ignored which device a

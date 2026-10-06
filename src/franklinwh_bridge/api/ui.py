@@ -154,6 +154,10 @@ async def send_command(
     if command_handler is None:
         command_handler = getattr(request.app.state, "command_handler", None)
     if command_handler is None:
+        logger.warning(
+            "Command %s=%s refused: the default gateway has no command handler "
+            "(not configured or not running)", body.slug, body.value,
+        )
         return {"ok": False, "slug": body.slug, "result": "Command handler not available"}
 
     await command_handler.handle_command(body.slug, body.value)

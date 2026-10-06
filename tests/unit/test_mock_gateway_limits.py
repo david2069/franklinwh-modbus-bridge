@@ -110,6 +110,14 @@ async def test_mock_is_commandable_end_to_end_and_refused_by_the_sequencer(clien
     assert resp.status_code == 200
     assert inst.controller.mode == "TOU"
 
+    # Force, then Release — the round trip the Battery Control modal makes.
+    for value in ("Force Charge", "Release"):
+        resp = await client.post(
+            "/api/gateways/demo/command", json={"slug": "battery_command", "value": value},
+        )
+        assert resp.json()["ok"] is True, resp.json()
+    assert inst.controller.active_command_w() is None
+
     # The Sequencer needs real registers.
     resp = await client.post(
         "/api/sequence/execute",
