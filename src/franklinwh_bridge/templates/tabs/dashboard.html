@@ -195,6 +195,27 @@
     </div>
   </template>
 
+  <!-- No MQTT broker yet (add-on without Mosquitto): nothing reaches HA until
+       one is installed. The bridge connects by itself once it is. -->
+  <template x-if="$store.app.mqttBroker?.waiting_for_broker">
+    <div class="mb-4 rounded-xl border px-4 py-3 flex items-start gap-3 bg-cyan-500/10 border-cyan-500/40">
+      <svg class="w-5 h-5 mt-0.5 shrink-0 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/>
+      </svg>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-cyan-300">Install an MQTT broker to see entities in Home Assistant</p>
+        <p class="text-xs mt-0.5 text-slate-300">
+          Install and start the Mosquitto broker app. The bridge connects to it automatically — no restart or settings needed.
+        </p>
+      </div>
+      <a href="https://my.home-assistant.io/redirect/supervisor_addon/?addon=core_mosquitto"
+         target="_blank" rel="noopener"
+         class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25">
+        Install Mosquitto →
+      </a>
+    </div>
+  </template>
+
   <!-- Two-column TUI layout -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 

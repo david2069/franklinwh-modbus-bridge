@@ -36,12 +36,14 @@ map:
   - addon_config:rw
 
 # hassio_api lets the add-on read the Supervisor's MQTT service so the broker
-# is configured automatically rather than retyped. services: mqtt:need declares
-# the dependency so the Supervisor surfaces it during install.
+# is configured automatically rather than retyped. mqtt:want, not mqtt:need:
+# the bridge is useful before a broker exists (UI, schedules, history), and it
+# picks Mosquitto up by itself once installed — a hard requirement would only
+# block install/start.
 hassio_api: true
 homeassistant_api: true
 services:
-  - mqtt:need
+  - mqtt:want
 
 options:
   gateway_host: ""

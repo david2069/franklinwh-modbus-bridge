@@ -473,6 +473,8 @@ document.addEventListener('alpine:init', () => {
     lastPollTs: null,
     version: '--',
     env: '',
+    // {source, waiting_for_broker} from /api/health — add-on with no broker yet.
+    mqttBroker: null,
 
     // Multi-gateway
     activeGateway: 'default',  // 'default', gateway_id, or 'site'
@@ -669,6 +671,7 @@ document.addEventListener('alpine:init', () => {
       if (health && !health.error) {
         this.version = health.version || '--';
         this.env = health.environment || '';
+        this.mqttBroker = health.mqtt_broker || null;
       }
 
       const stats = await fetchJSON('api/stats', { background: true });
