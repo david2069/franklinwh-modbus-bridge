@@ -1,6 +1,16 @@
 <!-- ── Sequencer Tab — sequence file management & execution ── -->
 <div x-data="sequencerTab()">
 
+  <!-- Needs real Modbus registers: a mock gateway has none. -->
+  <div x-show="!$store.app.hasRealGateway" x-cloak
+       class="mb-4 rounded-xl border px-4 py-3 bg-amber-500/10 border-amber-500/30">
+    <p class="text-sm font-semibold text-amber-300">Needs a connected aGate</p>
+    <p class="text-xs mt-0.5 text-slate-300">
+      The Sequencer works with real Modbus registers. Mock gateways don't have any, so there's
+      nothing to run until a real aGate is set up in Settings → Gateways.
+    </p>
+  </div>
+
   <!-- Loading -->
   <div x-show="loading" class="flex items-center gap-3 py-16 justify-center">
     <div class="loading-spinner"></div>
@@ -136,7 +146,7 @@
                     class="form-control !py-0.5 !text-[10px] w-24"
                     :class="seqGateway === 'all' ? '!border-amber-500/40 !text-amber-400' : ''">
               <option value="default">Default</option>
-              <template x-for="gw in $store.app.gatewayList" :key="'seq-' + gw.id">
+              <template x-for="gw in $store.app.gatewayList.filter(g => !g.mock)" :key="'seq-' + gw.id">
                 <option :value="gw.id" x-text="gw.name" :selected="seqGateway === gw.id"></option>
               </template>
               <option value="all" x-show="$store.app.multiGateway">All Gateways</option>

@@ -1244,7 +1244,7 @@
                 </template>
               </select>
               <p x-show="(($store.app.gatewayList.find(g => g.id === form.target_id) || {}).mock)"
-                 class="text-[11px] text-amber-400 mt-1">⚠ Mock gateway — commands won't reach real hardware.</p>
+                 class="text-[11px] text-amber-400 mt-1">⚠ Mock gateway — this schedule runs, but its commands are simulated: they change the mock's synthetic data, not a real battery.</p>
             </div>
             <div x-show="form.target_type === 'service'">
               <label class="card-label">Service</label>

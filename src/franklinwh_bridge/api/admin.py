@@ -633,16 +633,34 @@ async def execute_sequence(body: SequenceExecRequest, request: Request):
 
     # Resolve target gateway(s)
     gw_id = body.gateway_id or "default"
+
+    def _is_mock(inst: object) -> bool:
+        return bool(inst is not None and getattr(getattr(inst, "config", None), "mock", False))
+
     if gw_id == "all" and registry:
+        # A sequence reads/writes real Modbus registers; a mock has none (its
+        # controller has no .dev and the run errored). Leave mocks out of "all".
         targets = [
             (gid, registry.get(gid))
             for gid in registry.list_active()
+            if not _is_mock(registry.get(gid))
         ]
         if not targets:
-            return {"ok": False, "output": ["ERROR: No active gateways"]}
+            return {
+                "ok": False,
+                "output": [
+                    "ERROR: No active real gateways (mock gateways have no Modbus registers)"
+                ],
+            }
     else:
         # Single gateway
         inst = registry.get(gw_id) if registry else None
+        if _is_mock(inst):
+            raise HTTPException(
+                400,
+                "The Sequencer reads and writes real Modbus registers — a mock "
+                "gateway has none. Pick a real gateway.",
+            )
         if inst and inst.controller:
             targets = [(gw_id, inst)]
         else:

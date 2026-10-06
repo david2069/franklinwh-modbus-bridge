@@ -68,6 +68,14 @@ lands, not backfilled later.
 
 ### Changed
 
+- **Mock gateways accept control — simulated**: battery commands (force
+  charge/discharge/standby), operating mode and Self/TOU reserves work on a
+  mock from HA, the Controls tab and schedules, through the real command path;
+  the mock's synthetic data follows them (battery power, SoC within the
+  reserve, grid balance, mode). HA now gets the mock's control entities too.
+  The Sequencer refuses a mock target with a clear message (it used to error)
+  and leaves mocks out of *All Gateways*; SunSpec Explorer and Sequencer are
+  dimmed with a *Needs a connected aGate* notice until a real gateway exists.
 - **Add-on installs from the repository URL**: add
   `https://github.com/david2069/franklinwh-modbus-bridge` under Settings → Apps
   → App store → Repositories (or use the My Home Assistant button in

@@ -620,6 +620,13 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    // A real aGate is configured (not a mock, has an address). The SunSpec
+    // Explorer and Sequencer read/write real Modbus registers, which a mock
+    // doesn't have — they explain that instead of erroring.
+    get hasRealGateway() {
+      return this.gatewayList.some(g => !g.mock && g.enabled && g.health !== 'unconfigured');
+    },
+
     get multiGateway() {
       return this.gatewayList.length > 1;
     },
