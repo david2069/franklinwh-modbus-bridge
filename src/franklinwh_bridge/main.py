@@ -39,9 +39,11 @@ from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.clock import check_and_record
 from franklinwh_bridge.config.manager import AppConfig
 from franklinwh_bridge.config.supervisor import (
+    MQTT_WATCH_INTERVAL_S,
     apply_timezone,
     discover_mqtt,
     ensure_local_ha_instance,
+    supervisor_token,
 )
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.billing import BillingStore
@@ -227,14 +229,28 @@ async def lifespan(app: FastAPI):
     # rather than making the user retype what Mosquitto was set up with. Only
     # fills in what hasn't been set explicitly: a typed host always wins, and
     # outside an add-on this is inert.
+    #
+    # As an add-on with no broker yet (Mosquitto not installed), wait for one
+    # rather than retry localhost forever: the watcher below connects as soon
+    # as the Supervisor reports an MQTT service, with no restart.
+    mqtt_broker: dict[str, Any] = {"source": "configured", "waiting_for_broker": False}
     if mqtt_config.get("host") in (None, "", "localhost"):
         discovered = await discover_mqtt()
         if discovered:
             mqtt_config.update({k: v for k, v in discovered.items() if v is not None})
+            mqtt_broker["source"] = "supervisor"
             logger.info(
                 "MQTT broker discovered via Supervisor: %s:%s",
                 discovered["host"], discovered["port"],
             )
+        elif supervisor_token():
+            mqtt_broker = {"source": "none", "waiting_for_broker": True}
+            logger.warning(
+                "No MQTT broker yet — install the Mosquitto broker add-on and the "
+                "bridge will connect to it automatically. Until then nothing is "
+                "published to Home Assistant."
+            )
+    app.state.mqtt_broker = mqtt_broker
 
     mqtt_publisher = MqttPublisher.from_db_config(
         mqtt_config, gateway_id=gateway_id,
@@ -243,8 +259,30 @@ async def lifespan(app: FastAPI):
 
     await mqtt_publisher.sync_groups(db)
 
-    if mqtt_config.get("enabled", True):
+    if mqtt_config.get("enabled", True) and not mqtt_broker["waiting_for_broker"]:
         await mqtt_publisher.start()
+
+    async def _await_supervisor_broker() -> None:
+        """Connect to a broker the Supervisor reports after we started."""
+        while True:
+            await asyncio.sleep(MQTT_WATCH_INTERVAL_S)
+            found = await discover_mqtt(quiet=True)
+            if not found:
+                continue
+            await mqtt_publisher.reconfigure({k: v for k, v in found.items() if v is not None})
+            if mqtt_config.get("enabled", True):
+                await mqtt_publisher.start()
+            app.state.mqtt_broker = {"source": "supervisor", "waiting_for_broker": False}
+            logger.info(
+                "MQTT broker appeared via Supervisor (%s:%s) — connected",
+                found["host"], found["port"],
+            )
+            return
+
+    mqtt_broker_watch = (
+        asyncio.create_task(_await_supervisor_broker())
+        if mqtt_broker["waiting_for_broker"] else None
+    )
 
     # Subscribe MQTT publisher to the global sample bus (receives all gateways)
     sample_bus.subscribe(mqtt_publisher.queue_sample)
@@ -833,6 +871,8 @@ async def lifespan(app: FastAPI):
     await schedule_engine.stop()
     await health_checker.stop()
     await ha_registry.stop()
+    if mqtt_broker_watch is not None and not mqtt_broker_watch.done():
+        mqtt_broker_watch.cancel()
 
     # 2. Stop all gateways (releases commands, stops pollers, disconnects)
     await registry.stop_all()

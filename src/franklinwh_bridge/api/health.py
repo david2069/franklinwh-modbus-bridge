@@ -29,6 +29,9 @@ async def health(request: Request):
         "version": __version__,
         "environment": env,
         "uptime_s": round(time.time() - _start_time, 1),
+        # {source: supervisor|configured|none, waiting_for_broker} — drives the
+        # "install Mosquitto" prompt on an add-on with no broker yet.
+        "mqtt_broker": getattr(request.app.state, "mqtt_broker", None),
     }
 
 

@@ -82,6 +82,16 @@
     <div class="card">
       <div class="card-label mb-3">MQTT Broker</div>
 
+      <div x-show="$store.app.mqttBroker?.waiting_for_broker" x-cloak
+           class="mb-3 text-xs rounded border px-3 py-2 bg-cyan-500/10 border-cyan-500/40 text-slate-300">
+        Waiting for a broker. Install the
+        <a href="https://my.home-assistant.io/redirect/supervisor_addon/?addon=core_mosquitto"
+           target="_blank" rel="noopener" class="text-cyan-300 underline">Mosquitto broker app</a>
+        — the bridge connects to it automatically.
+      </div>
+      <div x-show="$store.app.mqttBroker?.source === 'supervisor'" x-cloak
+           class="mb-3 text-xs text-slate-500">Configured automatically from Home Assistant's MQTT service.</div>
+
       <!-- ── Read-only view ── -->
       <div x-show="!mqttEditing" class="space-y-2 text-sm">
         <div class="flex justify-between">

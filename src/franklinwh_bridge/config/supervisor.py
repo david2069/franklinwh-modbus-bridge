@@ -50,12 +50,19 @@ def supervisor_token() -> str | None:
     return os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HASSIO_TOKEN")
 
 
-async def discover_mqtt() -> dict[str, Any] | None:
+#: How often to re-ask the Supervisor for a broker while there is none.
+MQTT_WATCH_INTERVAL_S = 30.0
+
+
+async def discover_mqtt(*, quiet: bool = False) -> dict[str, Any] | None:
     """Ask the Supervisor for the configured MQTT service.
 
     Returns ``{host, port, username, password, tls}`` or None when unavailable —
     not an add-on, no MQTT service configured, or the call failed. Never raises:
     the bridge must start regardless, just without auto-config.
+
+    ``quiet`` drops the "not available" log lines, for the background watcher
+    that asks repeatedly until a broker is installed.
     """
     token = supervisor_token()
     if not token:
@@ -71,12 +78,14 @@ async def discover_mqtt() -> dict[str, Any] | None:
             )
         if resp.status_code == 400:
             # Documented response when no MQTT service is registered.
-            logger.info("Supervisor has no MQTT service configured — MQTT stays manual")
+            if not quiet:
+                logger.info("Supervisor has no MQTT service configured — MQTT stays manual")
             return None
         resp.raise_for_status()
         data = (resp.json() or {}).get("data") or {}
     except Exception as exc:  # pragma: no cover - network/env dependent
-        logger.info("Supervisor MQTT discovery unavailable (%s) — MQTT stays manual", exc)
+        if not quiet:
+            logger.info("Supervisor MQTT discovery unavailable (%s) — MQTT stays manual", exc)
         return None
 
     if not data.get("host"):
