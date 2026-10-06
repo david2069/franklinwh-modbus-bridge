@@ -173,7 +173,6 @@ class MockController:
                 "mode_name": self.mode,
                 "self_reserve_pct": self.self_reserve_pct,
                 "tou_reserve_pct": self.tou_reserve_pct,
-                "remote": cmd is not None,
             }
 
     @property
@@ -307,7 +306,10 @@ def synthetic_points(
         "grid_mode":          grid_mode,
         "self_reserve_pct":   (controls or {}).get("self_reserve_pct", 20),
         "tou_reserve_pct":    (controls or {}).get("tou_reserve_pct", 30),
-        "loc_rem_ctl_name":   "Remote" if (controls or {}).get("remote") else "Local",
+        # A real aGate reports 715.LocRemCtl as read-only Local, even while a
+        # VPP dispatch is active — so the mock does too, rather than invent a
+        # "Remote" the hardware never shows.
+        "loc_rem_ctl_name":   "Local",
         "ambient_temp_c":     ambient_temp,
         "cabinet_temp_c":     cabinet_temp,
     }

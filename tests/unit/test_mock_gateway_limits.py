@@ -33,14 +33,15 @@ def test_samples_follow_a_simulated_dispatch():
     pts = poller.sample_points(10)
     assert pts["battery_power_w"] == -3000.0  # points: negative = charging
     assert pts["battery_state"] == "Charging"
-    assert pts["loc_rem_ctl_name"] == "Remote"
+    # Like a real aGate: 715.LocRemCtl stays Local even during a dispatch.
+    assert pts["loc_rem_ctl_name"] == "Local"
     # The grid balances the commanded battery, not the synthetic one.
     assert pts["grid_power_w"] == pytest.approx(
         pts["home_load_ext"] - pts["total_solar"] - pts["battery_power_w"], abs=0.2,
     )
 
     assert ctl.reset_control_state() is True
-    assert poller.sample_points(10)["loc_rem_ctl_name"] == "Local"
+    assert ctl.active_command_w() is None
 
 
 def test_soc_integrates_and_respects_the_reserve():
