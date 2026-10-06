@@ -68,6 +68,11 @@ lands, not backfilled later.
 
 ### Changed
 
+- **Add-on installs from the repository URL**: add
+  `https://github.com/david2069/franklinwh-modbus-bridge` under Settings → Apps
+  → App store → Repositories (or use the My Home Assistant button in
+  INSTALL.md) and click Install. Replaces building a local add-on with
+  `tools/build_addon.py` and copying it to `/addons`, which is removed.
 - Rewrote the MQTT layer around curated `EntityDef` entities (kW/kWh
   units, DB-backed config, REST admin API) instead of auto-mapped SunSpec
   points.
