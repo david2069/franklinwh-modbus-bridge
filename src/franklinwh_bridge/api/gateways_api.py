@@ -1125,6 +1125,10 @@ async def send_gateway_command(
     if inst is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not running")
     if inst.command_handler is None:
+        logger.warning(
+            "Command %s=%s refused: gateway %s has no command handler",
+            body.slug, body.value, gw_id,
+        )
         return {
             "ok": False, "slug": body.slug,
             "result": "Command handler not available",

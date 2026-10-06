@@ -685,11 +685,27 @@ document.addEventListener('alpine:init', () => {
     },
 
     toast(message, level = 'info') {
-      const id = Date.now();
+      const id = Date.now() + Math.random();
       this.toasts.push({ id, message, level });
-      setTimeout(() => {
-        this.toasts = this.toasts.filter(t => t.id !== id);
-      }, 4000);
+      // Errors stay until dismissed: a failed command that vanishes after 4s
+      // is easy to miss, and is exactly the one that matters.
+      if (level !== 'error') {
+        setTimeout(() => this.dismissToast(id), 4000);
+      }
+    },
+
+    dismissToast(id) {
+      this.toasts = this.toasts.filter(t => t.id !== id);
+    },
+
+    // Commands go to the gateway being viewed. /api/command always meant the
+    // DEFAULT gateway: viewing a mock (or a second aGate) showed its state but
+    // sent Release/Force to a different gateway entirely.
+    get commandUrl() {
+      const gw = this.activeGateway;
+      return gw && gw !== 'site'
+        ? `api/gateways/${encodeURIComponent(gw)}/command`
+        : 'api/command';
     },
 
     // Styled confirm — returns a Promise<boolean>. Drop-in for window.confirm:
@@ -785,7 +801,7 @@ document.addEventListener('alpine:init', () => {
 
       try {
         // Send the release command through the command handler
-        const data = await fetchJSON('api/command', {
+        const data = await fetchJSON(this.commandUrl, {
           method: 'POST',
           body: JSON.stringify({ slug: 'battery_command', value: 'Release' }),
         });
