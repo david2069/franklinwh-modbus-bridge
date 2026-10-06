@@ -90,6 +90,13 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **No phantom default gateway**: with no gateway host configured, the bridge
+  no longer creates "Default Gateway" at a made-up `192.168.1.100` and polls
+  it forever (it could not be deleted). The default gateway is now created
+  *unconfigured* — never started — until an address is set in Settings →
+  Gateways, which starts it immediately. A `gateway_host` / `MODBUS_HOST` set
+  after first boot is now applied (it used to be ignored). Migration 48 fixes
+  existing installs; a gateway that ever connected is left alone.
 - Root-caused and fixed `0xFFFF` solar register corruption (concurrent
   Modbus access from overlapping read paths).
 - MQTT discovery race condition; MQTT command subscription timing (was
