@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 TOPIC_PREFIX = "franklinwh"
 
+#: Seconds a gateway may publish before registration without being warned about
+#: (samples routinely arrive just before start → sync registers it).
+_UNREGISTERED_GRACE_S = 30.0
+
 
 @dataclass
 class GatewayDevice:
@@ -507,6 +511,18 @@ class MqttPublisher:
     def registered_devices(self) -> list[str]:
         return list(self._devices.keys())
 
+    def _has_discoverable(self) -> bool:
+        """Anything to announce to HA — the default device OR any registered one.
+
+        Gating discovery on the default gateway alone meant that with the
+        default unconfigured or offline, no gateway was ever announced: a mock
+        added to explore the bridge published samples HA never had entities
+        for.
+        """
+        return bool(self._device_info) or any(
+            d.device_info for d in self._devices.values()
+        )
+
     async def _publish_discovery(self, client: aiomqtt.Client) -> None:
         """Publish HA Discovery config for all registered entities.
 
@@ -597,7 +613,14 @@ class MqttPublisher:
         """
         if not hasattr(self, "_warned_unregistered"):
             self._warned_unregistered: set[str] = set()
+            self._unregistered_since: dict[str, float] = {}
         if gw_id in self._warned_unregistered:
+            return
+        # A gateway's first samples arrive a moment before it is registered
+        # (start, then sync). Only warn if it is STILL unregistered after a
+        # grace period — otherwise every healthy add/start logged this.
+        first = self._unregistered_since.setdefault(gw_id, time.monotonic())
+        if time.monotonic() - first < _UNREGISTERED_GRACE_S:
             return
         self._warned_unregistered.add(gw_id)
         logger.warning(
@@ -725,7 +748,7 @@ class MqttPublisher:
                     logger.info("MQTT connected to %s:%d", self._host, self._port)
 
                     await self._publish_availability(client, online=True)
-                    if self._device_info and not self._state.discovery_published:
+                    if self._has_discoverable() and not self._state.discovery_published:
                         await self._publish_discovery(client)
 
                     listener_task = None
@@ -759,7 +782,7 @@ class MqttPublisher:
                             except TimeoutError:
                                 pass
 
-                            if self._device_info and not self._state.discovery_published:
+                            if self._has_discoverable() and not self._state.discovery_published:
                                 await self._publish_discovery(client)
                                 await self._publish_availability(client, online=True)
                     finally:

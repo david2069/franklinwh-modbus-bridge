@@ -1,0 +1,51 @@
+"""HA Discovery must not depend on the DEFAULT gateway having device info.
+
+With the default gateway unconfigured (or offline) and a mock added to explore
+the bridge, discovery was never published — the gate checked only the default
+device — so the mock's samples went to topics HA had no entities for.
+"""
+
+from __future__ import annotations
+
+import time
+
+from franklinwh_bridge.publish import mqtt_publisher as mp
+from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo, MqttPublisher
+
+
+class _RecordingClient:
+    def __init__(self) -> None:
+        self.topics: list[str] = []
+
+    async def publish(self, topic, payload=None, retain=False, qos=0):
+        self.topics.append(topic)
+
+
+def test_nothing_to_discover_without_any_device():
+    pub = MqttPublisher(host="x")
+    assert pub._has_discoverable() is False
+
+
+async def test_registered_gateway_is_discoverable_without_default():
+    pub = MqttPublisher(host="x")
+    assert pub._device_info is None  # default gateway unconfigured
+    pub.register_device("demo", DeviceInfo(serial="MOCK-demo", gateway_id="demo"))
+    assert pub._has_discoverable() is True
+
+    client = _RecordingClient()
+    await pub._publish_discovery(client)
+    assert any(t.startswith("homeassistant/") for t in client.topics)
+    assert pub.get_device("demo").discovery_published
+
+
+def test_unregistered_warning_waits_for_the_grace_period(monkeypatch, caplog):
+    pub = MqttPublisher(host="x")
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["t"])
+
+    pub._warn_unregistered("demo")  # first sample, just before registration
+    assert "no registered MQTT device" not in caplog.text
+
+    clock["t"] += mp._UNREGISTERED_GRACE_S + 1
+    pub._warn_unregistered("demo")  # still unregistered — that's a real problem
+    assert "no registered MQTT device" in caplog.text
