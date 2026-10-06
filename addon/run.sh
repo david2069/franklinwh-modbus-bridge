@@ -46,7 +46,7 @@ bashio::log.info "Starting FranklinWH Modbus Bridge (ingress on :8099)"
 if bashio::services.available "mqtt"; then
   bashio::log.info "MQTT service available — the bridge will auto-configure from the Supervisor"
 else
-  bashio::log.warning "No MQTT service registered; configure a broker in Settings or install Mosquitto"
+  bashio::log.warning "No MQTT broker yet — install the Mosquitto broker app and the bridge connects to it automatically (or set a broker in Settings → MQTT)"
 fi
 
 exec uvicorn franklinwh_bridge.main:app \
