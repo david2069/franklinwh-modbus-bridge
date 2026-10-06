@@ -73,6 +73,10 @@ lands, not backfilled later.
 
 ### Changed
 
+- **Add-on no longer requires an MQTT broker to install**: `mqtt:want`
+  instead of `mqtt:need`. With no broker the bridge waits instead of retrying
+  localhost, shows an *Install Mosquitto* prompt, and connects on its own as
+  soon as the Mosquitto add-on is running — no restart.
 - **Mock gateways accept control — simulated**: battery commands (force
   charge/discharge/standby), operating mode and Self/TOU reserves work on a
   mock from HA, the Controls tab and schedules, through the real command path;
