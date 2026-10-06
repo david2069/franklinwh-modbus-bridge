@@ -714,17 +714,38 @@ class MqttPublisher:
     def _backoff_delay(self, attempt: int) -> float:
         return min(5.0 * (2 ** attempt), 60.0)
 
+    def _command_targets(self) -> dict[str, CommandHandler]:
+        """Device short_id -> the command handler its control topics drive.
+
+        Every commandable device, not only the default gateway: additional
+        gateways (a second aGate, a mock) got control entities in HA that were
+        never subscribed, so their controls silently did nothing.
+        """
+        targets: dict[str, CommandHandler] = {}
+        if self._device_info and self._command_handler:
+            targets[self._device_info.short_id] = self._command_handler
+        for dev in self._devices.values():
+            if dev.device_info and dev.command_handler:
+                targets[dev.device_info.short_id] = dev.command_handler
+        return targets
+
     async def _handle_mqtt_message(self, message: aiomqtt.Message) -> None:
-        """Dispatch an incoming MQTT command message."""
-        if not self._command_handler:
+        """Dispatch an incoming MQTT command to the gateway its topic names.
+
+        Topic: ``franklinwh/<short_id>/control/<slug>/set``. Routed by the
+        short_id — this used to send every command to the DEFAULT gateway's
+        handler whatever device it was addressed to.
+        """
+        parts = str(message.topic).split("/")
+        if not (len(parts) >= 5 and parts[2] == "control" and parts[-1] == "set"):
             return
-        topic_str = str(message.topic)
-        parts = topic_str.split("/")
-        if len(parts) >= 5 and parts[2] == "control" and parts[-1] == "set":
-            slug = parts[3]
-            raw = message.payload
-            payload = raw.decode() if isinstance(raw, bytes) else str(raw)
-            await self._command_handler.handle_command(slug, payload)
+        handler = self._command_targets().get(parts[1])
+        if handler is None:
+            logger.warning("Command for unknown device %s ignored: %s", parts[1], message.topic)
+            return
+        raw = message.payload
+        payload = raw.decode() if isinstance(raw, bytes) else str(raw)
+        await handler.handle_command(parts[3], payload)
 
     async def _subscribe_listener(self, client: aiomqtt.Client) -> None:
         """Background task: listen for incoming command messages."""
@@ -752,23 +773,21 @@ class MqttPublisher:
                         await self._publish_discovery(client)
 
                     listener_task = None
-                    subscribed_commands = False
+                    subscribed: set[str] = set()  # short_ids whose control topics we hold
 
                     try:
                         while not self._stop_event.is_set():
-                            if (
-                                not subscribed_commands
-                                and self._device_info
-                                and self._command_handler
-                            ):
-                                sid = self._device_info.short_id
+                            # Subscribe each commandable device as it appears
+                            # (gateways register after we connect).
+                            for sid in self._command_targets().keys() - subscribed:
                                 cmd_topic = f"{TOPIC_PREFIX}/{sid}/control/+/set"
                                 await client.subscribe(cmd_topic)
-                                listener_task = asyncio.create_task(
-                                    self._subscribe_listener(client)
-                                )
-                                subscribed_commands = True
+                                subscribed.add(sid)
                                 logger.info("Subscribed to command topics: %s", cmd_topic)
+                                if listener_task is None:
+                                    listener_task = asyncio.create_task(
+                                        self._subscribe_listener(client)
+                                    )
 
                             try:
                                 msg = await asyncio.wait_for(

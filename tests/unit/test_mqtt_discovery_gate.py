@@ -49,3 +49,52 @@ def test_unregistered_warning_waits_for_the_grace_period(monkeypatch, caplog):
     clock["t"] += mp._UNREGISTERED_GRACE_S + 1
     pub._warn_unregistered("demo")  # still unregistered — that's a real problem
     assert "no registered MQTT device" in caplog.text
+
+
+class _Handler:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def handle_command(self, slug: str, payload: str) -> None:
+        self.calls.append((slug, payload))
+
+
+class _Msg:
+    def __init__(self, topic: str, payload: bytes) -> None:
+        self.topic = topic
+        self.payload = payload
+
+
+async def test_commands_route_to_the_gateway_their_topic_names():
+    """A command for a second gateway used to go to the DEFAULT gateway."""
+    pub = MqttPublisher(host="x")
+    default_h, demo_h = _Handler(), _Handler()
+    pub.set_device_info(DeviceInfo(serial="AG0001"))
+    pub.set_command_handler(default_h)
+    pub.register_device("demo", DeviceInfo(serial="MOCK-DEMO", gateway_id="demo"),
+                        command_handler=demo_h)
+
+    sids = pub._command_targets()
+    default_sid = pub._device_info.short_id
+    demo_sid = pub.get_device("demo").device_info.short_id
+    assert set(sids) == {default_sid, demo_sid}
+
+    await pub._handle_mqtt_message(
+        _Msg(f"franklinwh/{demo_sid}/control/operating_mode/set", b"TOU"))
+    await pub._handle_mqtt_message(
+        _Msg(f"franklinwh/{default_sid}/control/battery_command/set", b"Release"))
+    await pub._handle_mqtt_message(
+        _Msg("franklinwh/someone_else/control/battery_command/set", b"Force Charge"))
+
+    assert demo_h.calls == [("operating_mode", "TOU")]
+    assert default_h.calls == [("battery_command", "Release")]
+
+
+async def test_registered_gateway_is_commandable_without_a_default():
+    pub = MqttPublisher(host="x")
+    demo_h = _Handler()
+    pub.register_device("demo", DeviceInfo(serial="MOCK-DEMO", gateway_id="demo"),
+                        command_handler=demo_h)
+    sid = pub.get_device("demo").device_info.short_id
+    await pub._handle_mqtt_message(_Msg(f"franklinwh/{sid}/control/tou_reserve_pct/set", b"40"))
+    assert demo_h.calls == [("tou_reserve_pct", "40")]
