@@ -656,6 +656,7 @@ function settingsTab() {
       this.haEdit = {
         name: h.name, base_url: h.base_url, token: '',
         has_token: h.has_token, is_default: h.is_default, enabled: h.enabled,
+        managed: h.managed,
       };
       this.haTestResult = null;
       this.haEditId = h.id;
@@ -672,10 +673,11 @@ function settingsTab() {
       // Build payload: on edit, omit token when left blank so it's preserved.
       const body = {
         name: this.haEdit.name,
-        base_url: this.haEdit.base_url,
         is_default: !!this.haEdit.is_default,
         enabled: !!this.haEdit.enabled,
       };
+      // The Supervisor-managed instance's URL and token aren't editable.
+      if (!this.haEdit.managed) body.base_url = this.haEdit.base_url;
       if (this.haEdit.token) body.token = this.haEdit.token;
       else if (isNew) body.token = null;
 

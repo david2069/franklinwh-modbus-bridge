@@ -15,6 +15,7 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.config.supervisor import is_supervisor_instance
 from franklinwh_bridge.gateway.ha import HaInstance
 from franklinwh_bridge.store.db import (
     create_ha_instance,
@@ -72,6 +73,9 @@ def _redact(row: dict) -> dict:
     """Never echo the token back; expose only whether one is set."""
     out = {k: v for k, v in row.items() if k != "token"}
     out["has_token"] = bool(row.get("token"))
+    # Auto-configured by the Supervisor: no token to show, nothing to edit but
+    # the name, default and enabled flags.
+    out["managed"] = "supervisor" if is_supervisor_instance(row) else None
     return out
 
 
@@ -105,6 +109,14 @@ async def patch_instance(ha_id: str, body: HaInstanceUpdate, request: Request):
     db: aiosqlite.Connection = request.app.state.db
     # Only forward explicitly-set fields so a token isn't cleared by omission.
     updates = body.model_dump(exclude_unset=True)
+    if {"base_url", "token"} & updates.keys() and is_supervisor_instance(
+        await get_ha_instance(db, ha_id)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This instance is configured by the Supervisor; its URL and "
+            "token can't be changed.",
+        )
     row = await update_ha_instance(db, ha_id, **updates)
     if row is None:
         raise HTTPException(status_code=404, detail="HA instance not found")
@@ -115,8 +127,15 @@ async def patch_instance(ha_id: str, body: HaInstanceUpdate, request: Request):
 @router.delete("/instances/{ha_id}")
 async def remove_instance(ha_id: str, request: Request):
     db: aiosqlite.Connection = request.app.state.db
-    if await get_ha_instance(db, ha_id) is None:
+    row = await get_ha_instance(db, ha_id)
+    if row is None:
         raise HTTPException(status_code=404, detail="HA instance not found")
+    if is_supervisor_instance(row):
+        # It would only be re-created on the next start. Disabling it sticks.
+        raise HTTPException(
+            status_code=400,
+            detail="This instance is built in to the add-on — disable it instead.",
+        )
     await delete_ha_instance(db, ha_id)
     await _reload(request)
     return {"deleted": ha_id}

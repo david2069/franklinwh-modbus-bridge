@@ -308,10 +308,12 @@
                       class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300 border border-sky-500/30">default</span>
                 <span x-show="!h.enabled"
                       class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 border border-white/10">disabled</span>
+                <span x-show="h.managed === 'supervisor'" title="Configured automatically through the Home Assistant Supervisor"
+                      class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-500/30">auto</span>
               </span>
               <div class="flex gap-2.5 items-center">
                 <button @click="editHa(h)" class="btn btn-sm btn-secondary">Edit</button>
-                <button @click="deleteHa(h)" title="Delete instance"
+                <button x-show="!h.managed" @click="deleteHa(h)" title="Delete instance"
                         class="text-red-400/60 hover:text-red-400 transition-colors">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -323,8 +325,8 @@
               <div class="flex justify-between"><span class="text-slate-500">URL</span>
                 <span class="font-mono text-slate-400 truncate ml-2" x-text="h.base_url"></span></div>
               <div class="flex justify-between"><span class="text-slate-500">Token</span>
-                <span class="font-mono" :class="h.has_token ? 'text-emerald-400' : 'text-slate-500'"
-                      x-text="h.has_token ? 'set' : 'none'"></span></div>
+                <span class="font-mono" :class="h.has_token || h.managed ? 'text-emerald-400' : 'text-slate-500'"
+                      x-text="h.managed ? 'Supervisor' : (h.has_token ? 'set' : 'none')"></span></div>
               <div class="flex justify-between"><span class="text-slate-500">Status</span>
                 <span class="font-mono" :class="h.status?.connected ? 'text-emerald-400' : 'text-red-400'"
                       x-text="h.status ? (h.status.connected ? ('connected · ' + (h.status.transport === 'ws' ? 'live' : 'poll')) : 'offline') : '--'"></span></div>
@@ -353,10 +355,16 @@
               <label class="flex flex-col gap-1"><span class="text-slate-500">Name</span>
                 <input type="text" x-model="haEdit.name" class="form-control !py-1 !text-xs"
                        placeholder="Home"></label>
-              <label class="flex flex-col gap-1"><span class="text-slate-500">Base URL</span>
+              <template x-if="haEdit.managed">
+                <p class="col-span-2 text-slate-500">
+                  Connected to the Home Assistant this add-on runs in, through the Supervisor —
+                  there is no URL or token to set.
+                </p>
+              </template>
+              <label x-show="!haEdit.managed" class="flex flex-col gap-1"><span class="text-slate-500">Base URL</span>
                 <input type="text" x-model="haEdit.base_url" @input="haTestResult = null" class="form-control !py-1 !text-xs font-mono"
                        placeholder="http://homeassistant.local:8123"></label>
-              <label class="flex flex-col gap-1 col-span-2"><span class="text-slate-500">Long-Lived Access Token</span>
+              <label x-show="!haEdit.managed" class="flex flex-col gap-1 col-span-2"><span class="text-slate-500">Long-Lived Access Token</span>
                 <input type="password" x-model="haEdit.token" @input="haTestResult = null" class="form-control !py-1 !text-xs font-mono"
                        :placeholder="haEditId !== 'new' && haEdit.has_token ? '(unchanged)' : 'paste token'"></label>
             </div>
