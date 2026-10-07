@@ -15,6 +15,18 @@ lands, not backfilled later.
 
 ### Added
 
+- **Setup wizard API** (`/api/setup/*`, admin-only; design in
+  `docs/setup-wizard-design.md`): wizard state (`pending` / `done_real` /
+  `done_demo` / `skipped`, migration 49 — existing installs never see the
+  wizard), the LAN subnets to search for each install type (Supervisor host
+  interfaces in the add-on; the address the browser used, then `LAN_SUBNET`,
+  then host networking in Docker), a background subnet scan and single-address
+  probe through franklinwh-modbus' read-only `discovery` API (a host a running
+  gateway already polls is reported, never probed), connect (fills the primary
+  gateway, or adds further aGates alongside), demo gateway creation (always a
+  separate mock, never the primary), and a Home Assistant checklist (broker,
+  HA connection, HA's MQTT integration, bridge entities in HA's registry). The
+  UI follows in the next change.
 - **HA entity access configures itself in the add-on**: the Home Assistant the
   add-on runs in is added automatically as instance `local` ("This Home
   Assistant"), through the Supervisor — no URL or long-lived token to create.
@@ -118,6 +130,11 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **`.env.example` no longer sets `MODBUS_HOST=192.168.1.100`** — the made-up
+  address the unconfigured-gateway fix removed from the code came back for
+  anyone who copied the example. It is now commented out; leave it unset to use
+  the setup wizard. `LAN_SUBNET` is documented there and passed through in
+  `docker-compose.yml`.
 - **Controls command the gateway you're viewing**: the Controls tab and the
   Battery Control *Force Release* always sent to the *default* gateway, so
   viewing a mock or a second aGate showed its state but released or forced a

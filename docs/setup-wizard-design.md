@@ -1,6 +1,6 @@
 # First-Run Setup Wizard — Design
 
-**Status:** proposal, for review before implementation
+**Status:** accepted; backend (`/api/setup/*`) implemented, UI in progress
 **Audience:** maintainers, and whoever implements it
 **Builds on:** the unconfigured default gateway (PR #2), simulated mock control
 (PR #3), the Supervisor auto-configuration (PRs #4, #5) and Settings sub-tabs
@@ -15,7 +15,6 @@ and a banner saying *Connect your aGate*. From there the user has to know:
 
 - that the aGate's address goes in **Settings → Site & Gateways → Edit**,
 - that Modbus TCP must be enabled on the aGate by an installer first,
-- that only one Modbus client may talk to the aGate at a time,
 - that, with no aGate to hand, a *mock gateway* exists and what it can't do.
 
 None of that is discoverable. The wizard asks one question up front — **what do
@@ -108,9 +107,10 @@ A short checklist, each with a *why*:
 
 - **Modbus TCP is enabled on the aGate.** It's an installer setting; the bridge
   cannot turn it on. Without it nothing below will find the aGate.
-- **Nothing else is connected to it over Modbus.** The aGate accepts one Modbus
-  client at a time; another integration or tool holding the connection will make
-  the aGate look absent or unresponsive.
+- **Know what else talks to it.** Other Modbus integrations can share the aGate
+  (a real aGate X answered discovery while two bridges were polling it), but if
+  the search reports an *unknown device* where the aGate should be, another
+  client or a reboot is the first thing to rule out.
 - **The aGate's IP address**, if known (the FranklinWH app or the router's client
   list shows it). Optional — step 3R can search for it.
 
@@ -151,44 +151,32 @@ Scans the local subnet for devices that answer as a FranklinWH aGate:
 3. **Port check.** TCP connect to port 502, ~300 ms timeout, up to 64 at once.
    A /24 completes in well under 10 seconds.
 4. **SunSpec check**, for every host with 502 open — **through
-   `franklinwh-modbus`**, not raw Modbus calls in the bridge: the library owns
-   all register I/O (CLAUDE.md). Read 2 holding registers at
-   PDU **0**, then **40000**, then **50000**; stop at the first that returns the
-   SunSpec marker `SunS` (`0x5375 0x6E53`). Real aGates answer at **0**
-   (franklinwh-modbus' `FRANKLINWH_SUNSPEC_QUIRKS.md`, confirmed by the emulator
-   work); the other bases cover firmware variation. Any unit id gets the same
-   answer on an aGate, so use 1.
-5. **Nameplate.** From the SunSpec chain, read model 1 (`Mn`, `Md`, `SN`, `Vr`).
-   A FranklinWH result shows as *"FranklinWH aGate X — serial …, firmware …"*.
-   Non-FranklinWH SunSpec devices (other inverters, meters) are listed greyed
-   out as "not a FranklinWH device", so the user isn't left wondering.
-   **Reuse franklinwh-modbus' scanner.** `tools/network_scanner.py` (develop)
-   already does exactly this, and does it better than a full controller
-   connect: `PortChecker` + `ModbusSunspecProber` read only the `SunS` marker
-   and model 1's nameplate, trying bases `[0, 40000, 50000, 30000]`, across a
-   `ThreadPoolExecutor`. It lives in `tools/`, so it isn't importable today.
-   **Prerequisite (library PR):** promote those classes into the package as
-   `franklinwh_modbus.discovery` — e.g. `probe(host, port=502, timeout=…) ->
-   DiscoveryResult | None` and `scan(subnet, workers=…, timeout=…) ->
-   list[DiscoveryResult]` — and have the CLI tool import them. The bridge then
-   calls the library, as CLAUDE.md requires, and the probe holds the aGate's
-   single session for one or two reads rather than a full chain scan.
-   (Fallback if that PR waits: `FranklinWHController(..., base_address=…)`
-   `connect()` + `read_nameplate()`, which works but scans the whole chain.)
-6. **Disconnect immediately** after each probe — the aGate's single Modbus
-   session must be free for the poller, and a probe left open looks to the user
-   like the aGate went offline.
+   `franklinwh_modbus.discovery`** (franklinwh-modbus v0.9.5), not raw Modbus
+   calls in the bridge: the library owns all register I/O (CLAUDE.md). It reads
+   the 4-register SunSpec header at PDU **0**, then **40000**, **50000**,
+   **30000**, and counts a device as SunSpec only when the `SunS` marker is
+   followed by the Common model (**1**). Real aGates answer at **0**. Any unit
+   id gets the same answer on an aGate, so use 1.
+5. **Nameplate.** Model 1's `Mn`, `Md`, `SN`, `Vr`, in one read. A **FranklinWH
+   device** is a SunSpec device returning model 1 whose manufacturer names
+   FranklinWH (`is_franklinwh`); it shows as *"FranklinWH aGate X — serial …,
+   firmware …"*. Other SunSpec devices (inverters, meters) are listed greyed out
+   as "not a FranklinWH device", so the user isn't left wondering.
+6. **Disconnect immediately** after each probe (two short reads), so a probe
+   never sits on the aGate's Modbus port.
 
 Results are a list. **Each FranklinWH row is selectable, and several can be
 selected** — set up one now and leave the rest, or all at once (the first
 selected becomes the primary gateway, the others are added as further
-gateways). Three outcomes need their own wording:
+gateways). The result kinds (`kind` in the API) and their wording:
 
-| What the probe saw | Shown as |
-|---|---|
-| `SunS` + FranklinWH nameplate | **FranklinWH aGate** — selectable |
-| Port 502 open, no Modbus answer within 2 s | *"A device at X has Modbus open but didn't answer. Another app may be holding the aGate's single Modbus connection."* |
-| Nothing found | *"No aGate found on 192.168.1.0/24."* + links to the checklist and to **Enter address** |
+| `kind` | What the probe saw | Shown as |
+|---|---|---|
+| `agate` | SunSpec, model 1, FranklinWH nameplate | **FranklinWH aGate** — selectable |
+| `sunspec_other` | SunSpec, model 1, another manufacturer | Greyed out: *"not a FranklinWH device"* |
+| `unknown` | Something on port 502 that isn't a SunSpec device (no Modbus reply, no marker, or another first model) | *"Unknown device listening on TCP port 502 at X"* |
+| `configured` | A host this bridge already polls — not probed | *"aGate 0091 — already set up in this bridge"* |
+| *(no rows)* | Nothing found | *"No aGate found on 192.168.1.0/24."* + links to the checklist and to **Enter address** |
 
 #### Enter address
 
@@ -301,8 +289,9 @@ can drive the same flow (`bridge setup …`).
 
 Scanning runs off the event loop (`asyncio.to_thread` or a small executor) and
 never touches a configured gateway's host while that gateway is polling — the
-probe would steal its single Modbus session. If the user's own aGate is already
-configured and polling, it's shown as *"already connected"* without probing.
+probe would compete with the gateway's own connection. If the user's own aGate
+is already configured and polling, it's shown as *"already set up"* without
+probing.
 
 ---
 
@@ -334,12 +323,12 @@ for the aGate:
 ## 9. Testing
 
 - **Unit:** subnet selection and limits; SunSpec base fallback order; result
-  classification (aGate / other SunSpec / session held / nothing); state
+  classification (aGate / other SunSpec / unknown / already set up); state
   migration for existing installs.
 - **Against the gateway emulator** (`franklinwh-gateway-emulator`, once
   published — a test-only dependency first): a real aGate profile at PDU 0; the
   40000-alias option; the `session_held` / `busy_behaviour: hang` fault for the
-  "didn't answer" row; `offline` for the "nothing found" path; and a
+  `unknown` row; `offline` for the "nothing found" path; and a
   `max_connections=1` check that the probe disconnects before the poller
   connects.
 - **Console gate:** each wizard step, including re-opening it (Alpine teardown
@@ -365,7 +354,7 @@ emulator being published, except the scan tests in §9.
    (step 3R.1).
 3. **Scan width** — /24.
 4. **Several aGates found** — allow either: set up one, or several at once.
-5. **Discovery code** — reuse franklinwh-modbus' scanner, promoted into the
-   package as `franklinwh_modbus.discovery` (prerequisite library PR).
+5. **Discovery code** — franklinwh-modbus' scanner, promoted into the package
+   as `franklinwh_modbus.discovery` (released in v0.9.5).
 6. **mDNS** — optional, for finding HA and an MQTT broker on Docker /
    standalone installs; not for the aGate (§8).

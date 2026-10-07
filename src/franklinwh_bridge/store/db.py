@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 48
+CURRENT_SCHEMA_VERSION = 49
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -732,6 +732,26 @@ MIGRATIONS: dict[int, str] = {
        AND COALESCE(mock, 0) = 0
        AND last_connected_at IS NULL
        AND (serial IS NULL OR serial = '');
+    """,
+    49: """
+    -- First-run setup wizard state (docs/setup-wizard-design.md §2):
+    -- pending | done_real | done_demo | skipped.
+    --
+    -- Existing installs must not see the wizard: anyone whose real gateway has
+    -- ever connected is done_real, an install with only mocks is done_demo.
+    -- A fresh database has no gateways yet and starts pending. (An install that
+    -- configures its aGate through MODBUS_HOST is treated as done at read time,
+    -- since startup fills the host in after migrations run.)
+    INSERT OR IGNORE INTO app_config (key, value)
+    SELECT 'setup_state',
+           CASE
+             WHEN EXISTS (SELECT 1 FROM gateways
+                           WHERE COALESCE(mock, 0) = 0
+                             AND last_connected_at IS NOT NULL) THEN 'done_real'
+             WHEN EXISTS (SELECT 1 FROM gateways
+                           WHERE COALESCE(mock, 0) = 1) THEN 'done_demo'
+             ELSE 'pending'
+           END;
     """,
     46: """
     -- Every plan needs a real start date.
