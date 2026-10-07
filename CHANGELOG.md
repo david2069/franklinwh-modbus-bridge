@@ -13,6 +13,23 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Setup wizard follow-ups** (from the first run against a real aGate):
+  - **Timezone is a wizard step.** While it's unconfirmed, the wizard asks *Is
+    this your timezone?* before the checklist, and says where to change it
+    (Home Assistant's time zone, or the container's `TZ`). On a fresh install
+    it used to be a separate banner behind the wizard.
+  - **One aGate found → already ticked**, so *Next* works straight away.
+  - **Search suggests the networks of aGates already set up**, and the hint
+    covers aGates reached over Tailscale or a VPN, whose network the bridge's
+    host isn't on.
+  - **The checklist counts only the current gateways' entities in HA**, and
+    reports leftovers from removed gateways separately with where to delete
+    them. Leftovers had been making that item pass with nothing current.
+  - **The top bar says *No gateway yet*** instead of *never* until an aGate
+    or demo gateway exists.
+
 ### Fixed
 
 - **Settings → Admin → Feature modules no longer says a disabled feature's API is

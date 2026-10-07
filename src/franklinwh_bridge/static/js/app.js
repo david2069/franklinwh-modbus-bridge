@@ -725,6 +725,11 @@ document.addEventListener('alpine:init', () => {
       return this.gatewayList.some(g => !g.mock && g.enabled && g.health !== 'unconfigured');
     },
 
+    // Any gateway that can produce data: an aGate with an address, or a demo.
+    get hasAnyGateway() {
+      return this.gatewayList.some(g => g.health !== 'unconfigured');
+    },
+
     get multiGateway() {
       return this.gatewayList.length > 1;
     },

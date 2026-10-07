@@ -27,6 +27,7 @@
     lan_subnet_env: 'LAN_SUBNET',
     host_network: "this container's network",
     this_machine: "this machine's network",
+    configured_gateway: 'an aGate already set up here',
   };
 
   // Shared, so the Dashboard and Settings can show state / open the wizard.
@@ -185,6 +186,8 @@
             this.scan = await api(`scan/${this.scan.scan_id}`);
           }
           if (this.scan && this.scan.status === 'error') this.error = this.scan.error;
+          // One aGate found: that's the one — don't make the user tick it.
+          if (this.scanAgates.length === 1 && !this.picks.length) this.togglePick(this.scanAgates[0]);
         } catch (e) {
           this.error = e.message;
         } finally {
@@ -317,12 +320,28 @@
           const d = await api('demo', { method: 'POST', body: { name: this.demo.name.trim() || 'Demo aGate', ac_type: Number(this.demo.ac_type) } });
           this.demoId = d.gateway_id;
           Alpine.store('app').setGateway(d.gateway_id);
-          await this.enterChecklist();
+          await this.afterGateway();
         } catch (e) {
           this.error = e.message;
         } finally {
           this.busy = false;
         }
+      },
+
+      // ── Timezone (only while unconfirmed) ─────────────────────
+      // Schedules and tariff windows run on this clock. It used to be a
+      // separate banner behind the wizard — two setup flows at once.
+      async afterGateway() {
+        const app = Alpine.store('app');
+        if (!app.tz) await app.loadTz();
+        if (app.tz && app.tz.needs_confirmation) { this.go('timezone'); return; }
+        await this.enterChecklist();
+      },
+
+      async confirmTimezone() {
+        this.busy = true;
+        try { await Alpine.store('app').confirmTz(); } finally { this.busy = false; }
+        await this.enterChecklist();
       },
 
       // ── Step 6: Home Assistant checklist ──────────────────────

@@ -39,6 +39,7 @@ from franklinwh_bridge.config.environment import (
     SCAN_PREFIX,
     candidate_subnets,
     detect_environment,
+    lan_subnet_for,
 )
 from franklinwh_bridge.config.supervisor import LOCAL_HA_ID
 from franklinwh_bridge.store.db import (
@@ -117,11 +118,24 @@ async def post_setup_state(body: SetupStateUpdate, request: Request):
 
 @router.get("/subnets", dependencies=[Depends(_REQUIRE_ADMIN)])
 async def get_subnets(request: Request):
-    """Subnets to search, each with where it came from (see environment.py)."""
-    return {
-        "environment": detect_environment(),
-        "subnets": await candidate_subnets(request.headers.get("host")),
-    }
+    """Subnets to search, each with where it came from (see environment.py).
+
+    Also the networks of aGates already set up here: an aGate reached over
+    Tailscale or a VPN lives on a network the bridge's host isn't on, so the
+    host's own interfaces never suggest it — but a second aGate is usually on
+    the same network as the first.
+    """
+    subnets = await candidate_subnets(request.headers.get("host"))
+    seen = {s["subnet"] for s in subnets}
+    for gw in await get_gateways(request.app.state.db):
+        if gw.get("mock") or gateway_is_unconfigured(gw):
+            continue
+        ip = await asyncio.to_thread(_resolve, str(gw["host"]).strip())
+        subnet = lan_subnet_for(ip)
+        if subnet and subnet not in seen:
+            seen.add(subnet)
+            subnets.append({"subnet": subnet, "source": "configured_gateway"})
+    return {"environment": detect_environment(), "subnets": subnets}
 
 
 def normalise_subnet(raw: str) -> tuple[str, bool]:
@@ -481,6 +495,21 @@ def _ha_instance(request: Request):
     return None
 
 
+def _current_short_ids(request: Request) -> set[str]:
+    """MQTT device ids of the gateways published right now."""
+    pub = getattr(request.app.state, "mqtt_publisher", None)
+    if pub is None:
+        return set()
+    ids = set()
+    if getattr(pub, "device_info", None) is not None:
+        ids.add(pub.device_info.short_id)
+    for gw_id in pub.devices():
+        dev = pub.get_device(gw_id)
+        if dev is not None and dev.device_info is not None:
+            ids.add(dev.device_info.short_id)
+    return ids
+
+
 @router.get("/checklist", dependencies=[Depends(_REQUIRE_ADMIN)])
 async def get_checklist(request: Request):
     """Step 6: is everything between the bridge and Home Assistant working?
@@ -530,16 +559,22 @@ async def get_checklist(request: Request):
             logger.debug("MQTT config entry check failed: %s", exc)
         try:
             reg = await inst.ws_call({"type": "config/entity_registry/list"})
-            n = sum(
-                1 for e in reg or []
+            ours = [
+                str(e.get("unique_id") or "") for e in reg or []
                 if e.get("platform") == "mqtt"
                 and str(e.get("unique_id") or "").startswith("franklinwh_")
-            )
-            entities.update(
-                status="ok" if n else "fail",
-                count=n,
-                detail=f"{n} entities" if n else "None yet",
-            )
+            ]
+            # Only gateways that exist now: HA keeps the entities of a removed
+            # gateway (or an uninstalled add-on) in its registry, and counting
+            # them made "bridge entities in HA" pass with nothing current.
+            prefixes = tuple(f"franklinwh_{sid}_" for sid in _current_short_ids(request))
+            n = sum(1 for u in ours if prefixes and u.startswith(prefixes))
+            stale = len(ours) - n
+            detail = f"{n} entities" if n else "None yet"
+            if stale:
+                detail += (f" — plus {stale} left over from removed gateways"
+                           " (remove their devices in HA → Settings → Devices & services → MQTT)")
+            entities.update(status="ok" if n else "fail", count=n, stale=stale, detail=detail)
         except Exception as exc:
             logger.debug("Entity registry check failed: %s", exc)
     items.extend([integration, entities])
