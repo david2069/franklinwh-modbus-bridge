@@ -45,7 +45,7 @@ you want to do?** — and walks each answer to a working state.
 ## 2. When it appears
 
 Shown to **admins** on the first UI load when `setup_state` is `pending`
-(new `app_config` key, see §6):
+(new `app_config` key, see §7):
 
 | `setup_state` | Meaning | Wizard |
 |---|---|---|
@@ -129,14 +129,25 @@ Scans the local subnet for devices that answer as a FranklinWH aGate:
      interfaces don't reveal the LAN. Ask the Supervisor (`GET /network/info`,
      already permitted by `hassio_api: true`) for the host's interfaces and scan
      their IPv4 subnets.
-   - Docker (bridge networking): same problem, and there is no Supervisor to ask.
-     Show the container's own subnet *and* a field to type the LAN subnet
-     (prefilled with a guess such as `192.168.1.0/24`), with a note that Docker
-     must be able to route to it.
+   - Docker (bridge networking): the container's interfaces are Docker's, and
+     there is no Supervisor to ask. Resolve the LAN subnet in this order and
+     show where it came from:
+     1. **The address the browser used to reach the bridge.** The request's
+        `Host` is the Docker host's LAN address (the published port lands
+        there), e.g. `192.168.1.50:8100` → `192.168.1.0/24`. A hostname is
+        resolved server-side. Skipped for `localhost`/loopback and for public
+        addresses (reverse proxies).
+     2. **`LAN_SUBNET`** from the environment (added to `.env.example`), for
+        setups where 1 doesn't apply.
+     3. **Host networking** (`network_mode: host`): the container sees the LAN
+        interfaces directly — use them, as on bare metal.
+     4. Otherwise **blank**, with *Enter address* offered first.
+     This is close to optimal without extra privileges: option 1 covers the
+     common case (opening the UI by IP on the LAN) with no configuration.
    - Dev / bare metal: the machine's own non-loopback IPv4 subnets.
 2. **Limits.** Only private ranges (RFC 1918, plus Tailscale's `100.64.0.0/10`
-   only when typed explicitly). At most a /22 (1,022 hosts) per subnet without an
-   explicit override. Read-only.
+   only when typed explicitly). **A /24 (254 hosts) per subnet** — a wider
+   prefix is narrowed to the /24 containing the host. Read-only.
 3. **Port check.** TCP connect to port 502, ~300 ms timeout, up to 64 at once.
    A /24 completes in well under 10 seconds.
 4. **SunSpec check**, for every host with 502 open — **through
@@ -151,19 +162,27 @@ Scans the local subnet for devices that answer as a FranklinWH aGate:
    A FranklinWH result shows as *"FranklinWH aGate X — serial …, firmware …"*.
    Non-FranklinWH SunSpec devices (other inverters, meters) are listed greyed
    out as "not a FranklinWH device", so the user isn't left wondering.
-   The library already covers this (v0.9.3): `FranklinWHController(host, port,
-   unit_id, timeout=…, base_address=…)`, then `connect()` (which scans the
-   SunSpec chain from `base_address`) and `read_nameplate()`, then `disconnect()`.
-   Retry with `base_address` 40000 and 50000 when 0 finds nothing. The cost:
-   `connect()` scans the *whole* model chain, so each probe holds the aGate's
-   session for a second or two rather than one read. Fine for a one-off wizard;
-   a lighter marker-only probe could be added to the library later if it matters.
+   **Reuse franklinwh-modbus' scanner.** `tools/network_scanner.py` (develop)
+   already does exactly this, and does it better than a full controller
+   connect: `PortChecker` + `ModbusSunspecProber` read only the `SunS` marker
+   and model 1's nameplate, trying bases `[0, 40000, 50000, 30000]`, across a
+   `ThreadPoolExecutor`. It lives in `tools/`, so it isn't importable today.
+   **Prerequisite (library PR):** promote those classes into the package as
+   `franklinwh_modbus.discovery` — e.g. `probe(host, port=502, timeout=…) ->
+   DiscoveryResult | None` and `scan(subnet, workers=…, timeout=…) ->
+   list[DiscoveryResult]` — and have the CLI tool import them. The bridge then
+   calls the library, as CLAUDE.md requires, and the probe holds the aGate's
+   single session for one or two reads rather than a full chain scan.
+   (Fallback if that PR waits: `FranklinWHController(..., base_address=…)`
+   `connect()` + `read_nameplate()`, which works but scans the whole chain.)
 6. **Disconnect immediately** after each probe — the aGate's single Modbus
    session must be free for the poller, and a probe left open looks to the user
    like the aGate went offline.
 
-Results are a list; each row is selectable. Three outcomes need their own
-wording:
+Results are a list. **Each FranklinWH row is selectable, and several can be
+selected** — set up one now and leave the rest, or all at once (the first
+selected becomes the primary gateway, the others are added as further
+gateways). Three outcomes need their own wording:
 
 | What the probe saw | Shown as |
 |---|---|
@@ -182,9 +201,10 @@ Shows the nameplate and asks for a name (default `"aGate <last 4 of serial>"`)
 and the **device type** — `aGate` or `MAC-1` (Meter Adaptor Collar) — prefilled
 from the model string where it can be told apart.
 
-**Confirm** sets the *default* gateway's host/port/unit/name/type (PATCH; PR #2
-starts it as soon as it has a host). Using the default gateway keeps the legacy
-MQTT topics and entity ids existing HA dashboards rely on.
+**Confirm** configures the primary gateway's host/port/unit/name/type (PATCH;
+PR #2 starts it as soon as it has a host). Internally that is still the gateway
+with id `default`, which keeps the legacy MQTT topics and entity ids existing HA
+dashboards rely on — but see §4: the user never sees "Default".
 
 ### Step 5R — First live reading
 
@@ -232,7 +252,28 @@ so no entities.
 
 ---
 
-## 4. Switching later
+## 4. "Default Gateway" is a label, not a concept
+
+"Default Gateway" is only the name the bridge gave the first gateway row. It
+should carry no meaning for the user, and the wizard is where it stops being
+shown:
+
+- The wizard **names** every gateway it sets up: from the nameplate
+  (*"aGate 1234"*, last four of the serial) or the user's choice. Nothing is
+  left called "Default Gateway".
+- An unconfigured placeholder row is labelled **"aGate — not set up"**
+  everywhere (selector, Settings), never "Default Gateway".
+- The selector and Settings show **names only** — no "default" badge or wording.
+
+What this does *not* fix: the internal id `default` is still load-bearing —
+it owns the unprefixed MQTT topics and HA entity ids, several endpoints fall
+back to it, and it can't be deleted. Removing that is the **"primary gateway"**
+change (any gateway can be primary; delete allowed except the last), which needs
+its own design because changing which gateway owns the legacy topics would
+rename entities in users' HA. The wizard is written against "the primary
+gateway", so it won't change when that lands.
+
+## 5. Switching later
 
 - **Demo → real:** *Settings → Site & Gateways → Run setup again → Connect my
   aGate*. Afterwards, offer to delete the demo gateway (and say its HA entities
@@ -241,7 +282,7 @@ so no entities.
 
 ---
 
-## 5. API
+## 6. API
 
 All under `/api/setup`, admin-only (`require_capability("admin")`), so the CLI
 can drive the same flow (`bridge setup …`).
@@ -265,14 +306,32 @@ configured and polling, it's shown as *"already connected"* without probing.
 
 ---
 
-## 6. Data
+## 7. Data
 
 - `app_config.setup_state` — one of the four states in §2.
 - No new tables. Scan results live in memory for the scan's lifetime only.
 
 ---
 
-## 7. Testing
+## 8. mDNS — where it helps (and where it doesn't)
+
+franklinwh-modbus' scanner also does mDNS (`zeroconf`). Worth using, but not
+for the aGate:
+
+- **aGate: no.** It doesn't advertise over mDNS (Modbus-only devices rarely
+  do), so finding it needs the port + SunSpec scan above.
+- **Home Assistant and MQTT broker: yes, for Docker / standalone installs.**
+  `_home-assistant._tcp` gives HA's `base_url` — prefill *Settings → Home
+  Assistant → Add* — and `_mqtt._tcp` finds a broker *if* it advertises
+  (Mosquitto doesn't by default, so treat it as a bonus). Step 6 can offer
+  *"Found Home Assistant at http://192.168.1.10:8123 — use it?"*.
+- **Add-on: not needed.** The Supervisor already provides both (PRs #4, #5).
+- **Constraint:** mDNS is multicast, which doesn't cross Docker's bridge
+  network — it works with host networking or on bare metal, and is silently
+  absent otherwise. So it's an optional suggestion, never a required step, and
+  `zeroconf` an optional dependency.
+
+## 9. Testing
 
 - **Unit:** subnet selection and limits; SunSpec base fallback order; result
   classification (aGate / other SunSpec / session held / nothing); state
@@ -288,23 +347,25 @@ configured and polling, it's shown as *"already connected"* without probing.
 - **HA VM:** the add-on path end to end — Supervisor subnet discovery and the
   step 6 checklist against a real Mosquitto / MQTT integration.
 
-## 8. Relationship to the gateway emulator
+## 10. Relationship to the gateway emulator
 
 The demo path creates a gateway with `mock: true`. Today that runs on
 `MockPoller`; a separate PR will swap it for an in-process instance of the
 gateway emulator so demos go through the real poller, catalog and command path.
 The wizard doesn't change when that happens. Nothing here depends on the
-emulator being published, except the scan tests in §7.
+emulator being published, except the scan tests in §9.
 
-## 9. Open questions
+## 11. Decisions (review of 2026-10-07)
 
-
-1. **Hide the unconfigured default** from the gateway selector and Settings list
-   once a demo exists? It's confusing next to a working demo, but it's also where
-   a real aGate will go later. Proposal: hide it from the *selector*, keep it in
-   Settings with "not set".
-2. **Docker subnet guess:** is a prefilled `192.168.1.0/24` helpful, or should
-   the field start empty?
-3. **Default scan width:** /24 only, or the host's real prefix up to /22?
-4. **Two aGates found:** set up both (first as default, second as a new
-   gateway), or one at a time?
+1. **"Default Gateway" label** — cosmetic and must not carry meaning; the wizard
+   names gateways and the UI stops showing "default" (§4). Removing the
+   internal `default` id is a separate "primary gateway" design.
+2. **Docker subnet** — derive it from the address the browser used to reach the
+   bridge, then `LAN_SUBNET`, then host-networking interfaces, else blank
+   (step 3R.1).
+3. **Scan width** — /24.
+4. **Several aGates found** — allow either: set up one, or several at once.
+5. **Discovery code** — reuse franklinwh-modbus' scanner, promoted into the
+   package as `franklinwh_modbus.discovery` (prerequisite library PR).
+6. **mDNS** — optional, for finding HA and an MQTT broker on Docker /
+   standalone installs; not for the aGate (§8).
