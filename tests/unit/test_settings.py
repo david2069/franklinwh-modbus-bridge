@@ -14,6 +14,7 @@ from franklinwh_bridge.config.settings import (
 
 def test_default_settings(monkeypatch):
     monkeypatch.delenv("MODBUS_HOST", raising=False)
+    monkeypatch.delenv("MODBUS_PORT", raising=False)
     settings = BridgeSettings()
     # No made-up address: an unset host means "not configured".
     assert settings.gateway.host == ""

@@ -46,14 +46,19 @@ def test_samples_follow_a_simulated_dispatch():
 
 def test_soc_integrates_and_respects_the_reserve():
     ctl, poller = _poller()
-    ctl.set_self_consumption_reserve(50)
+    # The synthetic starting SoC follows the time of day, so put the reserve
+    # below wherever it starts — a fixed 50% failed whenever the run began
+    # with the battery already under it.
+    start = poller.sample_points(1)["soc"]
+    reserve = max(5, int(start) - 15)
+    ctl.set_self_consumption_reserve(reserve)
     ctl.send_command(BatteryCommand(power_watts=-5000))  # hard discharge
     socs = [poller.sample_points(600)["soc"] for _ in range(12)]  # ~2h
     assert socs[-1] < socs[0]
     final = poller.sample_points(600)
     # Held at the reserve floor rather than discharging through it.
-    assert final["soc"] >= 49.0
-    if final["soc"] <= 50.0:
+    assert final["soc"] >= reserve - 1.0
+    if final["soc"] <= reserve:
         assert final["battery_power_w"] == 0.0
 
 
