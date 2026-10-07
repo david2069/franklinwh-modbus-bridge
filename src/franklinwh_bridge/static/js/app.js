@@ -248,6 +248,37 @@ function _noteReachable(ok, info = {}) {
  *  before the next one starts rather than piling up. */
 const FETCH_TIMEOUT_MS = 8000;
 
+/** How long a Sequencer run can legitimately take, from its own steps.
+ *  POST /api/sequence/execute answers only when the whole run has finished,
+ *  and runs sleep, verify and wait on purpose — far past FETCH_TIMEOUT_MS. A
+ *  request abandoned at 8s reported "couldn't reach the bridge" while the
+ *  bridge carried on writing registers. Mirrors franklinwh_modbus.sequencer:
+ *  sleep_ms | post_sleep_ms, verify_timeout_ms (2s default) when verifying,
+ *  wait_for.timeout_ms (30s default); plus Modbus time per step. */
+const SEQUENCE_UNKNOWN_TIMEOUT_MS = 10 * 60 * 1000;
+function sequenceTimeoutMs(sequence, gatewayCount = 1) {
+  const steps = Array.isArray(sequence) ? sequence
+    : (sequence && Array.isArray(sequence.steps)) ? sequence.steps : null;
+  if (!steps) return SEQUENCE_UNKNOWN_TIMEOUT_MS;
+  let ms = 0;
+  for (const s of steps) {
+    if (!s || typeof s !== 'object') continue;
+    ms += Number(s.sleep_ms ?? s.post_sleep_ms ?? 0) || 0;
+    if (s.verify) ms += Number(s.verify_timeout_ms ?? 2000) || 0;
+    if (s.wait_for) ms += Number(s.wait_for.timeout_ms ?? 30000) || 0;
+    ms += 5000;
+  }
+  return Math.max(FETCH_TIMEOUT_MS, ms * Math.max(1, gatewayCount) + 15000);
+}
+
+/** What to say when a long run outlives even its own timeout: the request was
+ *  abandoned, not refused — the run may well still be going. */
+function sequenceNoReplyMessage(data) {
+  return (data && /^no response within/.test(data.technical || ''))
+    ? `No reply after ${data.technical.replace('no response within ', '')} — the sequence may still be running on the bridge. Check Logs before running it again.`
+    : null;
+}
+
 async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);

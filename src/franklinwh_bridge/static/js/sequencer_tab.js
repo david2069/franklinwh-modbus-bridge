@@ -357,6 +357,9 @@ function sequencerTab() {
       this.output = [`>>> Executing on ${gwLabel}` + (this.dryRun ? ' (DRY RUN)' : '') + '...'];
 
       const parsed = JSON.parse(this.editor);
+      const gwCount = this.seqGateway === 'all'
+        ? Alpine.store('app').gatewayList.filter(g => !g.mock && g.enabled).length
+        : 1;
       const data = await fetchJSON('api/sequence/execute', {
         method: 'POST',
         body: JSON.stringify({
@@ -364,14 +367,14 @@ function sequencerTab() {
           dry_run: this.dryRun,
           gateway_id: this.seqGateway,
         }),
-      });
+      }, sequenceTimeoutMs(parsed, gwCount));
 
       this.executing = false;
 
       if (data && data.output) {
         this.output = data.output;
       } else {
-        this.output = ['ERROR: ' + (data?.error || 'Unknown error')];
+        this.output = ['ERROR: ' + (sequenceNoReplyMessage(data) || data?.error || 'Unknown error')];
       }
 
       this.$nextTick(() => {

@@ -150,6 +150,15 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Sequencer: "couldn't reach the bridge" on runs that actually worked.** The UI
+  dropped every request after 8 s, but `POST /api/sequence/execute` replies only
+  once the whole sequence has finished, so any run with sleeps, verifies or
+  waits was reported as a lost connection while the bridge carried on writing
+  registers, and its step-by-step output was lost. The request now waits for
+  the time the sequence can take, worked out from its own `sleep_ms`,
+  `verify_timeout_ms` and `wait_for.timeout_ms` (per gateway for *All*), and
+  if even that runs out it says the run may still be going rather than that the
+  bridge is unreachable.
 - **`.env.example` no longer sets `MODBUS_HOST=192.168.1.100`** — the made-up
   address the unconfigured-gateway fix removed from the code came back for
   anyone who copied the example. It is now commented out; leave it unset to use
