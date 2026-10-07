@@ -15,6 +15,12 @@ lands, not backfilled later.
 
 ### Added
 
+- **Add-on store page**: `addon/CHANGELOG.md` (HA's *Changelog* link, written for
+  users), `addon/DOCS.md` (the *Documentation* tab), and an icon and logo. The
+  add-on version is now **0.2.0**. It had stayed at 0.1.0, so HA never offered an
+  update. The release steps are in `docs/build-and-dependency-policy.md` §6b,
+  and `tests/unit/test_addon_release.py` keeps the add-on version, the package
+  version and the add-on changelog in step.
 - **First-run setup wizard** in the web UI: opens once for an admin on a fresh
   install (after the legal notice), asks *connect my aGate* / *explore with a
   demo* / *I'll set it up myself*, searches the network (or tests a typed

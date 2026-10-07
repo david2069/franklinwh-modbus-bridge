@@ -43,8 +43,9 @@ Three supported ways to run it. Pick one:
 
 - Home Assistant OS or Supervised (the **Supervisor** is required — HA Container
   can't install add-ons; use Docker Compose there instead).
-- An MQTT broker. The **Mosquitto broker** add-on is the usual choice — install
-  and start it *before* this add-on and there is nothing further to configure.
+- An MQTT broker for entities to reach HA. The **Mosquitto broker** add-on is
+  the usual choice — before or after this add-on; the bridge picks it up by
+  itself.
 - Your aGate's IP address, reachable from HA, with **Modbus TCP enabled** on the
   device (installer setting).
 
@@ -65,13 +66,16 @@ Click the button above, or add the repository by hand:
 
    | Option | Meaning |
    |---|---|
-   | `gateway_host` | aGate IP, e.g. `192.168.1.50`. May be left blank — you can add gateways in the UI later. |
+   | `gateway_host` | aGate IP, e.g. `192.168.1.50`. Leave blank to find it with the setup wizard on first start. |
    | `gateway_port` | Modbus TCP port, normally `502`. |
    | `gateway_unit_id` | Modbus unit id, normally `1`. |
    | `poll_interval` | Seconds between polls. `10` is a sensible default. |
    | `log_level` | `INFO` normally; `DEBUG` when diagnosing. |
 
-5. **Start**, then open **FranklinWH** from the sidebar.
+5. **Start**, then open **FranklinWH** from the sidebar. On a fresh install the
+   **setup wizard** opens: it finds your aGate (or creates a demo gateway) and
+   ends with a Home Assistant checklist. The add-on's **Documentation** tab
+   covers the same in more detail.
 
 ### What the add-on does for you
 
