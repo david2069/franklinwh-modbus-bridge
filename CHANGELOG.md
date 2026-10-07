@@ -32,6 +32,21 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Battery control panel** (the Release modal):
+  - **WSetPct** shows the scaled value (*100%*) instead of the raw register
+    with a % sign (*1000%*). The raw value is on hover.
+  - **Watchdog** shows *No limit* for a dispatch without a time limit,
+    instead of *0m 0s* in red, which looked expired.
+  - A new **Target SoC** row.
+- **The control log records which gateway a command was for.** Every
+  dispatch was logged as the primary gateway's. Changing the target SoC is now
+  logged, and each *command sent* entry includes its time limit and target SoC.
+- **Crash recovery now covers every gateway.** The saved active-dispatch state
+  table only allowed one row, so any gateway other than the primary failed to
+  save its state (logged only as a warning). It's now one row per gateway
+  (migration 52).
+- Corrected code comments that said the aGate's revert countdown (`RvrtRem`)
+  never moves. It counts down; what doesn't happen at 0 is the revert.
 - **Settings → Admin → Feature modules no longer says a disabled feature's API is
   blocked.** Turning a module off removes it from the sidebar. Only some modules
   (Schedule, HA Entities, Energy Costs) also gate their API, so the wording

@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 51
+CURRENT_SCHEMA_VERSION = 52
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -783,6 +783,34 @@ MIGRATIONS: dict[int, str] = {
      WHERE key = 'modules_enabled'
        AND EXISTS (SELECT 1 FROM gateways);
     """,
+    52: """
+    -- control_state, one row PER GATEWAY.
+    --
+    -- The table was created single-row (id INTEGER PRIMARY KEY CHECK (id = 1))
+    -- and later given a gateway_id column without dropping the CHECK, so any
+    -- gateway other than the primary failed to save its active-dispatch state
+    -- (logged only as a warning) — crash recovery covered the primary gateway
+    -- alone. Non-primary ids were also derived from Python's hash(), which
+    -- changes every process, so even without the CHECK each restart would have
+    -- added a row. Key it by gateway_id instead, keeping the primary's row.
+    CREATE TABLE control_state_new (
+        gateway_id TEXT PRIMARY KEY,
+        active INTEGER NOT NULL DEFAULT 0,
+        action TEXT NOT NULL DEFAULT '',
+        power_w INTEGER NOT NULL DEFAULT 0,
+        started_at REAL NOT NULL DEFAULT 0,
+        watchdog_s INTEGER NOT NULL DEFAULT 3600,
+        updated_at REAL NOT NULL DEFAULT 0
+    );
+    INSERT OR REPLACE INTO control_state_new
+        (gateway_id, active, action, power_w, started_at, watchdog_s, updated_at)
+    SELECT COALESCE(NULLIF(gateway_id, ''), 'default'), active, action, power_w,
+           started_at, watchdog_s, updated_at
+      FROM control_state
+     ORDER BY updated_at;
+    DROP TABLE control_state;
+    ALTER TABLE control_state_new RENAME TO control_state;
+    """,
     46: """
     -- Every plan needs a real start date.
     --
@@ -1109,19 +1137,16 @@ async def save_control_state(
     watchdog_s: int = 3600,
     gateway_id: str = "default",
 ) -> None:
-    # Upsert: update existing row for this gateway, or insert if missing
-    row_id = 1 if gateway_id == "default" else abs(hash(gateway_id)) % 2**31
+    # One row per gateway (migration 52).
     await db.execute(
         "INSERT INTO control_state "
-        "(id, active, action, power_w, started_at, watchdog_s, "
-        " updated_at, gateway_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET "
+        "(gateway_id, active, action, power_w, started_at, watchdog_s, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(gateway_id) DO UPDATE SET "
         "active=excluded.active, action=excluded.action, "
         "power_w=excluded.power_w, started_at=excluded.started_at, "
-        "watchdog_s=excluded.watchdog_s, updated_at=excluded.updated_at, "
-        "gateway_id=excluded.gateway_id",
-        (row_id, int(active), action, power_w, started_at, watchdog_s, time.time(), gateway_id),
+        "watchdog_s=excluded.watchdog_s, updated_at=excluded.updated_at",
+        (gateway_id, int(active), action, power_w, started_at, watchdog_s, time.time()),
     )
     await db.commit()
 

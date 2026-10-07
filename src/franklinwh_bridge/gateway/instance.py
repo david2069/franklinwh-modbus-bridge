@@ -148,6 +148,7 @@ class GatewayInstance:
             self._db,
             points_getter=self._get_cached_points,
             modbus_lock=self.modbus_lock,
+            gateway_id=self.gateway_id,
         )
 
         # Run the connect + discover sequence in background
@@ -202,6 +203,7 @@ class GatewayInstance:
             self._db,
             points_getter=self._get_cached_points,
             modbus_lock=self.modbus_lock,
+            gateway_id=self.gateway_id,
         )
         # Fan-in to the global bus so the Site aggregator picks up the mock.
         self.sample_bus.subscribe(self._forward_to_global)
