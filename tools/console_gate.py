@@ -280,9 +280,16 @@ def run(url: str, user: str, password: str) -> int:
             page.mouse.click(5, 5)  # click-outside closes the panel
             page.wait_for_timeout(300)
 
+        # Settings sub-tabs: visit each section, so a card that only renders
+        # in one of them still gets its console checked.
+        for section in ("gateways", "home-assistant", "energy", "data", "admin"):
+            _goto(page, f"{url}?tab=settings&section={section}", problems)
+            page.wait_for_timeout(600)
+
         # Settings → open the service editor twice. The second open is the one
-        # that catches teardown bugs.
-        _goto(page, f"{url}?tab=settings", problems)
+        # that catches teardown bugs. The service card lives in the Energy &
+        # Automation section.
+        _goto(page, f"{url}?tab=settings&section=energy", problems)
         for attempt in (1, 2):
             # Scope to the SERVICE row: other tabs stay in the DOM hidden, and
             # Settings itself has gateway Edit buttons too — an unscoped match

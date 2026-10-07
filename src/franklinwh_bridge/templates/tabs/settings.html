@@ -1,8 +1,18 @@
 <!-- ── Settings Tab ─────────────────────────────────────── -->
 <div x-data="settingsTab()">
+  <!-- Settings sub-tabs. Each card below belongs to one section; the choice
+       is synced to ?section= so a section can be linked to directly. -->
+  <div class="flex flex-wrap items-center gap-1 mb-4 border-b border-white/[0.06] pb-2">
+    <template x-for="sec in $store.app.settingsSections" :key="sec.id">
+      <button @click="$store.app.setSettingsSection(sec.id)"
+              class="px-3 py-1.5 text-xs font-medium rounded-t transition"
+              :class="$store.app.settingsSection === sec.id ? 'bg-cyan-500/15 text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-500 hover:text-slate-300'"
+              x-text="sec.label"></button>
+    </template>
+  </div>
 
   <!-- Feature Modules (admin: enable/disable features) -->
-  <div class="card mb-4">
+  <div x-show="$store.app.settingsSection === 'admin'" class="card mb-4">
     <div class="flex items-center justify-between mb-1">
       <div class="card-label !mb-0">Feature Modules</div>
       <span class="text-[10px] uppercase tracking-wide text-slate-500">enable / disable</span>
@@ -28,7 +38,7 @@
   </div>
 
   <!-- Users (admin only) -->
-  <div class="card mb-4" x-show="$store.app.isAdmin" x-cloak>
+  <div class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak>
     <div class="flex items-center justify-between mb-1">
       <div class="card-label !mb-0">Users</div>
       <button type="button" class="btn btn-sm btn-secondary" @click="showAddUser = !showAddUser" x-text="showAddUser ? 'Cancel' : '+ Add User'"></button>
@@ -76,10 +86,373 @@
     </div>
   </div>
 
+  <!-- Gateways Management -->
+  <div x-show="$store.app.settingsSection === 'gateways'" class="card mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="card-label !mb-0">Gateways</div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] text-slate-500" x-text="gwList.length + ' gateway' + (gwList.length !== 1 ? 's' : '')"></span>
+        <button @click="showAddGateway = !showAddGateway"
+                class="btn btn-sm btn-secondary">
+          <span x-text="showAddGateway ? 'Cancel' : '+ Add Gateway'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Add gateway form -->
+    <div x-show="showAddGateway" x-cloak
+         class="mb-3 p-3 rounded-lg border border-cyan-500/20 bg-cyan-900/10">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">ID</label>
+          <input type="text" x-model="newGw.gateway_id" placeholder="gateway_2"
+                 class="form-control !py-1 !text-xs w-full font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Name</label>
+          <input type="text" x-model="newGw.name" placeholder="FHP 2"
+                 class="form-control !py-1 !text-xs w-full">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Host</label>
+          <input type="text" x-model="newGw.host" placeholder="192.168.1.100"
+                 class="form-control !py-1 !text-xs w-full font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Port</label>
+          <input type="number" x-model.number="newGw.port" min="1" max="65535"
+                 class="form-control !py-1 !text-xs w-20 font-mono">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Unit ID</label>
+          <input type="number" x-model.number="newGw.unit_id" min="1" max="247"
+                 class="form-control !py-1 !text-xs w-16 font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Poll Interval (s)</label>
+          <input type="number" x-model.number="newGw.poll_interval" min="1" max="300"
+                 class="form-control !py-1 !text-xs w-16 font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
+                 title="Modbus connection/read timeout. Raise this if you see frequent timeouts on a flaky link.">Timeout (s)</label>
+          <input type="number" x-model.number="newGw.timeout" min="1" max="60" step="0.5"
+                 class="form-control !py-1 !text-xs w-16 font-mono">
+        </div>
+        <div>
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
+          <input type="text" x-model="newGw.description" placeholder="Phase 1, FHP 1"
+                 class="form-control !py-1 !text-xs w-full">
+        </div>
+      </div>
+      <label class="flex items-center gap-2 mb-2 text-xs text-slate-300 cursor-pointer">
+        <input type="checkbox" x-model="newGw.mock" class="rounded">
+        <span>Mock gateway
+          <span class="text-slate-500">— simulated data, no hardware (host/port ignored; safe to run alongside real gateways)</span></span>
+      </label>
+      <button @click="addGateway()" :disabled="gwBusy"
+              class="btn btn-sm btn-primary"
+              x-text="newGw.mock ? 'Add Mock Gateway' : 'Add Gateway'">Add Gateway</button>
+    </div>
+
+    <!-- Gateway table -->
+    <div class="overflow-x-auto">
+      <table class="data-table text-xs">
+        <thead>
+          <tr>
+            <th class="w-4"></th>
+            <th>Name</th>
+            <th>Host</th>
+            <th>Serial</th>
+            <th>Model</th>
+            <th class="text-center">Enabled</th>
+            <th class="text-right">Last Poll</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="gw in gwList" :key="gw.id">
+            <tr>
+              <td class="!px-1">
+                <span class="inline-block w-2 h-2 rounded-full"
+                      :class="gw.health === 'connected' ? 'bg-emerald-400' :
+                              gw.health === 'tcp_only' ? 'bg-amber-400' :
+                              gw.health === 'unreachable' ? 'bg-red-400' : 'bg-slate-600'"
+                      :title="gw.health || 'unknown'"></span>
+              </td>
+              <td>
+                <span class="font-medium" x-text="gw.name"></span>
+                <span class="text-[10px] text-slate-500 ml-1 font-mono" x-text="gw.id"></span>
+                <span x-show="gw.mock" class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">mock</span>
+                <span x-show="gw.description" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
+              </td>
+              <td class="font-mono" :class="gw.health === 'unconfigured' ? 'text-amber-400' : 'text-slate-400'"
+                  x-text="gw.health === 'unconfigured' ? 'not set' : (gw.host + ':' + gw.port)"></td>
+              <td class="font-mono text-slate-500 text-[10px]" x-text="gw.serial || '--'"></td>
+              <td class="text-slate-400" x-text="gw.model || '--'"></td>
+              <td class="text-center">
+                <button @click="gw.polling ? stopGw(gw.id) : startGw(gw.id)"
+                        :disabled="gwBusy || gw.enabled === false || gw.health === 'unconfigured'"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-40"
+                        :class="gw.polling ? 'bg-emerald-600' : 'bg-slate-600'"
+                        :title="gw.health === 'unconfigured' ? 'No address yet — click Edit to set the host' : (gw.enabled === false ? 'Disabled' : (gw.polling ? 'Polling — click to stop' : 'Stopped — click to start'))">
+                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                        :class="gw.polling ? 'translate-x-[18px]' : 'translate-x-[3px]'"></span>
+                </button>
+              </td>
+              <td class="text-right font-mono text-[10px] text-slate-500"
+                  x-text="gw.last_poll_ts ? fmt.ago(gw.last_poll_ts) : '--'"></td>
+              <td class="!px-1">
+                <div class="flex items-center gap-2">
+                  <button @click="testGw(gw.id)" :disabled="gwBusy"
+                          class="text-[10px] text-cyan-400 hover:text-cyan-300" title="Test TCP">Test</button>
+                  <!-- Per-row TCP test result -->
+                  <span x-show="gwTestResults[gw.id]"
+                        class="text-[10px] font-mono"
+                        :class="gwTestResults[gw.id]?.testing ? 'text-slate-500' :
+                                (gwTestResults[gw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                        :title="gwTestResults[gw.id]?.msg || ''"
+                        x-text="gwTestResults[gw.id]?.testing ? '…' :
+                                (gwTestResults[gw.id]?.ok
+                                  ? '✓ ' + (gwTestResults[gw.id]?.latency ?? '') + 'ms'
+                                  : '✗ ' + (gwTestResults[gw.id]?.msg || ''))"></span>
+                  <button @click="startEditGw(gw)" :disabled="gwBusy"
+                          class="text-[10px] text-slate-400 hover:text-cyan-400 border border-slate-600/50 rounded px-1.5 py-0.5"
+                          title="Edit, and run diagnostics/restart/remove">Edit</button>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Edit gateway modal -->
+    <div x-show="editGw" x-cloak
+         @keydown.escape.window="editGw = null"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+         @click.self="editGw = null">
+      <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4">
+      <template x-if="editGw">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs uppercase text-amber-400 font-semibold">Edit Gateway
+              <span class="font-mono text-slate-400 normal-case" x-text="editGw.id"></span></span>
+            <button @click="editGw = null" class="text-slate-500 hover:text-slate-300 text-lg leading-none" title="Close">&times;</button>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Name</label>
+              <input type="text" x-model="editGw.name" class="form-control !py-1 !text-xs w-full">
+            </div>
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Host</label>
+              <input type="text" x-model="editGw.host" class="form-control !py-1 !text-xs w-full font-mono">
+            </div>
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Port</label>
+              <input type="number" x-model.number="editGw.port" min="1" max="65535"
+                     class="form-control !py-1 !text-xs w-20 font-mono">
+            </div>
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Unit ID</label>
+              <input type="number" x-model.number="editGw.unit_id" min="1" max="247"
+                     class="form-control !py-1 !text-xs w-16 font-mono">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Poll Interval (s)</label>
+              <input type="number" x-model.number="editGw.poll_interval" min="1" max="300"
+                     class="form-control !py-1 !text-xs w-16 font-mono">
+            </div>
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
+                     title="Modbus connection/read timeout. Raise this if you see frequent timeouts on a flaky link.">Timeout (s)</label>
+              <input type="number" x-model.number="editGw.timeout" min="1" max="60" step="0.5"
+                     class="form-control !py-1 !text-xs w-16 font-mono">
+            </div>
+            <div class="sm:col-span-2">
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
+              <input type="text" x-model="editGw.description" class="form-control !py-1 !text-xs w-full">
+            </div>
+          </div>
+          <p class="text-[10px] text-slate-600 -mt-1.5 mb-2">Poll interval and timeout apply after this
+             gateway reconnects (stop/start, or app restart) — not instantly.</p>
+
+          <!-- Service & phase linkage (Layer 2) -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 pt-2 border-t border-amber-500/15">
+            <div class="sm:col-span-2">
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Utility Service</label>
+              <select x-model="editGw.service_id"
+                      x-init="$nextTick(() => $el.value = editGw.service_id || '')"
+                      class="form-control !py-1 !text-xs w-full">
+                <option value="">— none —</option>
+                <template x-for="svc in services" :key="svc.id">
+                  <option :value="svc.id"
+                          x-text="svc.name + (svc.meter_number ? ' (' + svc.meter_number + ')' : '')"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Phase</label>
+              <select x-model="editGw.phase" class="form-control !py-1 !text-xs w-full">
+                <option value="all">All phases</option>
+                <option value="L1">L1</option>
+                <option value="L2">L2</option>
+                <option value="L3">L3</option>
+                <option value="L1+L2">L1+L2</option>
+                <option value="L1+L2+L3">L1+L2+L3</option>
+              </select>
+            </div>
+            <div class="flex flex-col justify-end">
+              <button @click="detectPhases()" type="button"
+                      class="btn btn-sm btn-secondary !py-1 !text-xs">Auto-detect</button>
+            </div>
+            <!-- Phase view: only meaningful for a multi-phase unit (split/three) -->
+            <div class="sm:col-span-2" x-show="(editGw.ac_type ?? 0) >= 1">
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Phase View</label>
+              <select x-model="editGw.phase_view" class="form-control !py-1 !text-xs w-full">
+                <option value="both">Both (aggregate + per-phase)</option>
+                <option value="aggregate">Aggregate only</option>
+                <option value="per_phase">Per-phase</option>
+              </select>
+            </div>
+            <!-- Whether this gateway gets its own device + entities in HA.
+                 Off tombstones its discovery, so HA removes the entities
+                 instead of leaving them permanently unavailable. -->
+            <div class="sm:col-span-2 pt-1 border-t border-white/[0.06]">
+              <label class="flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" x-model="editGw.publish_to_ha" class="accent-emerald-500">
+                Publish this gateway to Home Assistant (MQTT Discovery)
+              </label>
+              <p class="text-[10px] text-slate-600 mt-0.5">
+                Off removes its entities from HA. A mock gateway publishes synthetic
+                values — its energy sensors feed HA long-term statistics, which outlive
+                the entity, so prefer a test HA for those.
+              </p>
+            </div>
+          </div>
+          <!-- Detection result / mismatch warning -->
+          <template x-if="phaseDetect">
+            <div class="text-[11px] mb-2 px-2 py-1 rounded"
+                 :class="phaseDetect.matches_declared ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'">
+              <template x-if="phaseDetect.detected">
+                <span>Detected from 701: <span class="font-mono font-semibold" x-text="phaseDetect.detected"></span>
+                  <span x-show="!phaseDetect.matches_declared"> — differs from selected phase, review before saving.</span>
+                  <span x-show="phaseDetect.matches_declared"> — matches.</span>
+                </span>
+              </template>
+              <template x-if="!phaseDetect.detected">
+                <span>No per-phase data yet (gateway may not have polled 701).</span>
+              </template>
+            </div>
+          </template>
+
+          <div class="flex justify-end gap-2">
+            <button @click="editGw = null" class="btn btn-sm btn-secondary">Cancel</button>
+            <button @click="saveEditGw()" :disabled="gwBusy" class="btn btn-sm btn-primary">Save Changes</button>
+          </div>
+
+          <!-- Connection & Diagnostics -->
+          <div class="mt-4 pt-3 border-t border-slate-700">
+            <div class="text-[10px] uppercase text-slate-500 font-semibold mb-2">Connection &amp; Diagnostics</div>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <button @click="testGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Test</button>
+              <button @click="diagnoseGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Diagnose</button>
+              <button @click="forceHealthcheckGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Force Healthcheck</button>
+              <button @click="restartGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Restart</button>
+            </div>
+
+            <!-- Test result -->
+            <div x-show="gwTestResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwTestResults[editGw.id]?.testing ? 'text-slate-500' : (gwTestResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwTestResults[editGw.id]?.testing ? 'Testing…' :
+                         (gwTestResults[editGw.id]?.ok
+                           ? '✓ ' + gwTestResults[editGw.id]?.msg + ' (' + gwTestResults[editGw.id]?.latency + ' ms)'
+                           : '✗ ' + gwTestResults[editGw.id]?.msg)"></div>
+
+            <!-- Diagnose result: per-check breakdown + full verdict -->
+            <div x-show="gwDiagResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50">
+              <template x-if="gwDiagResults[editGw.id]?.testing">
+                <div class="text-slate-500">Diagnosing…</div>
+              </template>
+              <template x-if="!gwDiagResults[editGw.id]?.testing">
+                <div>
+                  <template x-if="gwDiagResults[editGw.id]?.checks">
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono mb-2">
+                      <template x-for="[label, key] in [['TCP 502 (Modbus)', 'tcp_502_modbus'], ['TCP 9000 (Local API)', 'tcp_9000_local_api'], ['Modbus protocol read', 'modbus_protocol']]" :key="key">
+                        <span :class="gwDiagResults[editGw.id]?.checks[key]?.ok ? 'text-emerald-400' : 'text-red-400'">
+                          <span x-text="gwDiagResults[editGw.id]?.checks[key]?.ok ? '✓' : '✗'"></span>
+                          <span x-text="label"></span>
+                          <span class="text-slate-500" x-show="gwDiagResults[editGw.id]?.checks[key]?.latency_ms != null"
+                                x-text="'(' + gwDiagResults[editGw.id]?.checks[key]?.latency_ms + ' ms)'"></span>
+                          <span class="text-slate-500" x-show="gwDiagResults[editGw.id]?.checks[key]?.error"
+                                x-text="'— ' + gwDiagResults[editGw.id]?.checks[key]?.error"></span>
+                        </span>
+                      </template>
+                    </div>
+                  </template>
+                  <div :class="gwDiagResults[editGw.id]?.ok ? 'text-emerald-300' : 'text-amber-300'"
+                       x-text="gwDiagResults[editGw.id]?.verdict"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Force healthcheck result -->
+            <div x-show="gwHealthResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwHealthResults[editGw.id]?.testing ? 'text-slate-500' : (gwHealthResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwHealthResults[editGw.id]?.testing ? 'Checking…' : 'health: ' + gwHealthResults[editGw.id]?.health"></div>
+
+            <!-- Restart result -->
+            <div x-show="gwRestartResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwRestartResults[editGw.id]?.testing ? 'text-slate-500' : (gwRestartResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwRestartResults[editGw.id]?.testing ? 'Restarting…' : gwRestartResults[editGw.id]?.msg"></div>
+          </div>
+
+          <!-- Danger zone -->
+          <div class="mt-4 pt-3 border-t border-red-500/20" x-show="editGw.id !== 'default'">
+            <div class="text-[10px] uppercase text-red-400/70 font-semibold mb-2">Danger Zone</div>
+            <button @click="confirmRemoveGw({id: editGw.id, name: editGw.name})" :disabled="gwBusy"
+                    class="btn btn-sm bg-red-500/80 hover:bg-red-500 text-white border border-red-400/40 !py-1 !text-xs">Remove Gateway</button>
+          </div>
+        </div>
+      </template>
+      </div>
+    </div>
+
+    <!-- Delete gateway confirmation modal -->
+    <div x-show="deleteGwTarget" x-cloak
+         @keydown.escape.window="deleteGwTarget = null"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+         @click.self="deleteGwTarget = null">
+      <div class="w-80 rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4">
+        <h3 class="text-sm font-semibold text-slate-100 mb-2">Remove gateway?</h3>
+        <p class="text-xs text-slate-300 mb-1">
+          <span class="font-medium" x-text="deleteGwTarget?.name"></span>
+          <span class="font-mono text-slate-500 ml-1" x-text="deleteGwTarget?.id"></span>
+        </p>
+        <p class="text-xs text-slate-500 mb-4">Its MQTT entities will be unpublished from Home Assistant. This cannot be undone.</p>
+        <div class="flex justify-end gap-2">
+          <button @click="deleteGwTarget = null" class="btn btn-sm btn-secondary">Cancel</button>
+          <button @click="doRemoveGw()" :disabled="gwBusy"
+                  class="btn btn-sm bg-red-500/80 hover:bg-red-500 text-white border border-red-400/40">Remove</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-[10px] text-slate-600 mt-2">
+      Each gateway connects to one FranklinWH aGate via Modbus TCP.
+      Disabling a gateway unpublishes its MQTT entities from Home Assistant.
+    </p>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
     <!-- MQTT Broker Configuration -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'home-assistant'" class="card">
       <div class="card-label mb-3">MQTT Broker</div>
 
       <div x-show="$store.app.mqttBroker?.waiting_for_broker" x-cloak
@@ -296,7 +669,7 @@
     </template>
 
     <!-- Home Assistant instances (inbound entity access) -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'home-assistant'" class="card">
       <div class="flex items-center justify-between mb-1">
         <div class="card-label !mb-0">Home Assistant</div>
         <span class="text-[10px] uppercase tracking-wide text-slate-500">entity access</span>
@@ -405,7 +778,7 @@
     </div>
 
     <!-- Automation Constants (user-defined SoC parameters) -->
-    <div class="card" x-show="$store.app.canSee('schedule')" x-cloak>
+    <div class="card" x-show="$store.app.settingsSection === 'energy' && ($store.app.canSee('schedule'))" x-cloak>
       <div class="flex items-center justify-between mb-1">
         <div class="card-label !mb-0">Automation Constants</div>
         <span class="text-[10px] uppercase tracking-wide text-slate-500">const.* sensors</span>
@@ -429,7 +802,7 @@
     </div>
 
     <!-- Electricity Utility Service(s) -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'energy'" class="card">
       <div class="card-label mb-3">Electricity Utility Service(s)</div>
 
       <!-- Site name (site-wide) -->
@@ -1247,7 +1620,7 @@
     </div>
 
     <!-- System Setup -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'gateways'" class="card">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">System Setup</div>
         <template x-if="!setupEditing">
@@ -1361,7 +1734,7 @@
     </div>
 
     <!-- Modbus Poller -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'gateways'" class="card">
       <div class="card-label mb-3">Modbus Poller</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
@@ -1389,7 +1762,7 @@
     </div>
 
     <!-- Metrics Retention -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'data'" class="card">
       <div class="card-label mb-3">Metrics Storage</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between items-center">
@@ -1439,7 +1812,7 @@
          x-model="ph.interval_s" threw "Cannot read properties of null" on each
          render until then. x-if doesn't create the children at all. -->
     <template x-if="ph">
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'data'" class="card">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">Point History</div>
         <label class="flex items-center gap-2 text-xs">
@@ -1526,7 +1899,7 @@
     </template>
 
     <!-- DB Storage -->
-    <div class="card" x-show="storage">
+    <div class="card" x-show="$store.app.settingsSection === 'data' && (storage)">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">Database Storage</div>
         <span class="text-xs font-mono text-slate-400"
@@ -1561,7 +1934,7 @@
     </div>
 
     <!-- Backup Management -->
-    <div class="card">
+    <div x-show="$store.app.settingsSection === 'data'" class="card">
       <div class="card-label mb-3">Backup &amp; Export</div>
       <div class="space-y-3">
 
@@ -1672,371 +2045,8 @@
     </template>
   </div>
 
-  <!-- Gateways Management -->
-  <div class="card mb-4">
-    <div class="flex items-center justify-between mb-3">
-      <div class="card-label !mb-0">Gateways</div>
-      <div class="flex items-center gap-2">
-        <span class="text-[10px] text-slate-500" x-text="gwList.length + ' gateway' + (gwList.length !== 1 ? 's' : '')"></span>
-        <button @click="showAddGateway = !showAddGateway"
-                class="btn btn-sm btn-secondary">
-          <span x-text="showAddGateway ? 'Cancel' : '+ Add Gateway'"></span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Add gateway form -->
-    <div x-show="showAddGateway" x-cloak
-         class="mb-3 p-3 rounded-lg border border-cyan-500/20 bg-cyan-900/10">
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">ID</label>
-          <input type="text" x-model="newGw.gateway_id" placeholder="gateway_2"
-                 class="form-control !py-1 !text-xs w-full font-mono">
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Name</label>
-          <input type="text" x-model="newGw.name" placeholder="FHP 2"
-                 class="form-control !py-1 !text-xs w-full">
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Host</label>
-          <input type="text" x-model="newGw.host" placeholder="192.168.1.100"
-                 class="form-control !py-1 !text-xs w-full font-mono">
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Port</label>
-          <input type="number" x-model.number="newGw.port" min="1" max="65535"
-                 class="form-control !py-1 !text-xs w-20 font-mono">
-        </div>
-      </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Unit ID</label>
-          <input type="number" x-model.number="newGw.unit_id" min="1" max="247"
-                 class="form-control !py-1 !text-xs w-16 font-mono">
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Poll Interval (s)</label>
-          <input type="number" x-model.number="newGw.poll_interval" min="1" max="300"
-                 class="form-control !py-1 !text-xs w-16 font-mono">
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
-                 title="Modbus connection/read timeout. Raise this if you see frequent timeouts on a flaky link.">Timeout (s)</label>
-          <input type="number" x-model.number="newGw.timeout" min="1" max="60" step="0.5"
-                 class="form-control !py-1 !text-xs w-16 font-mono">
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
-          <input type="text" x-model="newGw.description" placeholder="Phase 1, FHP 1"
-                 class="form-control !py-1 !text-xs w-full">
-        </div>
-      </div>
-      <label class="flex items-center gap-2 mb-2 text-xs text-slate-300 cursor-pointer">
-        <input type="checkbox" x-model="newGw.mock" class="rounded">
-        <span>Mock gateway
-          <span class="text-slate-500">— simulated data, no hardware (host/port ignored; safe to run alongside real gateways)</span></span>
-      </label>
-      <button @click="addGateway()" :disabled="gwBusy"
-              class="btn btn-sm btn-primary"
-              x-text="newGw.mock ? 'Add Mock Gateway' : 'Add Gateway'">Add Gateway</button>
-    </div>
-
-    <!-- Gateway table -->
-    <div class="overflow-x-auto">
-      <table class="data-table text-xs">
-        <thead>
-          <tr>
-            <th class="w-4"></th>
-            <th>Name</th>
-            <th>Host</th>
-            <th>Serial</th>
-            <th>Model</th>
-            <th class="text-center">Enabled</th>
-            <th class="text-right">Last Poll</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <template x-for="gw in gwList" :key="gw.id">
-            <tr>
-              <td class="!px-1">
-                <span class="inline-block w-2 h-2 rounded-full"
-                      :class="gw.health === 'connected' ? 'bg-emerald-400' :
-                              gw.health === 'tcp_only' ? 'bg-amber-400' :
-                              gw.health === 'unreachable' ? 'bg-red-400' : 'bg-slate-600'"
-                      :title="gw.health || 'unknown'"></span>
-              </td>
-              <td>
-                <span class="font-medium" x-text="gw.name"></span>
-                <span class="text-[10px] text-slate-500 ml-1 font-mono" x-text="gw.id"></span>
-                <span x-show="gw.mock" class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">mock</span>
-                <span x-show="gw.description" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
-              </td>
-              <td class="font-mono" :class="gw.health === 'unconfigured' ? 'text-amber-400' : 'text-slate-400'"
-                  x-text="gw.health === 'unconfigured' ? 'not set' : (gw.host + ':' + gw.port)"></td>
-              <td class="font-mono text-slate-500 text-[10px]" x-text="gw.serial || '--'"></td>
-              <td class="text-slate-400" x-text="gw.model || '--'"></td>
-              <td class="text-center">
-                <button @click="gw.polling ? stopGw(gw.id) : startGw(gw.id)"
-                        :disabled="gwBusy || gw.enabled === false || gw.health === 'unconfigured'"
-                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-40"
-                        :class="gw.polling ? 'bg-emerald-600' : 'bg-slate-600'"
-                        :title="gw.health === 'unconfigured' ? 'No address yet — click Edit to set the host' : (gw.enabled === false ? 'Disabled' : (gw.polling ? 'Polling — click to stop' : 'Stopped — click to start'))">
-                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                        :class="gw.polling ? 'translate-x-[18px]' : 'translate-x-[3px]'"></span>
-                </button>
-              </td>
-              <td class="text-right font-mono text-[10px] text-slate-500"
-                  x-text="gw.last_poll_ts ? fmt.ago(gw.last_poll_ts) : '--'"></td>
-              <td class="!px-1">
-                <div class="flex items-center gap-2">
-                  <button @click="testGw(gw.id)" :disabled="gwBusy"
-                          class="text-[10px] text-cyan-400 hover:text-cyan-300" title="Test TCP">Test</button>
-                  <!-- Per-row TCP test result -->
-                  <span x-show="gwTestResults[gw.id]"
-                        class="text-[10px] font-mono"
-                        :class="gwTestResults[gw.id]?.testing ? 'text-slate-500' :
-                                (gwTestResults[gw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
-                        :title="gwTestResults[gw.id]?.msg || ''"
-                        x-text="gwTestResults[gw.id]?.testing ? '…' :
-                                (gwTestResults[gw.id]?.ok
-                                  ? '✓ ' + (gwTestResults[gw.id]?.latency ?? '') + 'ms'
-                                  : '✗ ' + (gwTestResults[gw.id]?.msg || ''))"></span>
-                  <button @click="startEditGw(gw)" :disabled="gwBusy"
-                          class="text-[10px] text-slate-400 hover:text-cyan-400 border border-slate-600/50 rounded px-1.5 py-0.5"
-                          title="Edit, and run diagnostics/restart/remove">Edit</button>
-                </div>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Edit gateway modal -->
-    <div x-show="editGw" x-cloak
-         @keydown.escape.window="editGw = null"
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-         @click.self="editGw = null">
-      <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4">
-      <template x-if="editGw">
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-xs uppercase text-amber-400 font-semibold">Edit Gateway
-              <span class="font-mono text-slate-400 normal-case" x-text="editGw.id"></span></span>
-            <button @click="editGw = null" class="text-slate-500 hover:text-slate-300 text-lg leading-none" title="Close">&times;</button>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Name</label>
-              <input type="text" x-model="editGw.name" class="form-control !py-1 !text-xs w-full">
-            </div>
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Host</label>
-              <input type="text" x-model="editGw.host" class="form-control !py-1 !text-xs w-full font-mono">
-            </div>
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Port</label>
-              <input type="number" x-model.number="editGw.port" min="1" max="65535"
-                     class="form-control !py-1 !text-xs w-20 font-mono">
-            </div>
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Unit ID</label>
-              <input type="number" x-model.number="editGw.unit_id" min="1" max="247"
-                     class="form-control !py-1 !text-xs w-16 font-mono">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Poll Interval (s)</label>
-              <input type="number" x-model.number="editGw.poll_interval" min="1" max="300"
-                     class="form-control !py-1 !text-xs w-16 font-mono">
-            </div>
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
-                     title="Modbus connection/read timeout. Raise this if you see frequent timeouts on a flaky link.">Timeout (s)</label>
-              <input type="number" x-model.number="editGw.timeout" min="1" max="60" step="0.5"
-                     class="form-control !py-1 !text-xs w-16 font-mono">
-            </div>
-            <div class="sm:col-span-2">
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Description</label>
-              <input type="text" x-model="editGw.description" class="form-control !py-1 !text-xs w-full">
-            </div>
-          </div>
-          <p class="text-[10px] text-slate-600 -mt-1.5 mb-2">Poll interval and timeout apply after this
-             gateway reconnects (stop/start, or app restart) — not instantly.</p>
-
-          <!-- Service & phase linkage (Layer 2) -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 pt-2 border-t border-amber-500/15">
-            <div class="sm:col-span-2">
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Utility Service</label>
-              <select x-model="editGw.service_id"
-                      x-init="$nextTick(() => $el.value = editGw.service_id || '')"
-                      class="form-control !py-1 !text-xs w-full">
-                <option value="">— none —</option>
-                <template x-for="svc in services" :key="svc.id">
-                  <option :value="svc.id"
-                          x-text="svc.name + (svc.meter_number ? ' (' + svc.meter_number + ')' : '')"></option>
-                </template>
-              </select>
-            </div>
-            <div>
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Phase</label>
-              <select x-model="editGw.phase" class="form-control !py-1 !text-xs w-full">
-                <option value="all">All phases</option>
-                <option value="L1">L1</option>
-                <option value="L2">L2</option>
-                <option value="L3">L3</option>
-                <option value="L1+L2">L1+L2</option>
-                <option value="L1+L2+L3">L1+L2+L3</option>
-              </select>
-            </div>
-            <div class="flex flex-col justify-end">
-              <button @click="detectPhases()" type="button"
-                      class="btn btn-sm btn-secondary !py-1 !text-xs">Auto-detect</button>
-            </div>
-            <!-- Phase view: only meaningful for a multi-phase unit (split/three) -->
-            <div class="sm:col-span-2" x-show="(editGw.ac_type ?? 0) >= 1">
-              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Phase View</label>
-              <select x-model="editGw.phase_view" class="form-control !py-1 !text-xs w-full">
-                <option value="both">Both (aggregate + per-phase)</option>
-                <option value="aggregate">Aggregate only</option>
-                <option value="per_phase">Per-phase</option>
-              </select>
-            </div>
-            <!-- Whether this gateway gets its own device + entities in HA.
-                 Off tombstones its discovery, so HA removes the entities
-                 instead of leaving them permanently unavailable. -->
-            <div class="sm:col-span-2 pt-1 border-t border-white/[0.06]">
-              <label class="flex items-center gap-2 text-xs text-slate-300">
-                <input type="checkbox" x-model="editGw.publish_to_ha" class="accent-emerald-500">
-                Publish this gateway to Home Assistant (MQTT Discovery)
-              </label>
-              <p class="text-[10px] text-slate-600 mt-0.5">
-                Off removes its entities from HA. A mock gateway publishes synthetic
-                values — its energy sensors feed HA long-term statistics, which outlive
-                the entity, so prefer a test HA for those.
-              </p>
-            </div>
-          </div>
-          <!-- Detection result / mismatch warning -->
-          <template x-if="phaseDetect">
-            <div class="text-[11px] mb-2 px-2 py-1 rounded"
-                 :class="phaseDetect.matches_declared ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'">
-              <template x-if="phaseDetect.detected">
-                <span>Detected from 701: <span class="font-mono font-semibold" x-text="phaseDetect.detected"></span>
-                  <span x-show="!phaseDetect.matches_declared"> — differs from selected phase, review before saving.</span>
-                  <span x-show="phaseDetect.matches_declared"> — matches.</span>
-                </span>
-              </template>
-              <template x-if="!phaseDetect.detected">
-                <span>No per-phase data yet (gateway may not have polled 701).</span>
-              </template>
-            </div>
-          </template>
-
-          <div class="flex justify-end gap-2">
-            <button @click="editGw = null" class="btn btn-sm btn-secondary">Cancel</button>
-            <button @click="saveEditGw()" :disabled="gwBusy" class="btn btn-sm btn-primary">Save Changes</button>
-          </div>
-
-          <!-- Connection & Diagnostics -->
-          <div class="mt-4 pt-3 border-t border-slate-700">
-            <div class="text-[10px] uppercase text-slate-500 font-semibold mb-2">Connection &amp; Diagnostics</div>
-            <div class="flex flex-wrap items-center gap-2 mb-2">
-              <button @click="testGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Test</button>
-              <button @click="diagnoseGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Diagnose</button>
-              <button @click="forceHealthcheckGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Force Healthcheck</button>
-              <button @click="restartGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Restart</button>
-            </div>
-
-            <!-- Test result -->
-            <div x-show="gwTestResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
-                 :class="gwTestResults[editGw.id]?.testing ? 'text-slate-500' : (gwTestResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
-                 x-text="gwTestResults[editGw.id]?.testing ? 'Testing…' :
-                         (gwTestResults[editGw.id]?.ok
-                           ? '✓ ' + gwTestResults[editGw.id]?.msg + ' (' + gwTestResults[editGw.id]?.latency + ' ms)'
-                           : '✗ ' + gwTestResults[editGw.id]?.msg)"></div>
-
-            <!-- Diagnose result: per-check breakdown + full verdict -->
-            <div x-show="gwDiagResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50">
-              <template x-if="gwDiagResults[editGw.id]?.testing">
-                <div class="text-slate-500">Diagnosing…</div>
-              </template>
-              <template x-if="!gwDiagResults[editGw.id]?.testing">
-                <div>
-                  <template x-if="gwDiagResults[editGw.id]?.checks">
-                    <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono mb-2">
-                      <template x-for="[label, key] in [['TCP 502 (Modbus)', 'tcp_502_modbus'], ['TCP 9000 (Local API)', 'tcp_9000_local_api'], ['Modbus protocol read', 'modbus_protocol']]" :key="key">
-                        <span :class="gwDiagResults[editGw.id]?.checks[key]?.ok ? 'text-emerald-400' : 'text-red-400'">
-                          <span x-text="gwDiagResults[editGw.id]?.checks[key]?.ok ? '✓' : '✗'"></span>
-                          <span x-text="label"></span>
-                          <span class="text-slate-500" x-show="gwDiagResults[editGw.id]?.checks[key]?.latency_ms != null"
-                                x-text="'(' + gwDiagResults[editGw.id]?.checks[key]?.latency_ms + ' ms)'"></span>
-                          <span class="text-slate-500" x-show="gwDiagResults[editGw.id]?.checks[key]?.error"
-                                x-text="'— ' + gwDiagResults[editGw.id]?.checks[key]?.error"></span>
-                        </span>
-                      </template>
-                    </div>
-                  </template>
-                  <div :class="gwDiagResults[editGw.id]?.ok ? 'text-emerald-300' : 'text-amber-300'"
-                       x-text="gwDiagResults[editGw.id]?.verdict"></div>
-                </div>
-              </template>
-            </div>
-
-            <!-- Force healthcheck result -->
-            <div x-show="gwHealthResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
-                 :class="gwHealthResults[editGw.id]?.testing ? 'text-slate-500' : (gwHealthResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
-                 x-text="gwHealthResults[editGw.id]?.testing ? 'Checking…' : 'health: ' + gwHealthResults[editGw.id]?.health"></div>
-
-            <!-- Restart result -->
-            <div x-show="gwRestartResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
-                 :class="gwRestartResults[editGw.id]?.testing ? 'text-slate-500' : (gwRestartResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
-                 x-text="gwRestartResults[editGw.id]?.testing ? 'Restarting…' : gwRestartResults[editGw.id]?.msg"></div>
-          </div>
-
-          <!-- Danger zone -->
-          <div class="mt-4 pt-3 border-t border-red-500/20" x-show="editGw.id !== 'default'">
-            <div class="text-[10px] uppercase text-red-400/70 font-semibold mb-2">Danger Zone</div>
-            <button @click="confirmRemoveGw({id: editGw.id, name: editGw.name})" :disabled="gwBusy"
-                    class="btn btn-sm bg-red-500/80 hover:bg-red-500 text-white border border-red-400/40 !py-1 !text-xs">Remove Gateway</button>
-          </div>
-        </div>
-      </template>
-      </div>
-    </div>
-
-    <!-- Delete gateway confirmation modal -->
-    <div x-show="deleteGwTarget" x-cloak
-         @keydown.escape.window="deleteGwTarget = null"
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-         @click.self="deleteGwTarget = null">
-      <div class="w-80 rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4">
-        <h3 class="text-sm font-semibold text-slate-100 mb-2">Remove gateway?</h3>
-        <p class="text-xs text-slate-300 mb-1">
-          <span class="font-medium" x-text="deleteGwTarget?.name"></span>
-          <span class="font-mono text-slate-500 ml-1" x-text="deleteGwTarget?.id"></span>
-        </p>
-        <p class="text-xs text-slate-500 mb-4">Its MQTT entities will be unpublished from Home Assistant. This cannot be undone.</p>
-        <div class="flex justify-end gap-2">
-          <button @click="deleteGwTarget = null" class="btn btn-sm btn-secondary">Cancel</button>
-          <button @click="doRemoveGw()" :disabled="gwBusy"
-                  class="btn btn-sm bg-red-500/80 hover:bg-red-500 text-white border border-red-400/40">Remove</button>
-        </div>
-      </div>
-    </div>
-
-    <p class="text-[10px] text-slate-600 mt-2">
-      Each gateway connects to one FranklinWH aGate via Modbus TCP.
-      Disabling a gateway unpublishes its MQTT entities from Home Assistant.
-    </p>
-  </div>
-
   <!-- Publishing Groups -->
-  <div class="card mb-4">
+  <div x-show="$store.app.settingsSection === 'home-assistant'" class="card mb-4">
     <div class="flex items-center justify-between mb-3">
       <div class="card-label !mb-0">Publishing Groups</div>
       <div class="flex items-center gap-2">
@@ -2178,7 +2188,7 @@
   </div>
 
   <!-- Entity List -->
-  <div class="card">
+  <div x-show="$store.app.settingsSection === 'home-assistant'" class="card">
     <div class="flex items-center justify-between mb-3">
       <div class="card-label !mb-0 flex items-center gap-2">
         <span>Entities (<span x-text="entities.length"></span>)</span>

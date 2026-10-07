@@ -146,6 +146,15 @@ const MODE_LEGEND_COLORS = {
   'Emergency Backup': 'rgba(239,68,68,0.7)',
 };
 
+// Settings sub-tabs, in display order. Every Settings card belongs to one.
+const SETTINGS_SECTIONS = [
+  { id: 'gateways',       label: 'Site & Gateways' },
+  { id: 'home-assistant', label: 'Home Assistant' },
+  { id: 'energy',         label: 'Energy & Automation' },
+  { id: 'data',           label: 'Data & Backup' },
+  { id: 'admin',          label: 'Admin' },
+];
+
 // Availability dot colour for a gateway's health state.
 function gwDotClass(health) {
   return health === 'connected' ? 'bg-emerald-400'
@@ -477,6 +486,7 @@ document.addEventListener('alpine:init', () => {
     mqttBroker: null,
 
     // Multi-gateway
+    settingsSection: 'gateways',  // Settings sub-tab (see SETTINGS_SECTIONS)
     activeGateway: 'default',  // 'default', gateway_id, or 'site'
     gatewayChosen: false,      // set once the user picks; stops auto-selection
     gatewayList: [],            // [{id, name, health, polling, ...}]
@@ -575,14 +585,20 @@ document.addEventListener('alpine:init', () => {
       return this.showSources ? (POINT_SOURCES[key] || '') : '';
     },
 
-    setTab(tab, { push = true } = {}) {
+    setTab(tab, { push = true, section = null } = {}) {
       this.activeTab = tab;
-      // Keep ?tab= in sync so the address bar is always shareable/refreshable.
+      if (tab === 'settings' && section && SETTINGS_SECTIONS.some(s => s.id === section)) {
+        this.settingsSection = section;
+      }
+      // Keep ?tab= (and ?section= on Settings) in sync so the address bar is
+      // always shareable/refreshable — and so docs can link to a section.
       // replaceState, not pushState: tab switches shouldn't stack up in Back.
       if (push) {
         try {
           const u = new URL(window.location.href);
           u.searchParams.set('tab', tab);
+          if (tab === 'settings') u.searchParams.set('section', this.settingsSection);
+          else u.searchParams.delete('section');
           window.history.replaceState(null, '', u);
         } catch { /* non-browser context — URL sync is cosmetic */ }
       }
@@ -595,10 +611,22 @@ document.addEventListener('alpine:init', () => {
      *  disabled tab falls back to the default rather than rendering empty. */
     applyTabFromUrl() {
       let want = null;
-      try { want = new URL(window.location.href).searchParams.get('tab'); } catch { return; }
+      let section = null;
+      try {
+        const params = new URL(window.location.href).searchParams;
+        want = params.get('tab');
+        section = params.get('section');
+      } catch { return; }
       if (!want || want === this.activeTab) return;
       if (this.canSee && !this.canSee(want)) return;
-      this.setTab(want, { push: false });
+      this.setTab(want, { push: false, section });
+    },
+
+    get settingsSections() { return SETTINGS_SECTIONS; },
+
+    // Settings sub-tab. Pushes ?section= so a section can be linked to.
+    setSettingsSection(section) {
+      this.setTab('settings', { section });
     },
 
     setGateway(gwId) {

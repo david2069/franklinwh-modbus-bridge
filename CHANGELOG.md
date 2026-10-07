@@ -73,6 +73,12 @@ lands, not backfilled later.
 
 ### Changed
 
+- **Settings is split into sub-tabs**: *Site & Gateways*, *Home Assistant*,
+  *Energy & Automation*, *Data & Backup* and *Admin*, instead of one long page
+  of fifteen cards. The section is part of the URL
+  (`?tab=settings&section=gateways`), so it survives a refresh and can be
+  linked to; the dashboard's *Set up* / *Fix* buttons, HA Entities and Energy
+  Costs now open the right section.
 - **Add-on no longer requires an MQTT broker to install**: `mqtt:want`
   instead of `mqtt:need`. With no broker the bridge waits instead of retrying
   localhost, shows an *Install Mosquitto* prompt, and connects on its own as
