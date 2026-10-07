@@ -7,6 +7,7 @@ import collections
 import contextlib
 import logging
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -132,6 +133,57 @@ class LogBufferHandler(logging.Handler):
             self._persist.append(entry)
 
 
+#: One format for every line on the console, the bridge's and uvicorn's alike.
+#: uvicorn's default has no time at all, so an add-on/Docker log couldn't say
+#: when anything happened.
+CONSOLE_LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+CONSOLE_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+class _QuietAccessLog(logging.Filter):
+    """Drop successful GETs from uvicorn's access log unless at DEBUG.
+
+    The UI polls several endpoints every few seconds and the container health
+    check hits /api/status, so at INFO the access log was nothing but
+    ``GET ... 200 OK`` — burying the lines that matter. Writes (POST, PATCH,
+    DELETE) and every error response are kept.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if logging.getLogger("franklinwh_bridge").isEnabledFor(logging.DEBUG):
+            return True
+        args = record.args if isinstance(record.args, tuple) else ()
+        if len(args) >= 5:
+            method, status = args[1], args[4]
+            if method == "GET" and isinstance(status, int) and status < 400:
+                return False
+        return True
+
+
+def configure_console_logging(level: int) -> None:
+    """Send the bridge's own log to stderr, timestamped, and timestamp uvicorn's.
+
+    Until this, ``franklinwh_bridge`` logged only to the in-app Logs tab, so
+    Home Assistant's add-on Log and ``docker logs`` showed uvicorn alone —
+    no startup version, no warnings, nothing the bridge itself said.
+    Idempotent: the app is booted many times in one test process.
+    """
+    fmt = logging.Formatter(CONSOLE_LOG_FORMAT, CONSOLE_DATE_FORMAT)
+    bridge = logging.getLogger("franklinwh_bridge")
+    if not any(getattr(h, "_bridge_console", False) for h in bridge.handlers):
+        console = logging.StreamHandler(sys.stderr)
+        console._bridge_console = True  # type: ignore[attr-defined]
+        console.setFormatter(fmt)
+        bridge.addHandler(console)
+    bridge.setLevel(level)
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        for h in logging.getLogger(name).handlers:
+            h.setFormatter(fmt)
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, _QuietAccessLog) for f in access.filters):
+        access.addFilter(_QuietAccessLog())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = AppConfig()
@@ -144,8 +196,9 @@ async def lifespan(app: FastAPI):
     handler = LogBufferHandler(log_buffer, log_persist_queue)
     handler.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger("franklinwh_bridge").addHandler(handler)
-    logging.getLogger("franklinwh_bridge").setLevel(
-        getattr(logging, config.settings.log_level.upper(), logging.INFO)
+    configure_console_logging(getattr(logging, config.settings.log_level.upper(), logging.INFO))
+    logger.info(
+        "FranklinWH Modbus Bridge v%s starting (environment: %s)", __version__, config.environment
     )
 
     # Before anything else: the notice is only useful if it is the first thing

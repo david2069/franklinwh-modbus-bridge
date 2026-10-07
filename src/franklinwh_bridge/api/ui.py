@@ -9,10 +9,11 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from franklinwh_bridge import disclaimer
-from franklinwh_bridge.api.auth import get_current_user, require_capability
+from franklinwh_bridge.api.auth import get_current_user, require_auth, require_capability
+from franklinwh_bridge.api.disclaimer_api import _client_ip
 
 # Hoisted so it is built once at import rather than per-request: ruff's B008
 # allows Depends() itself in a default, but not a factory call nested in it.
@@ -166,3 +167,45 @@ async def send_command(
         "slug": body.slug,
         "result": command_handler.state.last_result or "Sent",
     }
+
+
+# ── Browser-side connection outages ───────────────────────────────────────────
+#
+# The "can't reach the bridge" banner is raised in the browser, for requests
+# that never arrived — so the bridge's own log never saw the outage, and nobody
+# could tell afterwards when it happened or for how long. The page reports it
+# here once it can reach the bridge again.
+
+
+class ConnectionOutage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    started_at: float = Field(..., ge=0)
+    ended_at: float = Field(..., ge=0)
+    failures: int = Field(default=0, ge=0, le=100_000)
+    message: str = Field(default="", max_length=300)
+    url: str = Field(default="", max_length=300)
+    device_offline: bool = False
+    page: str = Field(default="", max_length=40)
+
+
+@router.post("/api/ui/connection-outage", status_code=204)
+async def report_connection_outage(
+    body: ConnectionOutage, request: Request, user: dict = Depends(require_auth),
+):
+    """Log an outage the browser saw (it couldn't reach the bridge)."""
+    duration = max(0.0, body.ended_at - body.started_at)
+    started = time.strftime("%H:%M:%S", time.localtime(body.started_at))
+    logger.warning(
+        "UI lost contact with the bridge for %.0fs (from %s, %d failed requests)%s: %s%s "
+        "— user %s from %s%s",
+        duration,
+        started,
+        body.failures,
+        " — the device itself was offline" if body.device_offline else "",
+        body.message or "no response",
+        f" on {body.url}" if body.url else "",
+        user.get("username") or user.get("id") or "?",
+        _client_ip(request),
+        f" ({body.page} page)" if body.page else "",
+    )

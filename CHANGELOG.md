@@ -15,6 +15,11 @@ lands, not backfilled later.
 
 ### Added
 
+- **Connection outages seen by the browser are logged.** When the UI's *can't
+  reach the bridge* banner clears, the page reports the outage to
+  `POST /api/ui/connection-outage`. The bridge logs a warning with how long it
+  lasted, the failed requests, the last error, the user and their address.
+  Previously the bridge never saw it, because the requests never arrived.
 - **Add-on store page**: `addon/CHANGELOG.md` (HA's *Changelog* link, written for
   users), `addon/DOCS.md` (the *Documentation* tab), and an icon and logo. The
   add-on version is now **0.2.0**. It had stayed at 0.1.0, so HA never offered an
@@ -150,6 +155,13 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **The bridge's own log now reaches the console.** `franklinwh_bridge` logged
+  only to the in-app Logs tab, so Home Assistant's add-on *Log* and
+  `docker logs` showed nothing but uvicorn's lines: no startup version, no
+  warnings. Every console line now carries a date and time. The startup line
+  (and the add-on's first line) shows the version. Routine successful `GET`s
+  (UI polling, the `/api/status` health check) are left out of the access log
+  unless `log_level` is DEBUG; writes and every error are still logged.
 - **Sequencer: "couldn't reach the bridge" on runs that actually worked.** The UI
   dropped every request after 8 s, but `POST /api/sequence/execute` replies only
   once the whole sequence has finished, so any run with sleeps, verifies or

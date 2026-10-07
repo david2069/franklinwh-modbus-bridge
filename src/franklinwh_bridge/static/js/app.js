@@ -212,15 +212,43 @@ function powerColour(watts, type) {
  *  silently showing stale values. Only a TRANSPORT failure counts: an HTTP 401
  *  or 500 means we reached the bridge and it answered, which is a different
  *  problem and must not raise the offline banner. */
+/** Send a finished outage to the bridge's log. Plain fetch, not fetchJSON:
+ *  a failure here must not count as another outage. Best effort only. */
+function _reportOutage(startedAt, failures, lastError) {
+  try {
+    fetch('api/ui/connection-outage', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        started_at: startedAt,
+        ended_at: Date.now() / 1000,
+        failures,
+        message: String(lastError?.message || '').slice(0, 300),
+        url: String(lastError?.url || '').slice(0, 300),
+        device_offline: !!lastError?.deviceOffline,
+        page: String(new URLSearchParams(location.search).get('tab') || 'dashboard').slice(0, 40),
+      }),
+    }).catch(() => {});
+  } catch (_) { /* never let reporting break the UI */ }
+}
+
 function _noteReachable(ok, info = {}) {
   try {
     const s = window.Alpine && Alpine.store('app');
     if (!s) return;
     if (ok) {
+      // Back in contact after the banner was up: tell the bridge, so the
+      // outage is in its log (it never saw the requests that didn't arrive).
+      if (s.connFailures >= 2 && s.connOutageStart) {
+        _reportOutage(s.connOutageStart, s.connFailures, s.connLastError);
+      }
+      s.connOutageStart = null;
       s.connFailures = 0;
       s.connLastOk = Date.now() / 1000;
       s.connLastError = null;
     } else {
+      if (!s.connOutageStart) s.connOutageStart = Date.now() / 1000;
       // A failure the USER triggered counts double, so one failed Save raises
       // the banner immediately. The 2-failure threshold exists to stop the
       // background poll flapping on a single blip — but a person who just
@@ -388,6 +416,7 @@ document.addEventListener('alpine:init', () => {
     // Two consecutive transport failures before we shout: one can be a single
     // dropped request, and a banner that flickers gets ignored.
     connFailures: 0,
+    connOutageStart: null,   // when the current run of failures began
     connLastOk: null,
     connLastError: null,
     connDetailsOpen: false,
