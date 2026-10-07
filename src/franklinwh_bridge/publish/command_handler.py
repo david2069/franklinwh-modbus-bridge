@@ -6,8 +6,11 @@ battery commands after a timeout.
 
 WSetRvrtTms is written to M704 to keep the aGate in VPP (remote-control)
 mode for the command duration.  NOTE: the hardware countdown (WSetRvrtRem)
-is cosmetic on the aGate — it stays at 0 regardless of the configured
-value (PICS Issue 4).  The *software* watchdog is the real safety timer.
+does count down, but the aGate does NOT revert when it reaches 0 (PICS
+Issue 4 — the reversion is cosmetic, the countdown is not).  The *software*
+watchdog is the real safety timer.  For an open-ended dispatch the bridge
+writes 7200 s, and RvrtRem has been seen staying at 0 for that value while it
+counts down for a schedule's shorter durations — not yet confirmed why.
 Writing WSetRvrtTms > 0 is still required to prevent the mobile app from
 overriding VPP mode while a dispatch is active.
 
@@ -19,8 +22,8 @@ ORPHAN SAFETY:  On graceful shutdown, ``stop()`` releases any active dispatch
 (zeroing WSetEna + WSetRvrtTms, exiting VPP mode).  On a *crash* the registers
 stay set, but the next startup's ``_release_stale_commands`` (gateway/instance)
 clears them.  The one window we CANNOT cover in software is crash-and-never-
-restart: because the aGate's WSetRvrtRem is cosmetic (no hardware auto-revert,
-PICS Issue 4), a dispatch left by a bridge that never comes back stays live in
+restart: because the aGate never reverts when WSetRvrtRem runs out (PICS
+Issue 4), a dispatch left by a bridge that never comes back stays live in
 VPP mode until the bridge restarts or the mobile app intervenes.  The running
 bridge is the only thing that releases dispatches.
 """
@@ -112,9 +115,14 @@ class CommandHandler:
         max_discharge_w: int = DEFAULT_MAX_POWER_W,
         points_getter: Callable[[], dict[str, Any]] | None = None,
         modbus_lock: asyncio.Lock | None = None,
+        gateway_id: str = "default",
     ) -> None:
         self._controller = controller
         self._db = db
+        # Which gateway this handler commands. The control log and the persisted
+        # command state are per gateway; without it every gateway's dispatches
+        # were logged — and their crash-recovery state saved — as "default".
+        self._gateway_id = gateway_id
         self._on_state_changed = on_state_changed
         self._points_getter = points_getter
         self._state = CommandState()
@@ -177,6 +185,10 @@ class CommandHandler:
             "battery_command_power_pct": self._command_power_pct,
             "battery_command_duration_s": self._command_duration_s,
             "battery_command_target_soc": self._target_soc,
+            # 0 = no time limit (the command runs until released or the target
+            # SoC is reached) — NOT "expired". The panel needs this to tell the
+            # two apart; remain alone reads 0 for both.
+            "sw_watchdog_limit_s": self._state.watchdog_s if self._state.active else 0,
             "sw_watchdog_remain_s": remain,
             "command_elapsed_s": elapsed,
             "last_command_result": self._state.last_result or "None",
@@ -199,6 +211,7 @@ class CommandHandler:
                 power_w=self._state.power_w,
                 started_at=self._state.started_at,
                 watchdog_s=self._state.watchdog_s,
+                gateway_id=self._gateway_id,
             )
         except Exception as exc:
             logger.warning("Failed to persist control state: %s", exc)
@@ -210,7 +223,7 @@ class CommandHandler:
         try:
             await log_control_event(
                 self._db, event=event, action=action, power_w=power_w,
-                detail=detail, hw_state=hw_state,
+                detail=detail, hw_state=hw_state, gateway_id=self._gateway_id,
             )
         except Exception as exc:
             logger.warning("Failed to write control log: %s", exc)
@@ -244,7 +257,16 @@ class CommandHandler:
                 if self._on_state_changed:
                     await self._on_state_changed()
             elif slug == "battery_command_target_soc":
+                previous = self._target_soc
                 self._target_soc = max(0, min(int(float(payload)), 100))
+                # A target SoC ends a dispatch, so a change belongs in the
+                # control log (only a change: the UI may resend the same value).
+                if self._target_soc != previous:
+                    await self._log_event(
+                        "target_soc_set",
+                        detail=(f"target SoC {self._target_soc}%" if self._target_soc
+                                else "target SoC off"),
+                    )
                 if self._on_state_changed:
                     await self._on_state_changed()
             elif slug == "operating_mode":
@@ -338,9 +360,9 @@ class CommandHandler:
             )
 
             # Write WSetRvrtTms to keep the aGate in VPP (remote-control) mode.
-            # The hardware countdown (WSetRvrtRem) is cosmetic (stays at 0) on
-            # the aGate, but writing WSetRvrtTms > 0 is still required to lock
-            # out mobile-app overrides during the dispatch.
+            # The aGate counts WSetRvrtRem down but doesn't revert at 0 (PICS
+            # Issue 4), so this isn't a safety timer; writing WSetRvrtTms > 0
+            # is still required to lock out mobile-app overrides.
             # For indefinite commands (duration=0), use max value to keep VPP locked.
             if success:
                 rvrt_s = self._state.watchdog_s if self._state.watchdog_s > 0 else 7200
@@ -371,8 +393,16 @@ class CommandHandler:
 
         self._start_watchdog()
         await self._persist_state()
+        limits = []
+        if self._state.watchdog_s > 0:
+            limits.append(f"time limit {self._state.watchdog_s}s")
+        else:
+            limits.append("no time limit")
+        if self._target_soc > 0:
+            limits.append(f"target SoC {self._target_soc}%")
         await self._log_event(
-            "command_sent", action=display_action, power_w=abs(watts), detail=msg,
+            "command_sent", action=display_action, power_w=abs(watts),
+            detail=f"{msg} [{', '.join(limits)}]",
         )
 
         if self._on_state_changed:
@@ -474,10 +504,10 @@ class CommandHandler:
         """Write WSetRvrtTms to M704 to keep the aGate in VPP mode.
 
         WSetRvrtTms > 0 locks the aGate in remote-control (VPP) mode,
-        preventing the mobile app from overriding the dispatch.  The
-        hardware countdown (WSetRvrtRem) is cosmetic on the aGate — it
-        stays at 0 (PICS Issue 4).  The software watchdog is the real
-        safety timer that releases the command.
+        preventing the mobile app from overriding the dispatch.  The aGate
+        counts WSetRvrtRem down but does not revert at 0 (PICS Issue 4), so
+        the software watchdog is the real safety timer that releases the
+        command.
         """
         try:
             m704 = self._controller.get_model(704)

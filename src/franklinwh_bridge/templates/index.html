@@ -286,8 +286,9 @@
             <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">WSetPct</span>
               <span class="font-mono font-semibold"
-                    :class="$store.app.releaseControlState.wsetPctRaw != null && $store.app.releaseControlState.wsetPctRaw !== 0 ? 'text-amber-400' : 'text-slate-400'"
-                    x-text="$store.app.releaseControlState.wsetPctRaw != null ? $store.app.releaseControlState.wsetPctRaw + '%' : '--'"></span>
+                    :class="($store.app.releaseControlState.wsetPct ?? 0) !== 0 ? 'text-amber-400' : 'text-slate-400'"
+                    :title="$store.app.releaseControlState.wsetPctRaw != null ? 'Register value ' + $store.app.releaseControlState.wsetPctRaw + ' (before scale factor)' : ''"
+                    x-text="$store.app.releaseControlState.wsetPct != null ? (+$store.app.releaseControlState.wsetPct.toFixed(1)) + '%' : '--'"></span>
             </div>
             <div class="release-cell flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">WSet</span>
@@ -342,9 +343,18 @@
             </div>
             <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
               <span class="text-slate-500">Watchdog</span>
+              <!-- A limit of 0 means no time limit (runs until released or the
+                   target SoC), not "expired" — it used to read "0m 0s" in red. -->
               <span class="font-mono font-semibold"
-                    :class="$store.app.releaseControlState.watchdog != null && $store.app.releaseControlState.watchdog < 300 ? 'text-red-400' : 'text-slate-400'"
-                    x-text="$store.app.releaseControlState.watchdog != null ? Math.floor($store.app.releaseControlState.watchdog / 60) + 'm ' + ($store.app.releaseControlState.watchdog % 60) + 's' : '--'"></span>
+                    :class="$store.app.releaseControlState.watchdogNoLimit ? 'text-slate-400'
+                            : ($store.app.releaseControlState.watchdog != null && $store.app.releaseControlState.watchdog < 300 ? 'text-red-400' : 'text-slate-400')"
+                    x-text="$store.app.releaseControlState.watchdogNoLimit ? 'No limit'
+                            : ($store.app.releaseControlState.watchdog != null ? Math.floor($store.app.releaseControlState.watchdog / 60) + 'm ' + ($store.app.releaseControlState.watchdog % 60) + 's' : '--')"></span>
+            </div>
+            <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-900/50">
+              <span class="text-slate-500">Target SoC</span>
+              <span class="font-mono font-semibold text-slate-400"
+                    x-text="$store.app.releaseControlState.targetSoc ? $store.app.releaseControlState.targetSoc + '%' : 'Off'"></span>
             </div>
           </div>
         </div>

@@ -373,7 +373,7 @@ const POINT_SOURCES = {
   wset_revert_time_s: '704.WSetRvrtTms', wset_revert_remain_s: '704.WSetRvrtRem',
   loc_rem_ctl_name: '715.LocRemCtl', der_heartbeat: '715.DERHb',
   controller_heartbeat: '715.ControllerHb', alarm_reset: '715.AlarmReset', op_ctl: '715.OpCtl',
-  sw_watchdog_remain_s: 'virtual', command_elapsed_s: 'virtual', last_command_result: 'virtual',
+  sw_watchdog_remain_s: 'virtual', sw_watchdog_limit_s: 'virtual', command_elapsed_s: 'virtual', last_command_result: 'virtual',
   self_reserve_pct: 'ext.15508', tou_reserve_pct: 'ext.15509',
   wh_available: '713.WHAvail', wh_rating: '713.WHRtg',
   max_charge_rate_w: '702.WChaRteMaxRtg', max_discharge_rate_w: '702.WDisChaRteMaxRtg',
@@ -895,6 +895,9 @@ document.addEventListener('alpine:init', () => {
         cmdState:   pts.battery_command_state ?? 'Unknown',
         cmdPower:   pts.battery_command_power_w ?? null,
         watchdog:   pts.sw_watchdog_remain_s ?? null,
+        // Active with a limit of 0 = no time limit (not "expired").
+        watchdogNoLimit: this.hasActiveCommand && (pts.sw_watchdog_limit_s ?? null) === 0,
+        targetSoc:  pts.battery_command_target_soc ?? 0,
         elapsed:    pts.command_elapsed_s ?? null,
       };
     },
