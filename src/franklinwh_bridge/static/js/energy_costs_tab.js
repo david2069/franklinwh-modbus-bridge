@@ -202,7 +202,7 @@ function energyCostsTab() {
     dollars(v) { return (v == null ? 0 : v) < 0 ? '-$' + Math.abs(v).toFixed(2) : '$' + Number(v || 0).toFixed(2); },
 
     // ── navigation ─────────────────────────────────────────
-    goSettings() { Alpine.store('app').setTab('settings'); },
+    goSettings() { Alpine.store('app').setTab('settings', { section: 'energy' }); },
     goSchedule() { Alpine.store('app').setTab('schedule'); },
   };
 }

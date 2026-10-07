@@ -145,7 +145,7 @@
           Enter its IP address in Settings → Gateways (Edit on the gateway), or add a mock gateway to explore without hardware.
         </p>
       </div>
-      <a href="#" @click.prevent="Alpine.store('app').setTab('settings')"
+      <a href="#" @click.prevent="Alpine.store('app').setTab('settings', { section: 'gateways' })"
          class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25">
         Set up →
       </a>
@@ -186,7 +186,7 @@
         </p>
       </div>
       <!-- Direct link to settings -->
-      <a href="#" @click.prevent="Alpine.store('app').setTab('settings')"
+      <a href="#" @click.prevent="Alpine.store('app').setTab('settings', { section: 'gateways' })"
          class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition"
          :class="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured' && g.health === 'unreachable')
                    ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30' : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'">
