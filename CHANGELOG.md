@@ -73,6 +73,11 @@ lands, not backfilled later.
 
 ### Changed
 
+- **franklinwh-modbus pinned to v0.9.5** (`FWM_REF` in both Dockerfiles; `>=0.9.5`
+  in pyproject/requirements). Adds the read-only `discovery` API the setup
+  wizard uses, and 0.9.4's fixes (`--dry-run` no longer writes; the
+  unverified SPAN-unlock wording is gone — the bridge's own strip of it simply
+  stops matching).
 - **Settings is split into sub-tabs**: *Site & Gateways*, *Home Assistant*,
   *Energy & Automation*, *Data & Backup* and *Admin*, instead of one long page
   of fifteen cards. The section is part of the URL

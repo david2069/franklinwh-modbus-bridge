@@ -31,15 +31,41 @@ def _auth_bypass():
 
 
 @pytest.fixture(autouse=True)
+def _no_raw_vendor_register_connections(request, monkeypatch):
+    """Keep unit tests off the network.
+
+    ``ModbusPoller._read_vendor_registers`` opens its own pymodbus client to
+    ``controller.ip_address`` — and test controllers carry real-looking LAN
+    addresses (192.168.1.100). On a network where that address doesn't answer,
+    every poll waited out the TCP timeout, which turned a ~10-minute suite into
+    one that seemed to hang. Failing the connect immediately takes the same
+    path as an unreachable aGate (the error is logged at debug and the vendor
+    points are simply absent). Hardware tests still connect for real.
+    """
+    if request.node.get_closest_marker("hardware"):
+        return
+    from franklinwh_bridge.modbus.poller import ModbusPoller
+
+    def _refuse(self):
+        raise ConnectionError("unit tests do not open Modbus connections")
+
+    monkeypatch.setattr(ModbusPoller, "_get_vreg_client", _refuse)
+
+
+@pytest.fixture(autouse=True)
 def _configured_default_gateway(monkeypatch):
     """Give the default gateway an address, as a configured install has.
 
     With no MODBUS_HOST the default gateway is created unconfigured and never
     started (no phantom 192.168.1.100). Most of the suite exercises a running
-    default gateway, so configure one — at a TEST-NET-1 address that can never
-    be a real device. Tests of the unconfigured path delete this variable.
+    default gateway, so configure one — on a closed localhost port, which can
+    never be a real device and refuses at once. (It used to be TEST-NET-1
+    192.0.2.10, which never answers: every app boot then waited ~11s at
+    shutdown for the connect to time out.) Tests of the unconfigured path
+    delete this variable.
     """
-    monkeypatch.setenv("MODBUS_HOST", "192.0.2.10")
+    monkeypatch.setenv("MODBUS_HOST", "127.0.0.1")
+    monkeypatch.setenv("MODBUS_PORT", "9")
 
 
 @pytest.fixture
