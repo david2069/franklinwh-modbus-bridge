@@ -13,6 +13,12 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-07
+
+The first tagged release. Everything below this heading has shipped:
+add-on 0.2.0 carried all of it except the Sequencer, logging, cache and
+ingress-name fixes, which are new in 0.2.1.
+
 ### Added
 
 - **Connection outages seen by the browser are logged.** When the UI's *can't
@@ -155,6 +161,16 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Under HA ingress the user badge showed "(" and "(ingress)".** It now shows
+  the signed-in Home Assistant user's name, from the Supervisor's
+  `X-Remote-User-Display-Name` / `-Name` headers, falling back to *Home
+  Assistant*. The internal user id stays `ingress`, so the legal notice
+  acknowledgement and the audit trail are unaffected.
+- **A browser could keep running the previous version's scripts after an update.**
+  The HTML pages had no cache header, so Safari reused an old copy, loading
+  the old `app.js` under the new templates. Settings went blank and gateway
+  names disappeared after the 0.2.0 update. `/`, `/user` and `/login` are
+  now sent with `Cache-Control: no-cache`.
 - **The bridge's own log now reaches the console.** `franklinwh_bridge` logged
   only to the in-app Logs tab, so Home Assistant's add-on *Log* and
   `docker logs` showed nothing but uvicorn's lines: no startup version, no

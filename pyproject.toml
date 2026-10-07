@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "franklinwh-modbus-bridge"
-version = "0.2.0"
+version = "0.2.1"
 description = "FranklinWH aGate Modbus TCP bridge — polls SunSpec data and publishes HA entities via MQTT Discovery"
 readme = "README.md"
 license = "MIT"

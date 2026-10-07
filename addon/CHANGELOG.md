@@ -7,6 +7,25 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.1 — 2026-10-07
+
+### Fixed
+- **Sequencer:** a run that took longer than 8 seconds reported *couldn't
+  reach the bridge*, even though it carried on and completed. The page now
+  waits for as long as the sequence can take, and shows its output.
+- **Blank Settings and missing gateway names after an update.** The browser
+  could keep using the previous version's scripts. Pages are now always
+  re-checked after an update. If you saw this on 0.2.0, reload once.
+- **The add-on Log tab now shows the bridge's own messages**, with a date and
+  time on every line and the version on the first one. Routine requests are
+  no longer logged unless `log_level` is DEBUG.
+- **The user badge shows your Home Assistant name** instead of "(ingress)".
+
+### New
+- **Connection outages are logged.** When the *can't reach the bridge*
+  banner clears, the bridge's log records how long it lasted and the last
+  error.
+
 ## 0.2.0 — 2026-10-07
 
 ### New
