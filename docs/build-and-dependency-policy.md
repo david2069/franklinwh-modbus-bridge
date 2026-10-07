@@ -145,6 +145,27 @@ These live in `franklinwh-modbus` (handle in that repo's own session):
 
 ---
 
+## 6b. Releasing the add-on
+
+Home Assistant offers **Update available** only when `addon/config.yaml`'s
+`version` goes up, and shows `addon/CHANGELOG.md` behind the add-on's
+**Changelog** link. Until 0.2.0 the version never moved, so no install was ever
+offered an update. For each release:
+
+1. Bump the version in **all three** places: `addon/config.yaml` (`version`),
+   `pyproject.toml` and `src/franklinwh_bridge/__init__.py`.
+2. Add a `## X.Y.Z — date` entry at the top of `addon/CHANGELOG.md`, written
+   for users (what they'll notice), not the developer changelog.
+3. Move the root `CHANGELOG.md`'s `[Unreleased]` entries under `[X.Y.Z]`.
+4. Update `addon/DOCS.md` (the add-on's Documentation tab) if behaviour changed.
+5. Merge to `main`, then tag `vX.Y.Z`. The add-on installs the bridge from
+   `main` (`BRIDGE_REF`), so the code is live as soon as HA rebuilds it.
+
+`tests/unit/test_addon_release.py` fails if the three versions disagree or the
+add-on changelog's newest entry isn't the current version.
+
+---
+
 ## 7. TL;DR
 - Pin the library to an **immutable ref** (`FWM_REF` SHA/tag) — never a branch.
 - Bumping `FWM_REF` busts the cache; no `--no-cache` needed.
