@@ -15,7 +15,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
-    "franklinwh-modbus>=0.9.0",
+    "franklinwh-modbus>=0.9.5",
     "aiosqlite>=0.20",
     "aiomqtt>=2.0",
     "pydantic>=2.7",
