@@ -6,7 +6,7 @@
 # an X-Ingress-Path request as a pre-authenticated admin) and no second login
 # is needed. Port 8099 is still exposed optionally for direct/API access.
 name: FranklinWH Modbus Bridge
-version: "0.2.2"
+version: "0.2.3"
 slug: franklinwh_modbus_bridge
 description: >-
   Poll a FranklinWH aGate over Modbus TCP and publish Home Assistant entities

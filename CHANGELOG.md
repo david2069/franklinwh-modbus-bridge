@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-08
+
 ### Changed
 
 - **Setup wizard follow-ups** (from the first run against a real aGate):
