@@ -7,6 +7,25 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.2 — 2026-10-08
+
+### Fixed
+- **The aGate's address now shows** on the Dashboard (it read *IP --*) and in
+  the SunSpec Explorer (*GATEWAY :502*) when the aGate was set up with the
+  setup wizard or in Settings.
+- **Settings → Home Assistant → MQTT Broker shows the broker actually in use**
+  (Mosquitto), not *localhost / (anonymous)*.
+- **Light mode:** the timezone confirmation and *can't reach the bridge*
+  banners were almost unreadable. They're now readable.
+
+### Changed
+- **The SunSpec Explorer follows the gateway selector**, so each aGate has its
+  own catalog.
+- **SunSpec Explorer and Sequencer start switched off on new installs.**
+  They're expert tools, and the Sequencer writes directly to the battery's
+  registers. Turn them on in Settings → Admin → Feature modules. If you
+  already use them, they stay on after updating.
+
 ## 0.2.1 — 2026-10-07
 
 ### Fixed
