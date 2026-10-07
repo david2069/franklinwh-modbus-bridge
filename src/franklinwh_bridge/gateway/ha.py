@@ -238,6 +238,31 @@ class HaInstance:
             self.last_error = str(exc) or type(exc).__name__
             logger.debug("HA %s refresh failed: %s", self.name, self.last_error)
 
+    async def ws_call(self, command: dict) -> Any:
+        """Run one WebSocket command on a short-lived connection; return its result.
+
+        For admin reads the REST API doesn't offer (config entries, the entity
+        registry). Raises HaAuthError on bad credentials, RuntimeError when HA
+        answers with an error (e.g. the token may not run that command).
+        """
+        async with ws_connect(
+            self.ws_url, open_timeout=self._timeout, max_size=_WS_MAX_SIZE
+        ) as ws:
+            first = json.loads(await ws.recv())
+            if first.get("type") == "auth_required":
+                await ws.send(json.dumps({"type": "auth", "access_token": self.token}))
+                resp = json.loads(await ws.recv())
+                if resp.get("type") != "auth_ok":
+                    raise HaAuthError(resp.get("message") or "authentication failed")
+            await ws.send(json.dumps({"id": 1, **command}))
+            while True:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), self._timeout))
+                if msg.get("type") == "result" and msg.get("id") == 1:
+                    if not msg.get("success", False):
+                        err = msg.get("error") or {}
+                        raise RuntimeError(err.get("message") or err.get("code") or "failed")
+                    return msg.get("result")
+
     # ── WebSocket live subscription ───────────────────────────
     async def run_live(self) -> None:
         """Maintain a live ``state_changed`` subscription, reconnecting forever
@@ -413,6 +438,9 @@ class HaRegistry:
         if not self._instances:
             return
         await asyncio.gather(*(inst.refresh() for inst in self._instances.values()))
+
+    def get(self, instance_id: str) -> HaInstance | None:
+        return self._instances.get(instance_id)
 
     def entity_values(self) -> dict[str, Any]:
         """Merged `ha:<inst>:<entity>` → value across all instances."""

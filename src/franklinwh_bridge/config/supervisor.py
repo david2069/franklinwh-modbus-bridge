@@ -136,6 +136,31 @@ async def discover_timezone() -> str | None:
     return str(tz)
 
 
+async def supervisor_network_info() -> dict[str, Any] | None:
+    """The HA host's network interfaces (``GET /network/info``), or None.
+
+    The setup wizard uses it to find the LAN to search for an aGate: the add-on
+    container sits on HA's internal network, so its own interfaces don't show
+    the LAN. Permitted by ``hassio_api: true``. Never raises.
+    """
+    token = supervisor_token()
+    if not token:
+        return None
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+            resp = await client.get(
+                f"{_SUPERVISOR_URL}/network/info",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        resp.raise_for_status()
+        return (resp.json() or {}).get("data") or None
+    except Exception as exc:  # pragma: no cover - network/env dependent
+        logger.info("Supervisor network info unavailable (%s)", exc)
+        return None
+
+
 async def apply_timezone() -> str | None:
     """Set ``TZ`` from the Supervisor when the user has not set it themselves.
 

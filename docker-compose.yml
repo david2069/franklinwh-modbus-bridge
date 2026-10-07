@@ -47,6 +47,8 @@ services:
       - MODBUS_HOST=${MODBUS_HOST:-}
       - MODBUS_PORT=${MODBUS_PORT:-502}
       - MODBUS_UNIT_ID=${MODBUS_UNIT_ID:-1}
+      # Setup wizard: LAN to search when the UI is reached via localhost/a proxy
+      - LAN_SUBNET=${LAN_SUBNET:-}
       # ── Logging ───────────────────────────────────────────────
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
