@@ -99,7 +99,26 @@ function explorerTab() {
       // filters Common's points to none, looking like "nothing found".
       this.$watch('filter', () => this._reselectIfStale());
       this.$watch('hideEmptyModels', () => this._reselectIfStale());
+
+      // Follow the gateway selector: each aGate has its own SunSpec catalog.
+      this.$watch(() => this.gwId, () => {
+        this.selectedModelId = null;
+        this.models = [];
+        this.loadGateway();
+        this.loadModels();
+      });
     },
+
+    /** The gateway the Explorer works on: the one being viewed, when it is a
+     *  real aGate; otherwise the primary gateway. (A demo gateway has no
+     *  registers, and "Site" is an aggregate, not a device.) */
+    get gwId() {
+      const app = Alpine.store('app');
+      const gw = app.gatewayList.find(g => g.id === app.activeGateway);
+      return gw && !gw.mock ? gw.id : 'default';
+    },
+
+    _gwQuery() { return 'gateway_id=' + encodeURIComponent(this.gwId); },
 
     destroy() {
       document.removeEventListener('mousemove', this._onMouseMove);
@@ -165,7 +184,7 @@ function explorerTab() {
     },
 
     async loadGateway() {
-      const data = await fetchJSON('api/gateway');
+      const data = await fetchJSON('api/gateway?' + this._gwQuery());
       if (data && !data.error) {
         this.gateway = data;
       }
@@ -173,7 +192,7 @@ function explorerTab() {
 
     async loadModels() {
       this.loading = true;
-      const data = await fetchJSON('api/models');
+      const data = await fetchJSON('api/models?' + this._gwQuery());
       if (data && data.models) {
         this.models = data.models;
         // Auto-select first model if none selected
@@ -186,7 +205,7 @@ function explorerTab() {
 
     async refreshCatalog() {
       this.refreshing = true;
-      const data = await fetchJSON('api/models/refresh', { method: 'POST' });
+      const data = await fetchJSON('api/models/refresh?' + this._gwQuery(), { method: 'POST' });
       if (data && !data.error) {
         const msg = data.changes
           ? `Catalog updated: +${data.added_models?.length || 0} models`
@@ -219,7 +238,7 @@ function explorerTab() {
       if (!this.selectedModelId || this.readingModel) return;
       this.readingModel = true;
       try {
-        const data = await fetchJSON(`api/models/${this.selectedModelId}/read`, { method: 'POST' });
+        const data = await fetchJSON(`api/models/${this.selectedModelId}/read?${this._gwQuery()}`, { method: 'POST' });
         if (data && !data.error) {
           // Refresh points so the values appear
           await Alpine.store('app').refresh();

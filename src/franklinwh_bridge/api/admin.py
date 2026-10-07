@@ -29,6 +29,9 @@ from franklinwh_bridge.store.db import (
     query_logs,
     set_pics_status,
 )
+from franklinwh_bridge.store.db import (
+    get_gateway as get_gateway_row,
+)
 from franklinwh_bridge.store.metrics import (
     BUCKET_MAP,
     RANGE_MAP,
@@ -112,29 +115,51 @@ async def set_config(key: str, body: ConfigUpdate, request: Request):
     return {"key": key, "value": str(body.value)}
 
 
-@router.get("/gateway")
-async def get_gateway(request: Request):
+async def _gateway_address(request: Request, gateway_id: str) -> dict:
+    """A gateway's address as configured — its stored row, not the environment.
+
+    This used to return MODBUS_HOST from the environment, so a gateway set up
+    in the setup wizard or Settings showed no host at all: the Dashboard's
+    "IP --" and the SunSpec Explorer's "GATEWAY :502".
+    """
+    db = getattr(request.app.state, "db", None)
+    row = await get_gateway_row(db, gateway_id) if db is not None else None
+    if row is not None:
+        return {
+            "gateway_id": gateway_id,
+            "name": row.get("name"),
+            "host": row.get("host") or "",
+            "port": row.get("port") or 502,
+            "unit_id": row.get("unit_id") or 1,
+            "poll_interval": row.get("poll_interval") or 10,
+            "mock": bool(row.get("mock")),
+        }
+    if gateway_id != "default":
+        raise HTTPException(404, f"Gateway '{gateway_id}' not found")
     config = getattr(request.app.state, "config", None)
     if config is None:
-        return {"host": "unknown", "port": 502, "unit_id": 1, "poll_interval": 10}
+        return {"gateway_id": gateway_id, "host": "", "port": 502, "unit_id": 1,
+                "poll_interval": 10, "mock": False}
     gw = config.settings.gateway
-    return {
-        "host": gw.host,
-        "port": gw.port,
-        "unit_id": gw.unit_id,
-        "poll_interval": gw.poll_interval,
-    }
+    return {"gateway_id": gateway_id, "host": gw.host, "port": gw.port,
+            "unit_id": gw.unit_id, "poll_interval": gw.poll_interval, "mock": False}
+
+
+@router.get("/gateway")
+async def get_gateway(request: Request, gateway_id: str = "default"):
+    """The address of one gateway (the primary one unless ``gateway_id``)."""
+    return await _gateway_address(request, gateway_id)
 
 
 @router.get("/gateway/test")
-async def test_gateway(request: Request) -> dict:
-    """Test TCP connectivity to the configured gateway host:port."""
-    config = getattr(request.app.state, "config", None)
-    if config is None:
-        raise HTTPException(503, "Bridge configuration not available")
-    gw = config.settings.gateway
-    host = gw.host
-    port = gw.port
+async def test_gateway(request: Request, gateway_id: str = "default") -> dict:
+    """Test TCP connectivity to a gateway's configured host:port."""
+    gw = await _gateway_address(request, gateway_id)
+    host, port = gw["host"], gw["port"]
+    if gw["mock"] or not host:
+        return {"ok": False, "host": host, "port": port, "latency_ms": None,
+                "error": "demo gateway — nothing to connect to" if gw["mock"]
+                else "no address set"}
 
     def _tcp_connect() -> float:
         """Blocking TCP connect; returns elapsed seconds."""
@@ -166,9 +191,9 @@ async def test_gateway(request: Request) -> dict:
 
 
 @router.get("/models")
-async def get_models(request: Request):
+async def get_models(request: Request, gateway_id: str = "default"):
+    """The SunSpec catalog captured for a gateway (the primary one unless named)."""
     db: aiosqlite.Connection = request.app.state.db
-    gateway_id = getattr(request.app.state, "gateway_id", "default")
     catalog = await load_catalog(db, gateway_id)
 
     models: dict[int, dict] = {}
@@ -202,17 +227,17 @@ async def list_catalog_points(request: Request, gateway_id: str = "default"):
 
 
 @router.post("/models/{model_id}/read")
-async def read_model(model_id: int, request: Request):
+async def read_model(model_id: int, request: Request, gateway_id: str = "default"):
     """On-demand read of a single SunSpec model from the device.
 
     Connects to the controller, calls model.read() to fetch live register
     values, then returns the point name→value map.  Also injects the values
     into the sample bus so the Explorer sees them immediately.
     """
-    # Resolve the default gateway's controller from the registry. The legacy
+    # Resolve the gateway's controller from the registry. The legacy
     # app.state.controller is unset under the multi-gateway architecture, so
     # reading it directly always failed with "No Modbus controller available".
-    inst = _get_gateway(request, "default")
+    inst = _get_gateway(request, gateway_id)
     controller = inst.controller if inst else getattr(request.app.state, "controller", None)
     if controller is None:
         raise HTTPException(503, "No Modbus controller available")
@@ -265,10 +290,13 @@ async def read_model(model_id: int, request: Request):
 
 
 @router.post("/models/refresh")
-async def refresh_models(request: Request):
+async def refresh_models(request: Request, gateway_id: str = "default"):
+    """Re-read a gateway's SunSpec model chain into its catalog."""
     db: aiosqlite.Connection = request.app.state.db
-    gateway_id = getattr(request.app.state, "gateway_id", "default")
-    reader_fn = getattr(request.app.state, "reader_fn", None)
+    inst = _get_gateway(request, gateway_id)
+    reader_fn = getattr(inst, "reader_fn", None) if inst is not None else None
+    if reader_fn is None and gateway_id == "default":
+        reader_fn = getattr(request.app.state, "reader_fn", None)  # legacy wiring
 
     if reader_fn is None:
         raise HTTPException(503, "Model reader not configured")

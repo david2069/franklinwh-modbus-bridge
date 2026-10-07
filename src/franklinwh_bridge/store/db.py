@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 50
+CURRENT_SCHEMA_VERSION = 51
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -766,6 +766,22 @@ MIGRATIONS: dict[int, str] = {
                   END
      WHERE id = 'default'
        AND name = 'Default Gateway';
+    """,
+    51: """
+    -- SunSpec Explorer and Sequencer now default to OFF for new installs
+    -- (gateway/modules.py). An existing install has been using them, so pin
+    -- them ON where nobody chose otherwise: json_insert only adds a key that
+    -- isn't already there, so an explicit on/off survives. A fresh database
+    -- has no gateways yet when migrations run, so it is left alone.
+    INSERT OR IGNORE INTO app_config (key, value)
+    SELECT 'modules_enabled', '{}'
+     WHERE EXISTS (SELECT 1 FROM gateways);
+    UPDATE app_config
+       SET value = json_insert(COALESCE(NULLIF(value, ''), '{}'),
+                               '$.explorer', json('true'),
+                               '$.sequencer', json('true'))
+     WHERE key = 'modules_enabled'
+       AND EXISTS (SELECT 1 FROM gateways);
     """,
     46: """
     -- Every plan needs a real start date.
