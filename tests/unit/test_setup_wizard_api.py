@@ -327,3 +327,44 @@ async def test_setup_writes_are_admin_only(fresh_client):
         kwargs = {"json": payload} if payload is not None else {}
         resp = await getattr(client, method)(path, **kwargs)
         assert resp.status_code == 403, (path, resp.status_code)
+
+
+# ── follow-ups from the first real-aGate run ────────────────────────────────
+
+async def test_subnets_include_networks_of_configured_aGates(fresh_client, monkeypatch):
+    """An aGate reached over Tailscale is on a network the host isn't on."""
+    async def no_local(host_header=None):
+        return [{"subnet": "10.0.2.0/24", "source": "supervisor"}]
+
+    monkeypatch.setattr(setup_api, "candidate_subnets", no_local)
+    resp = await fresh_client.patch("/api/gateways/default", json={"host": "192.168.0.110"})
+    assert resp.status_code == 200
+    body = (await fresh_client.get("/api/setup/subnets")).json()
+    assert {"subnet": "192.168.0.0/24", "source": "configured_gateway"} in body["subnets"]
+    assert body["subnets"][0]["subnet"] == "10.0.2.0/24"  # the host's own still first
+
+
+async def test_checklist_counts_only_current_gateways_entities(fresh_client, monkeypatch):
+    class FakeHa:
+        name, connected = "This Home Assistant", True
+
+        async def ws_call(self, command):
+            if command["type"] == "config_entries/get":
+                return [{"state": "loaded"}]
+            return (
+                [{"platform": "mqtt", "unique_id": f"franklinwh_A0091_x{i}"} for i in range(3)]
+                + [{"platform": "mqtt", "unique_id": f"franklinwh_demo_y{i}"} for i in range(5)]
+                + [{"platform": "sonos", "unique_id": "franklinwh_A0091_not_mqtt"}]
+            )
+
+    monkeypatch.setattr(setup_api, "_ha_instance", lambda request: FakeHa())
+    monkeypatch.setattr(setup_api, "_current_short_ids", lambda request: {"A0091"})
+    items = {i["id"]: i for i in (await fresh_client.get("/api/setup/checklist")).json()["items"]}
+    ent = items["ha_entities"]
+    assert ent["status"] == "ok" and ent["count"] == 3 and ent["stale"] == 5
+    assert "5 left over from removed gateways" in ent["detail"]
+
+    # Nothing current → fail, however many leftovers there are.
+    monkeypatch.setattr(setup_api, "_current_short_ids", lambda request: set())
+    items = {i["id"]: i for i in (await fresh_client.get("/api/setup/checklist")).json()["items"]}
+    assert items["ha_entities"]["status"] == "fail" and items["ha_entities"]["count"] == 0

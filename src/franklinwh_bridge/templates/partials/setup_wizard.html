@@ -79,6 +79,9 @@
                       <span class="font-mono" x-text="s.subnet"></span> — from <span x-text="sourceLabel(s.source)"></span>
                     </p>
                   </template>
+                  <p class="text-[11px] text-slate-500">
+                    aGate reached over Tailscale or a VPN? Type its home network, e.g. <span class="font-mono">192.168.0.0/24</span>.
+                  </p>
                   <p x-show="!subnets.length && !busy" class="text-[11px] text-slate-500">
                     The bridge couldn't tell which network your aGate is on. Enter its subnet, or use <em>Enter address</em>.
                   </p>
@@ -248,6 +251,27 @@
             </div>
           </template>
 
+          <!-- 5b. Timezone (only while unconfirmed) -->
+          <template x-if="step === 'timezone' && $store.app.tz">
+            <div class="space-y-2">
+              <p class="font-semibold">Is this your timezone?</p>
+              <p>
+                <span class="font-mono text-cyan-300" x-text="$store.app.tz.timezone"></span>
+                — local time now <span class="font-mono" x-text="$store.app.tz.local_time"></span>
+                (UTC<span x-text="($store.app.tz.utc_offset_h >= 0 ? '+' : '') + $store.app.tz.utc_offset_h"></span>)
+              </p>
+              <p class="text-xs text-slate-400">Schedules and tariff time periods run on this clock.</p>
+              <p class="text-xs text-amber-300" x-show="$store.app.tz.looks_like_default">
+                That looks like a container default rather than your choice — schedules would run on UTC.
+              </p>
+              <p class="text-xs text-slate-400">
+                If it's wrong: the bridge takes its clock from
+                <span x-text="$store.app.env === 'ha_addon' ? 'Home Assistant (Settings → System → General → Time zone), then restart this app'
+                              : 'the TZ setting of its container (e.g. TZ=Australia/Sydney in docker-compose), then restart it'"></span>.
+              </p>
+            </div>
+          </template>
+
           <!-- 6. Home Assistant checklist -->
           <template x-if="step === 'checklist'">
             <div class="space-y-2">
@@ -294,7 +318,7 @@
             <button type="button" x-show="step === 'demo-create'" @click="go('demo-info')" :disabled="busy"
                     class="btn btn-sm btn-secondary">Back</button>
           </div>
-          <div>
+          <div class="flex gap-2">
             <button type="button" x-show="step === 'before'" @click="enterFind()"
                     class="btn btn-sm btn-primary">Next</button>
             <button type="button" x-show="step === 'find' && tab === 'search'" @click="go('confirm')"
@@ -308,7 +332,7 @@
                     class="btn btn-sm btn-primary disabled:opacity-50">
               <span x-text="busy ? 'Connecting…' : 'Connect'"></span>
             </button>
-            <button type="button" x-show="step === 'reading'" @click="enterChecklist()"
+            <button type="button" x-show="step === 'reading'" @click="afterGateway()"
                     class="btn btn-sm btn-primary">Next</button>
             <button type="button" x-show="step === 'demo-info'" @click="go('demo-create')"
                     class="btn btn-sm btn-primary">Next</button>
@@ -316,6 +340,10 @@
                     class="btn btn-sm btn-primary disabled:opacity-50">
               <span x-text="busy ? 'Creating…' : 'Create demo'"></span>
             </button>
+            <button type="button" x-show="step === 'timezone'" @click="enterChecklist()"
+                    class="btn btn-sm btn-secondary">Skip for now</button>
+            <button type="button" x-show="step === 'timezone'" @click="confirmTimezone()" :disabled="busy"
+                    class="btn btn-sm btn-primary disabled:opacity-50">That's right</button>
             <button type="button" x-show="step === 'checklist'" @click="close()"
                     class="btn btn-sm btn-primary">Finish</button>
           </div>

@@ -119,8 +119,8 @@
 
     <!-- Last poll (wall-clock HH:MM; full timestamp on hover) -->
     <span class="hidden md:inline text-xs text-slate-500"
-          :title="'Last poll: ' + fmt.at($store.app.lastPollTs)"
-          x-text="fmt.clock($store.app.lastPollTs)"></span>
+          :title="$store.app.hasAnyGateway ? 'Last poll: ' + fmt.at($store.app.lastPollTs) : 'No aGate or demo gateway set up yet'"
+          x-text="$store.app.hasAnyGateway ? fmt.clock($store.app.lastPollTs) : 'No gateway yet'"></span>
 
     <!-- Release control button -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='release')?.visible !== false"
