@@ -23,12 +23,16 @@ _MODULES_KEY = "modules_enabled"
 MODULES: list[dict] = [
     {"id": "dashboard", "label": "Dashboard", "tab": "dashboard",
      "capability": "view", "core": True, "default_enabled": True},
+    # Explorer and Sequencer are expert tools — raw SunSpec registers, and the
+    # Sequencer WRITES them to a live battery — so a new install starts with
+    # them off (Settings → Admin → Feature modules). Existing installs keep
+    # them on (migration 51).
     {"id": "explorer", "label": "SunSpec Explorer", "tab": "explorer",
-     "capability": "explorer", "core": False, "default_enabled": True},
+     "capability": "explorer", "core": False, "default_enabled": False},
     {"id": "logs", "label": "Logs", "tab": "logs",
      "capability": "logs", "core": False, "default_enabled": True},
     {"id": "sequencer", "label": "Sequencer", "tab": "sequencer",
-     "capability": "sequencer", "core": False, "default_enabled": True},
+     "capability": "sequencer", "core": False, "default_enabled": False},
     {"id": "automations", "label": "Schedule", "tab": "schedule",
      "capability": "automations", "core": False, "default_enabled": True},
     {"id": "ha_entities", "label": "HA Entities", "tab": "ha_entities",

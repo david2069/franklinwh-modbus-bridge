@@ -110,6 +110,15 @@ ingress-name fixes, which are new in 0.2.1.
 
 ### Changed
 
+- **SunSpec Explorer follows the gateway selector.** Catalog, *Refresh Catalog*
+  and on-demand model reads were hard-wired to the first gateway; they now take
+  `?gateway_id=` and the Explorer uses the gateway being viewed (the primary
+  one for a demo gateway or *Site*). The Dashboard's device bar also updates
+  when you switch gateway.
+- **SunSpec Explorer and Sequencer are off by default on new installs.** They
+  are expert tools, and the Sequencer writes raw registers to a live battery.
+  Turn them on in Settings → Admin → Feature modules. Migration 51 keeps them on
+  for existing installs, unless you had already switched them off.
 - **franklinwh-modbus pinned to v0.9.5** (`FWM_REF` in both Dockerfiles; `>=0.9.5`
   in pyproject/requirements). Adds the read-only `discovery` API the setup
   wizard uses, and 0.9.4's fixes (`--dry-run` no longer writes; the
@@ -161,6 +170,11 @@ ingress-name fixes, which are new in 0.2.1.
 
 ### Fixed
 
+- **Dashboard "IP --" and SunSpec Explorer "GATEWAY :502" for a gateway set up in
+  the UI.** `GET /api/gateway` and `/api/gateway/test` returned `MODBUS_HOST` from
+  the environment, which is empty whenever the aGate was added by the setup
+  wizard or in Settings. They now read the gateway's stored settings and take
+  `?gateway_id=`. The primary gateway is used when none is named.
 - **Settings → Home Assistant → MQTT Broker showed `localhost` / `(anonymous)`
   in the add-on**, under *Configured automatically from Home Assistant's MQTT
   service*. The card read the stored config, but the broker discovered from the

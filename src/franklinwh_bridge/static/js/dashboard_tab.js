@@ -415,6 +415,8 @@ function dashboardTab() {
 
     async init() {
       await this._loadGateway();
+      // Show the address of whichever gateway is being viewed.
+      this.$watch(() => Alpine.store('app').activeGateway, () => this._loadGateway());
       // Defer chart creation until canvas is visible and sized
       this.$nextTick(() => {
         requestAnimationFrame(() => {
@@ -510,7 +512,10 @@ function dashboardTab() {
     },
 
     async _loadGateway() {
-      const data = await fetchJSON('api/gateway');
+      // The gateway being viewed (the primary one for "Site").
+      const active = Alpine.store('app').activeGateway;
+      const gwId = active && active !== 'site' ? active : 'default';
+      const data = await fetchJSON('api/gateway?gateway_id=' + encodeURIComponent(gwId));
       if (data && !data.error) {
         this.deviceIp = data.host || '--';
         this.deviceUnit = data.unit_id ?? '--';
