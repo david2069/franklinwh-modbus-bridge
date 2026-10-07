@@ -161,6 +161,16 @@ ingress-name fixes, which are new in 0.2.1.
 
 ### Fixed
 
+- **Settings → Home Assistant → MQTT Broker showed `localhost` / `(anonymous)`
+  in the add-on**, under *Configured automatically from Home Assistant's MQTT
+  service*. The card read the stored config, but the broker discovered from the
+  Supervisor is never stored. `/api/mqtt/status` now reports the broker in use
+  (`broker: {host, port, username, source}`), and the card shows that.
+- **Unreadable text in light mode.** The near-white text shades written for the
+  dark theme's tinted banners (`text-cyan-100`, `text-amber-100/200`,
+  `text-red-100/200`, `text-sky-200`) had no light-theme override, so text like
+  the *Confirm the bridge's timezone* banner was almost invisible on a light
+  background. Each now maps to a dark shade of the same hue in light mode.
 - **Under HA ingress the user badge showed "(" and "(ingress)".** It now shows
   the signed-in Home Assistant user's name, from the Supervisor's
   `X-Remote-User-Display-Name` / `-Name` headers, falling back to *Home

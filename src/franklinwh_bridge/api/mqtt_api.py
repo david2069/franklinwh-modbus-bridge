@@ -71,6 +71,15 @@ async def get_status(request: Request):
         "last_error": state.last_error,
         "discovery_published": state.discovery_published,
         "entity_count": len(publisher.entities),
+        # The broker actually in use. As an add-on it comes from the Supervisor
+        # and is never written to the stored config, so /config alone showed
+        # the "localhost" placeholder while connected to Mosquitto.
+        "broker": {
+            "host": getattr(publisher, "_host", None),
+            "port": getattr(publisher, "_port", None),
+            "username": getattr(publisher, "_username", None),
+            "source": (getattr(request.app.state, "mqtt_broker", None) or {}).get("source"),
+        },
     }
 
 
