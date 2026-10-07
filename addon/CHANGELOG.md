@@ -7,6 +7,30 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.3 — 2026-10-08
+
+### Setup wizard
+- **Asks you to confirm the timezone** as one of its steps (it was a separate
+  banner behind the wizard), and says where to change it if it's wrong.
+- **One aGate found is ticked for you**, so *Next* works straight away.
+- **Suggests the network of aGates you've already set up**, and explains what
+  to type for an aGate you reach over Tailscale or a VPN.
+- **The Home Assistant checklist counts only your current gateways' entities**,
+  and tells you about any left over from removed gateways and where to delete them.
+- **The top bar says *No gateway yet*** until an aGate or demo gateway exists.
+
+### Battery control
+- **The Release panel reads correctly:** WSetPct as *100%* (not *1000%*),
+  *No limit* for a dispatch without a time limit (not *0m 0s* in red), and a
+  new *Target SoC* row.
+- **The control log records the right gateway** for each command, logs target
+  SoC changes, and notes each command's time limit and target SoC.
+- **Crash recovery covers every gateway**, not just the first one.
+
+### Other
+- Settings → Admin → Feature modules: corrected wording (turning a feature off
+  removes it from the sidebar).
+
 ## 0.2.2 — 2026-10-08
 
 ### Fixed

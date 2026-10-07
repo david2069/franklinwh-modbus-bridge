@@ -4,7 +4,7 @@
 def test_package_imports():
     import franklinwh_bridge
 
-    assert franklinwh_bridge.__version__ == "0.2.2"
+    assert franklinwh_bridge.__version__ == "0.2.3"
 
 
 def test_app_creates():
