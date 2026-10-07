@@ -42,7 +42,8 @@ export MODBUS_POLL_INTERVAL="$(bashio::config 'poll_interval')"
 # LOG_LEVEL as well keeps uvicorn and the app in step.
 export LOG_LEVEL="$(bashio::config 'log_level')"
 
-bashio::log.info "Starting FranklinWH Modbus Bridge (ingress on :8099)"
+BRIDGE_VERSION="$(python3 -c 'import franklinwh_bridge as b; print(b.__version__)' 2>/dev/null || echo unknown)"
+bashio::log.info "Starting FranklinWH Modbus Bridge v${BRIDGE_VERSION} (ingress on :8099)"
 if bashio::services.available "mqtt"; then
   bashio::log.info "MQTT service available — the bridge will auto-configure from the Supervisor"
 else
