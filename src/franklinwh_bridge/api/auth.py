@@ -23,7 +23,24 @@ from franklinwh_bridge.store.db import (
 router = APIRouter(prefix="/api", tags=["auth"])
 
 # Synthetic admin used under HA ingress (Supervisor authenticated the user).
-_INGRESS_ADMIN = {"id": "ingress", "username": "(ingress)", "role": "admin", "enabled": True}
+# The id stays "ingress" for every HA user (it keys the legal-notice
+# acknowledgement and the audit trail); the NAME is the HA user's own.
+_INGRESS_ADMIN = {"id": "ingress", "username": "Home Assistant", "role": "admin", "enabled": True}
+
+
+def _ingress_user(request: Request) -> dict:
+    """The ingress admin, named after the Home Assistant user.
+
+    The Supervisor's ingress proxy passes the signed-in HA user as
+    X-Remote-User-Display-Name / -Name. Without it the UI showed the
+    placeholder "(ingress)", and its first letter "(" as the avatar.
+    """
+    name = (
+        request.headers.get("x-remote-user-display-name")
+        or request.headers.get("x-remote-user-name")
+        or ""
+    ).strip()
+    return {**_INGRESS_ADMIN, "username": name[:80]} if name else _INGRESS_ADMIN
 
 
 def _is_ingress(request: Request) -> bool:
@@ -48,7 +65,7 @@ def capabilities_for(role: str) -> list[str]:
 async def get_current_user(request: Request) -> dict | None:
     """The logged-in user (or None). Returns a synthetic admin under HA ingress."""
     if _is_ingress(request):
-        return _INGRESS_ADMIN
+        return _ingress_user(request)
     user_id = request.session.get("user_id") if hasattr(request, "session") else None
     if not user_id:
         return None

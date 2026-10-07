@@ -93,6 +93,14 @@ def _log_disclaimer_once(request: Request) -> None:
     logger.warning("First UI connection from %s. %s", client, disclaimer.SHORT)
 
 
+#: The HTML shell must never be reused from a browser cache. It names the
+#: script versions to load (``?v=`` cache-bust tokens); a cached page from
+#: before an update kept loading the OLD scripts under the new templates —
+#: seen in Safari after the 0.2.0 add-on update as a blank Settings page and
+#: nameless gateways. ``no-cache`` still allows a 304 revalidation.
+_HTML_HEADERS = {"Cache-Control": "no-cache"}
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, user: dict | None = Depends(get_current_user)):
     """Serve the main SPA shell. Unauthenticated → /login; non-admin → /user."""
@@ -106,6 +114,7 @@ async def index(request: Request, user: dict | None = Depends(get_current_user))
         request,
         "index.html",
         {"base_path": base_path, "cache_bust": _cache_bust()},
+        headers=_HTML_HEADERS,
     )
 
 
@@ -120,6 +129,7 @@ async def user_dashboard(request: Request, user: dict | None = Depends(get_curre
         request,
         "user.html",
         {"base_path": base_path, "cache_bust": _cache_bust()},
+        headers=_HTML_HEADERS,
     )
 
 
@@ -130,7 +140,8 @@ async def login_page(request: Request, user: dict | None = Depends(get_current_u
     if user is not None:
         return RedirectResponse(_home_for(base_path, user), status_code=302)
     return templates.TemplateResponse(
-        request, "login.html", {"base_path": base_path, "cache_bust": _cache_bust()}
+        request, "login.html", {"base_path": base_path, "cache_bust": _cache_bust()},
+        headers=_HTML_HEADERS,
     )
 
 
