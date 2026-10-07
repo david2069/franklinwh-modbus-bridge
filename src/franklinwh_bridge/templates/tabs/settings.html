@@ -92,6 +92,8 @@
       <div class="card-label !mb-0">Gateways</div>
       <div class="flex items-center gap-2">
         <span class="text-[10px] text-slate-500" x-text="gwList.length + ' gateway' + (gwList.length !== 1 ? 's' : '')"></span>
+        <button x-show="$store.app.isAdmin" @click="$store.setup.open()"
+                class="btn btn-sm btn-secondary">Run setup again</button>
         <button @click="showAddGateway = !showAddGateway"
                 class="btn btn-sm btn-secondary">
           <span x-text="showAddGateway ? 'Cancel' : '+ Add Gateway'"></span>
@@ -183,10 +185,10 @@
                       :title="gw.health || 'unknown'"></span>
               </td>
               <td>
-                <span class="font-medium" x-text="gw.name"></span>
-                <span class="text-[10px] text-slate-500 ml-1 font-mono" x-text="gw.id"></span>
+                <span class="font-medium" x-text="gwLabel(gw)"></span>
+                <span x-show="gw.id !== 'default'" class="text-[10px] text-slate-500 ml-1 font-mono" x-text="gw.id"></span>
                 <span x-show="gw.mock" class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">mock</span>
-                <span x-show="gw.description" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
+                <span x-show="gw.description && gw.health !== 'unconfigured'" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
               </td>
               <td class="font-mono" :class="gw.health === 'unconfigured' ? 'text-amber-400' : 'text-slate-400'"
                   x-text="gw.health === 'unconfigured' ? 'not set' : (gw.host + ':' + gw.port)"></td>

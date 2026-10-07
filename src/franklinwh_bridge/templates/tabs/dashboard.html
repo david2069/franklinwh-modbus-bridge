@@ -141,15 +141,26 @@
       </svg>
       <div class="flex-1 min-w-0">
         <p class="text-sm font-semibold text-cyan-300">Connect your aGate</p>
-        <p class="text-xs mt-0.5 text-slate-300">
-          Enter its IP address in Settings → Gateways (Edit on the gateway), or add a mock gateway to explore without hardware.
+        <p class="text-xs mt-0.5 text-slate-300" x-show="$store.app.isAdmin">
+          Find it on your network, or explore with a demo gateway first.
+        </p>
+        <p class="text-xs mt-0.5 text-slate-300" x-show="!$store.app.isAdmin">
+          Ask an administrator to set up the aGate.
         </p>
       </div>
-      <a href="#" @click.prevent="Alpine.store('app').setTab('settings', { section: 'gateways' })"
+      <a href="#" x-show="$store.app.isAdmin" @click.prevent="$store.setup.open()"
          class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25">
         Set up →
       </a>
     </div>
+  </template>
+
+  <!-- Demo only: a quiet way back to setting up the real thing. -->
+  <template x-if="$store.app.isAdmin && $store.setup.state === 'done_demo' && !$store.app.hasRealGateway">
+    <p class="mb-4 text-xs text-slate-400">
+      You're exploring with a demo gateway.
+      <a href="#" @click.prevent="$store.setup.open()" class="text-cyan-400 hover:underline">Connect a real aGate</a>
+    </p>
   </template>
 
   <!-- Gateway Health Alert Banner — shown when any enabled gateway is not polling -->

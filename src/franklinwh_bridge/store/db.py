@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 49
+CURRENT_SCHEMA_VERSION = 50
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -752,6 +752,20 @@ MIGRATIONS: dict[int, str] = {
                            WHERE COALESCE(mock, 0) = 1) THEN 'done_demo'
              ELSE 'pending'
            END;
+    """,
+    50: """
+    -- "Default Gateway" was only the label the first gateway row was created
+    -- with, and it carries no meaning for the user (setup-wizard-design §4).
+    -- Name it by what it is: "aGate" plus the last four of its serial when
+    -- known, as the setup wizard does. A name the user chose is left alone.
+    UPDATE gateways
+       SET name = CASE
+                    WHEN COALESCE(serial, '') <> ''
+                    THEN 'aGate ' || substr(serial, -4)
+                    ELSE 'aGate'
+                  END
+     WHERE id = 'default'
+       AND name = 'Default Gateway';
     """,
     46: """
     -- Every plan needs a real start date.

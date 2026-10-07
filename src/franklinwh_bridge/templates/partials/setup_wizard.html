@@ -1,0 +1,326 @@
+{#
+  First-run setup wizard — see static/js/setup_wizard.js and
+  docs/setup-wizard-design.md. Self-contained x-data; reads $store.app and
+  $store.setup. Every action is an /api/setup/* call.
+#}
+<div x-data="setupWizard()" x-cloak>
+  <template x-if="open">
+    <div class="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-black/60"
+         role="dialog" aria-modal="true" aria-labelledby="setup-title">
+      <div class="w-full max-w-lg rounded-lg border shadow-2xl flex flex-col"
+           style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+
+        <div class="flex items-center justify-between p-4 border-b" style="border-color: var(--border);">
+          <h2 id="setup-title" class="text-sm font-semibold">Set up the bridge</h2>
+          <button type="button" @click="close()" aria-label="Close"
+                  class="text-slate-500 hover:text-slate-300 text-lg leading-none">&times;</button>
+        </div>
+
+        <div class="p-4 space-y-3 overflow-y-auto text-sm leading-relaxed text-slate-300">
+
+          <!-- 1. Intent -->
+          <template x-if="step === 'intent'">
+            <div class="space-y-2">
+              <p class="text-slate-400">What would you like to do?</p>
+              <button type="button" @click="go('before')"
+                      class="w-full text-left rounded-lg border px-3 py-2 hover:bg-cyan-500/10 border-cyan-500/40">
+                <p class="font-semibold text-cyan-300">Connect my FranklinWH aGate</p>
+                <p class="text-xs text-slate-400">Read and control your aGate over your local network.</p>
+              </button>
+              <button type="button" @click="go('demo-info')"
+                      class="w-full text-left rounded-lg border px-3 py-2 hover:bg-cyan-500/10" style="border-color: var(--border);">
+                <p class="font-semibold">Explore with a demo gateway</p>
+                <p class="text-xs text-slate-400">Simulated data and controls, no hardware needed.</p>
+              </button>
+              <button type="button" @click="skip()"
+                      class="w-full text-left rounded-lg border px-3 py-2 hover:bg-cyan-500/10" style="border-color: var(--border);">
+                <p class="font-semibold">I'll set it up myself</p>
+                <p class="text-xs text-slate-400">Close this; configure gateways in Settings.</p>
+              </button>
+            </div>
+          </template>
+
+          <!-- 2R. Before you start -->
+          <template x-if="step === 'before'">
+            <div class="space-y-2">
+              <p class="font-semibold">Before you start</p>
+              <ul style="list-style: disc;" class="pl-5 space-y-1.5 text-slate-300">
+                <li><span class="font-medium">Modbus TCP is enabled on the aGate.</span>
+                  It's an installer setting; the bridge can't turn it on. Without it the aGate can't be found.</li>
+                <li><span class="font-medium">Know what else talks to it.</span>
+                  If the search finds an <em>unknown device</em> where the aGate should be, another Modbus
+                  client or a reboot is the first thing to rule out.</li>
+                <li><span class="font-medium">Its IP address</span>, if you know it (the FranklinWH app or your
+                  router's client list shows it). Optional — the next step can search for it.</li>
+              </ul>
+            </div>
+          </template>
+
+          <!-- 3R. Find the aGate -->
+          <template x-if="step === 'find'">
+            <div class="space-y-3">
+              <div class="flex gap-2 text-xs">
+                <button type="button" @click="tab = 'search'"
+                        class="px-3 py-1 rounded-lg"
+                        :class="tab === 'search' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-300'">Search my network</button>
+                <button type="button" @click="tab = 'address'"
+                        class="px-3 py-1 rounded-lg"
+                        :class="tab === 'address' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-300'">Enter address</button>
+              </div>
+
+              <template x-if="tab === 'search'">
+                <div class="space-y-2">
+                  <label class="block text-xs text-slate-400">Subnet(s) to search, comma-separated
+                    <input type="text" x-model="subnetInput" placeholder="192.168.1.0/24"
+                           class="form-control mt-1 w-full" :disabled="busy">
+                  </label>
+                  <template x-for="s in subnets" :key="s.subnet">
+                    <p class="text-[11px] text-slate-500">
+                      <span class="font-mono" x-text="s.subnet"></span> — from <span x-text="sourceLabel(s.source)"></span>
+                    </p>
+                  </template>
+                  <p x-show="!subnets.length && !busy" class="text-[11px] text-slate-500">
+                    The bridge couldn't tell which network your aGate is on. Enter its subnet, or use <em>Enter address</em>.
+                  </p>
+                  <button type="button" @click="startScan()" :disabled="busy"
+                          class="btn btn-sm btn-primary disabled:opacity-50">
+                    <span x-text="scan && scan.status === 'running' ? 'Searching…' : 'Search'"></span>
+                  </button>
+
+                  <template x-if="scan">
+                    <div class="space-y-2">
+                      <div x-show="scan.status === 'running'" class="h-1.5 rounded bg-slate-700 overflow-hidden">
+                        <div class="h-full bg-cyan-500" :style="`width: ${scanPct}%`"></div>
+                      </div>
+                      <template x-for="row in scanAgates" :key="row.host + ':' + row.port">
+                        <label class="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer border-cyan-500/40 hover:bg-cyan-500/10">
+                          <input type="checkbox" :checked="isPicked(row)" @change="togglePick(row)"
+                                 class="mt-0.5 w-4 h-4 accent-cyan-500 shrink-0">
+                          <span>
+                            <span class="font-semibold text-cyan-300">FranklinWH aGate</span>
+                            <span class="font-mono text-xs text-slate-400" x-text="row.host"></span><br>
+                            <span class="text-xs text-slate-400" x-text="rowText(row)"></span>
+                          </span>
+                        </label>
+                      </template>
+                      <template x-for="row in scanOthers" :key="row.host + ':' + row.port">
+                        <p class="text-xs text-slate-500 px-3">
+                          <span class="font-mono" x-text="row.host"></span> — <span x-text="rowText(row)"></span>
+                        </p>
+                      </template>
+                      <p x-show="scan.status === 'done' && !scan.results.length" class="text-xs text-amber-300">
+                        No aGate found on <span x-text="scan.subnets.join(', ')"></span>.
+                        Check the list under <em>Before you start</em>, or try <em>Enter address</em>.
+                      </p>
+                    </div>
+                  </template>
+                </div>
+              </template>
+
+              <template x-if="tab === 'address'">
+                <div class="space-y-2">
+                  <label class="block text-xs text-slate-400">Address (IP or hostname — a Tailscale address works)
+                    <input type="text" x-model="manual.host" placeholder="192.168.1.50"
+                           class="form-control mt-1 w-full" :disabled="busy" @keydown.enter="probeManual()">
+                  </label>
+                  <div class="flex gap-2">
+                    <label class="block text-xs text-slate-400">Port
+                      <input type="number" x-model.number="manual.port" class="form-control mt-1 w-24" :disabled="busy">
+                    </label>
+                    <label class="block text-xs text-slate-400">Unit id
+                      <input type="number" x-model.number="manual.unit_id" class="form-control mt-1 w-24" :disabled="busy">
+                    </label>
+                  </div>
+                  <button type="button" @click="probeManual()" :disabled="busy"
+                          class="btn btn-sm btn-primary disabled:opacity-50">
+                    <span x-text="busy ? 'Testing…' : 'Test'"></span>
+                  </button>
+                  <template x-if="probeRow">
+                    <div class="rounded-lg border px-3 py-2"
+                         :class="probeRow.kind === 'agate' ? 'border-cyan-500/40' : 'border-amber-500/40'">
+                      <p class="font-semibold"
+                         :class="probeRow.kind === 'agate' ? 'text-cyan-300' : 'text-amber-300'"
+                         x-text="probeRow.kind === 'agate' ? 'FranklinWH aGate found'
+                                 : probeRow.kind === 'configured' ? 'Already set up'
+                                 : probeRow.kind === 'closed' ? 'Nothing is listening there' : 'Not an aGate'"></p>
+                      <p class="text-xs text-slate-400" x-text="rowText(probeRow)"></p>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- 4R. Confirm -->
+          <template x-if="step === 'confirm'">
+            <div class="space-y-3">
+              <p class="font-semibold" x-text="picks.length > 1 ? 'Name your aGates' : 'Name your aGate'"></p>
+              <template x-for="(p, i) in picks" :key="p.row.host">
+                <div class="rounded-lg border px-3 py-2 space-y-2" style="border-color: var(--border);">
+                  <p class="text-xs text-slate-400">
+                    <span class="font-mono" x-text="p.row.host"></span> — <span x-text="rowText(p.row)"></span>
+                    <span x-show="i === 0 && picks.length > 1" class="text-cyan-300">(primary)</span>
+                  </p>
+                  <div class="flex gap-2">
+                    <label class="block flex-1 text-xs text-slate-400">Name
+                      <input type="text" x-model="p.name" class="form-control mt-1 w-full" :disabled="busy">
+                    </label>
+                    <label class="block text-xs text-slate-400">Device
+                      <select x-model="p.device_type" class="form-control mt-1" :disabled="busy">
+                        <option value="agate">aGate</option>
+                        <option value="mac1">MAC-1</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- 5R. First live reading -->
+          <template x-if="step === 'reading'">
+            <div class="space-y-2">
+              <p class="font-semibold">
+                <span x-text="connected.map(c => c.name).join(', ')"></span>
+                <span x-text="connected.length > 1 ? ' are set up.' : ' is set up.'"></span>
+              </p>
+              <template x-if="reading && reading.points">
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <p>Battery <span class="font-semibold" x-text="pt('soc', '%')"></span></p>
+                  <p>Battery power <span class="font-semibold" x-text="pt('battery_power_w', ' W')"></span></p>
+                  <p>Solar <span class="font-semibold" x-text="pt('total_solar', ' W')"></span></p>
+                  <p>Grid <span class="font-semibold" x-text="pt('grid_power_w', ' W')"></span></p>
+                  <p>Home <span class="font-semibold" x-text="pt('home_load_ext', ' W')"></span></p>
+                </div>
+              </template>
+              <p x-show="reading && !reading.points && !reading.timedOut" class="text-xs text-slate-400">
+                Waiting for the first reading…
+              </p>
+              <template x-if="reading && reading.timedOut">
+                <div class="space-y-1 text-xs">
+                  <p class="text-amber-300">No reading yet.</p>
+                  <p class="text-slate-400" x-show="reading.last_error">
+                    Last error: <span class="font-mono" x-text="reading.last_error"></span>
+                  </p>
+                  <p class="text-slate-400">Check that Modbus TCP is enabled on the aGate, then try again.
+                    It keeps trying in the background either way.</p>
+                  <button type="button" @click="retryReading()" class="btn btn-sm btn-secondary">Try again</button>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- 2D. What a demo can and can't do -->
+          <template x-if="step === 'demo-info'">
+            <div class="space-y-2">
+              <p class="font-semibold">What a demo gateway can and can't do</p>
+              <p class="text-xs font-medium text-emerald-300">Works</p>
+              <ul style="list-style: disc;" class="pl-5 text-xs space-y-1">
+                <li>Dashboard, power flow, Site view</li>
+                <li>Home Assistant entities, including controls</li>
+                <li>Controls and schedules — <em>simulated</em>: they change the demo's data, never a battery</li>
+              </ul>
+              <p class="text-xs font-medium text-amber-300">Doesn't</p>
+              <ul style="list-style: disc;" class="pl-5 text-xs space-y-1">
+                <li>SunSpec Explorer and Sequencer — they need real Modbus registers</li>
+                <li>History and metrics — simulated data is deliberately not recorded</li>
+              </ul>
+              <p class="text-xs text-slate-400">
+                A demo's energy sensors feed Home Assistant's long-term statistics, which outlive the
+                entity. To keep your real Energy dashboard clean, try the demo against a test Home Assistant.
+              </p>
+            </div>
+          </template>
+
+          <!-- 3D. Create the demo -->
+          <template x-if="step === 'demo-create'">
+            <div class="space-y-2">
+              <label class="block text-xs text-slate-400">Name
+                <input type="text" x-model="demo.name" class="form-control mt-1 w-full" :disabled="busy">
+              </label>
+              <label class="block text-xs text-slate-400">AC type
+                <select x-model.number="demo.ac_type" class="form-control mt-1" :disabled="busy">
+                  <option value="0">Single phase</option>
+                  <option value="1">Split phase (US)</option>
+                  <option value="2">Three phase</option>
+                </select>
+              </label>
+            </div>
+          </template>
+
+          <!-- 6. Home Assistant checklist -->
+          <template x-if="step === 'checklist'">
+            <div class="space-y-2">
+              <p class="font-semibold">Home Assistant</p>
+              <template x-for="item in checklist" :key="item.id">
+                <div class="flex items-start gap-2 text-xs">
+                  <span class="shrink-0 w-4 text-center"
+                        :class="item.status === 'ok' ? 'text-emerald-400' : item.status === 'fail' ? 'text-red-400' : 'text-slate-500'"
+                        x-text="item.status === 'ok' ? '✓' : item.status === 'fail' ? '✗' : '?'"></span>
+                  <div class="flex-1 min-w-0">
+                    <p x-text="checkLabel(item.id)"></p>
+                    <p class="text-slate-500" x-text="item.detail"></p>
+                    <template x-if="item.status !== 'ok' && item.id === 'mqtt_broker'">
+                      <p class="text-slate-400" x-text="environment === 'ha_addon'
+                          ? 'Install the Mosquitto broker app in Home Assistant (Settings → Apps).'
+                          : 'Set the broker in Settings → Home Assistant → MQTT Broker.'"></p>
+                    </template>
+                    <template x-if="item.status !== 'ok' && item.id === 'ha_mqtt_integration'">
+                      <p class="text-slate-400">In Home Assistant: Settings → Devices &amp; services → Discovered → MQTT → Configure.</p>
+                    </template>
+                    <template x-if="item.status !== 'ok' && item.id === 'ha_connection' && environment !== 'ha_addon'">
+                      <p class="text-slate-400">Add your Home Assistant in Settings → Home Assistant.</p>
+                    </template>
+                  </div>
+                </div>
+              </template>
+              <button type="button" @click="loadChecklist()" :disabled="busy"
+                      class="btn btn-sm btn-secondary disabled:opacity-50">Check again</button>
+            </div>
+          </template>
+
+          <p x-show="error" class="text-xs text-red-400" x-text="error"></p>
+        </div>
+
+        <!-- Footer: Back / Next per step -->
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--border);">
+          <div>
+            <button type="button" x-show="['before','demo-info'].includes(step)" @click="go('intent')"
+                    class="btn btn-sm btn-secondary">Back</button>
+            <button type="button" x-show="step === 'find'" @click="go('before')" :disabled="busy"
+                    class="btn btn-sm btn-secondary">Back</button>
+            <button type="button" x-show="step === 'confirm'" @click="go('find')" :disabled="busy"
+                    class="btn btn-sm btn-secondary">Back</button>
+            <button type="button" x-show="step === 'demo-create'" @click="go('demo-info')" :disabled="busy"
+                    class="btn btn-sm btn-secondary">Back</button>
+          </div>
+          <div>
+            <button type="button" x-show="step === 'before'" @click="enterFind()"
+                    class="btn btn-sm btn-primary">Next</button>
+            <button type="button" x-show="step === 'find' && tab === 'search'" @click="go('confirm')"
+                    :disabled="!picks.length || busy" class="btn btn-sm btn-primary disabled:opacity-50">
+              <span x-text="picks.length > 1 ? `Set up ${picks.length} aGates` : 'Next'"></span>
+            </button>
+            <button type="button" x-show="step === 'find' && tab === 'address'" @click="pickProbe()"
+                    :disabled="!probeRow || probeRow.kind !== 'agate' || busy"
+                    class="btn btn-sm btn-primary disabled:opacity-50">Next</button>
+            <button type="button" x-show="step === 'confirm'" @click="connectPicks()" :disabled="busy"
+                    class="btn btn-sm btn-primary disabled:opacity-50">
+              <span x-text="busy ? 'Connecting…' : 'Connect'"></span>
+            </button>
+            <button type="button" x-show="step === 'reading'" @click="enterChecklist()"
+                    class="btn btn-sm btn-primary">Next</button>
+            <button type="button" x-show="step === 'demo-info'" @click="go('demo-create')"
+                    class="btn btn-sm btn-primary">Next</button>
+            <button type="button" x-show="step === 'demo-create'" @click="createDemo()" :disabled="busy"
+                    class="btn btn-sm btn-primary disabled:opacity-50">
+              <span x-text="busy ? 'Creating…' : 'Create demo'"></span>
+            </button>
+            <button type="button" x-show="step === 'checklist'" @click="close()"
+                    class="btn btn-sm btn-primary">Finish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

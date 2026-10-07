@@ -107,7 +107,7 @@ async def test_migration_48_unphantoms_only_the_placeholder_row(tmp_path):
                 "description, serial, last_connected_at) VALUES (?, ?, ?, 502, 1, 1, 0, ?, ?, ?)",
                 (gid, gid, host, desc, serial, connected),
             )
-        await db.execute("DELETE FROM schema_version WHERE version = 48")
+        await db.execute("DELETE FROM schema_version WHERE version >= 48")
         await db.commit()
     finally:
         await db.close()
@@ -134,7 +134,7 @@ async def test_migration_48_leaves_a_real_gateway_alone(tmp_path):
             "('default', 'Default', '192.168.1.100', 502, 1, 1, 0, "
             "'Auto-created from environment config', 'AG123', 1700000000)",
         )
-        await db.execute("DELETE FROM schema_version WHERE version = 48")
+        await db.execute("DELETE FROM schema_version WHERE version >= 48")
         await db.commit()
     finally:
         await db.close()

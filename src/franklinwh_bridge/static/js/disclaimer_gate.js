@@ -68,6 +68,8 @@
         } finally {
           this.saving = false;
           this.open = false;
+          // The setup wizard waits for this, so it never opens on top of us.
+          window.dispatchEvent(new CustomEvent('disclaimer-settled'));
         }
       },
     };
