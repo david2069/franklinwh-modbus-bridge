@@ -476,15 +476,15 @@
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Broker Host</span>
-          <span class="font-mono text-slate-300" x-text="mqttConfig.host ?? '--'"></span>
+          <span class="font-mono text-slate-300" x-text="mqtt.broker?.host ?? mqttConfig.host ?? '--'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Port</span>
-          <span class="font-mono text-slate-300" x-text="mqttConfig.port ?? '--'"></span>
+          <span class="font-mono text-slate-300" x-text="mqtt.broker?.port ?? mqttConfig.port ?? '--'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Username</span>
-          <span class="font-mono text-slate-300" x-text="mqttConfig.username || '(anonymous)'"></span>
+          <span class="font-mono text-slate-300" x-text="(mqtt.broker ? mqtt.broker.username : mqttConfig.username) || '(anonymous)'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">TLS Mode</span>
