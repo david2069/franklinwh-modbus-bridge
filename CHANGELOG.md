@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Settings → Admin → Feature modules no longer says a disabled feature's API is
+  blocked.** Turning a module off removes it from the sidebar. Only some modules
+  (Schedule, HA Entities, Energy Costs) also gate their API, so the wording
+  promised more than Explorer, Sequencer and Logs do.
+
 ## [0.2.2] - 2026-10-08
 
 ### Changed
