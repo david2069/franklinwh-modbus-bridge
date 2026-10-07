@@ -15,6 +15,14 @@ lands, not backfilled later.
 
 ### Added
 
+- **First-run setup wizard** in the web UI: opens once for an admin on a fresh
+  install (after the legal notice), asks *connect my aGate* / *explore with a
+  demo* / *I'll set it up myself*, searches the network (or tests a typed
+  address — a Tailscale address works), names each aGate from its nameplate
+  ("aGate 0091"; several can be set up at once), waits for the first live
+  reading, and ends with the Home Assistant checklist. The demo path explains
+  what a demo can't do before creating one. Re-run from Settings → Gateways →
+  *Run setup again* or the Dashboard's *Set up* link.
 - **Setup wizard API** (`/api/setup/*`, admin-only; design in
   `docs/setup-wizard-design.md`): wizard state (`pending` / `done_real` /
   `done_demo` / `skipped`, migration 49 — existing installs never see the
@@ -90,6 +98,12 @@ lands, not backfilled later.
   wizard uses, and 0.9.4's fixes (`--dry-run` no longer writes; the
   unverified SPAN-unlock wording is gone — the bridge's own strip of it simply
   stops matching).
+- **"Default Gateway" is gone from the UI.** It was only the label the first
+  gateway row was created with: new installs name it *aGate*, migration 50
+  renames an existing "Default Gateway" to *aGate* + the last four of its
+  serial (a name you chose is kept), an unset-up placeholder shows as *aGate —
+  not set up*, and the internal `default` id is no longer shown in Settings.
+  The id itself is unchanged, so MQTT topics and HA entity ids are too.
 - **Settings is split into sub-tabs**: *Site & Gateways*, *Home Assistant*,
   *Energy & Automation*, *Data & Backup* and *Admin*, instead of one long page
   of fifteen cards. The section is part of the URL

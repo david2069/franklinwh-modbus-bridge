@@ -155,6 +155,47 @@ _DISCLAIMER = "[role=dialog][aria-labelledby=disclaimer-title]"
 _disclaimer_seen = False
 
 
+_WIZARD = "[aria-labelledby='setup-title']"
+
+
+def _walk_setup_wizard(page, problems: list) -> None:
+    """Walk the setup wizard's steps without changing anything.
+
+    No scan, probe, connect or demo — those touch the network or the operator's
+    gateways. Opened twice: Alpine teardown bugs show on the second open.
+    """
+    for attempt in (1, 2):
+        if not page.locator(_WIZARD).count():
+            page.evaluate("Alpine.store('setup').open()")
+            page.wait_for_timeout(400)
+        if not page.locator(_WIZARD).count():
+            problems.append(f"setup wizard: did not open (attempt {attempt})")
+            return
+        steps = [
+            "Connect my FranklinWH aGate", "Next",          # → before → find
+            "Enter address", "Search my network", "Back",   # tabs, back to before
+            "Back", "Explore with a demo gateway", "Next",  # → demo-info → demo-create
+            "Back", "Back",                                 # → intent
+        ]
+        for label in steps:
+            btn = page.locator(f"{_WIZARD} button:has-text('{label}'):visible").first
+            if not btn.count():
+                problems.append(f"setup wizard: no '{label}' button (attempt {attempt})")
+                break
+            btn.click()
+            page.wait_for_timeout(350)
+        # The checklist is only reachable after connect/demo; render it directly.
+        page.evaluate(
+            "Alpine.$data(document.querySelector(\"[aria-labelledby='setup-title']\")"
+            ".closest('[x-data]')).enterChecklist()"
+        )
+        page.wait_for_timeout(800)
+        close = page.locator(f"{_WIZARD} button[aria-label='Close']").first
+        if close.count():
+            close.click()
+            page.wait_for_timeout(300)
+
+
 def _dismiss_disclaimer(page, problems: list, attempts: int = 16) -> None:
     """Answer the legal notice so the rest of the UI is reachable.
 
@@ -248,6 +289,7 @@ def run(url: str, user: str, password: str) -> int:
         # accepting would write a row to the operator's database every time the
         # gate runs, and a test harness must not manufacture someone's consent.
         _dismiss_disclaimer(page, problems)
+        _walk_setup_wizard(page, problems)
 
         for tab in ("dashboard", "schedule", "settings", "logs", "events"):
             _goto(page, f"{url}?tab={tab}", problems)

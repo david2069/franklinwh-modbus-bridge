@@ -163,13 +163,21 @@ function gwDotClass(health) {
     : 'bg-slate-500';
 }
 
+// A gateway's name as the UI shows it. "Default Gateway" is only the label the
+// first row was created with; an unset-up placeholder says what it is instead.
+function gwLabel(gw) {
+  if (!gw) return '';
+  if (gw.health === 'unconfigured') return 'aGate — not set up';
+  return gw.name || gw.id;
+}
+
 // Short status label for a gateway row in the selector dropdown.
 function gwStatusText(gw) {
   if (!gw) return '';
   if (gw.polling) return 'Polling';
   if (gw.connected) return 'Connected';
   if (gw.health === 'unreachable') return 'Offline';
-  if (gw.health === 'unconfigured') return 'Not configured';
+  if (gw.health === 'unconfigured') return 'Not set up';
   if (gw.health === 'disabled' || gw.enabled === false) return 'Disabled';
   return 'Stopped';
 }
@@ -636,8 +644,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Until the user picks one, view a gateway that is actually producing
-    // data: with the default gateway unconfigured (or offline) and a mock or
-    // second aGate polling, showing "Default Gateway" with empty cards is the
+    // data: with the primary gateway unconfigured (or offline) and a mock or
+    // second aGate polling, showing an empty placeholder with empty cards is the
     // least useful thing we could do.
     autoSelectGateway() {
       if (this.gatewayChosen || this.activeGateway === 'site') return;
@@ -664,7 +672,7 @@ document.addEventListener('alpine:init', () => {
     get activeGatewayName() {
       if (this.activeGateway === 'site') return 'Site (All Gateways)';
       const gw = this.gatewayList.find(g => g.id === this.activeGateway);
-      return gw ? gw.name : 'Default Gateway';
+      return gw ? gwLabel(gw) : 'aGate';
     },
 
     get activeGatewayHealth() {

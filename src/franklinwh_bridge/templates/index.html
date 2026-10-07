@@ -24,6 +24,7 @@
   <!-- App JS — must load before Alpine -->
   <script src="static/js/app.js?v={{ cache_bust }}"></script>
   <script src="static/js/disclaimer_gate.js?v={{ cache_bust }}"></script>
+  <script src="static/js/setup_wizard.js?v={{ cache_bust }}"></script>
   <script src="static/js/sankey.js?v={{ cache_bust }}"></script>
   <script src="static/js/metrics_chart.js?v={{ cache_bust }}"></script>
   <script src="static/js/energy_flow_card.js?v={{ cache_bust }}"></script>
@@ -455,5 +456,6 @@
   </div> <!-- closes x-data scope -->
 
 {% include "partials/disclaimer_modal.html" %}
+{% include "partials/setup_wizard.html" %}
 </body>
 </html>

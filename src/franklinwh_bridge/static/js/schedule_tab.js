@@ -805,7 +805,7 @@ function scheduleTab() {
         return s ? `Service: ${s.name}` : 'Service';
       }
       const gw = Alpine.store('app').gatewayList.find(g => g.id === (e.target_id || 'default'));
-      return gw ? gw.name : (e.target_id || 'Default Gateway');
+      return gw ? gw.name : (e.target_id || 'aGate');
     },
 
     // "When" column: trigger entries describe their trigger, legacy show windows.

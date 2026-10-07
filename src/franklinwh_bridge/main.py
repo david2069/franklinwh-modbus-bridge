@@ -191,7 +191,9 @@ async def lifespan(app: FastAPI):
             "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
             (
                 gateway_id,
-                "Default Gateway",
+                # Named by what it is; the setup wizard renames it from the
+                # nameplate ("aGate 0091"). Never "Default Gateway".
+                "aGate",
                 gw.host,
                 gw.port,
                 gw.unit_id,

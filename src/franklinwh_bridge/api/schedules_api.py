@@ -390,7 +390,7 @@ async def _validate_import_entry(request: Request, entry: dict) -> dict:
         gw_ids = {g["id"] for g in await get_gateways(db)}
         if entry["target_id"] not in gw_ids:
             warnings.append(
-                f"gateway '{entry['target_id']}' not found — will target Default Gateway"
+                f"gateway '{entry['target_id']}' not found — will target the primary gateway"
             )
 
     ha_ids = {h["id"] for h in await get_ha_instances(db)}

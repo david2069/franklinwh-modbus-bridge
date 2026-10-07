@@ -157,6 +157,28 @@ async def test_migration_49_existing_installs_skip_the_wizard(tmp_path, rows, ex
         await db.close()
 
 
+@pytest.mark.parametrize(("name", "serial", "expected"), [
+    ("Default Gateway", "10060006A02F24170091", "aGate 0091"),
+    ("Default Gateway", None, "aGate"),
+    ("Garage", "10060006A02F24170091", "Garage"),   # the user's own name stays
+])
+async def test_migration_50_retires_the_default_gateway_label(tmp_path, name, serial, expected):
+    db = await init_db(tmp_path / "bridge.db")
+    try:
+        await db.execute("DELETE FROM gateways")
+        await db.execute(
+            "INSERT INTO gateways (id, name, host, serial, created_at) "
+            "VALUES ('default', ?, '', ?, 0)",
+            (name, serial),
+        )
+        await db.commit()
+        await db.executescript(MIGRATIONS[50])
+        async with db.execute("SELECT name FROM gateways WHERE id = 'default'") as cur:
+            assert (await cur.fetchone())[0] == expected
+    finally:
+        await db.close()
+
+
 # ── API ───────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -197,6 +219,8 @@ async def test_wizard_real_path_end_to_end(fresh_client, monkeypatch):
 
     state = (await client.get("/api/setup/state")).json()
     assert state["state"] == "pending"
+    # A fresh install's placeholder is named by what it is, not "Default Gateway".
+    assert (await client.get("/api/gateways/default")).json()["name"] == "aGate"
     assert state["has_real_gateway"] is False
 
     # Enter address → Test.
@@ -254,7 +278,8 @@ async def test_wizard_scan_demo_skip_and_checklist(fresh_client, monkeypatch):
     monkeypatch.setattr(discovery, "scan", fake_scan)
     monkeypatch.setattr(discovery, "port_open", lambda h, p, t: True)
 
-    assert (await client.post("/api/setup/scan", json={"subnets": ["8.8.8.0/24"]})).status_code == 400
+    public = await client.post("/api/setup/scan", json={"subnets": ["8.8.8.0/24"]})
+    assert public.status_code == 400
 
     resp = await client.post("/api/setup/scan", json={"subnets": ["192.168.77.5/16"]})
     assert resp.status_code == 202

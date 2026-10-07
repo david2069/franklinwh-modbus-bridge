@@ -271,7 +271,7 @@ async def test_crud_changes_are_audited(client):
     upd = next(e for e in rows if e["result"] == "updated")
     assert "priority=5" in upd["detail"] and "action=force_charge" in upd["detail"]
     # target is the readable gateway label, not a raw tuple
-    assert rows[0]["target"] in ("Default Gateway", "default")
+    assert rows[0]["target"] in ("aGate", "default")
 
 
 async def test_export_bundle_shape(client):
