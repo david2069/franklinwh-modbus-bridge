@@ -33,17 +33,19 @@ function sequencerPanel() {
       this.seqOutput = ['>>> Executing' + (this.dryRun ? ' (DRY RUN)' : '') + '...'];
 
       try {
+        let parsed = null;
+        try { parsed = JSON.parse(input); } catch (_) { /* a name, not JSON: unknown length */ }
         const data = await fetchJSON('api/sequence/execute', {
           method: 'POST',
           body: JSON.stringify({ inline: input, dry_run: this.dryRun }),
-        });
+        }, sequenceTimeoutMs(parsed));
 
         console.log('[SeqPanel] API response:', JSON.stringify(data).substring(0, 200));
 
         if (data && data.output) {
           this.seqOutput = data.output;
         } else {
-          this.seqOutput = ['ERROR: ' + (data?.error || 'Unknown error')];
+          this.seqOutput = ['ERROR: ' + (sequenceNoReplyMessage(data) || data?.error || 'Unknown error')];
         }
       } catch (e) {
         console.error('[SeqPanel] Exception:', e);
