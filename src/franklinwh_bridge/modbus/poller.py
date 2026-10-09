@@ -6,9 +6,11 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from franklinwh_bridge.modbus.home_load import STANDARD, HomeLoadSelector
 from franklinwh_bridge.modbus.reserves import ActiveReserveReader
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 
@@ -74,8 +76,12 @@ class ModbusPoller:
         stats: Any | None = None,
         modbus_lock: asyncio.Lock | None = None,
         timeout: float = 10.0,
+        home_load_source: Callable[[], str] | None = None,
     ) -> None:
         self._controller = controller
+        # Read per poll so a settings change applies without a restart (#35).
+        self._home_load_source = home_load_source or (lambda: STANDARD)
+        self._home_load = HomeLoadSelector(gateway_id)
         self._bus = sample_bus
         self._gateway_id = gateway_id
         self._reserves = ActiveReserveReader(gateway_id)
@@ -522,6 +528,9 @@ class ModbusPoller:
             # 15508/15509 both carry the ACTIVE mode's reserve (documented
             # quirk): publish it as such, and per-mode only while active.
             self._reserves.apply(points)
+
+            # Home load from the register this gateway is set to use (#35).
+            self._home_load.apply(points, self._home_load_source())
 
         if not points:
             quality = "error"

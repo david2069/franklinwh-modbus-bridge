@@ -93,8 +93,23 @@ async def run_diagnostics(inst: GatewayInstance, log_buffer: Any | None = None) 
         },
         "poller_state": poller_state,
         "health": inst.status.health,
+        # Which register home load comes from, configured vs in use (#35):
+        # the first thing to check when a user's load figures look wrong.
+        "home_load_source": _home_load_source(inst),
         "recent_extra_read_warnings": recent_warnings,
         "verdict": verdict,
+    }
+
+
+def _home_load_source(inst: GatewayInstance) -> dict:
+    """Configured vs in-use home load register (#35). Never fails diagnostics."""
+    try:
+        points = inst.latest_points() or {}
+    except Exception:
+        points = {}
+    return {
+        "configured": getattr(inst.config, "home_load_source", "standard"),
+        "in_use": points.get("home_load_source") if isinstance(points, dict) else None,
     }
 
 

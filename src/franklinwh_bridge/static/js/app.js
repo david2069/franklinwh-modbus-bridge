@@ -650,7 +650,12 @@ document.addEventListener('alpine:init', () => {
 
     /** Return SunSpec source string for a point key, or '' if hidden */
     src(key) {
-      return this.showSources ? (POINT_SOURCES[key] || '') : '';
+      if (!this.showSources) return '';
+      // Home load's register is a per-gateway choice (#35): show the one in use.
+      if (key === 'home_load_ext' && this.points?.home_load_source) {
+        return 'ext.' + this.points.home_load_source;
+      }
+      return POINT_SOURCES[key] || '';
     },
 
     setTab(tab, { push = true, section = null } = {}) {

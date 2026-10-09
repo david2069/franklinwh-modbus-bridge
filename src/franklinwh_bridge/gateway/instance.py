@@ -56,6 +56,9 @@ class GatewayConfig:
     # overwrites this by detecting from Modbus; a mock has nothing to detect
     # and uses it as-is, which is what lets a mock stand in for a US aGate.
     ac_type: int = 0
+    # Home load register: 'standard' (15506, 100 W steps) or 'high_res'
+    # (undocumented 16000, ~1 W, sanity-checked against 15506). #35.
+    home_load_source: str = "standard"
 
 
 @dataclass
@@ -128,6 +131,7 @@ class GatewayInstance:
         self.controller = FranklinWHController(
             ip_address=cfg.host, port=cfg.port, unit_id=cfg.unit_id,
             timeout=cfg.timeout,
+            home_load_source=lambda: self.config.home_load_source,
         )
 
         self.poller = ModbusPoller(
