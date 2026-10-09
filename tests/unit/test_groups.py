@@ -75,7 +75,7 @@ async def test_control_group_members(db):
 async def test_status_group_members(db):
     grp = await get_publishing_group(db, "status")
     assert grp is not None
-    assert len(grp["members"]) == 40  # + home_load_source (#35)
+    assert len(grp["members"]) == 41  # + ext_15016_raw (#36)
 
 
 # ── CRUD ───────────────────────────────────────────────────────

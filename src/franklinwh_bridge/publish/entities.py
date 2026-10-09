@@ -178,6 +178,16 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         source="virtual",  # derived: which of ext.15506 / ext.16000 is in use
     ),
     EntityDef(
+        slug="ext_15016_raw",
+        name="Ext 15016 (unconfirmed)",
+        ha_type="sensor",
+        state_group="status",
+        stat_key="vreg_15016",
+        icon="mdi:help-box-outline",
+        entity_category="diagnostic",
+        source="ext.15016",
+    ),
+    EntityDef(
         slug="total_capacity_kwh",
         name="Total Capacity",
         ha_type="sensor",

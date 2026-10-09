@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from franklinwh_bridge.modbus.home_load import STANDARD, HomeLoadSelector
+from franklinwh_bridge.modbus.register_watch import RegisterWatch
 from franklinwh_bridge.modbus.reserves import ActiveReserveReader
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 
@@ -82,6 +83,7 @@ class ModbusPoller:
         # Read per poll so a settings change applies without a restart (#35).
         self._home_load_source = home_load_source or (lambda: STANDARD)
         self._home_load = HomeLoadSelector(gateway_id)
+        self._register_watch = RegisterWatch(gateway_id)
         self._bus = sample_bus
         self._gateway_id = gateway_id
         self._reserves = ActiveReserveReader(gateway_id)
@@ -531,6 +533,9 @@ class ModbusPoller:
 
             # Home load from the register this gateway is set to use (#35).
             self._home_load.apply(points, self._home_load_source())
+
+            # Log changes of still-unmapped registers with context (#36).
+            self._register_watch.apply(points)
 
         if not points:
             quality = "error"
