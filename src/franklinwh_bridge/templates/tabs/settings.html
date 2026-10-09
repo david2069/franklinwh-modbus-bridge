@@ -148,6 +148,14 @@
           <input type="text" x-model="newGw.description" placeholder="Phase 1, FHP 1"
                  class="form-control !py-1 !text-xs w-full">
         </div>
+        <div x-show="!newGw.mock">
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block"
+                 title="Standard 15506 is documented (100 W steps). High-res 16000 is undocumented (~1 W): verified on the reference site only, so it is checked against 15506 every poll. Changeable later in Edit.">Home Load Register</label>
+          <select x-model="newGw.home_load_source" class="form-control !py-1 !text-xs w-full">
+            <option value="standard">Standard — 15506</option>
+            <option value="high_res">High-res — 16000</option>
+          </select>
+        </div>
       </div>
       <label class="flex items-center gap-2 mb-2 text-xs text-slate-300 cursor-pointer">
         <input type="checkbox" x-model="newGw.mock" class="rounded">
@@ -321,6 +329,19 @@
                 <option value="aggregate">Aggregate only</option>
                 <option value="per_phase">Per-phase</option>
               </select>
+            </div>
+            <!-- Home load register (#35). Changing it changes the published
+                 numbers, so it is logged and shown as "Home Load Source". -->
+            <div class="sm:col-span-2" x-show="!editGw.mock">
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Home Load Register</label>
+              <select x-model="editGw.home_load_source" class="form-control !py-1 !text-xs w-full">
+                <option value="standard">Standard — 15506 (100 W steps)</option>
+                <option value="high_res">High resolution — 16000 (~1 W, undocumented)</option>
+              </select>
+              <p class="text-[10px] text-slate-500 mt-0.5" x-show="editGw.home_load_source === 'high_res'">
+                Checked against 15506 every poll; falls back to 15506 while they disagree.
+                Undocumented register, verified on the reference site only.
+              </p>
             </div>
             <!-- Whether this gateway gets its own device + entities in HA.
                  Off tombstones its discovery, so HA removes the entities

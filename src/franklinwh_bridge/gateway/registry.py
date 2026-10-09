@@ -98,6 +98,7 @@ class GatewayRegistry:
             service_id=gw_row.get("service_id"),
             device_type=gw_row.get("device_type") or "agate",
             ac_type=int(gw_row.get("ac_type") or 0),
+            home_load_source=gw_row.get("home_load_source") or "standard",
         )
 
         instance = GatewayInstance(

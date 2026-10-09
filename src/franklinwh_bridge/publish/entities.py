@@ -168,6 +168,16 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         source="713.Sta",
     ),
     EntityDef(
+        slug="home_load_source",
+        name="Home Load Source",
+        ha_type="sensor",
+        state_group="status",
+        stat_key="home_load_source",
+        icon="mdi:home-search",
+        entity_category="diagnostic",
+        source="virtual",  # derived: which of ext.15506 / ext.16000 is in use
+    ),
+    EntityDef(
         slug="total_capacity_kwh",
         name="Total Capacity",
         ha_type="sensor",

@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 52
+CURRENT_SCHEMA_VERSION = 53
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -811,6 +811,18 @@ MIGRATIONS: dict[int, str] = {
     DROP TABLE control_state;
     ALTER TABLE control_state_new RENAME TO control_state;
     """,
+    53: """
+    -- Home load register is now an explicit per-gateway choice (#35):
+    -- 'standard' = documented 15506 (100 W steps), 'high_res' = undocumented
+    -- 16000 (~1 W, sanity-checked against 15506). New gateways start on
+    -- 'standard'. A gateway that has already been polled has been showing
+    -- 16000 (the library preferred it silently), so keep it on 'high_res' —
+    -- its numbers must not change underneath its user. "Polled" = serial known;
+    -- a fresh install's seeded default has none and stays 'standard'.
+    -- (column added by MIGRATION_COLUMNS[53] first, so a re-run is safe)
+    UPDATE gateways SET home_load_source = 'high_res'
+     WHERE COALESCE(serial, '') <> '' AND COALESCE(mock, 0) = 0;
+    """,
     46: """
     -- Every plan needs a real start date.
     --
@@ -974,6 +986,22 @@ async def get_schema_version(db: aiosqlite.Connection) -> int:
         return 0
 
 
+#: Columns a migration adds, applied before its SQL only if missing. SQLite has
+#: no ADD COLUMN IF NOT EXISTS, and a migration must survive being re-run
+#: (tests re-apply from an earlier version against an up-to-date table).
+MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
+    53: [("gateways", "home_load_source", "TEXT NOT NULL DEFAULT 'standard'")],
+}
+
+
+async def _add_missing_columns(db: aiosqlite.Connection, version: int) -> None:
+    for table, column, decl in MIGRATION_COLUMNS.get(version, []):
+        async with db.execute(f"PRAGMA table_info({table})") as cur:
+            existing = {row[1] for row in await cur.fetchall()}
+        if column not in existing:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 async def run_migrations(db: aiosqlite.Connection) -> int:
     """Apply pending migrations. Returns the final schema version."""
     current = await get_schema_version(db)
@@ -982,6 +1010,7 @@ async def run_migrations(db: aiosqlite.Connection) -> int:
         if version <= current:
             continue
         logger.info("Applying migration v%d", version)
+        await _add_missing_columns(db, version)
         await db.executescript(MIGRATIONS[version])
         await db.execute(
             "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",

@@ -300,6 +300,7 @@ def synthetic_points(
         "grid_power_w":       grid_w,
         "total_solar":        solar_w,
         "home_load_ext":      home_w,
+        "home_load_source":   "synthetic",
         "battery_state":      bstate,
         "connection_state":   "Connected",
         "inverter_state":     "Running",
