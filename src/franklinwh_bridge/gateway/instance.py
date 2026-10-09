@@ -131,7 +131,6 @@ class GatewayInstance:
         self.controller = FranklinWHController(
             ip_address=cfg.host, port=cfg.port, unit_id=cfg.unit_id,
             timeout=cfg.timeout,
-            home_load_source=lambda: self.config.home_load_source,
         )
 
         self.poller = ModbusPoller(
@@ -142,6 +141,7 @@ class GatewayInstance:
             stats=self._stats,
             modbus_lock=self.modbus_lock,
             timeout=cfg.timeout,
+            home_load_source=lambda: self.config.home_load_source,
         )
 
         # Fan-in: forward per-gateway samples to the global bus
