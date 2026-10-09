@@ -196,24 +196,65 @@ async def test_refires_after_window_reenter_following_exit():
 # ── release policy on the exit path ───────────────────────────
 
 
-async def test_exit_restore_prior_mode_reasserts_captured_mode():
+async def test_exit_restore_prior_mode_skips_write_when_mode_unchanged():
+    # A force dispatch doesn't change the mode, so the mode is still the
+    # snapshot at release: no write (it used to rewrite the same mode).
     h = FakeHandler()
+    audits: list = []
     pts = {"soc": 80, "mode_name": "Self-Consumption"}
     e = entry(
         action="force_discharge",
         exit_conditions={"conditions": [LE20]},
         release_policy="restore_prior_mode",
     )
-    eng = make_engine([e], h, points=pts)
+    eng = make_engine([e], h, points=pts, audits=audits)
     await eng.tick(MON)  # dispatch — captures prior mode Self-Consumption
     pts["soc"] = 15
-    await eng.tick(MON)  # exit → Release, then restore mode
+    await eng.tick(MON)  # exit → Release; mode already Self-Consumption
     assert ("battery_command", "Release") in h.calls
-    assert ("operating_mode", "Self-Consumption") in h.calls
-    # Release must come before the mode re-assert.
-    assert h.calls.index(("battery_command", "Release")) < h.calls.index(
-        ("operating_mode", "Self-Consumption")
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+    assert "mode unchanged (Self-Consumption)" in audits[-1]["detail"]
+
+
+async def test_exit_restore_prior_mode_leaves_mode_changed_mid_window():
+    # #27: the user switched to TOU in the app during the dispatch. The old
+    # code wrote Self-Consumption back (and failed nightly on a write-locked
+    # aGate); now the user's mode is kept and the difference audited.
+    h = FakeHandler()
+    audits: list = []
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="restore_prior_mode",
     )
+    eng = make_engine([e], h, points=pts, audits=audits)
+    await eng.tick(MON)
+    pts["mode_name"] = "TOU"
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert ("battery_command", "Release") in h.calls
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+    assert "Self-Consumption → TOU" in audits[-1]["detail"]
+    assert "left as-is" in audits[-1]["detail"]
+
+
+async def test_exit_restore_prior_mode_current_mode_unknown():
+    h = FakeHandler()
+    audits: list = []
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="restore_prior_mode",
+    )
+    eng = make_engine([e], h, points=pts, audits=audits)
+    await eng.tick(MON)
+    del pts["mode_name"]
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+    assert "current mode unknown" in audits[-1]["detail"]
 
 
 async def test_exit_set_operating_mode_policy():
@@ -229,6 +270,42 @@ async def test_exit_set_operating_mode_policy():
     pts["soc"] = 15
     await eng.tick(MON)
     assert ("operating_mode", "TOU") in h.calls
+
+
+async def test_exit_set_operating_mode_skips_mode_already_in_place():
+    h = FakeHandler()
+    pts = {"soc": 80, "mode_name": "TOU"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="set_operating_mode:TOU",
+    )
+    eng = make_engine([e], h, points=pts)
+    await eng.tick(MON)
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert ("battery_command", "Release") in h.calls
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+
+
+async def test_exit_set_operating_mode_skips_write_locked_gateway():
+    # #27: a gateway that already ignored a mode write isn't written to again.
+    h = FakeHandler()
+    h.mode_write_locked = True
+    audits: list = []
+    pts = {"soc": 80, "mode_name": "Self-Consumption"}
+    e = entry(
+        action="force_discharge",
+        exit_conditions={"conditions": [LE20]},
+        release_policy="set_operating_mode:TOU",
+    )
+    eng = make_engine([e], h, points=pts, audits=audits)
+    await eng.tick(MON)
+    pts["soc"] = 15
+    await eng.tick(MON)
+    assert ("battery_command", "Release") in h.calls
+    assert not any(c[0] == "operating_mode" for c in h.calls)
+    assert "write-locked" in audits[-1]["detail"]
 
 
 async def test_exit_release_policy_plain_release_no_mode_command():
@@ -323,7 +400,7 @@ async def test_oneoff_trigger_dispatch_then_duration_release():
     assert ("battery_command", "Release") in h.calls
 
 
-async def test_duration_elapsed_restores_prior_mode_for_v2():
+async def test_duration_elapsed_restore_prior_mode_does_not_rewrite_mode():
     h = FakeHandler()
     pts = {"soc": 80, "mode_name": "Self-Consumption"}
     e = entry(
@@ -336,9 +413,10 @@ async def test_duration_elapsed_restores_prior_mode_for_v2():
     eng = make_engine([e], h, points=pts)
     await eng.tick(MON)  # dispatch, capture prior mode
     assert h.state.action == "Force Discharge"
-    await eng.tick(datetime(2026, 6, 15, 11, 1))  # duration elapsed → release + restore
+    pts["mode_name"] = "TOU"  # changed mid-window by someone else
+    await eng.tick(datetime(2026, 6, 15, 11, 1))  # duration elapsed → release
     assert ("battery_command", "Release") in h.calls
-    assert ("operating_mode", "Self-Consumption") in h.calls
+    assert not any(c[0] == "operating_mode" for c in h.calls)
 
 
 async def test_always_trigger_gated_by_entry_conditions():

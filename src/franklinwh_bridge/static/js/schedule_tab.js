@@ -982,7 +982,7 @@ function scheduleTab() {
         target_type: (Alpine.store('app').activeGateway === 'site') ? 'site' : 'gateway',
         target_id: (Alpine.store('app').activeGateway === 'site') ? '' : Alpine.store('app').activeGateway,
         release: 'release',
-        release_policy: 'restore_prior_mode',
+        release_policy: 'release',
         conflict: 'defer',
         missed_policy: 'late_fire_remaining',
         priority: 0,
@@ -1048,7 +1048,7 @@ function scheduleTab() {
       // left op/action/trigger selects showing their defaults.
       const common = {
         trigger_type: 'always', action: 'force_discharge',
-        power_unit: 'pct', power_pct: 100, release_policy: 'restore_prior_mode',
+        power_unit: 'pct', power_pct: 100, release_policy: 'release',
         enabled: false,  // review → enable-on-save prompt
         // keep discharging until SOC hits the Min-Discharge floor
         exit_conditions: { match: 'ANY', conditions: [
@@ -1138,7 +1138,7 @@ function scheduleTab() {
         target_type: e.target_type,
         target_id: e.target_id || '',
         release: e.release,
-        release_policy: e.release_policy || 'restore_prior_mode',
+        release_policy: e.release_policy || 'release',
         conflict: e.conflict,
         missed_policy: e.missed_policy || 'late_fire_remaining',
         priority: e.priority,
@@ -1533,7 +1533,7 @@ function scheduleTab() {
         release: e.release,
         conflict: e.conflict,
         priority: e.priority || 0,
-        release_policy: e.release_policy || 'restore_prior_mode',
+        release_policy: e.release_policy || 'release',
         missed_policy: e.missed_policy || 'late_fire_remaining',
         entry_hold_s: e.entry_hold_s || 0,
         ha_actions: (e.ha_actions || []).map((a) => ({ ...a, data: { ...(a.data || {}) } })),

@@ -1605,7 +1605,7 @@ async def create_schedule(
     entry_conditions: dict | None = None,
     exit_conditions: dict | None = None,
     duration_s: int | None = None,
-    release_policy: str = "restore_prior_mode",
+    release_policy: str = "release",
     missed_policy: str = "late_fire_remaining",
     entry_hold_s: int = 0,
     ha_actions: list | None = None,

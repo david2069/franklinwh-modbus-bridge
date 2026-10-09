@@ -134,10 +134,19 @@ class CommandHandler:
         self._max_charge_w: int = max_charge_w
         self._max_discharge_w: int = max_discharge_w
         self._modbus_lock = modbus_lock or asyncio.Lock()
+        # Set when the aGate acknowledged a mode write but kept the old mode
+        # (FranklinWH extension registers 15507-15509 write-locked on some
+        # firmware); cleared by the next mode write that sticks. Lets the
+        # scheduler skip a release-time mode write that is known to fail.
+        self._mode_write_locked: bool = False
 
     @property
     def state(self) -> CommandState:
         return self._state
+
+    @property
+    def mode_write_locked(self) -> bool:
+        return self._mode_write_locked
 
     @property
     def max_charge_w(self) -> int:
@@ -547,8 +556,13 @@ class CommandHandler:
                 self._state.last_result = _strip_speculation(msg)
                 self._state.last_success = success
                 if success:
+                    self._mode_write_locked = False
                     logger.info("Operating mode set to %s (%d)", mode_name, mode_val)
                 else:
+                    # Only the read-back verdict proves a lock; a timeout or a
+                    # short response says nothing about the register.
+                    if "Hardware ignored write" in (msg or ""):
+                        self._mode_write_locked = True
                     logger.error("Operating mode failed: %s", self._state.last_result)
             except Exception as exc:
                 self._state.last_result = f"Mode change error: {exc}"

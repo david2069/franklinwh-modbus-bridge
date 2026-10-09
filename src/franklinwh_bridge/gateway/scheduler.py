@@ -318,6 +318,26 @@ def action_to_commands(action: str, params: dict) -> list[tuple[str, str]]:
     return []
 
 
+def restore_mode_note(prior: str | None, current: str | None) -> str:
+    """Audit note for a ``restore_prior_mode`` release — which never writes.
+
+    ``prior`` is the mode snapshotted at dispatch, ``current`` the mode read
+    just before release. Only force dispatches are released, and those never
+    change the mode, so a mode that differs at release was changed by someone
+    else (the app, the cloud, another integration) and is theirs to keep. It
+    used to be written back blindly, which overwrote the user's choice and
+    failed nightly on write-locked gateways (#27); now the difference is only
+    audited. An unchanged mode needs no write either.
+    """
+    if not prior:
+        return ""
+    if current is None:
+        return f"mode not restored: current mode unknown (was {prior})"
+    if current == prior:
+        return f"mode unchanged ({prior})"
+    return f"mode not restored: changed during dispatch ({prior} → {current}), left as-is"
+
+
 # ── the engine ────────────────────────────────────────────────
 
 
@@ -580,12 +600,15 @@ class ScheduleEngine:
                 handler = next(
                     (h for g, h in self._resolver(ttype, tid) if g == gw_id), None
                 )
+                note = ""
                 if handler is not None:
                     if own.get("is_v2"):
-                        await self._apply_release(
+                        note = await self._apply_release(
                             handler,
-                            own.get("release_policy") or "restore_prior_mode",
-                            own.get("prior_mode"),
+                            own.get("release_policy") or "release",
+                            own,
+                            gw_id,
+                            now_dt,
                         )
                     else:
                         await self._send(handler, [("battery_command", "Release")])
@@ -595,7 +618,8 @@ class ScheduleEngine:
                 await self._fire_exit_ha_actions(tkey, now_dt)
                 await self._audit(
                     schedule_id, own.get("action"), tkey, "stopped",
-                    "stopped by user — released; won't re-fire until the next window",
+                    "stopped by user — released; won't re-fire until the next window"
+                    + (f"; {note}" if note else ""),
                 )
             # Block the current window on any not-yet-owned target too, so a
             # between-ticks fire can't slip through right after Stop.
@@ -811,8 +835,10 @@ class ScheduleEngine:
                     # legacy entries keep the plain hand-back.
                     policy = own.get("release_policy", "release")
                     if own.get("is_v2") and policy != "release":
-                        await self._apply_release(handler, policy, own.get("prior_mode"))
-                        detail = f"window exit — released ({policy})"
+                        note = await self._apply_release(handler, policy, own, tkey[2], now)
+                        detail = f"window exit — released ({policy})" + (
+                            f"; {note}" if note else ""
+                        )
                     else:
                         await self._send(handler, [("battery_command", "Release")])
                         detail = "window exit — released to native"
@@ -842,15 +868,16 @@ class ScheduleEngine:
             if exit_tree is not None:
                 met, trace = eval_conditions(exit_tree, self._snapshot(tkey[2], now))
                 if met:
-                    await self._release_with_policy(handler, win, own)
+                    note = await self._release_with_policy(handler, win, own, tkey[2], now)
                     self._owned.pop(tkey, None)
                     self._expired[tkey] = win["id"]
+                    reason = _condition_reason("exit conditions met", trace)
                     await self._audit(
                         win["id"],
                         own["action"],
                         tkey,
                         "exit_condition_met",
-                        _condition_reason("exit conditions met", trace),
+                        reason + (f"; {note}" if note else ""),
                     )
                     await self._fire_exit_ha_actions(tkey, now)
                     return
@@ -979,12 +1006,12 @@ class ScheduleEngine:
             "release": win.get("release", "release"),
             "mode": "window",
             # Snapshot the native mode at dispatch so a restore_prior_mode exit
-            # can re-assert it (mode.name matches the operating_mode vocabulary).
+            # can audit a mode changed mid-window (it is never written back).
             "prior_mode": self._snapshot(tkey[2], now).get("mode.name"),
             # v2 entries honour release_policy on ALL release paths (condition
             # exit + duration/window exit); legacy entries never do.
             "is_v2": _is_v2(win),
-            "release_policy": win.get("release_policy") or "restore_prior_mode",
+            "release_policy": win.get("release_policy") or "release",
         }
         await self._audit(
             win["id"], action, tkey, "ok",
@@ -1119,28 +1146,54 @@ class ScheduleEngine:
         for slug, value in cmds:
             await handler.handle_command(slug, value)
 
-    async def _apply_release(self, handler: Any, policy: str, prior_mode: Any) -> None:
+    async def _apply_release(
+        self, handler: Any, policy: str, own: dict, gw_id: str, now: datetime
+    ) -> str:
         """Hand VPP control back (``battery_command Release``), then apply the
-        release policy: re-assert the prior mode, set a specific mode, or nothing.
+        release policy: audit the prior mode, set a specific mode, or nothing.
+
+        ``restore_prior_mode`` no longer writes (see ``restore_mode_note``).
+        ``set_operating_mode`` skips a mode already in place and a gateway
+        known to ignore mode writes (#27). Returns a note for the audit row
+        ("" if none).
 
         Applies to v2 entries only (condition-exit and v2 duration/window-exit);
         the legacy release/hold path never calls this, so it is unaffected.
         """
         await self._send(handler, [("battery_command", "Release")])
         if policy == "restore_prior_mode":
-            if prior_mode:
-                await self._send(handler, [("operating_mode", str(prior_mode))])
-        elif policy.startswith("set_operating_mode:"):
+            prior = own.get("prior_mode")
+            return restore_mode_note(
+                str(prior) if prior else None, self._current_mode(gw_id, now)
+            )
+        if policy.startswith("set_operating_mode:"):
             target = policy.split(":", 1)[1].strip()
-            if target:
-                await self._send(handler, [("operating_mode", target)])
+            if not target:
+                return ""
+            if self._current_mode(gw_id, now) == target:
+                return f"mode already {target}"
+            if getattr(handler, "mode_write_locked", False):
+                return f"mode not set: mode register is write-locked — {target} skipped"
+            await self._send(handler, [("operating_mode", target)])
+            state = getattr(handler, "state", None)
+            if state is not None and not getattr(state, "last_success", True):
+                return f"mode {target} write failed: {getattr(state, 'last_result', '')}"
+            return f"mode set to {target}"
+        return ""
 
-    async def _release_with_policy(self, handler: Any, win: dict, own: dict) -> None:
+    def _current_mode(self, gw_id: str, now: datetime) -> str | None:
+        """The gateway's mode right now — the per-tick cache is dropped so a
+        release decides on the latest poll, not the tick-start read."""
+        self._snap_cache.pop(gw_id, None)
+        mode = self._snapshot(gw_id, now).get("mode.name")
+        return str(mode) if mode else None
+
+    async def _release_with_policy(
+        self, handler: Any, win: dict, own: dict, gw_id: str, now: datetime
+    ) -> str:
         """Condition-exit release honouring the winning entry's release_policy."""
-        await self._apply_release(
-            handler,
-            win.get("release_policy") or "restore_prior_mode",
-            own.get("prior_mode"),
+        return await self._apply_release(
+            handler, win.get("release_policy") or "release", own, gw_id, now
         )
 
     def _snapshot(self, gw_id: str, now: datetime) -> dict[str, Any]:

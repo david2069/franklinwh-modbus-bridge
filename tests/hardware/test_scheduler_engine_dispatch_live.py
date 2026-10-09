@@ -114,10 +114,8 @@ async def test_engine_dispatch_and_exit_release_live(controller, tmp_path):
 async def test_engine_restore_prior_mode_live(controller, tmp_path):
     """Slice-2 restore_prior_mode round-trip on real hardware.
 
-    Uses a NO-OP restore (prior mode == current mode) so the aGate's mode is
-    never actually changed — this verifies the mechanism (capture mode at
-    dispatch → set_native_mode(prior) on exit succeeds) without altering the
-    user's configured mode.
+    Since #27 the policy never writes the mode: this verifies that the exit
+    releases and that the aGate's mode is left exactly as it was.
     """
     db = await init_db(tmp_path / "sched2.db")
     handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock())
@@ -158,9 +156,10 @@ async def test_engine_restore_prior_mode_live(controller, tmp_path):
         assert handler.state.action == "Force Standby"
         await engine.tick(now)  # exit → Release, then restore prior mode
         assert "exit_condition_met" in audits
-        # last command was the mode re-assert — confirm it succeeded on hardware
+        # restore_prior_mode no longer writes the mode (#27); the Release must
+        # still have succeeded on hardware.
         assert handler.state.last_success, (
-            f"mode restore failed on hardware: {handler.state.last_result!r}"
+            f"release failed on hardware: {handler.state.last_result!r}"
         )
 
         released = False
