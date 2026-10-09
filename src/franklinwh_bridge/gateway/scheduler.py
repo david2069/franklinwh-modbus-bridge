@@ -1099,16 +1099,15 @@ class ScheduleEngine:
                     f"{guard.get('sensor')}{guard.get('op')}{guard.get('value')} not met",
                 )
                 continue
+            sent_msg = a.get("message") or ""  # audit what was sent, not the template
             try:
                 if is_notify:
+                    title = self._render(a.get("title") or "", tkey, now)
+                    sent_msg = self._render(sent_msg, tkey, now)
                     if self._ha_notify_fn is None:
                         res = {"ok": False, "error": "notifications not wired"}
                     else:
-                        res = await self._ha_notify_fn(
-                            inst, svc,
-                            self._render(a.get("title") or "", tkey, now),
-                            self._render(a.get("message") or "", tkey, now),
-                        )
+                        res = await self._ha_notify_fn(inst, svc, title, sent_msg)
                 elif self._ha_action_fn is None:
                     res = {"ok": False, "error": "HA entity actions not wired"}
                 else:
@@ -1117,7 +1116,7 @@ class ScheduleEngine:
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
             ok = bool(res.get("ok"))
             if is_notify:
-                detail = f"[{phase}] notify.{svc}: {(a.get('message') or '')[:60]}"
+                detail = f"[{phase}] notify.{svc}: {sent_msg[:60]}"
             else:
                 detail = f"[{phase}] {eid} → {svc}" + (f" {data}" if data else "")
             if not ok:
