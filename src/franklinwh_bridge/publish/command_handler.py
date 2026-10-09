@@ -655,43 +655,48 @@ class CommandHandler:
             await asyncio.sleep(SOC_CHECK_INTERVAL_S)
 
             while True:
-                # Duration timeout (skip when 0 = no time limit)
-                if self._state.watchdog_s > 0:
-                    elapsed = time.time() - self._state.started_at
-                    if elapsed >= self._state.watchdog_s:
-                        logger.warning(
-                            "Watchdog expired after %ds — releasing battery command",
-                            self._state.watchdog_s,
-                        )
-                        await self._release_command(reason="watchdog_expired")
-                        return
+                # A raised check must not end the watchdog: it is what
+                # enforces the duration limit on a running force (#31).
+                try:
+                    # Duration timeout (skip when 0 = no time limit)
+                    if self._state.watchdog_s > 0:
+                        elapsed = time.time() - self._state.started_at
+                        if elapsed >= self._state.watchdog_s:
+                            logger.warning(
+                                "Watchdog expired after %ds — releasing battery command",
+                                self._state.watchdog_s,
+                            )
+                            await self._release_command(reason="watchdog_expired")
+                            return
 
-                # Check target SoC
-                target = self._target_soc
-                if target > 0:
-                    soc = self._read_soc()
-                    if soc is not None:
-                        is_charge = self._state.action in ("Charge", "Force Charge")
-                        if is_charge and soc >= target:
-                            logger.info(
-                                "Target SoC reached: %.1f%% >= %d%% — releasing",
-                                soc, target,
-                            )
-                            self._state.last_result = (
-                                f"Target SoC {target}% reached (actual {soc:.1f}%)"
-                            )
-                            await self._release_command(reason="target_soc_reached")
-                            return
-                        if not is_charge and soc <= target:
-                            logger.info(
-                                "Target SoC reached: %.1f%% <= %d%% — releasing",
-                                soc, target,
-                            )
-                            self._state.last_result = (
-                                f"Target SoC {target}% reached (actual {soc:.1f}%)"
-                            )
-                            await self._release_command(reason="target_soc_reached")
-                            return
+                    # Check target SoC
+                    target = self._target_soc
+                    if target > 0:
+                        soc = self._read_soc()
+                        if soc is not None:
+                            is_charge = self._state.action in ("Charge", "Force Charge")
+                            if is_charge and soc >= target:
+                                logger.info(
+                                    "Target SoC reached: %.1f%% >= %d%% — releasing",
+                                    soc, target,
+                                )
+                                self._state.last_result = (
+                                    f"Target SoC {target}% reached (actual {soc:.1f}%)"
+                                )
+                                await self._release_command(reason="target_soc_reached")
+                                return
+                            if not is_charge and soc <= target:
+                                logger.info(
+                                    "Target SoC reached: %.1f%% <= %d%% — releasing",
+                                    soc, target,
+                                )
+                                self._state.last_result = (
+                                    f"Target SoC {target}% reached (actual {soc:.1f}%)"
+                                )
+                                await self._release_command(reason="target_soc_reached")
+                                return
+                except Exception:
+                    logger.exception("Watchdog check failed; retrying next interval")
 
                 await asyncio.sleep(SOC_CHECK_INTERVAL_S)
         except asyncio.CancelledError:
