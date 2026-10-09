@@ -54,6 +54,22 @@ async def test_create_v2_trigger_entry_roundtrips(client):
     assert got["exit_conditions"]["match"] == "ANY"
 
 
+async def test_release_policy_defaults_to_plain_release(client):
+    # #27: restore_prior_mode no longer writes a mode, so new entries default
+    # to the policy that says what actually happens.
+    body = {
+        "name": "No policy given",
+        "action": "force_discharge",
+        "params": {"power_w": 3000},
+        "trigger_kind": "daily",
+        "trigger_spec": {"time_of_day": "18:00"},
+        "duration_s": 3600,
+    }
+    resp = await client.post("/api/schedules", json=body)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["release_policy"] == "release"
+
+
 async def test_create_entry_with_entry_gate(client):
     body = {
         "name": "Charge when cheap",

@@ -123,7 +123,7 @@ class ScheduleCreate(BaseModel):
     entry_conditions: dict | None = None
     exit_conditions: dict | None = None
     duration_s: int | None = Field(default=None, ge=0)
-    release_policy: str = Field(default="restore_prior_mode")
+    release_policy: str = Field(default="release")
     missed_policy: str = Field(default="late_fire_remaining", pattern=_MISSED_POLICY)
     entry_hold_s: int = Field(default=0, ge=0, le=86400)
     ha_actions: list[HaActionItem] = Field(default_factory=list)
@@ -476,7 +476,7 @@ async def import_schedules(bundle: ImportBundle, request: Request, dry_run: bool
             trigger_kind=e.get("trigger_kind"), trigger_spec=e.get("trigger_spec") or {},
             entry_conditions=e.get("entry_conditions"), exit_conditions=e.get("exit_conditions"),
             duration_s=e.get("duration_s"),
-            release_policy=e.get("release_policy", "restore_prior_mode"),
+            release_policy=e.get("release_policy", "release"),
             entry_hold_s=int(e.get("entry_hold_s") or 0),
             ha_actions=e.get("ha_actions") or [],
             missed_policy=e.get("missed_policy", "late_fire_remaining"),

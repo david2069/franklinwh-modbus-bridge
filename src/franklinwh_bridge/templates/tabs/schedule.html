@@ -472,7 +472,7 @@
           <div><span class="text-slate-500 w-24 inline-block">Exit criteria</span> <span class="text-slate-300 font-mono" x-text="treeText(expandedEntry.exit_conditions)"></span></div>
           <div>
             <span class="text-slate-500 w-24 inline-block">On exit</span>
-            <span class="text-slate-300" x-text="expandedEntry.release_policy || 'restore_prior_mode'"></span>
+            <span class="text-slate-300" x-text="expandedEntry.release_policy || 'release'"></span>
             <span class="text-slate-600 mx-1">·</span>
             <span class="text-slate-500">if missed</span>
             <span class="text-slate-300" x-text="expandedEntry.missed_policy || 'late_fire_remaining'"></span>
@@ -1261,8 +1261,8 @@
             <div>
               <label class="card-label">On exit / release</label>
               <select x-model="form.release_policy" class="form-control w-full">
-                <option value="restore_prior_mode">restore prior mode</option>
                 <option value="release">release → native</option>
+                <option value="restore_prior_mode">release, log any mode change</option>
               </select>
             </div>
             <div>
