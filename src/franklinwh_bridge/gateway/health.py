@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 
 if TYPE_CHECKING:
+    from franklinwh_bridge.gateway.instance import GatewayInstance
     from franklinwh_bridge.gateway.registry import GatewayRegistry
 
 logger = logging.getLogger(__name__)
@@ -55,40 +56,51 @@ class HealthChecker:
     async def _loop(self) -> None:
         try:
             while True:
-                await self._check_all()
+                try:
+                    await self._check_all()
+                except Exception:  # never let one bad pass kill the monitor (#31)
+                    logger.exception("Health check pass failed; retrying next interval")
                 await asyncio.sleep(self._check_interval)
         except asyncio.CancelledError:
             pass
 
     async def _check_all(self) -> None:
         """Probe every registered gateway's TCP port."""
-        for gw_id, inst in self._registry.instances.items():
+        # Snapshot: probes await, and a gateway added or removed meanwhile
+        # would otherwise raise "dictionary changed size during iteration".
+        for gw_id, inst in list(self._registry.instances.items()):
             if not inst.config.enabled:
                 continue
+            try:
+                await self._check_instance(gw_id, inst)
+            except Exception:
+                logger.exception("Health check failed for gateway %s", gw_id)
 
-            host = inst.config.host
-            port = inst.config.port
-            old_health = inst.status.health
+    async def _check_instance(self, gw_id: str, inst: GatewayInstance) -> None:
+        """Probe one gateway and update its health."""
+        host = inst.config.host
+        port = inst.config.port
+        old_health = inst.status.health
 
-            # A mock gateway has no socket — never TCP-probe it (that would time
-            # out against its synthetic host and mislabel it "unreachable").
-            # Reflect the in-process mock poller's state instead.
-            if inst.config.mock:
-                inst.status.health = "connected" if inst.status.polling else "unknown"
+        # A mock gateway has no socket — never TCP-probe it (that would time
+        # out against its synthetic host and mislabel it "unreachable").
+        # Reflect the in-process mock poller's state instead.
+        if inst.config.mock:
+            inst.status.health = "connected" if inst.status.polling else "unknown"
+        else:
+            tcp_ok = await self._tcp_probe(host, port)
+            if not tcp_ok:
+                inst.status.health = "unreachable"
+            elif inst.status.connected and inst.status.polling:
+                inst.status.health = "connected"
             else:
-                tcp_ok = await self._tcp_probe(host, port)
-                if not tcp_ok:
-                    inst.status.health = "unreachable"
-                elif inst.status.connected and inst.status.polling:
-                    inst.status.health = "connected"
-                else:
-                    inst.status.health = "tcp_only"
+                inst.status.health = "tcp_only"
 
-            if inst.status.health != old_health:
-                logger.info(
-                    "Gateway %s health: %s → %s (%s:%d)",
-                    gw_id, old_health, inst.status.health, host, port,
-                )
+        if inst.status.health != old_health:
+            logger.info(
+                "Gateway %s health: %s → %s (%s:%d)",
+                gw_id, old_health, inst.status.health, host, port,
+            )
 
     @staticmethod
     async def _tcp_probe(host: str, port: int) -> bool:

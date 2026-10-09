@@ -750,7 +750,12 @@ class MqttPublisher:
     async def _subscribe_listener(self, client: aiomqtt.Client) -> None:
         """Background task: listen for incoming command messages."""
         async for message in client.messages:
-            await self._handle_mqtt_message(message)
+            # One bad message must not end the listener: publishing would carry
+            # on and HA commands would silently go nowhere (#31).
+            try:
+                await self._handle_mqtt_message(message)
+            except Exception:
+                logger.exception("MQTT command handling failed for %s", message.topic)
 
     async def _run_loop(self) -> None:
         attempt = 0

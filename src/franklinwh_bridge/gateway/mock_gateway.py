@@ -439,10 +439,13 @@ class MockPoller:
 
     async def _run(self) -> None:
         while True:
-            pts = self.sample_points(self._interval)
-            self._tick += 1
-            self.state.last_poll_ts = time.time()
-            await self._bus.publish(Sample.now(self._gateway_id, pts))
+            try:
+                pts = self.sample_points(self._interval)
+                self._tick += 1
+                self.state.last_poll_ts = time.time()
+                await self._bus.publish(Sample.now(self._gateway_id, pts))
+            except Exception:  # keep ticking; one bad sample must not end the mock (#31)
+                logger.exception("Mock gateway %s sample failed", self._gateway_id)
             await asyncio.sleep(self._interval)
 
     async def stop(self) -> None:
