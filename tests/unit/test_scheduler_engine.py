@@ -797,6 +797,23 @@ async def test_notification_substitutes_live_sensor_values():
     assert sent and sent[0]["message"] == "Battery at 63% and mode Self-Consumption"
 
 
+async def test_notification_audit_records_rendered_message():
+    """The audit row shows what the user was actually told, not the template —
+    otherwise the trail can't answer "what did it say?" (#37)."""
+    h = FakeHandler()
+    sent, audits = [], []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "phone",
+        "when": "fire", "message": "SoC is %battery.soc_pct%%, mode %mode.name%",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 63, "mode_name": "Self-Consumption"},
+                         audits=audits, sent=sent)
+    await eng.tick(MON)
+
+    notes = [a["detail"] for a in audits if a["result"] == "ha_action"]
+    assert notes == ["[fire] notify.phone: SoC is 63%, mode Self-Consumption"]
+
+
 async def test_notification_unknown_placeholder_degrades():
     """An unreadable sensor renders '?' rather than killing the notification —
     a message with a gap still beats no message."""
