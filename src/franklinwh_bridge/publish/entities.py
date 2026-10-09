@@ -42,6 +42,9 @@ class EntityDef:
     source: str = ""
 
     is_control: bool = False
+    # Publish an explicit "None" when the value is unknown, so HA shows
+    # "unknown" instead of keeping a retained, now-wrong value.
+    reset_when_unknown: bool = False
     options: list[str] = field(default_factory=list)
     min_val: float | None = None
     max_val: float | None = None
@@ -1007,8 +1010,20 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         source="ext.15507",
     ),
     EntityDef(
+        slug="active_reserve_pct",
+        name="Active Reserve SOC",
+        ha_type="sensor",
+        state_group="control",
+        stat_key="active_reserve_pct",
+        unit="%",
+        state_class="measurement",
+        icon="mdi:battery-lock",
+        source="ext.15508",
+    ),
+    EntityDef(
         slug="self_reserve_pct",
         name="Self-Consumption Reserve SOC",
+        reset_when_unknown=True,  # only readable while this mode is active (#34)
         ha_type="number",
         state_group="control",
         stat_key="self_reserve_pct",
@@ -1023,6 +1038,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
     EntityDef(
         slug="tou_reserve_pct",
         name="TOU Reserve SOC",
+        reset_when_unknown=True,  # only readable while this mode is active (#34)
         ha_type="number",
         state_group="control",
         stat_key="tou_reserve_pct",

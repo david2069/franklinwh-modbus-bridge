@@ -50,11 +50,13 @@ function controlsTab() {
       if (pts.mode_name) {
         this.operatingMode = pts.mode_name;
       }
-      // Sync reserve sliders from the live registers (15508 / 15509)
-      if (pts.self_reserve_pct != null) {
+      // Sync reserve sliders from the live registers. Modbus only reads the
+      // ACTIVE mode's reserve (15508/15509 quirk, #34), so the other mode's is
+      // null = unknown; show it as blank rather than keep a stale number.
+      if ('self_reserve_pct' in pts) {
         this.selfReserve = pts.self_reserve_pct;
       }
-      if (pts.tou_reserve_pct != null) {
+      if ('tou_reserve_pct' in pts) {
         this.touReserve = pts.tou_reserve_pct;
       }
     },

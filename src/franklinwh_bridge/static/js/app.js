@@ -374,7 +374,7 @@ const POINT_SOURCES = {
   loc_rem_ctl_name: '715.LocRemCtl', der_heartbeat: '715.DERHb',
   controller_heartbeat: '715.ControllerHb', alarm_reset: '715.AlarmReset', op_ctl: '715.OpCtl',
   sw_watchdog_remain_s: 'virtual', sw_watchdog_limit_s: 'virtual', command_elapsed_s: 'virtual', last_command_result: 'virtual',
-  self_reserve_pct: 'ext.15508', tou_reserve_pct: 'ext.15509',
+  active_reserve_pct: 'ext.15508', self_reserve_pct: 'ext.15508', tou_reserve_pct: 'ext.15509',
   wh_available: '713.WHAvail', wh_rating: '713.WHRtg',
   max_charge_rate_w: '702.WChaRteMaxRtg', max_discharge_rate_w: '702.WDisChaRteMaxRtg',
   pv_energy_total_wh: 'ext.15510', dc_energy_discharged_wh: '714.DCWhInj', dc_energy_charged_wh: '714.DCWhAbs',

@@ -328,7 +328,7 @@ def test_per_phase_entity_slugs():
 
 def test_total_entity_count():
     """Verify total entity count including per-phase + target SoC."""
-    assert len(BRIDGE_ENTITIES) == 83  # +1: Solar Energy Proximal (502.OutWh)
+    assert len(BRIDGE_ENTITIES) == 84  # +1: Active Reserve SOC (#34)
 
 
 # --- Phase filtering in MQTT publisher ---

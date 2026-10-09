@@ -46,6 +46,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from franklinwh_bridge.config import clock as _clock
+from franklinwh_bridge.modbus.reserves import is_tou
 
 #: Solar power (W) above which ``pv.is_generating`` is True.
 PV_GENERATING_THRESHOLD_W = 50.0
@@ -174,18 +175,18 @@ def _mode_name(points: Points, _now: datetime) -> str | None:
 
 
 def _reserve_current(points: Points, _now: datetime) -> float | None:
-    """The reserve-SOC floor that applies to the CURRENT operating mode.
+    """The reserve-SOC floor in force right now, whatever the mode.
 
-    TOU mode → tou_reserve_pct; anything else (Self-Consumption / Backup) →
-    self_reserve_pct, each with a fallback to the other. Today the aGate keeps
-    both at the same value over Modbus, so this is effectively either; it becomes
-    meaningful if/when they diverge — so an automation can just track "the reserve
-    in force right now" without caring about the mode.
+    15508/15509 both carry the active mode's reserve (documented quirk, #34), so
+    this is the one reserve Modbus can always read. Falls back to the per-mode
+    points for producers that don't set ``active_reserve_pct``.
     """
+    active = _num(points, "active_reserve_pct")
+    if active is not None:
+        return active
     self_r = _num(points, "self_reserve_pct")
     tou_r = _num(points, "tou_reserve_pct")
-    mode = str(points.get("mode_name") or "").lower()
-    if "tou" in mode or "time of use" in mode or "time-of-use" in mode:
+    if is_tou(points.get("mode_name")):
         return tou_r if tou_r is not None else self_r
     return self_r if self_r is not None else tou_r
 
@@ -419,9 +420,10 @@ SENSORS: list[SensorDef] = [
     SensorDef("battery.soc_pct", "Battery SOC (%)", "%", "number", lambda p, _n: _num(p, "soc")),
     # Reserve-SOC setpoints (the "floor" the aGate holds). Exposed so an
     # automation can compare live SOC against the reserve — e.g. force-charge
-    # when battery.soc_pct < battery.reserve_pct (Lookup RHS). `reserve_pct`
-    # follows the active mode; the mode-specific ones are also exposed. Points:
-    # self_reserve_pct = ext.15508, tou_reserve_pct = ext.15509.
+    # when battery.soc_pct < battery.reserve_pct (Lookup RHS). `reserve_pct` is
+    # the active reserve (15508). Modbus reads a mode-specific reserve only while
+    # that mode is active (15508/15509 quirk, #34); otherwise it is unknown and a
+    # condition on it does not hold.
     SensorDef(
         "battery.reserve_pct",
         "Reserve SOC — current mode (%)",
@@ -431,14 +433,14 @@ SENSORS: list[SensorDef] = [
     ),
     SensorDef(
         "battery.reserve_self_pct",
-        "Reserve SOC — Self-Consumption (%)",
+        "Reserve SOC — Self-Consumption, while active (%)",
         "%",
         "number",
         lambda p, _n: _num(p, "self_reserve_pct"),
     ),
     SensorDef(
         "battery.reserve_tou_pct",
-        "Reserve SOC — TOU (%)",
+        "Reserve SOC — TOU, while active (%)",
         "%",
         "number",
         lambda p, _n: _num(p, "tou_reserve_pct"),

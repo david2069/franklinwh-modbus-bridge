@@ -82,7 +82,7 @@
 
       <!-- Reserve SOC -->
       <div class="card">
-        <div class="card-label mb-3">Self-Consumption Reserve %</div>
+        <div class="card-label mb-3">Self-Consumption Reserve % <span x-show="selfReserve == null" class="normal-case font-normal text-slate-500">— only readable while Self-Consumption is active</span></div>
         <div class="flex items-center gap-3">
           <input type="range" min="0" max="100" step="5" x-model="selfReserve"
                  class="flex-1 accent-emerald-500 h-2 rounded-lg cursor-pointer"
@@ -95,7 +95,7 @@
       </div>
 
       <div class="card">
-        <div class="card-label mb-3">TOU Reserve %</div>
+        <div class="card-label mb-3">TOU Reserve % <span x-show="touReserve == null" class="normal-case font-normal text-slate-500">— only readable while TOU is active</span></div>
         <div class="flex items-center gap-3">
           <input type="range" min="0" max="100" step="5" x-model="touReserve"
                  class="flex-1 accent-emerald-500 h-2 rounded-lg cursor-pointer"

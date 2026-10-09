@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from franklinwh_bridge.modbus.reserves import ActiveReserveReader
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class ModbusPoller:
         self._controller = controller
         self._bus = sample_bus
         self._gateway_id = gateway_id
+        self._reserves = ActiveReserveReader(gateway_id)
         self._poll_interval = poll_interval
         self._timeout = timeout
         self._state = PollerState()
@@ -516,6 +518,10 @@ class ModbusPoller:
             # Extract per-battery stack data from individual_batteries array
             # (new in franklinwh-modbus multi-battery update)
             self._extract_per_battery(points)
+
+            # 15508/15509 both carry the ACTIVE mode's reserve (documented
+            # quirk): publish it as such, and per-mode only while active.
+            self._reserves.apply(points)
 
         if not points:
             quality = "error"
