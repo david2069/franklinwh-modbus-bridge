@@ -1,14 +1,20 @@
 """Reserve SoC points under the documented 15508/15509 quirk (#34).
 
-franklinwh-modbus docs/FRANKLINWH_SUNSPEC_QUIRKS.md, "SOC Reserve Registers —
-Known Defect": 15508 (Self-Consumption reserve) and 15509 (TOU reserve) always
-return the same value. Observed on two sites, that value is the reserve of the
-mode currently active, and 16001 carries it too.
+Documented (franklinwh-modbus docs/FRANKLINWH_SUNSPEC_QUIRKS.md, "SOC Reserve
+Registers — Known Defect"; vendor PICS SPAN tab): 15508 (Self-Consumption
+reserve) and 15509 (TOU reserve) always return the same value, so at least one
+of them is not the reserve its name says.
 
-So Modbus can tell us the reserve in force, but a per-mode reserve only while
-that mode is the active one. Publishing 15509 as "TOU reserve" while the aGate
-runs Self-Consumption shows the Self-Consumption reserve under the wrong name;
-an unknown is honest, a wrong value is trusted.
+UNCONFIRMED working reading: the shared value is the reserve of the mode
+currently active. The only evidence is the reference site in Self-Consumption
+(app SC 5 / TOU 15, registers 5): consistent with it, not proof. An unverified
+community report (franklinwh-modbus#18) claims the same; it is a lead, not
+evidence. To verify: a mode switch, or reserves set apart, on the reference site.
+
+Publishing on that reading is still the safer choice: a per-mode reserve is shown
+only while its mode is active (else unknown), which avoids the documented wrong
+value either way; ``active_reserve_pct`` is "the shared value", cross-checked
+against 16001 (also unconfirmed).
 """
 
 from __future__ import annotations
