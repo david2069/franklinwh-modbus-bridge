@@ -120,11 +120,12 @@
     // Operating mode
     if (pts.mode_name) $('modeVal').textContent = pts.mode_name;
     $('gridModeVal').textContent = pts.grid_mode || '—';
-    const reserve = pts.self_reserve_pct;
-    if (reserve != null && !isNaN(reserve)) {
-      $('reserveRow').style.display = 'flex';
-      $('reserveVal').textContent = `${Math.round(reserve)}%`;
-    }
+    // The active mode's reserve (#34); the per-mode values are null whenever
+    // their mode isn't active, so they can't drive this row.
+    const reserve = pts.active_reserve_pct;
+    const hasReserve = reserve != null && !isNaN(reserve);
+    $('reserveRow').style.display = hasReserve ? 'flex' : 'none';
+    if (hasReserve) $('reserveVal').textContent = `${Math.round(reserve)}%`;
 
     $('foot').textContent = 'Updated ' + new Date().toLocaleTimeString();
   }

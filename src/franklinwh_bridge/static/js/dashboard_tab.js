@@ -14,7 +14,7 @@ function dashboardTab() {
   // Live in-memory buffer — also outside Alpine scope to avoid Proxy arrays
   // leaking into Chart.js (Chart.js traverses array elements → Alpine proxy
   // getter fires → Chart.js re-reads → infinite recursion → stack overflow)
-  const _liveHistory = { labels: [], battery: [], grid: [], solar: [], home: [], soc: [], ambient: [], cabinet: [], mode: [], selfReserve: [], touReserve: [], gridMode: [] };
+  const _liveHistory = { labels: [], battery: [], grid: [], solar: [], home: [], soc: [], ambient: [], cabinet: [], mode: [], activeReserve: [], gridMode: [] };
   const MAX_LIVE_POINTS = 180;
 
   // Operating-mode colours used for both background shading and the legend
@@ -437,7 +437,7 @@ function dashboardTab() {
             _liveHistory.labels = []; _liveHistory.battery = []; _liveHistory.grid = [];
             _liveHistory.solar = []; _liveHistory.home = []; _liveHistory.soc = [];
             _liveHistory.ambient = []; _liveHistory.cabinet = []; _liveHistory.mode = [];
-            _liveHistory.selfReserve = []; _liveHistory.touReserve = []; _liveHistory.gridMode = [];
+            _liveHistory.activeReserve = []; _liveHistory.gridMode = [];
           }
           this._loadMetrics();
           this.loadEvents();
@@ -602,12 +602,13 @@ function dashboardTab() {
         const ambient = data.points.map(p => p.ambient_temp_c ?? null);
         const cabinet = data.points.map(p => p.cabinet_temp_c ?? null);
         const mode = data.points.map(p => p.mode_name ?? null);
-        const selfReserve = data.points.map(p => p.self_reserve_pct ?? null);
-        const touReserve = data.points.map(p => p.tou_reserve_pct ?? null);
+        // Stored history has only the per-mode columns; since #34 only the
+        // active mode's is set, and before it both held the same value.
+        const activeReserve = data.points.map(p => p.self_reserve_pct ?? p.tou_reserve_pct ?? null);
         const gridMode = data.points.map(p => p.grid_mode ?? null);
         const alarmEvents = alarmResp?.events || [];
-        this._updateChartData(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, selfReserve, touReserve, gridMode, alarmEvents, tsRaw);
-        this._updateModalChart(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, selfReserve, touReserve, gridMode, alarmEvents, tsRaw);
+        this._updateChartData(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, activeReserve, gridMode, alarmEvents, tsRaw);
+        this._updateModalChart(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, activeReserve, gridMode, alarmEvents, tsRaw);
         Alpine.store('app').toast(`Loaded ${data.points.length} points`, 'info');
       } else {
         Alpine.store('app').toast('No data found for selected range', 'error');
@@ -657,12 +658,12 @@ function dashboardTab() {
         this._updateChartData(
           _liveHistory.labels, _liveHistory.battery, _liveHistory.grid,
           _liveHistory.solar, _liveHistory.home,
-          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.selfReserve, _liveHistory.touReserve, _liveHistory.gridMode,
+          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.activeReserve, _liveHistory.gridMode,
         );
         this._updateModalChart(
           _liveHistory.labels, _liveHistory.battery, _liveHistory.grid,
           _liveHistory.solar, _liveHistory.home,
-          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.selfReserve, _liveHistory.touReserve, _liveHistory.gridMode,
+          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.activeReserve, _liveHistory.gridMode,
         );
         return;
       }
@@ -713,21 +714,21 @@ function dashboardTab() {
         const ambient = data.points.map(p => p.ambient_temp_c ?? null);
         const cabinet = data.points.map(p => p.cabinet_temp_c ?? null);
         const mode = data.points.map(p => p.mode_name ?? null);
-        const selfReserve = data.points.map(p => p.self_reserve_pct ?? null);
-        const touReserve = data.points.map(p => p.tou_reserve_pct ?? null);
+        // Stored history has only the per-mode columns; since #34 only the
+        // active mode's is set, and before it both held the same value.
+        const activeReserve = data.points.map(p => p.self_reserve_pct ?? p.tou_reserve_pct ?? null);
         const gridMode = data.points.map(p => p.grid_mode ?? null);
         const alarmEvents = alarmResp?.events || [];
 
-        this._updateChartData(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, selfReserve, touReserve, gridMode, alarmEvents, tsRaw);
-        this._updateModalChart(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, selfReserve, touReserve, gridMode, alarmEvents, tsRaw);
+        this._updateChartData(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, activeReserve, gridMode, alarmEvents, tsRaw);
+        this._updateModalChart(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, activeReserve, gridMode, alarmEvents, tsRaw);
       }
     },
 
-    _updateChartData(labels, battery, grid, solar, home, soc = [], ambient = [], cabinet = [], mode = [], selfReserve = [], touReserve = [], gridMode = [], alarmEvents = [], tsRaw = []) {
+    _updateChartData(labels, battery, grid, solar, home, soc = [], ambient = [], cabinet = [], mode = [], activeReserve = [], gridMode = [], alarmEvents = [], tsRaw = []) {
       if (!_chart) return;
       _chart._modeData = mode;
-      _chart._selfReserveData = selfReserve;
-      _chart._touReserveData = touReserve;
+      _chart._activeReserveData = activeReserve;
       _chart._gridModeData = gridMode;
       _chart._alarmData = alarmEvents;
       _chart._tsRaw = tsRaw;
@@ -784,12 +785,12 @@ function dashboardTab() {
         this._updateChartData(
           _liveHistory.labels, _liveHistory.battery, _liveHistory.grid,
           _liveHistory.solar, _liveHistory.home,
-          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.selfReserve, _liveHistory.touReserve, _liveHistory.gridMode,
+          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.activeReserve, _liveHistory.gridMode,
         );
         this._updateModalChart(
           _liveHistory.labels, _liveHistory.battery, _liveHistory.grid,
           _liveHistory.solar, _liveHistory.home,
-          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.selfReserve, _liveHistory.touReserve, _liveHistory.gridMode,
+          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.activeReserve, _liveHistory.gridMode,
         );
       } else {
         this._loadMetrics();
@@ -1015,8 +1016,7 @@ function dashboardTab() {
       _liveHistory.ambient.push(pts.ambient_temp_c ?? null);
       _liveHistory.cabinet.push(pts.cabinet_temp_c ?? null);
       _liveHistory.mode.push(pts.mode_name ?? null);
-      _liveHistory.selfReserve.push(pts.self_reserve_pct ?? null);
-      _liveHistory.touReserve.push(pts.tou_reserve_pct ?? null);
+      _liveHistory.activeReserve.push(pts.active_reserve_pct ?? null);
       _liveHistory.gridMode.push(pts.grid_mode ?? null);
 
       if (_liveHistory.labels.length > MAX_LIVE_POINTS) {
@@ -1029,8 +1029,7 @@ function dashboardTab() {
         _liveHistory.ambient.shift();
         _liveHistory.cabinet.shift();
         _liveHistory.mode.shift();
-        _liveHistory.selfReserve.shift();
-        _liveHistory.touReserve.shift();
+        _liveHistory.activeReserve.shift();
         _liveHistory.gridMode.shift();
       }
 
@@ -1040,12 +1039,12 @@ function dashboardTab() {
         this._updateChartData(
           _liveHistory.labels, _liveHistory.battery, _liveHistory.grid,
           _liveHistory.solar, _liveHistory.home,
-          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.selfReserve, _liveHistory.touReserve, _liveHistory.gridMode,
+          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.activeReserve, _liveHistory.gridMode,
         );
         this._updateModalChart(
           _liveHistory.labels, _liveHistory.battery, _liveHistory.grid,
           _liveHistory.solar, _liveHistory.home,
-          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.selfReserve, _liveHistory.touReserve, _liveHistory.gridMode,
+          _liveHistory.soc, _liveHistory.ambient, _liveHistory.cabinet, _liveHistory.mode, _liveHistory.activeReserve, _liveHistory.gridMode,
         );
       }
     },
@@ -1063,20 +1062,18 @@ function dashboardTab() {
       let content, filename, mime;
 
       if (format === 'csv') {
-        const header = 'Time,Battery (W),Grid (W),Solar (W),Home (W),SoC (%),Ambient (°C),Cabinet (°C),Mode,Self Reserve (%),TOU Reserve (%)';
+        const header = 'Time,Battery (W),Grid (W),Solar (W),Home (W),SoC (%),Ambient (°C),Cabinet (°C),Mode,Active Reserve (%)';
         const modeData = src._modeData || [];
-        const selfRes = src._selfReserveData || [];
-        const touRes = src._touReserveData || [];
+        const activeRes = src._activeReserveData || [];
         const rows = labels.map((l, i) =>
-          `${l},${ds[0].data[i] ?? ''},${ds[1].data[i] ?? ''},${ds[2].data[i] ?? ''},${ds[3].data[i] ?? ''},${ds[4].data[i] ?? ''},${ds[5].data[i] ?? ''},${ds[6].data[i] ?? ''},${modeData[i] ?? ''},${selfRes[i] ?? ''},${touRes[i] ?? ''}`
+          `${l},${ds[0].data[i] ?? ''},${ds[1].data[i] ?? ''},${ds[2].data[i] ?? ''},${ds[3].data[i] ?? ''},${ds[4].data[i] ?? ''},${ds[5].data[i] ?? ''},${ds[6].data[i] ?? ''},${modeData[i] ?? ''},${activeRes[i] ?? ''}`
         );
         content = header + '\n' + rows.join('\n');
         filename = `power_history_${this.chartRange}.csv`;
         mime = 'text/csv';
       } else {
         const modeData = src._modeData || [];
-        const selfRes = src._selfReserveData || [];
-        const touRes = src._touReserveData || [];
+        const activeRes = src._activeReserveData || [];
         const data = labels.map((l, i) => ({
           time: l,
           battery_w: ds[0].data[i],
@@ -1087,8 +1084,7 @@ function dashboardTab() {
           ambient_temp_c: ds[5].data[i] ?? null,
           cabinet_temp_c: ds[6].data[i] ?? null,
           mode_name: modeData[i] ?? null,
-          self_reserve_pct: selfRes[i] ?? null,
-          tou_reserve_pct: touRes[i] ?? null,
+          active_reserve_pct: activeRes[i] ?? null,
         }));
         content = JSON.stringify({ range: this.chartRange, points: data }, null, 2);
         filename = `power_history_${this.chartRange}.json`;
@@ -1482,11 +1478,10 @@ function dashboardTab() {
       });
     },
 
-    _updateModalChart(labels, battery, grid, solar, home, soc = [], ambient = [], cabinet = [], mode = [], selfReserve = [], touReserve = [], gridMode = [], alarmEvents = [], tsRaw = []) {
+    _updateModalChart(labels, battery, grid, solar, home, soc = [], ambient = [], cabinet = [], mode = [], activeReserve = [], gridMode = [], alarmEvents = [], tsRaw = []) {
       if (!_modalChart) return;
       _modalChart._modeData = mode;
-      _modalChart._selfReserveData = selfReserve;
-      _modalChart._touReserveData = touReserve;
+      _modalChart._activeReserveData = activeReserve;
       _modalChart._gridModeData = gridMode;
       _modalChart._alarmData = alarmEvents;
       _modalChart._tsRaw = tsRaw;

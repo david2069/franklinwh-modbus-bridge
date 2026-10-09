@@ -60,7 +60,9 @@ function livePointsPanel() {
     wh_rating:            { label: 'Total Capacity',       unit: 'Wh',  group: 'Battery',  default: false },
     max_charge_rate_w:    { label: 'Max Charge Rate',      unit: 'W',   group: 'Battery',  default: false },
     max_discharge_rate_w: { label: 'Max Discharge Rate',   unit: 'W',   group: 'Battery',  default: false },
-    self_reserve_pct:     { label: 'Self Reserve',         unit: '%',   group: 'Control',  default: false },
+    active_reserve_pct:   { label: 'Active Reserve',       unit: '%',   group: 'Control',  default: false },
+    self_reserve_pct:     { label: 'Self Reserve (while active)', unit: '%', group: 'Control', default: false },
+    tou_reserve_pct:      { label: 'TOU Reserve (while active)',  unit: '%', group: 'Control', default: false },
 
     // ── Energy totals ──
     pv_energy_total_wh:       { label: 'PV Energy Total',       unit: 'Wh', group: 'Energy', default: false },
