@@ -675,13 +675,17 @@ class MqttPublisher:
             if not entity.stat_key:
                 continue
             value = points.get(entity.stat_key)
-            if value is None:
+            # A key that is present but None is a known "unknown" (reset it in
+            # HA); an absent key just wasn't read this poll (keep the last value).
+            if value is None and not (
+                entity.reset_when_unknown and entity.stat_key in points
+            ):
                 continue
 
             topic = entity.state_topic(short_id)
             msg = MqttMessage(
                 topic=topic,
-                payload=entity.format_value(value),
+                payload="None" if value is None else entity.format_value(value),
                 retain=True,
             )
             try:

@@ -146,7 +146,11 @@ Power factor injection enable is writable but gates nothing. Writing 1 does not 
 
 ## 7. DEFECT: TOU Reserve (15509) mirrors Self-Consumption Reserve (15508)
 
-Writing to register 15509 (TOU Reserve) always mirrors the value at 15508 (Self-Consumption Reserve). They cannot be set independently. The library documents this in `set_tou_reserve()`.
+Writing to register 15509 (TOU Reserve) always mirrors the value at 15508 (Self-Consumption Reserve). They cannot be set independently. The library documents this in `set_tou_reserve()` and in `docs/FRANKLINWH_SUNSPEC_QUIRKS.md` ("SOC Reserve Registers — Known Defect").
+
+**The shared value is the active mode's reserve (2026-10-09, two sites).** On the reference aGate in Self-Consumption, the app showed SC 5 % / TOU 15 % / Backup 100 % while 15508 = 15509 = 16001 = 5. A second site's controlled test (franklinwh-modbus#18) saw 15508/15509/16001 follow each mode switch (TOU 20 → EB 100 → SC 25). So Modbus can read the reserve **in force**, and a per-mode reserve only while that mode is active.
+
+**Bridge handling (#34):** `active_reserve_pct` (HA "Active Reserve SOC", 15508 cross-checked against 16001) is always published. `self_reserve_pct` / `tou_reserve_pct` carry a value only while their own mode is active; otherwise they are unknown (MQTT `None`), not a retained wrong number. The scheduler's `battery.reserve_pct` uses the active reserve.
 
 **Vendor ask:** Allow independent reserve levels for Self-Consumption and TOU modes.
 

@@ -23,6 +23,7 @@ import math
 import threading
 import time
 
+from franklinwh_bridge.modbus.reserves import apply_active_reserve
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 
 logger = logging.getLogger(__name__)
@@ -304,8 +305,6 @@ def synthetic_points(
         "inverter_state":     "Running",
         "mode_name":          mode_name,
         "grid_mode":          grid_mode,
-        "self_reserve_pct":   (controls or {}).get("self_reserve_pct", 20),
-        "tou_reserve_pct":    (controls or {}).get("tou_reserve_pct", 30),
         # A real aGate reports 715.LocRemCtl as read-only Local, even while a
         # VPP dispatch is active — so the mock does too, rather than invent a
         # "Remote" the hardware never shows.
@@ -313,6 +312,13 @@ def synthetic_points(
         "ambient_temp_c":     ambient_temp,
         "cabinet_temp_c":     cabinet_temp,
     }
+
+    # Reserves as a real aGate reports them over Modbus: only the active mode's
+    # reserve is readable (see modbus/reserves.py).
+    self_r = (controls or {}).get("self_reserve_pct", 20)
+    tou_r = (controls or {}).get("tou_reserve_pct", 30)
+    active = {"TOU": tou_r, "Emergency Backup": 100}.get(mode_name, self_r)
+    apply_active_reserve(points, active)
 
     # ── Battery nameplate + health ────────────────────────────────
     # Without these, 11 entities (capacity, SoH, rates, per-battery stats) sit
