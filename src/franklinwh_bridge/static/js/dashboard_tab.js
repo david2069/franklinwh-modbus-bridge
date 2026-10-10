@@ -602,9 +602,7 @@ function dashboardTab() {
         const ambient = data.points.map(p => p.ambient_temp_c ?? null);
         const cabinet = data.points.map(p => p.cabinet_temp_c ?? null);
         const mode = data.points.map(p => p.mode_name ?? null);
-        // Stored history has only the per-mode columns; since #34 only the
-        // active mode's is set, and before it both held the same value.
-        const activeReserve = data.points.map(p => p.self_reserve_pct ?? p.tou_reserve_pct ?? null);
+        const activeReserve = data.points.map(p => p.active_reserve_pct ?? null);
         const gridMode = data.points.map(p => p.grid_mode ?? null);
         const alarmEvents = alarmResp?.events || [];
         this._updateChartData(labels, battery, grid, solar, home, soc, ambient, cabinet, mode, activeReserve, gridMode, alarmEvents, tsRaw);
@@ -714,9 +712,7 @@ function dashboardTab() {
         const ambient = data.points.map(p => p.ambient_temp_c ?? null);
         const cabinet = data.points.map(p => p.cabinet_temp_c ?? null);
         const mode = data.points.map(p => p.mode_name ?? null);
-        // Stored history has only the per-mode columns; since #34 only the
-        // active mode's is set, and before it both held the same value.
-        const activeReserve = data.points.map(p => p.self_reserve_pct ?? p.tou_reserve_pct ?? null);
+        const activeReserve = data.points.map(p => p.active_reserve_pct ?? null);
         const gridMode = data.points.map(p => p.grid_mode ?? null);
         const alarmEvents = alarmResp?.events || [];
 

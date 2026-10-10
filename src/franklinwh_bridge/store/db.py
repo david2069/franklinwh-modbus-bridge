@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 53
+CURRENT_SCHEMA_VERSION = 54
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -823,6 +823,17 @@ MIGRATIONS: dict[int, str] = {
     UPDATE gateways SET home_load_source = 'high_res'
      WHERE COALESCE(serial, '') <> '' AND COALESCE(mock, 0) = 0;
     """,
+    54: """
+    -- The active mode's reserve (#34) gets its own metrics column, so history
+    -- keeps it in every mode (Backup included, where both per-mode columns
+    -- are NULL). Backfill: before #34 both per-mode columns held the same
+    -- 15508/15509 value; since #34 only the active mode's is set.
+    -- (columns added by MIGRATION_COLUMNS[54] first, so a re-run is safe)
+    UPDATE metrics SET active_reserve_pct = COALESCE(self_reserve_pct, tou_reserve_pct)
+     WHERE active_reserve_pct IS NULL;
+    UPDATE metrics_archive SET active_reserve_pct = COALESCE(self_reserve_pct, tou_reserve_pct)
+     WHERE active_reserve_pct IS NULL;
+    """,
     46: """
     -- Every plan needs a real start date.
     --
@@ -991,6 +1002,10 @@ async def get_schema_version(db: aiosqlite.Connection) -> int:
 #: (tests re-apply from an earlier version against an up-to-date table).
 MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
     53: [("gateways", "home_load_source", "TEXT NOT NULL DEFAULT 'standard'")],
+    54: [
+        ("metrics", "active_reserve_pct", "INTEGER"),
+        ("metrics_archive", "active_reserve_pct", "INTEGER"),
+    ],
 }
 
 

@@ -139,7 +139,8 @@ def test_format_csv_headers():
     reader = csv.DictReader(io.StringIO(csv_text))
     assert reader.fieldnames == [
         "timestamp", "battery_w", "grid_w", "solar_w", "home_w", "soc",
-        "ambient_temp_c", "cabinet_temp_c", "mode_name", "self_reserve_pct", "tou_reserve_pct", "grid_mode",
+        "ambient_temp_c", "cabinet_temp_c", "mode_name", "self_reserve_pct", "tou_reserve_pct",
+        "grid_mode", "active_reserve_pct",
     ]
     parsed = list(reader)
     assert len(parsed) == 1

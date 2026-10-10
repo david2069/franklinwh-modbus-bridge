@@ -117,3 +117,69 @@ async def test_mqtt_resets_an_unknown_reserve_instead_of_keeping_a_stale_one():
 async def test_mqtt_keeps_last_value_when_the_reserve_was_not_read():
     out = await _queued({"soc": 80})
     assert "tou_reserve_pct" not in out and "active_reserve_pct" not in out
+
+
+# ── History keeps the active reserve (own metrics column, migration 54) ──
+
+
+async def test_history_keeps_the_active_reserve_in_backup_mode(tmp_path):
+    """Backup mode has no per-mode reserve, but history must still carry the
+    active one — through the raw read, the 5-min archive and the export."""
+    import time
+
+    from franklinwh_bridge.store.db import init_db
+    from franklinwh_bridge.store.metrics import (
+        archive_old_metrics,
+        export_metrics,
+        query_metrics,
+        query_metrics_daterange,
+        record_sample,
+    )
+
+    db = await init_db(tmp_path / "t.db")
+    try:
+        points = {"battery_power_w": 100, "soc": 60, "mode_name": "Emergency Backup"}
+        apply_active_reserve(points, 20)
+        assert points["self_reserve_pct"] is None and points["tou_reserve_pct"] is None
+        await record_sample(db, points)
+
+        rows = await query_metrics(db, range_seconds=600)
+        assert rows[-1]["active_reserve_pct"] == 20
+
+        # Age the row out so it is archived, then read it back from the archive.
+        await db.execute("UPDATE metrics SET ts = ts - 9 * 86400")
+        await db.commit()
+        assert await archive_old_metrics(db) == 1
+        now = time.time()
+        archived = await query_metrics_daterange(db, now - 10 * 86400, now)
+        assert [r["active_reserve_pct"] for r in archived if r["soc"]] == [20]
+        assert [r["active_reserve_pct"] for r in await export_metrics(db, 10 * 86400)] == [20]
+    finally:
+        await db.close()
+
+
+async def test_migration_54_backfills_active_reserve_from_per_mode_columns():
+    import aiosqlite
+
+    from franklinwh_bridge.store import db as dbmod
+
+    db = await aiosqlite.connect(":memory:")
+    try:
+        await db.executescript("CREATE TABLE schema_version (version INTEGER, applied_at REAL);")
+        all_migrations = dbmod.MIGRATIONS
+        try:
+            dbmod.MIGRATIONS = {k: v for k, v in all_migrations.items() if k <= 53}
+            await dbmod.run_migrations(db)
+            await db.executemany(
+                "INSERT INTO metrics (ts, soc, self_reserve_pct, tou_reserve_pct) "
+                "VALUES (?, 50, ?, ?)",
+                [(1.0, 15, 15), (2.0, None, 30), (3.0, 10, None), (4.0, None, None)],
+            )
+            await db.commit()
+        finally:
+            dbmod.MIGRATIONS = all_migrations
+        await dbmod.run_migrations(db)
+        async with db.execute("SELECT active_reserve_pct FROM metrics ORDER BY ts") as cur:
+            assert [r[0] for r in await cur.fetchall()] == [15, 30, 10, None]
+    finally:
+        await db.close()
