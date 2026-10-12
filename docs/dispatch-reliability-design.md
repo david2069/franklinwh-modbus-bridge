@@ -54,6 +54,11 @@ franklinwh-modbus **v0.9.5**, the version deployed.
 | C5 | In the hour to about 19:40 on 10-12: **18** `Reconnection failed`. | container logs |
 | C6 | In a 60 s sample: the bridge had **at least 11** distinct connections to 192.168.0.110:502, with at most 2 open at once. This is consistent with C1's per-call connections, not with reconnects alone. The Local Bridge (`franklinwh-direct-connect-bridge`) had **at least 9**, also at most 2. Sampling every 2 s misses short ones. | `/proc/net/tcp` in each container's network namespace |
 | C7 | The Local Bridge is a Modbus client of this aGate: it has ESTABLISHED and TIME_WAIT sockets to :502, and its log shows repeated `franklinwh_modbus.controller: Connection failed: Response timeout`. | the same, plus its container log |
+| C9 | **The library is synchronous; the bridge is async.** Each library call runs in a worker thread (`asyncio.to_thread`). pysunspec2 and controller objects are not safe to use from two threads, so correctness depends on **every** call going through the per-gateway `modbus_lock`. | `poller.py`, `command_handler.py`, `instance.py` |
+| C10 | **Two sockets at once during every poll.** Inside the lock, the vendor-register pymodbus client stays connected while the library opens its own per-call connections (C1). Serialised, but on **two concurrent TCP connections**. This matches C6's "at most 2 open at once". | `poller._poll_once` → `_read_extra_points`/`_read_vendor_registers` |
+| C11 | **The library's own timer thread writes outside the lock.** When a command carries a duration (`duration_s` > 0; e.g. 2026-10-08 05:30 "[timeout: 2400s]"), `send_command` starts a `threading.Timer` whose expiry calls `reset_control_state()` (a 704 write) from that thread. That is outside the bridge's `modbus_lock`, so it can run during a poll or a send. | library `send_command` step 5 (v0.9.5); bridge passes `duration_s` when the watchdog is > 0 |
+| C12 | **Start-up calls run without the lock:** connect, nameplate, the hardware-state snapshot and the stale-command release (`reset_control_state`). They run **before** `poller.start()`, so they cannot overlap polling. Whether a command dispatched during start-up can overlap them is **not checked**. | `instance._init_and_poll` |
+| C13 | **The diagnostics probe can abandon a call while it is still running.** `asyncio.wait_for(to_thread(...))` under the lock: on timeout the lock is released, but the thread keeps reading, so the next lock holder overlaps it. Only when the diagnostics probe is used. | `poller.probe_protocol` |
 | C8 | When reads fail, values from the cached model are still published as current ("Derived 4 battery key(s) from M713 model cache"). | #25; `poller` |
 
 ## 3. What is not known
@@ -69,6 +74,7 @@ Each unknown has the experiment that answers it (§6.1).
 | U5 | Whether re-sending the 3-step sequence during an active discharge interrupts output (P1) | Decides the retry and re-assert write strategy | E6 |
 | U6 | How long after a correct setpoint the battery reaches the commanded power (ramp). **Partly answered:** a −1500 W discharge reached full output within 2.1 s (the sampling interval) on 2026-10-09. Charge, other powers and TOU mode are not measured. | Sets the verification delay and tolerance | E7 (remaining cases) |
 | U7 | Why the aGate ignored a correct setpoint in #26 (mode TOU at the time?). One related data point: on 2026-10-09 a charge at 99% SoC was accepted with 0 W delivered. That doesn't establish #26's cause (a discharge, in TOU). | Whether re-send is the right remedy, or a mode change is needed first | E7, plus a review of #26 |
+| U10 | Whether overlapping requests (C10, C11, C13, or another client) happen in practice, and whether they cause timeouts or garbled reads. The 2026-07-05 reading had the same 16-bit word in two unrelated registers (#55), which is what overlapping requests could produce; one event, not established. | Decides how strict the single-owner rule must be | Phase 0b overlap counter; E1/E2 |
 | U9 | Whether Modbus *exception replies* that trigger reconnect and rescan (P3) account for part of C4's reconnect rate. **Hypothesis**, from fwh-modbus. | If so, a cheap fix: don't treat device exception replies as dead links | Classify logged exceptions (Phase 0b metrics) |
 | U8 | Whether the Energipays containers touch the aGate (TIME_WAIT entries seen, but no Modbus in their logs) | Contention inventory | E0 |
 
@@ -148,6 +154,13 @@ requested → sent ──(read-back ok and battery moving)──→ verified
     need a library hook to read raw registers through the sunspec2 client.
   - Health comes from the session's own success and failure history, not a
     separate TCP probe (C1).
+- **Everything through the one queue:** polls, vendor registers, commands,
+  start-up calls and health (C9–C13).
+  - No library-side timer thread writes on its own (C11). The bridge stops
+    passing `duration_s` to the library and relies on its own command watchdog,
+    which already exists.
+  - A timeout on a queued call must not release the queue while its thread is
+    still running (C13).
 - **Multi-gateway: one connection per aGate, managed per gateway.** A
   per-gateway connection manager, keyed by gateway in the existing registry,
   gives each aGate exactly one owned connection. It never pools several
@@ -204,6 +217,7 @@ use Modbus on the reference aGate is an owner decision (§9).
 | Latency | p50, p95 and max per hour, per kind |
 | Connections | Opened per path (library per-call, vendor client, health probe); reconnects; failed reconnects; rescans and rescan duration |
 | Freshness | Consecutive failures; age of the newest good reading; polls served from the cache instead of live (C8) |
+| Overlap | Requests that **start while another is still in flight** to the same aGate, with which code path sent each one (poller, vendor client, command, start-up, diagnostics, library timer). Also the maximum number of open sockets per poll. This answers U10. |
 
 Plus a **`dispatch_outcomes` table**, one row per dispatch:
 - entry id;
