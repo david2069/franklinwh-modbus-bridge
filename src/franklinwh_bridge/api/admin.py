@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
+from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.alarms import (
@@ -26,6 +27,7 @@ from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     get_catalog_points,
     get_pics_compliance,
+    log_control_event,
     query_logs,
     set_pics_status,
 )
@@ -636,9 +638,30 @@ class SequenceExecRequest(BaseModel):
     gateway_id: str | None = None  # None = default, "all" = all active
 
 
+# Hoisted: Depends() in an argument default trips ruff B008.
+_REQUIRE_CONTROL = Depends(require_capability("control"))
+
+
+def _seq_summary(steps: list[dict[str, Any]]) -> str:
+    """Compact "Model.Point=value" list of a sequence's writes, for the audit."""
+    parts: list[str] = []
+    for st in steps:
+        w = st.get("writes") if isinstance(st, dict) else None
+        if isinstance(w, dict):
+            parts += [f"{k}={v}" for k, v in w.items()]
+    return ", ".join(parts)[:400] or f"{len(steps)} step(s)"
+
+
 @router.post("/sequence/execute")
-async def execute_sequence(body: SequenceExecRequest, request: Request):
-    """Execute a SunSpec Modbus sequence against one or all gateways."""
+async def execute_sequence(
+    body: SequenceExecRequest, request: Request, _user: dict = _REQUIRE_CONTROL,
+):
+    """Execute a SunSpec Modbus sequence against one or all gateways.
+
+    It writes real registers (WSetEna/WSetPct included, i.e. a battery
+    dispatch), so it needs the ``control`` capability, and every run is
+    recorded in the control log with who ran it and what it wrote.
+    """
     registry = getattr(request.app.state, "registry", None)
 
     # Parse the sequence steps
@@ -772,6 +795,25 @@ async def execute_sequence(body: SequenceExecRequest, request: Request):
             all_ok = False
 
         all_output.extend(output_lines)
+
+        # Record who wrote what, where and when — the Sequencer can dispatch the
+        # battery, and until now it left no record at all.
+        ok_here = any(line.startswith("SUCCESS") for line in output_lines)
+        who = f"user:{_user.get('username') or '?'}"
+        try:
+            await log_control_event(
+                request.app.state.db,
+                event="sequence_dry_run" if body.dry_run else (
+                    "sequence_executed" if ok_here else "sequence_failed"),
+                action="sequencer",
+                detail=f"{_seq_summary(steps)} — by {who}",
+                gateway_id=target_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to record sequencer run: %s", exc)
+        logger.info("Sequencer %s on %s by %s: %s",
+                    "dry run" if body.dry_run else ("ok" if ok_here else "failed"),
+                    target_id, who, _seq_summary(steps))
 
     return {"ok": all_ok, "output": all_output}
 

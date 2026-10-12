@@ -357,3 +357,110 @@ async def test_dispatch_outcomes_endpoint(db):
     rows = r.json()["outcomes"]
     assert [(o["state"], o["requester"], o["requested_w"]) for o in rows] == [
         ("failed", "schedule:e1", -5000)]
+
+
+# ── Who sent it, and dispatches this bridge did not send ────────────────
+
+
+async def test_command_records_who_sent_it(db):
+    h = CommandHandler(controller(), db)
+    await h.handle_command("battery_command_target_soc", "60", requester="user:admin")
+    await h.handle_command("battery_command", "Force Discharge", requester="user:admin")
+    await h.handle_command("battery_command", "Release", requester="mqtt")
+    rows = await _rows(db, "SELECT event, detail FROM control_log ORDER BY id")
+    assert rows[0][0] == "target_soc_set" and rows[0][1].endswith("by user:admin")
+    assert rows[1][0] == "command_sent" and rows[1][1].endswith("by user:admin")
+    assert rows[2][0] == "command_released" and rows[2][1].endswith("by mqtt")
+    assert await _rows(db, "SELECT requester FROM dispatch_outcomes") == [("user:admin",)]
+
+
+class _Sample:
+    def __init__(self, ts, **points):
+        self.ts, self.points = ts, points
+
+
+async def test_external_dispatch_is_logged_start_and_end(db):
+    h = CommandHandler(controller(), db)
+    t = 1_000_000.0
+    await h.observe_sample(_Sample(t, wset_enabled=0, wset_pct=0))
+    await h.observe_sample(_Sample(t + 10, wset_enabled=1, wset_pct=30.0, battery_power_w=1500))
+    await h.observe_sample(_Sample(t + 20, wset_enabled=1, wset_pct=30.0, battery_power_w=1500))
+    await h.observe_sample(_Sample(t + 70, wset_enabled=0, wset_pct=0))
+    rows = await _rows(db, "SELECT event, power_w, detail FROM control_log ORDER BY id")
+    assert [r[0] for r in rows] == ["external_dispatch_started", "external_dispatch_ended"]
+    assert rows[0][1] == 1500 and "not sent by this bridge" in rows[0][2]
+    assert "after 60s" in rows[1][2]
+
+
+async def test_own_dispatch_is_not_reported_as_external(db):
+    import time as _t
+    h = CommandHandler(controller(), db)
+    await h.handle_command("battery_command", "Force Discharge", requester="user:admin")
+    now = _t.time()
+    await h.observe_sample(_Sample(now + 5, wset_enabled=1, wset_pct=100.0))   # settling
+    await h.observe_sample(_Sample(now + 60, wset_enabled=1, wset_pct=100.0))  # ours, matches
+    events = [r[0] for r in await _rows(db, "SELECT event FROM control_log")]
+    assert not any(e.startswith("external") for e in events)
+
+
+async def test_setpoint_changed_underneath_ours_is_logged_once(db):
+    import time as _t
+    h = CommandHandler(controller(), db)
+    await h.handle_command("battery_command", "Force Discharge")  # 100% of 5000 W
+    now = _t.time()
+    for k in (60, 70, 80):
+        await h.observe_sample(_Sample(now + k, wset_enabled=1, wset_pct=30.0))
+    events = [r[0] for r in await _rows(db, "SELECT event FROM control_log")]
+    assert events.count("external_change") == 1
+
+
+async def test_sequencer_needs_control_and_records_who_ran_it(tmp_path, monkeypatch):
+    import asyncio
+    import sys
+    import types
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from starlette.middleware.sessions import SessionMiddleware
+
+    from franklinwh_bridge.api.admin import router as admin_router
+    from franklinwh_bridge.api.auth import router as auth_router
+    from franklinwh_bridge.security import hash_password
+    from franklinwh_bridge.store.db import create_user
+
+    class FakeSeq:  # never touches a register
+        def __init__(self, dev):
+            self.verbose = False
+
+        def run_sequence(self, steps, dry_run=False):
+            return True
+
+    monkeypatch.setitem(sys.modules, "franklinwh_modbus.sequencer",
+                        types.SimpleNamespace(SunSpecSequencer=FakeSeq))
+    monkeypatch.setenv("ALLOW_INSECURE_AUTH", "1")
+    conn = await init_db(tmp_path / "s.db")
+    await create_user(conn, "admin", hash_password("pw"), role="admin")
+    await create_user(conn, "viewer1", hash_password("pw"), role="viewer")
+    inst = SimpleNamespace(config=SimpleNamespace(mock=False),
+                           controller=SimpleNamespace(dev=object()),
+                           modbus_lock=asyncio.Lock())
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="t")
+    app.state.db = conn
+    app.state.config = SimpleNamespace(environment="docker")
+    app.state.registry = SimpleNamespace(get=lambda gid: inst, list_active=lambda: ["default"])
+    app.include_router(auth_router)
+    app.include_router(admin_router)
+    body = {"inline": '{"DERCtlAC.WSetEna": 1, "DERCtlAC.WSetPct": 30}'}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as v:
+        await v.post("/api/auth/login", json={"username": "viewer1", "password": "pw"})
+        assert (await v.post("/api/sequence/execute", json=body)).status_code == 403
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as a:
+        await a.post("/api/auth/login", json={"username": "admin", "password": "pw"})
+        r = await a.post("/api/sequence/execute", json=body)
+        assert r.status_code == 200 and r.json()["ok"] is True
+    rows = await _rows(conn, "SELECT event, action, detail, gateway_id FROM control_log")
+    assert rows == [("sequence_executed", "sequencer",
+                     "DERCtlAC.WSetEna=1, DERCtlAC.WSetPct=30 — by user:admin", "default")]
+    await conn.close()

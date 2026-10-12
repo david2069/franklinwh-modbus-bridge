@@ -55,7 +55,8 @@ class _Handler:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    async def handle_command(self, slug: str, payload: str) -> None:
+    async def handle_command(self, slug: str, payload: str, requester: str = "") -> None:
+        assert requester == "mqtt"  # MQTT commands are attributed to their channel
         self.calls.append((slug, payload))
 
 

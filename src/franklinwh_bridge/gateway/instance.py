@@ -154,6 +154,8 @@ class GatewayInstance:
             modbus_lock=self.modbus_lock,
             gateway_id=self.gateway_id,
         )
+        # Lets the handler notice a dispatch it did not send (another tool).
+        self.sample_bus.subscribe(self.command_handler.observe_sample)
 
         # Run the connect + discover sequence in background
         self._init_task = asyncio.create_task(self._init_and_poll())
@@ -211,6 +213,7 @@ class GatewayInstance:
         )
         # Fan-in to the global bus so the Site aggregator picks up the mock.
         self.sample_bus.subscribe(self._forward_to_global)
+        self.sample_bus.subscribe(self.command_handler.observe_sample)
         await self.poller.start()
         self.status.polling = True
 

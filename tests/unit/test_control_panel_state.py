@@ -39,7 +39,7 @@ async def test_log_and_state_are_recorded_against_the_handlers_gateway(db):
 
     rows = await _log(db)
     assert rows and all(gw == "garage" for _, _, gw in rows)
-    assert ("target_soc_set", "target SoC 40%", "garage") in rows
+    assert ("target_soc_set", "target SoC 40% — by manual", "garage") in rows
     sent = next(d for e, d, _ in rows if e == "command_sent")
     assert "no time limit" in sent and "target SoC 40%" in sent
 

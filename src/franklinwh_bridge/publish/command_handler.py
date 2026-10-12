@@ -163,6 +163,12 @@ class CommandHandler:
         self._last_dispatch: DispatchResult | None = None
         self._active_dispatch_id: str | None = None
         self._requester: str = "manual"
+        # What this bridge last asked the gateway for, to tell our own dispatch
+        # from one sent by something else (another app, a CLI, the cloud).
+        self._sent_pct: float | None = None
+        self._last_change_ts: float = 0.0
+        self._external: dict | None = None
+        self._external_change: bool = False
 
     @property
     def state(self) -> CommandState:
@@ -259,10 +265,12 @@ class CommandHandler:
 
     async def _log_event(
         self, event: str, action: str = "", power_w: int = 0, detail: str = "",
-        hw_state: dict | None = None,
+        hw_state: dict | None = None, by: str | None = None,
     ) -> None:
         if hw_state is None:
             hw_state = await self._read_hw_state()
+        if by is not None:
+            detail = f"{detail} — by {by}" if detail else f"by {by}"
         try:
             await log_control_event(
                 self._db, event=event, action=action, power_w=power_w,
@@ -275,8 +283,8 @@ class CommandHandler:
         """Apply one command. ``requester`` (e.g. ``schedule:<entry id>``) is
         recorded on the dispatch_outcomes row of a battery command."""
         payload = payload.strip()
-        logger.info("Command received: %s = %s", slug, payload)
         self._requester = requester or "manual"
+        logger.info("Command received: %s = %s (by %s)", slug, payload, self._requester)
 
         # Optimistic default; handlers that can fail flip this to False.
         self._state.last_success = True
@@ -312,6 +320,7 @@ class CommandHandler:
                         "target_soc_set",
                         detail=(f"target SoC {self._target_soc}%" if self._target_soc
                                 else "target SoC off"),
+                        by=self._requester,
                     )
                 if self._on_state_changed:
                     await self._on_state_changed()
@@ -436,6 +445,12 @@ class CommandHandler:
         self._last_dispatch = DispatchResult(
             ok=True, reason=msg, action=display_action, requested_w=watts,
             dispatch_id=self._active_dispatch_id, hw=hw, ts=time.time())
+        # Hardware WSetPct: + discharge, - charge (BatteryCommand: - discharge).
+        rated = self._max_charge_w if watts > 0 else self._max_discharge_w
+        self._sent_pct = (-watts / rated * 100.0) if rated else None
+        self._last_change_ts = time.time()
+        self._external = None
+        self._external_change = False
 
         self._state.active = True
         self._state.action = display_action
@@ -471,13 +486,67 @@ class CommandHandler:
             limits.append(f"target SoC {self._target_soc}%")
         await self._log_event(
             "command_sent", action=display_action, power_w=abs(watts),
-            detail=f"{msg} [{', '.join(limits)}]", hw_state=hw,
+            detail=f"{msg} [{', '.join(limits)}]", hw_state=hw, by=self._requester,
         )
 
         if self._on_state_changed:
             await self._on_state_changed()
 
         logger.info("Battery command: %s %dW — %s", display_action, abs(watts), msg)
+
+    #: Ignore samples this long after our own send/release, so a poll that
+    #: still shows the previous state isn't mistaken for someone else's dispatch.
+    EXTERNAL_SETTLE_S = 30.0
+    #: WSetPct difference (percentage points) that counts as a different setpoint.
+    EXTERNAL_PCT_TOLERANCE = 2.0
+
+    async def observe_sample(self, sample: Any) -> None:
+        """Notice a battery dispatch this bridge did not send.
+
+        On 2026-10-12 a 1500 W dispatch from another tool ran for about a
+        minute (20:40) and this bridge logged nothing; only the undocumented
+        register watch noticed. Compares each poll's WSetEna/WSetPct with what
+        we sent, and logs the start, end, or a change made underneath ours.
+        """
+        pts = getattr(sample, "points", None) or {}
+        ena, pct = pts.get("wset_enabled"), pts.get("wset_pct")
+        ts = float(getattr(sample, "ts", 0) or 0)
+        if ena is None or ts - self._last_change_ts < self.EXTERNAL_SETTLE_S:
+            return
+        hw = {"wset_enabled": ena, "wset_pct": pct}
+        if int(ena) == 1 and not self._state.active:
+            if self._external is None:
+                self._external = {"since": ts, "pct": pct}
+                logger.warning(
+                    "Gateway %s: battery dispatch detected that this bridge did not send "
+                    "(WSetEna=1, WSetPct=%s%%, battery %s W) — another tool, the app or the cloud",
+                    self._gateway_id, pct, pts.get("battery_power_w"))
+                await self._log_event(
+                    "external_dispatch_started", power_w=int(abs(pts.get("battery_power_w") or 0)),
+                    detail=f"WSetPct={pct}% — not sent by this bridge", hw_state=hw, by="external")
+            return
+        if int(ena) == 0 and self._external is not None:
+            dur = ts - self._external["since"]
+            logger.info("Gateway %s: external battery dispatch ended after %.0fs",
+                        self._gateway_id, dur)
+            await self._log_event(
+                "external_dispatch_ended", detail=f"after {dur:.0f}s", hw_state=hw, by="external")
+            self._external = None
+            return
+        if (int(ena) == 1 and self._state.active and self._sent_pct is not None
+                and pct is not None):
+            changed = abs(float(pct) - self._sent_pct) > self.EXTERNAL_PCT_TOLERANCE
+            if changed and not self._external_change:
+                self._external_change = True
+                logger.warning(
+                    "Gateway %s: battery setpoint changed outside this bridge "
+                    "(WSetPct=%s%%, sent %.0f%%)", self._gateway_id, pct, self._sent_pct)
+                await self._log_event(
+                    "external_change", action=self._state.action,
+                    detail=f"WSetPct={pct}% (sent {self._sent_pct:.0f}%)",
+                    hw_state=hw, by="external")
+            elif not changed:
+                self._external_change = False
 
     async def _dispatch_failed(
         self, display_action: str, watts: int, msg: str, hw: dict | None, prev_active: bool,
@@ -508,10 +577,11 @@ class CommandHandler:
         self._last_dispatch = DispatchResult(
             ok=False, reason=msg, action=display_action, requested_w=watts,
             dispatch_id=did, hw=hw, ts=time.time())
+        self._last_change_ts = time.time()
         await self._persist_state()
         await self._log_event(
             "command_failed", action=display_action, power_w=abs(watts),
-            detail=msg, hw_state=hw,
+            detail=msg, hw_state=hw, by=self._requester,
         )
         if self._on_state_changed:
             await self._on_state_changed()
@@ -562,6 +632,9 @@ class CommandHandler:
                 reason=f"reason={reason}; {self._state.last_result}")
             self._active_dispatch_id = None
 
+        self._sent_pct = None
+        self._last_change_ts = time.time()
+
         # Clear target SoC so it doesn't poison the next command.
         # Without this, a target set for Charge (e.g. 75%) would cause
         # a subsequent Discharge to release immediately if SoC is already
@@ -575,6 +648,8 @@ class CommandHandler:
             power_w=prev_power,
             detail=f"reason={reason}, was_active={was_active}, result={self._state.last_result}",
             hw_state=hw,
+            by=(f"bridge:{reason}" if reason in ("watchdog_expired", "target_soc_reached",
+                                                 "shutdown") else self._requester),
         )
 
         if self._on_state_changed:
@@ -687,6 +762,7 @@ class CommandHandler:
 
         await self._log_event(
             "mode_change", action=mode_name, detail=self._state.last_result,
+            by=self._requester,
         )
 
     async def _handle_reserve(self, reserve_type: str, pct: int) -> None:
@@ -724,6 +800,7 @@ class CommandHandler:
             action=f"{reserve_type}_reserve",
             power_w=pct,
             detail=self._state.last_result,
+            by=self._requester,
         )
 
     def _start_watchdog(self) -> None:

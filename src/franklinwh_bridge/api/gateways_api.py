@@ -1159,7 +1159,8 @@ async def send_gateway_command(
             "result": "Command handler not available",
         }
 
-    await inst.command_handler.handle_command(body.slug, body.value)
+    await inst.command_handler.handle_command(
+        body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
     return {
         "ok": inst.command_handler.state.last_success,
         "slug": body.slug,
