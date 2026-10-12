@@ -91,6 +91,9 @@ Each unknown has the experiment that answers it (§6.1).
 3. **One healthy link.** The bridge's own use of the aGate is deliberate and
    minimal. Timeouts drop to a level the measurements say is normal.
 4. **Stale data is never shown as live.**
+5. **The Modbus Bridge is the single Modbus gateway for each aGate (owner,
+   2026-10-12; goal now, in 1.x).** Sibling bridges (Local Bridge, Energipays)
+   use its API instead of opening :502 themselves (§5.5).
 
 **Non-goals:**
 - changing schedule semantics (Pause/Resume is #32);
@@ -250,6 +253,87 @@ It is too noisy to keep.
 - optional HA diagnostic sensors: timeouts per hour, minutes since the last good
   poll, and the last dispatch's outcome.
 
+### 5.5 Gateway API for sibling bridges (in scope now)
+
+**Goal:** this bridge owns the only Modbus connection to each aGate. Other
+bridges read and control the aGate through it. This also closes the
+multi-client unknowns (U1, U2) from our side.
+
+#### Consumers today (evidence, read-only, 2026-10-12)
+
+| Consumer | What it does now | Problems |
+|---|---|---|
+| **Local Bridge** (`franklinwh-local-bridge`) | **Dispatch through us:** `providers._dispatch_via_modbus_bridge` makes several `POST /api/command {slug, value}` calls (stage power, duration and target SoC, then `battery_command`), when `MODBUS_BRIDGE_URL` is set. That is empty on the reference site. **Billing:** logs in, then `GET /api/tariff/history`. **Direct Modbus:** `battery_control.py` creates a new `FranklinWHController` per status read or command, i.e. connect plus full scan each time (C3). | **Not atomic:** staging calls from two clients can interleave. **No login:** `/api/command` requires a session with the control capability, so these calls would get 401 today. **No gateway id:** always the default gateway, on multi-gateway sites too (its own BR-34 note). **Its direct path is a second Modbus client** (C6, C7). |
+| **Energipays Bridge** | The owner says it will use the gateway. Its needs are **not yet known**: its logs show cloud and HA polling, not Modbus. | To be gathered |
+
+#### API, version 1
+
+REST first, as with everything else here.
+
+1. **Service accounts and API tokens.**
+   - Each consumer gets a named account with a bearer token, scoped by
+     capability (`view`; `control` for dispatch). No cookie login.
+   - Every call is recorded in the audit trail (#50 `auth_events`) under the
+     consumer's name.
+   - Tokens can be revoked and rotated.
+2. **Discovery:** `GET /api/gateways` (exists). Returns ids, serials and names,
+   so a consumer always addresses an explicit gateway.
+3. **Telemetry fan-out, with no extra Modbus reads.**
+   - `GET /api/gateways/{id}/points` (exists), extended with `ts`, `age_s`,
+     `quality` and `stale` per response (C8).
+   - Served **only from the poll cache**: a consumer can never trigger an aGate
+     read.
+   - A documented **consumer schema**: the stable keys, units and sign
+     conventions consumers may rely on. Everything else is unsupported.
+   - Raw vendor registers (`vreg_*`) are also cache-only.
+4. **Atomic dispatch.**
+   - `POST /api/gateways/{id}/dispatch` takes
+     `{action, power_w | power_pct, duration_s, target_soc, client_ref}` in
+     **one call** and returns a `dispatch_id`.
+   - `GET …/dispatch/{dispatch_id}` returns the §5.1 state: `sent` /
+     `verified` / `failed` / `not_effective` / `reasserted` / `released`.
+   - `POST …/dispatch/{dispatch_id}/release`.
+   - `client_ref` is an idempotency key, so a consumer can retry safely without
+     a double dispatch.
+5. **Arbitration.** One battery, several requesters: the schedule, the UI,
+   HA, and consumers.
+   - A defined priority. **Owner decision; a proposal for discussion:**
+     safety release > manual (UI/HA) > schedule > consumer.
+   - A conflicting request gets `409` naming the current owner of the battery,
+     or queues if the policy says so.
+   - The bridge's watchdog and orphan release cover consumer dispatches too.
+     The Local Bridge already delegates to us for exactly that reason (its
+     `providers.py`).
+6. **Events.**
+   - Dispatch state changes and link-health changes are pushed: on MQTT, which
+     the bridge already runs, and/or Server-Sent Events. Consumers needn't
+     poll.
+   - The transport is an owner decision.
+7. **Link health:** `GET /api/gateways/{id}/link-stats` (§5.4), so a consumer
+   knows whether the data is fresh and the link is healthy.
+8. **Contract and versioning.**
+   - Published OpenAPI with the consumer schema.
+   - Breaking changes only with a new version and a deprecation period.
+   - `POST /api/command` stays for the UI and HA, but is **deprecated for
+     consumers**.
+9. **What it cannot enforce.** The bridge cannot stop another process
+   connecting to :502. What enforces the rule is:
+   - consumers removing their direct path (e.g. the Local Bridge's
+     `battery_control.py` library path; its owner's change);
+   - detection here: E0 and the §5.3 diagnostics show any other client.
+
+#### Proof
+
+| Test | Shows |
+|---|---|
+| G1, contract | Every documented endpoint and field, against the OpenAPI schema |
+| G2, atomicity | Two consumers dispatching at once: each gets one consistent result; no interleaved staging |
+| G3, idempotency | The same `client_ref` twice gives one dispatch |
+| G4, arbitration | Schedule vs consumer vs manual follow the priority; the loser gets `409` with the owner named |
+| G5, fan-out | Many consumer reads produce **zero** extra aGate requests (§5.4 counters) |
+| G6, auth and audit | No token: 401. View token on dispatch: 403. Every call audited with the consumer's name. |
+| G7, live | With the Local Bridge using the API and its direct path removed, E0 shows **one** client on :502 |
+
 ## 6. Proof: test rig and plan
 
 Nothing in §5 counts as done until it passes these, in order.
@@ -322,6 +406,7 @@ This is another repository; the owner decides who builds it.
 | A4 | A lost command in an open window is re-asserted within one tick (15 s) |
 | A5 | Stale values are never published as live (#25) |
 | A6 | Phase 2: the timeout rate (from `link_stats`) falls to within the E3 baseline. The number is set from E3 and the Phase 0b baseline. |
+| A9 | Gateway API (§5.5): G1–G6 pass in CI; G7 live: one client on :502 per aGate |
 | A8 | Phase 0b: at least 7 days of `link_stats` baseline recorded before Phase 1 or 2 ships, and `dispatch_outcomes` recording every dispatch |
 | A7 | T1–T7 pass in CI against the emulator; §6.4 passes live |
 
@@ -333,10 +418,14 @@ This is another repository; the owner decides who builds it.
    baseline. It runs alongside Phase 0.
 3. **Phase 1, dispatch verification (§5.1):** fixes #26 and #56, and the alert
    half of #25. It doesn't wait for (B).
-4. **Phase 2, connection (§5.2):** fixes the cause side of #25, and (B) once
+4. **Phase 1b, gateway API (§5.5):** service tokens, cache-only telemetry
+   with age and quality, atomic dispatch with §5.1 states, arbitration and
+   events. It builds on Phase 1's dispatch states. Then the consumers switch
+   in their own repos, and E0/G7 confirm a single client.
+5. **Phase 2, connection (§5.2):** fixes the cause side of #25, and (B) once
    E1–E5 say what is right. It includes the library changes (cheap reconnect,
    raw-register hook) and a franklinwh-modbus release.
-5. **Phase 3:** UI for commanded vs actual.
+6. **Phase 3:** UI for commanded vs actual.
 
 **Interim, until Phase 1 ships:** nothing in the bridge protects a dispatch. The
 owner can watch the 18:00 notification and the battery power, and re-send by
@@ -353,6 +442,9 @@ hand.
 5. **Library changes** (cheap reconnect, raw-register access, releasing
    `verify_dispatch`): coordinate with fwh-modbus.
 6. **Notification wording and target** for failed dispatches.
+7. **Gateway API (§5.5):** the arbitration priority; the event transport (MQTT
+   and/or SSE); the token model; Energipays' needs; and when the Local Bridge
+   removes its direct Modbus path.
 
 ## 10. Risks
 
@@ -503,6 +595,8 @@ Points to settle when it starts (none is decided here):
   (API 1.0). The **Local Bridge (Direct Connect)** and the **Energipays
   Bridge** will also use FranklinWH Modbus API 2.0, as forked new versions.
   API 2.0 is the shared Modbus layer for all three bridges' 2.0 lines.
+  - **The gateway role starts now, in 1.x (§5.5),** so 2.0 inherits a proven
+    API rather than inventing one.
   - **Single owner, decided by the owner, 2026-10-12: Modbus Bridge 2.0 is the
     gateway.** It is the only process holding a Modbus connection to each
     aGate. Local Bridge 2.0, Energipays 2.0 and any other consumer reach the
