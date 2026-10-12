@@ -184,6 +184,13 @@ def _walk_setup_wizard(page, problems: list) -> None:
                 break
             btn.click()
             page.wait_for_timeout(350)
+        # The accounts step is only reachable after connect/demo; render it
+        # directly. Read-only: it fetches the account list and changes nothing.
+        page.evaluate(
+            "Alpine.$data(document.querySelector(\"[aria-labelledby='setup-title']\")"
+            ".closest('[x-data]')).enterAccounts()"
+        )
+        page.wait_for_timeout(800)
         # The checklist is only reachable after connect/demo; render it directly.
         page.evaluate(
             "Alpine.$data(document.querySelector(\"[aria-labelledby='setup-title']\")"

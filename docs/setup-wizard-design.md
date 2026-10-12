@@ -223,6 +223,23 @@ data there would land in the same HA entities (and statistics) a real aGate uses
 later. The UI already views the polling gateway when the default is
 unconfigured (PR #2).
 
+### Step 5½ — Your login (added 2026-10-12)
+
+This step comes after the timezone step (or straight after the gateway when the
+timezone is already confirmed), and before the checklist. It is skipped under
+HA ingress, where the bridge's own logins aren't used.
+
+- Says that anyone with an admin or user login can command the battery.
+- `GET /api/setup/accounts` lists the logins and flags any password anyone would
+  try first: "admin", "password" or the username. The shipped compose seeds
+  admin/admin.
+- If **your** password is one of those, the step offers an inline change
+  (`POST /api/auth/password`: current + new, min 8, not a common default or
+  your username). Your other logins end, and this one stays.
+- Lists the role meanings, points to Settings → Admin → Users, and gives the
+  recovery command (docs/admin-recovery.md).
+- "Not now" moves on without changing anything. Nothing here blocks setup.
+
 ### Step 6 — Home Assistant checklist
 
 Live status, each item with a fix link:

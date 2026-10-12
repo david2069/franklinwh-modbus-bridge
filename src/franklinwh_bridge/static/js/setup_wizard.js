@@ -94,6 +94,11 @@
       checklist: [],
       environment: '',
 
+      // Accounts step
+      accounts: null,            // GET /api/setup/accounts body
+      pw: { current: '', next: '', confirm: '' },
+      pwDone: false,
+
       async init() {
         window.addEventListener('open-setup-wizard', () => this.start());
         await Alpine.store('setup').load();
@@ -137,6 +142,7 @@
           subnetInput: '', scan: null, manual: { host: '', port: 502, unit_id: 1 },
           probeRow: null, picks: [], connected: [], reading: null,
           demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [],
+          accounts: null, pw: { current: '', next: '', confirm: '' }, pwDone: false,
         });
       },
 
@@ -335,13 +341,58 @@
         const app = Alpine.store('app');
         if (!app.tz) await app.loadTz();
         if (app.tz && app.tz.needs_confirmation) { this.go('timezone'); return; }
-        await this.enterChecklist();
+        await this.enterAccounts();
       },
 
       async confirmTimezone() {
         this.busy = true;
         try { await Alpine.store('app').confirmTz(); } finally { this.busy = false; }
-        await this.enterChecklist();
+        await this.enterAccounts();
+      },
+
+      // ── Accounts: the login, and a default password ───────────
+      // The shipped compose seeds admin/admin, and anyone with an admin or
+      // user login can command the battery. Under HA ingress the bridge's own
+      // logins aren't used, so the step is skipped there.
+      async enterAccounts() {
+        this.busy = true;
+        try {
+          this.accounts = await api('accounts');
+        } catch (_) {
+          this.accounts = null;
+        } finally {
+          this.busy = false;
+        }
+        if (!this.accounts || !this.accounts.applies) { await this.enterChecklist(); return; }
+        this.go('accounts');
+      },
+
+      async changePassword() {
+        this.error = '';
+        if (this.pw.next.length < 8) { this.error = 'The new password needs at least 8 characters.'; return; }
+        if (this.pw.next !== this.pw.confirm) { this.error = "The two new passwords don't match."; return; }
+        this.busy = true;
+        try {
+          const resp = await fetch('api/auth/password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: this.pw.current, new_password: this.pw.next }),
+          });
+          const d = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            const det = d.detail;
+            this.error = typeof det === 'string' ? det
+              : Array.isArray(det) ? det.map(x => x.msg).join('; ') : `Request failed (${resp.status})`;
+            return;
+          }
+          this.pwDone = true;
+          this.pw = { current: '', next: '', confirm: '' };
+          this.accounts = await api('accounts');
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.busy = false;
+        }
       },
 
       // ── Step 6: Home Assistant checklist ──────────────────────

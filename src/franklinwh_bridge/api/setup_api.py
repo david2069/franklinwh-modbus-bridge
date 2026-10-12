@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from franklinwh_modbus import discovery
 from pydantic import BaseModel, ConfigDict, Field
 
-from franklinwh_bridge.api.auth import require_role
+from franklinwh_bridge.api.auth import _is_ingress, is_guessable, require_role
 from franklinwh_bridge.api.gateways_api import (
     GatewayCreate,
     GatewayUpdate,
@@ -47,6 +47,7 @@ from franklinwh_bridge.store.db import (
     get_app_config,
     get_gateway,
     get_gateways,
+    get_users,
     set_app_config,
 )
 
@@ -55,6 +56,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 
 _REQUIRE_ADMIN = require_role("admin")
+_ADMIN_USER = Depends(_REQUIRE_ADMIN)  # hoisted: Depends() in a default trips B008
 
 SETUP_STATE_KEY = "setup_state"
 SetupState = Literal["pending", "done_real", "done_demo", "skipped"]
@@ -579,3 +581,30 @@ async def get_checklist(request: Request):
             logger.debug("Entity registry check failed: %s", exc)
     items.extend([integration, entities])
     return {"environment": env, "items": items}
+
+
+# ── accounts ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/accounts")
+async def get_accounts(request: Request, user: dict = _ADMIN_USER):
+    """Logins on this bridge, and which still have a password anyone would
+    try first ("admin", the username...). The shipped compose seeds
+    admin/admin, so a new install starts there.
+
+    Under HA ingress the bridge's own logins aren't used: ``applies`` is false.
+    """
+    if _is_ingress(request):
+        return {"applies": False, "you": None, "accounts": []}
+    db = request.app.state.db
+    users = await get_users(db)
+    return {
+        "applies": True,
+        "you": {"username": user["username"], "role": user["role"],
+                "weak_password": is_guessable(user)},
+        "accounts": [
+            {"username": u["username"], "role": u["role"], "enabled": u["enabled"],
+             "weak_password": is_guessable(u)}
+            for u in users
+        ],
+    }
