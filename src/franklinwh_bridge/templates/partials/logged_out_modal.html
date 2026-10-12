@@ -1,0 +1,61 @@
+{#
+  Logged-out modal. Shown when the bridge starts refusing this page's login
+  (401), with the reason the bridge recorded (see store/auth_sessions.py).
+
+  It replaces what used to happen: the top bar said "Disconnected", the values
+  froze and every button silently failed. "Stay on this page" exists so unsaved
+  text can still be copied; nothing on the page works until you log in again.
+#}
+<div x-data x-cloak>
+  <template x-if="$store.app.loggedOut && !$store.app.loggedOutDismissed">
+    <div class="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/60"
+         role="dialog" aria-modal="true" aria-labelledby="logged-out-title">
+      <div class="w-full max-w-md rounded-lg border shadow-2xl"
+           style="background: var(--surface-0); border-color: var(--border);">
+        <div class="flex items-center gap-2 p-4 border-b" style="border-color: var(--border);">
+          <span class="text-amber-400 text-lg leading-none" aria-hidden="true">&#9888;</span>
+          <h2 id="logged-out-title" class="text-sm font-semibold">You have been logged out</h2>
+        </div>
+        <div class="p-4 space-y-3 text-[13px] leading-relaxed text-slate-300">
+          <p x-text="$store.app.loggedOut.reason_text"></p>
+          <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs text-slate-400">
+            <template x-if="$store.app.loggedOut.username">
+              <dt>Account</dt>
+            </template>
+            <template x-if="$store.app.loggedOut.username">
+              <dd class="text-slate-300" x-text="$store.app.loggedOut.username"></dd>
+            </template>
+            <template x-if="$store.app.loggedOut.ended_at">
+              <dt>Ended</dt>
+            </template>
+            <template x-if="$store.app.loggedOut.ended_at">
+              <dd class="text-slate-300" x-text="fmt.at($store.app.loggedOut.ended_at)"></dd>
+            </template>
+            <template x-if="$store.app.loggedOut.ended_by">
+              <dt>By</dt>
+            </template>
+            <template x-if="$store.app.loggedOut.ended_by">
+              <dd class="text-slate-300" x-text="$store.app.loggedOut.ended_by"></dd>
+            </template>
+            <template x-if="$store.app.lastPollTs">
+              <dt>Data shown is from</dt>
+            </template>
+            <template x-if="$store.app.lastPollTs">
+              <dd class="text-slate-300" x-text="fmt.at($store.app.lastPollTs)"></dd>
+            </template>
+          </dl>
+          <p class="text-xs text-slate-500">
+            The bridge and your battery schedules keep running. Only this page has lost access.
+            This logout is recorded in the bridge's audit log.
+          </p>
+        </div>
+        <div class="flex justify-end gap-2 px-4 py-3 border-t" style="border-color: var(--border);">
+          <button type="button" class="btn btn-sm btn-secondary"
+                  @click="$store.app.loggedOutDismissed = true">Stay on this page</button>
+          <button type="button" class="btn btn-sm btn-primary"
+                  @click="$store.app.goToLogin()">Log in</button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
