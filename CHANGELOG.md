@@ -27,6 +27,10 @@ lands, not backfilled later.
   - Migration 55.
 - **Break-glass admin recovery** (#52): `docker exec -it fwhbridge-app bridge
   recovery status | reset-admin-password`. See docs/admin-recovery.md.
+- **Setup wizard "Your login" step and self-service password change** (#54).
+  - The step flags guessable passwords such as the compose default admin/admin
+    and changes yours in place.
+  - `POST /api/auth/password` ends your other logins and keeps this one.
 - **docs/security.md**: roles, HTTP/HTTPS settings, how logins end, the audit
   trail, recovery, known gaps and a setup checklist.
 - **docs/point-history.md** (#47).

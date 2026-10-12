@@ -65,7 +65,7 @@ reason. If you reopen the bridge later, the login page shows the same reason.
 |---|---|
 | You logged out. | The Log out menu |
 | Your account was disabled / deleted by an administrator. | Settings → Admin → Users |
-| Your password was changed by an administrator. | An admin reset it, or break-glass recovery did (your own other logins end too) |
+| Your password was changed… | You changed it on another device, an admin reset it, or break-glass recovery did |
 | An administrator ended this login. | An admin revoked it (see §4) |
 | Your login expired after 14 days without use. | Cookie lifetime |
 | This browser stopped sending its login… | Cleared site data, private browsing ended, or the browser dropped the cookie |
@@ -118,14 +118,17 @@ These are not implemented yet, although the design (multi-user-and-pwa-design.md
 - **No limit on login attempts.** Failed logins are recorded, not throttled.
 - **No CSRF header check.** Cookie writes rely on `SameSite=Lax` only.
 - **No HSTS header** when served over TLS.
-- **No self-service password change.** Users ask an admin.
+- **Self-service password change has no Settings page yet.** It is in the
+  setup wizard's "Your login" step and at `POST /api/auth/password` (#54).
+  Otherwise an admin changes it under Settings → Admin → Users.
 - **No UI for sessions and the audit trail** (REST only).
 - **Audit rows have no retention limit.** They are small, but they grow.
 
 ## Setup checklist
 
 1. Set `ADMIN_PASSWORD` in `.env` before the first start, or change `admin` /
-   `admin` immediately after.
+   `admin` immediately after. The setup wizard's "Your login" step flags a
+   default password and changes it in place.
 2. Give each person their own account with the lowest role that works
    (viewer, then user, then admin).
 3. Keep the bridge off the internet; use TLS or Tailscale for remote access.
