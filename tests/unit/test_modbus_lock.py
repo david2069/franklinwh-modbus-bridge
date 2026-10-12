@@ -85,9 +85,10 @@ def slow_controller(access_log):
     ctrl.read_solar_status.side_effect = _make_slow_read(
         "poller:solar", {"total_solar": 3200}
     )
-    ctrl.read_control_status.side_effect = _make_slow_read(
-        "cmd:control_status", {"wset_enabled": 0}
-    )
+    # Like the aGate: WSetEna reads 1 after a send and 0 after a release (the
+    # handler now reads it back to decide whether a send took, PR #57 §5.1).
+    control = {"wset_enabled": 0}
+    ctrl.read_control_status.side_effect = _make_slow_read("cmd:control_status", control)
     ctrl.read_native_mode.side_effect = _make_slow_read(
         "poller:native", {"native_mode": 2}
     )
@@ -100,6 +101,7 @@ def slow_controller(access_log):
         access_log.append(("cmd:send_command", "enter", time.monotonic()))
         time.sleep(0.05)
         access_log.append(("cmd:send_command", "exit", time.monotonic()))
+        control["wset_enabled"] = 1
         return (True, "OK")
     ctrl.send_command.side_effect = _slow_send_command
 
@@ -107,6 +109,7 @@ def slow_controller(access_log):
         access_log.append(("cmd:reset", "enter", time.monotonic()))
         time.sleep(0.05)
         access_log.append(("cmd:reset", "exit", time.monotonic()))
+        control["wset_enabled"] = 0
         return True
     ctrl.reset_control_state.side_effect = _slow_reset
 

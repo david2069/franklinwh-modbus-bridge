@@ -40,6 +40,7 @@ from typing import Any
 
 import aiosqlite
 
+from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store.db import log_control_event, save_control_state
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,24 @@ class CommandState:
     last_success: bool = True
 
 
+@dataclass
+class DispatchResult:
+    """Outcome of the most recent battery command (design PR #57 §5.1).
+
+    ``ok`` is True only if the library accepted the write AND WSetEna read back
+    as 1. A failed send used to leave the command marked active and the
+    scheduler audited it "ok" (#56); callers now read this instead.
+    """
+
+    ok: bool
+    reason: str
+    action: str
+    requested_w: int
+    dispatch_id: str | None = None
+    hw: dict | None = None
+    ts: float = 0.0
+
+
 class CommandHandler:
     """Processes MQTT command messages and dispatches to the controller."""
 
@@ -139,10 +158,23 @@ class CommandHandler:
         # firmware); cleared by the next mode write that sticks. Lets the
         # scheduler skip a release-time mode write that is known to fail.
         self._mode_write_locked: bool = False
+        # Result of the latest battery command, and the dispatch_outcomes row of
+        # the command currently active (so a release or supersede can close it).
+        self._last_dispatch: DispatchResult | None = None
+        self._active_dispatch_id: str | None = None
+        self._requester: str = "manual"
 
     @property
     def state(self) -> CommandState:
         return self._state
+
+    @property
+    def last_dispatch(self) -> DispatchResult | None:
+        return self._last_dispatch
+
+    @property
+    def active_dispatch_id(self) -> str | None:
+        return self._active_dispatch_id
 
     @property
     def mode_write_locked(self) -> bool:
@@ -227,8 +259,10 @@ class CommandHandler:
 
     async def _log_event(
         self, event: str, action: str = "", power_w: int = 0, detail: str = "",
+        hw_state: dict | None = None,
     ) -> None:
-        hw_state = await self._read_hw_state()
+        if hw_state is None:
+            hw_state = await self._read_hw_state()
         try:
             await log_control_event(
                 self._db, event=event, action=action, power_w=power_w,
@@ -237,9 +271,12 @@ class CommandHandler:
         except Exception as exc:
             logger.warning("Failed to write control log: %s", exc)
 
-    async def handle_command(self, slug: str, payload: str) -> None:
+    async def handle_command(self, slug: str, payload: str, requester: str = "manual") -> None:
+        """Apply one command. ``requester`` (e.g. ``schedule:<entry id>``) is
+        recorded on the dispatch_outcomes row of a battery command."""
         payload = payload.strip()
         logger.info("Command received: %s = %s", slug, payload)
+        self._requester = requester or "manual"
 
         # Optimistic default; handlers that can fail flip this to False.
         self._state.last_success = True
@@ -377,6 +414,29 @@ class CommandHandler:
                 rvrt_s = self._state.watchdog_s if self._state.watchdog_s > 0 else 7200
                 await asyncio.to_thread(self._write_revert_timer, rvrt_s)
 
+        # Read the setpoint back. The library's own "verify" step only logs it
+        # (design P2), so an accepted write is not evidence WSetEna is 1.
+        hw = await self._read_hw_state()
+        if success and hw is not None and hw.get("wset_enabled") not in (None, 1):
+            success = False
+            msg = (f"setpoint not enabled after send "
+                   f"(WSetEna={hw.get('wset_enabled')}, WSetPct={hw.get('wset_pct')})")
+
+        if not success:
+            await self._dispatch_failed(display_action, watts, msg, hw, prev_active)
+            return
+
+        if self._active_dispatch_id:
+            await dispatch_outcomes.update(
+                self._db, self._active_dispatch_id,
+                "superseded", reason=f"replaced by {display_action} {abs(watts)}W")
+        self._active_dispatch_id = await dispatch_outcomes.create(
+            self._db, gateway_id=self._gateway_id, requester=self._requester,
+            action=display_action, requested_w=watts, state="sent", reason=msg)
+        self._last_dispatch = DispatchResult(
+            ok=True, reason=msg, action=display_action, requested_w=watts,
+            dispatch_id=self._active_dispatch_id, hw=hw, ts=time.time())
+
         self._state.active = True
         self._state.action = display_action
         self._state.power_w = abs(watts)
@@ -411,13 +471,51 @@ class CommandHandler:
             limits.append(f"target SoC {self._target_soc}%")
         await self._log_event(
             "command_sent", action=display_action, power_w=abs(watts),
-            detail=f"{msg} [{', '.join(limits)}]",
+            detail=f"{msg} [{', '.join(limits)}]", hw_state=hw,
         )
 
         if self._on_state_changed:
             await self._on_state_changed()
 
         logger.info("Battery command: %s %dW — %s", display_action, abs(watts), msg)
+
+    async def _dispatch_failed(
+        self, display_action: str, watts: int, msg: str, hw: dict | None, prev_active: bool,
+    ) -> None:
+        """A battery command that did not take: record it as failed, not active.
+
+        The library's send starts with WSetEna=0 (design P1), so a failure
+        partway can also have stopped a previously running command. The state
+        follows what the gateway reports, not what was asked for.
+        """
+        still_enabled = bool(hw and hw.get("wset_enabled") == 1)
+        if prev_active and not still_enabled:
+            self._cancel_watchdog()
+        self._state.active = bool(prev_active and still_enabled)
+        if not self._state.active:
+            self._state.action = ""
+            self._state.power_w = 0
+            if self._active_dispatch_id:
+                await dispatch_outcomes.update(
+                    self._db, self._active_dispatch_id, "superseded",
+                    reason=f"stopped by a failed {display_action} send")
+                self._active_dispatch_id = None
+        self._state.last_result = _strip_speculation(msg)
+        self._state.last_success = False
+        did = await dispatch_outcomes.create(
+            self._db, gateway_id=self._gateway_id, requester=self._requester,
+            action=display_action, requested_w=watts, state="failed", reason=msg)
+        self._last_dispatch = DispatchResult(
+            ok=False, reason=msg, action=display_action, requested_w=watts,
+            dispatch_id=did, hw=hw, ts=time.time())
+        await self._persist_state()
+        await self._log_event(
+            "command_failed", action=display_action, power_w=abs(watts),
+            detail=msg, hw_state=hw,
+        )
+        if self._on_state_changed:
+            await self._on_state_changed()
+        logger.warning("Battery command FAILED: %s %dW — %s", display_action, abs(watts), msg)
 
     async def _release_command(self, reason: str = "release") -> None:
         was_active = self._state.active
@@ -441,11 +539,28 @@ class CommandHandler:
         async with self._modbus_lock:
             success = await asyncio.to_thread(self._full_release, fast)
 
+        # Read back: a release is only done when WSetEna is 0 (design §5.1.5).
+        hw = await self._read_hw_state()
+        unverified = bool(success and hw is not None and hw.get("wset_enabled") == 1)
+        if unverified:
+            success = False
+            logger.warning(
+                "Battery release NOT verified: WSetEna still 1 after release (reason=%s)", reason)
+
         self._state.active = False
         self._state.action = ""
         self._state.power_w = 0
-        self._state.last_result = "Released" if success else "Release failed"
+        self._state.last_result = (
+            "Release not verified (WSetEna still 1)" if unverified
+            else "Released" if success else "Release failed"
+        )
         self._state.last_success = success
+        if self._active_dispatch_id:
+            await dispatch_outcomes.update(
+                self._db, self._active_dispatch_id,
+                "released" if success else "release_unverified",
+                reason=f"reason={reason}; {self._state.last_result}")
+            self._active_dispatch_id = None
 
         # Clear target SoC so it doesn't poison the next command.
         # Without this, a target set for Charge (e.g. 75%) would cause
@@ -459,6 +574,7 @@ class CommandHandler:
             action=prev_action,
             power_w=prev_power,
             detail=f"reason={reason}, was_active={was_active}, result={self._state.last_result}",
+            hw_state=hw,
         )
 
         if self._on_state_changed:
