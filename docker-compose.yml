@@ -9,8 +9,9 @@ services:
     volumes:
       - app-data:/data
       - /etc/localtime:/etc/localtime:ro
-      # Dev: mount src for hot-reload (comment out for production)
-      - ./src:/app/src
+      # No source mount: the container runs the code baked into its image, so
+      # saving a file can't restart a bridge that controls a real battery.
+      # Hot-reload development: docker-compose.dev.yml (see that file).
       # Dev: uncomment to live-mount the adjacent franklinwh-modbus library
       # - ../../../modbus/src/franklinwh_modbus:/usr/local/lib/python3.12/site-packages/franklinwh_modbus
     env_file:
@@ -19,7 +20,6 @@ services:
     command: >-
       uvicorn franklinwh_bridge.main:app
       --host 0.0.0.0 --port 8099 --workers 1
-      --reload --reload-dir /app/src
     environment:
       - APP_ENV=${APP_ENV:-docker}
       - DATA_DIR=/data
