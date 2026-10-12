@@ -52,7 +52,7 @@ function dashboardTab() {
   const EVENT_SOURCE_LABELS = {
     'M701_Alrm':     'M701 System Alarm',
     'M714_PrtAlrms': 'M714 DC Port Alarm',
-    'M713_Sta':      'M713 Battery State',
+    'M713_Sta':      'M713 Battery Health',
     'M701_DERMode':  'M701 Grid Mode',
   };
 

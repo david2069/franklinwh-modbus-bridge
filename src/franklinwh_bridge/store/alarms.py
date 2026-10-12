@@ -14,6 +14,8 @@ from typing import Any
 
 import aiosqlite
 
+from franklinwh_bridge.modbus.sunspec_enums import m713_sta_label, m713_sta_severity
+
 logger = logging.getLogger(__name__)
 
 # ── Bit-name tables ────────────────────────────────────────────────────────
@@ -58,17 +60,25 @@ _M714_ALRM_BITS: dict[int, str] = {
     7: "PortGroundFault",
 }
 
-# Model 713 Sta — battery operational state (enum, not bitfield)
-_M713_STA_NAMES: dict[int, str] = {
-    0: "Idle",
-    1: "Charging",
-    2: "Discharging",
-    3: "Holding",
-    4: "Full",
-    5: "Empty",
-    6: "FAULT",
-    7: "Sleep",
+# Model 713 Sta is a health enum (OK/Warning/Error) — see
+# modbus/sunspec_enums.py. Rows written before that fix stored labels from a
+# guessed activity enum; they are re-labelled on read from value_raw.
+_M713_OLD_NAMES: dict[str, int] = {
+    "Idle": 0, "Charging": 1, "Discharging": 2, "Holding": 3,
+    "Full": 4, "Empty": 5, "FAULT": 6, "Sleep": 7,
 }
+
+
+def _m713_relabel(name: str | None) -> str | None:
+    """Map a stored M713_Sta label (old or new) to the health label."""
+    if not name:
+        return name
+    if name in _M713_OLD_NAMES:
+        return m713_sta_label(_M713_OLD_NAMES[name])
+    if name.startswith("State") and name[5:].lstrip("-").isdigit():
+        return m713_sta_label(int(name[5:]))
+    return name
+
 
 # Severity rules per source — same semantic choice as before (ground fault,
 # cabinet open, manual shutdown, blown fuse are fault-worthy; everything else
@@ -261,11 +271,11 @@ class AlarmTracker:
             if sta_raw != prev_sta:
                 prev_gw["M713_Sta"] = sta_raw
                 if prev_sta != -1:
-                    prev_name = _M713_STA_NAMES.get(prev_sta, f"State{prev_sta}")
-                    curr_name = _M713_STA_NAMES.get(sta_raw, f"State{sta_raw}")
-                    severity = "fault" if sta_raw == 6 else "info"
+                    prev_name = m713_sta_label(prev_sta)
+                    curr_name = m713_sta_label(sta_raw)
+                    severity = m713_sta_severity(sta_raw)
                     detail = f"{prev_name} → {curr_name}"
-                    logger.info("Battery state change [%s]: %s", gateway_id, detail)
+                    logger.info("Battery health change [%s]: %s", gateway_id, detail)
                     try:
                         await self._db.execute(
                             "INSERT INTO alarm_events "
@@ -296,7 +306,7 @@ async def query_alarm_events(
         (start_ts, end_ts) + gw_params,
     ) as cur:
         async for row in cur:
-            events.append({
+            ev = {
                 "ts": row[0],
                 "gateway_id": row[1],
                 "source": row[2],
@@ -304,7 +314,17 @@ async def query_alarm_events(
                 "alarms_set": row[4],
                 "alarms_cleared": row[5],
                 "severity": row[6],
-            })
+            }
+            if ev["source"] == "M713_Sta":
+                # Older rows carry the wrong activity-enum labels.
+                ev["alarms_set"] = (
+                    m713_sta_label(ev["value_raw"]) if ev["value_raw"] is not None
+                    else _m713_relabel(ev["alarms_set"])
+                )
+                ev["alarms_cleared"] = _m713_relabel(ev["alarms_cleared"])
+                if ev["value_raw"] is not None:
+                    ev["severity"] = m713_sta_severity(ev["value_raw"])
+            events.append(ev)
     return events
 
 

@@ -118,13 +118,15 @@ M714.DCW power direction with ±50W deadband (controller.py:464-471). This is
 the correct way to get charge/discharge/idle state — there is no SunSpec
 Model 713 point that provides it directly.
 
-**Separate, still-open issue:** the *bridge's* `alarms.py` module has its own
-`_M713_STA_NAMES` table that maps Sta's raw value against an 8-value guessed
-activity enum (Idle/Charging/Discharging/Holding/Full/Empty/FAULT/Sleep) —
-this models a different, incorrect concept than what Sta actually is (see
-Issue 12c). It should be replaced with the real 3-value OK/WARNING/ERROR
-enum, or dropped from alarm tracking entirely if health status alone isn't
-alarm-worthy.
+**Bridge decoding — fixed in code 2026-10-12 (not hardware-confirmed for
+Warning/Error).** The bridge decoded Sta two ways, both wrong: the poller's
+`battery_health` used ERROR = 3 (a real 2 showed "Unknown (2)"), and
+`alarms.py` used an 8-value guessed activity enum (Idle/Charging/…/FAULT/Sleep).
+Both now use `modbus/sunspec_enums.py`: 0 OK, 1 Warning, 2 Error, anything else
+"Unknown (n)". Alarm rows written before the fix are re-labelled on read from
+`value_raw`, so the 2026-07-05 pair now reads OK → Unknown (400) → OK. On the
+reference site only 0 (OK) has been observed live; the Warning and Error paths
+are tested in code only. Reported by fwh-modbus 2026-10-12.
 
 ---
 
