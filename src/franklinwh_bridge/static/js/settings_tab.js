@@ -30,6 +30,10 @@ function settingsTab() {
     phPoints: [],
     phStorage: null,
     phSaving: false,
+    // JSON of the config as last loaded or saved, so the card can say when the
+    // form holds edits the server hasn't got. The switch used to be form state
+    // only, so turning it on and leaving the page silently discarded it.
+    phSaved: null,
     republishing: false,
     unpublishing: false,
     showTopics: false,
@@ -1320,6 +1324,7 @@ function settingsTab() {
       ]);
       if (cfg && !cfg.error) {
         this.ph = cfg.config;
+        this.phSaved = JSON.stringify(cfg.config);
         this.phPoints = cfg.available_points || [];
       }
       if (storage && !storage.error) this.phStorage = storage;
@@ -1348,6 +1353,19 @@ function settingsTab() {
       if (mb < 1) return `${Math.round(n / 1024)} KB`;
       if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
       return `${(mb / 1024).toFixed(2)} GB`;
+    },
+
+    /** True while the form differs from what the server last confirmed. */
+    get phDirty() {
+      return !!this.ph && this.phSaved !== null
+        && JSON.stringify(this.ph) !== this.phSaved;
+    },
+
+    /** The switch saves at once: it reads as an on/off control, and nobody
+     *  expects one of those to need a separate Save further down the card. */
+    async phToggleEnabled() {
+      if (this.phSaving) return;
+      await this.savePointHistory();
     },
 
     phTogglePoint(key) {
