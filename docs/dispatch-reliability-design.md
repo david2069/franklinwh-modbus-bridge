@@ -469,3 +469,35 @@ from the Open Home Foundation (home-assistant-libs):
 4. **Not recommended:** the bridge switching transports on its own (§11.4).
 5. **Independent of all this,** Phase 1 (truthful dispatch) proceeds on the
    current library, because it is needed whatever the transport.
+
+### 11.6 Roadmap option (owner, 2026-10-12): Bridge 2.0 on FranklinWH Modbus API 2.0
+
+The owner's roadmap direction is not a retrofit but a parallel line:
+- **Bridge 2.0:** a fork of this bridge;
+- **FranklinWH Modbus API 2.0:** a fork of franklinwh-modbus, built on
+  modbus-connection;
+- 2.0 consumes the API 2.0; Bridge 1.x stays on the current library.
+
+Points to settle when it starts (none is decided here):
+
+- **Bridge 1.x stays the production line** until 2.0 passes the same proof as
+  this design (§6, §7): the baseline comparison, emulator fault injection,
+  T1–T7, and live acceptance. Fixes in this design (Phases 0b–2) land in 1.x.
+  2.0 inherits the requirements, not necessarily the code.
+- **One client per aGate still applies.** 1.x and 2.0 must not poll the same
+  aGate at the same time outside coordinated windows. Develop 2.0 against the
+  emulator, or a second aGate, or run it with 1.x's poller paused.
+- **Carry over the semantics, not just the transport:**
+  - the dispatch states and verification (§5.1);
+  - the M704 sequence and pacing, with E6's finding on re-sends;
+  - the watchdog and orphan release;
+  - the documented FranklinWH quirks;
+  - the V1.2 enum basis (#51, #55);
+  - the measurement schema (§5.4), so 1.x and 2.0 are compared on the same
+    numbers.
+- **Coexistence with Home Assistant.** 2.0 must not collide with 1.x on MQTT
+  topics, entity `unique_id`s or command topics (see the namespace-collision
+  risk). It needs a distinct prefix or an explicit migration path for existing
+  HA entities and the database.
+- **Alignment.** The Local Bridge also uses franklinwh-modbus. Whether it
+  follows API 2.0 is part of the same roadmap decision.
