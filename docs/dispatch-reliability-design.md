@@ -503,6 +503,26 @@ Points to settle when it starts (none is decided here):
   (API 1.0). The **Local Bridge (Direct Connect)** and the **Energipays
   Bridge** will also use FranklinWH Modbus API 2.0, as forked new versions.
   API 2.0 is the shared Modbus layer for all three bridges' 2.0 lines.
-  - **Consequence:** the 2.0 bridges sharing one aGate still need a single
-    owning process or proxy (§11.4, §9.3). API 2.0 serialises requests only
-    within one process.
+  - **Single owner, decided by the owner, 2026-10-12: Modbus Bridge 2.0 is the
+    gateway.** It is the only process holding a Modbus connection to each
+    aGate. Local Bridge 2.0, Energipays 2.0 and any other consumer reach the
+    aGate's Modbus data and control **through Modbus Bridge 2.0**, never by
+    opening :502 themselves. This closes the multi-client gap: API 2.0
+    serialises requests only within one process.
+  - **Existing hook:** the Local Bridge container already has a
+    `MODBUS_BRIDGE_URL` setting (empty on 2026-10-12), which suggests it was
+    built to consume this bridge.
+  - **To design when 2.0 starts (open; not decided here):**
+    - **The interface other bridges use.** REST, which this bridge already
+      treats as canonical; and/or MQTT; and/or a Modbus TCP proxy endpoint
+      for unmodified clients.
+    - **Command arbitration and priority** between consumers, e.g. a schedule
+      dispatch versus another bridge's command. One dispatch state model
+      (§5.1), so every consumer sees the same verified, failed or
+      not-effective result.
+    - **Read fan-out:** consumers share the owner's poll rather than causing
+      extra aGate reads, with a staleness or age field on every value (§5.2).
+    - **Authentication** between the bridges, and an audit trail of which
+      consumer sent which command.
+    - **Availability.** If Bridge 2.0 is down, the consumers have no Modbus
+      access. Decide whether that is acceptable or needs a fallback.
