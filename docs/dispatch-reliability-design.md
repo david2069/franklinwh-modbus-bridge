@@ -499,5 +499,10 @@ Points to settle when it starts (none is decided here):
   topics, entity `unique_id`s or command topics (see the namespace-collision
   risk). It needs a distinct prefix or an explicit migration path for existing
   HA entities and the database.
-- **Alignment.** The Local Bridge also uses franklinwh-modbus. Whether it
-  follows API 2.0 is part of the same roadmap decision.
+- **Alignment: decided by the owner, 2026-10-12,** and told to fwh-modbus
+  (API 1.0). The **Local Bridge (Direct Connect)** and the **Energipays
+  Bridge** will also use FranklinWH Modbus API 2.0, as forked new versions.
+  API 2.0 is the shared Modbus layer for all three bridges' 2.0 lines.
+  - **Consequence:** the 2.0 bridges sharing one aGate still need a single
+    owning process or proxy (§11.4, §9.3). API 2.0 serialises requests only
+    within one process.
