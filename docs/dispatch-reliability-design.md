@@ -182,6 +182,57 @@ diagnostics page can show other recent connections where they are visible, and
 link timeout spikes to them. Whether the Local Bridge, or anything else, should
 use Modbus on the reference aGate is an owner decision (§9).
 
+### 5.4 Measurement (Phase 0b, ships before any fix)
+
+**Why first:**
+- **A baseline.** A6 ("timeouts fall to the baseline") needs today's rates
+  recorded *before* anything changes; once a fix ships, the "before" is gone.
+- **The tools today aren't good enough.** On 2026-10-12 the picture had to be
+  rebuilt by hand from logs and socket sampling, and parts of it were wrong:
+  - library lines carry no timestamp;
+  - Docker timestamps are UTC;
+  - a recreated container loses its history;
+  - sampling every 2 s misses short connections.
+- **No risk.** It is read-only instrumentation; it never touches dispatch.
+
+**Always on**, per gateway, rolled up per hour, kept 90 days, in a new
+`link_stats` table:
+
+| Area | Metrics |
+|---|---|
+| Requests | Count, ok, timeout and error, per kind: model read, vendor-register read, write. Exceptions classified by type and text, which answers U9. |
+| Latency | p50, p95 and max per hour, per kind |
+| Connections | Opened per path (library per-call, vendor client, health probe); reconnects; failed reconnects; rescans and rescan duration |
+| Freshness | Consecutive failures; age of the newest good reading; polls served from the cache instead of live (C8) |
+
+Plus a **`dispatch_outcomes` table**, one row per dispatch:
+- entry id;
+- requested and sent times;
+- final state (`verified` / `failed` / `not_effective` / `reasserted`);
+- time to verify, retries and re-asserts;
+- commanded vs actual power, and later the energy exported in the window.
+
+A daily summary must show **zero silent misses**.
+
+**How it is collected without waiting for the library:**
+- the bridge times and wraps each library call it makes;
+- a logging handler on the `franklinwh_modbus` logger counts library-internal
+  events ("Connection issue … reconnecting", "Reconnection failed");
+- a `pysunspec2` connect counter, if the per-call count is needed exactly.
+
+Exact rescan timing comes later from library hooks (§9.5).
+
+**Optional, off by default:** a per-request trace (time, kind, latency and
+result for every request), switched on for experiments E0–E7 and then off.
+It is too noisy to keep.
+
+**Exposed:**
+- REST `GET /api/gateways/{id}/link-stats` and `GET /api/dispatch-outcomes`,
+  REST first;
+- a "Link health" panel on the gateway diagnostics page;
+- optional HA diagnostic sensors: timeouts per hour, minutes since the last good
+  poll, and the last dispatch's outcome.
+
 ## 6. Proof: test rig and plan
 
 Nothing in §5 counts as done until it passes these, in order.
@@ -253,19 +304,22 @@ This is another repository; the owner decides who builds it.
 | A3 | Not-effective is detected within T_verify + 15 s |
 | A4 | A lost command in an open window is re-asserted within one tick (15 s) |
 | A5 | Stale values are never published as live (#25) |
-| A6 | Phase 2: the timeout rate falls to within the E3 baseline (number set from E3) |
+| A6 | Phase 2: the timeout rate (from `link_stats`) falls to within the E3 baseline. The number is set from E3 and the Phase 0b baseline. |
+| A8 | Phase 0b: at least 7 days of `link_stats` baseline recorded before Phase 1 or 2 ships, and `dispatch_outcomes` recording every dispatch |
 | A7 | T1–T7 pass in CI against the emulator; §6.4 passes live |
 
 ## 8. Phasing
 
 1. **Phase 0 (this document):** review, decisions (§9), E0–E7, and emulator
    fault injection.
-2. **Phase 1, dispatch verification (§5.1):** fixes #26 and #56, and the alert
+2. **Phase 0b, measurement (§5.4):** ships first, then collect at least a 7-day
+   baseline. It runs alongside Phase 0.
+3. **Phase 1, dispatch verification (§5.1):** fixes #26 and #56, and the alert
    half of #25. It doesn't wait for (B).
-3. **Phase 2, connection (§5.2):** fixes the cause side of #25, and (B) once
+4. **Phase 2, connection (§5.2):** fixes the cause side of #25, and (B) once
    E1–E5 say what is right. It includes the library changes (cheap reconnect,
    raw-register hook) and a franklinwh-modbus release.
-4. **Phase 3:** UI for commanded vs actual, and diagnostics counters (A6).
+5. **Phase 3:** UI for commanded vs actual.
 
 **Interim, until Phase 1 ships:** nothing in the bridge protects a dispatch. The
 owner can watch the 18:00 notification and the battery power, and re-send by
