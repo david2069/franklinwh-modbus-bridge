@@ -143,8 +143,22 @@ requested → sent ──(read-back ok and battery moving)──→ verified
     need a library hook to read raw registers through the sunspec2 client.
   - Health comes from the session's own success and failure history, not a
     separate TCP probe (C1).
-- **Not a pool.** More connections is the wrong direction for a device whose
-  connection limits are unknown (U1).
+- **Multi-gateway: one connection per aGate, managed per gateway.** A
+  per-gateway connection manager, keyed by gateway in the existing registry,
+  gives each aGate exactly one owned connection. It never pools several
+  connections to the *same* aGate. That is the wrong direction for a device
+  whose connection limits are unknown (U1).
+- **Precedent, verified in source:** Home Assistant's own Modbus integration,
+  `homeassistant/components/modbus/modbus.py` `ModbusHub` (HA 2026.3.1, read
+  in the `fwhhai-homeassistant` container), does the same:
+  - one pymodbus client per hub, opened once;
+  - every call serialised through one `asyncio.Lock`;
+  - a failed call is logged and returns `None` without tearing the connection
+    down;
+  - connect retries after a fixed delay;
+  - no model rescan.
+
+  Today the bridge does the opposite on each point (C1–C3).
 - **Cheap reconnect.** Reconnect re-opens the socket and reuses the scanned
   model layout. A full rescan only on start-up, or when the layout check fails
   (C3, U3). This is a library change; it needs coordinating with fwh-modbus.
