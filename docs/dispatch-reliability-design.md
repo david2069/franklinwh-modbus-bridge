@@ -1,6 +1,6 @@
 # Dispatch reliability and the Modbus connection: design
 
-**Status:** DRAFT for owner review (2026-10-12). No code until this is
+**Status:** DRAFT for owner review (2026-10-12). Library facts fact-checked by fwh-modbus 2026-10-12: P1–P3 and C3 confirmed with additions, P9 updated, C1 corrected (per-call TCP, verified in the deployed pysunspec2 1.3.6). No code until this is
 approved, the aGate measurements in §6.1 have run, and the test rig in §6.2
 exists.
 **Issues:** #25, #26, #56.
@@ -33,26 +33,26 @@ franklinwh-modbus **v0.9.5**, the version deployed.
 
 | # | Fact | Evidence |
 |---|---|---|
-| P1 | A send is three separate write steps: **stop** (WSetEna=0), **configure** (WSetMod=0, WSetPct), **enable** (WSetEna=1), with 0.3–0.5 s sleeps. If it fails after step 1, the battery is left **stopped**. | library `controller.py` `send_command._do_send` (v0.9.5) |
+| P1 | A send is three separate write steps: **stop** (WSetEna=0), **configure** (WSetMod=0, WSetPct), **enable** (WSetEna=1), with 0.3–0.5 s sleeps, then a read-back. Each `write()` writes only the points changed since the last one. A retry re-runs from step 1, so it **repeats WSetEna=0**. If it fails after step 1, the battery is left **stopped**. | library `controller.py` `send_command._do_send` (v0.9.5); fwh-modbus fact-check 2026-10-12 |
 | P2 | The library's "VERIFY" step reads the registers back but **does not check them**. It returns `True` whatever WSetEna reads. | same; step 4 only logs |
-| P3 | A failed send is retried once, after a reconnect (`_with_retry`, max 2 attempts). The reconnect itself can fail. | library `_with_retry` |
+| P3 | A failed send is retried once, after a reconnect (`_with_retry`, max 2 attempts). The reconnect itself can fail, and then `send_command` returns `(False, msg)`. **Any** exception whose text contains "socket", "timeout", "connection" or **"modbus"** counts as a connection failure. That includes the device's own Modbus *exception replies*, so those also trigger a reconnect and full rescan. | library `_with_retry`; fwh-modbus fact-check |
 | P4 | The bridge sets the command **active** (action, power, started_at) **whether or not the send succeeded**. | `publish/command_handler.py`, the send path after `send_command` |
 | P5 | The scheduler audits **"ok — dispatched"** and records ownership of the window **unconditionally**. While it owns the window it does not re-dispatch. | `gateway/scheduler.py` dispatch → `_audit(..., "ok", "dispatched …")`, `self._owned[tkey]` |
 | P6 | Catch-up runs only after a declared connectivity **outage** (no successful poll for more than 60 s). A single failed write isn't one. | `scheduler.catchup()` |
 | P7 | Correct registers don't guarantee the battery moves: #26 had WSetEna 1 and WSetPct 100 with `battery_w` 0 for 38 min. A re-send then worked at once. | #26 (control_log, metrics) |
 | P8 | Every 18:00 dispatch from 09-29 to 10-11 recorded WSetEna 1. 10-12 is the only one with WSetEna 0. | `control_log` |
-| P9 | franklinwh-modbus `develop` (2774bb2, unreleased) adds `verify_dispatch()`: it reads back WSetEna/WSetPct **and** 714.DCW, with a tolerance and a ramp timeout. Its own commit says "hardware verification deferred". | library git |
+| P9 | franklinwh-modbus `develop` adds `verify_dispatch()` (2774bb2): it reads back WSetEna/WSetPct **and** 714.DCW, with a tolerance and a ramp timeout. **Hardware-tested** on the reference aGate, 2026-10-09 16:05–16:10:<br>• −1500 W discharge: full output from +2.1 s, verified on 86 of 87 samples.<br>• +1500 W charge at 99% SoC: the device gave 0 W, and verify_dispatch reported "battery not responding" on every sample.<br>• Every release read back as 0.<br>Still **unreleased** (develop only; 0.9.5 lacks it). | library git; `tests/results/2026-10-09_pr23_live.md`; fwh-modbus fact-check |
 
 ### 2.2 The Modbus connection (snapshots and logs, 2026-10-12)
 
 | # | Fact | Evidence |
 |---|---|---|
-| C1 | The bridge holds **two** Modbus connections to the aGate: the library's sunspec2 client, and a separate pymodbus client for vendor registers (15000–15039, 15510–15513, 16000–16002). It also opens a TCP probe **every 60 s** (5 s timeout). | `modbus/poller.py` `_get_vreg_client`; `gateway/health.py` |
+| C1 | **The library's connection is not persistent.** After `scan()`, pysunspec2 holds no socket: each `read()`/`write()` opens a TCP connection and closes it when done (`ModbusClientTCP.read`: `local_connect` → `disconnect()`). One `send_command` is therefore about 7 TCP opens, and every 10 s poll opens one per model read. **The only long-lived connection** is the bridge's own pymodbus client for vendor registers (15000–15039, 15510–15513, 16000–16002). The bridge also opens a TCP probe **every 60 s** (5 s timeout). | pysunspec2 1.3.6 `modbus.py` (deployed, verified); `modbus/poller.py` `_get_vreg_client`; `gateway/health.py`; fwh-modbus fact-check |
 | C2 | The vendor-register client is **closed on any exception** and re-created on the next poll (every 10 s). | `poller._read_vendor_registers` → `_close_vreg_client()` |
-| C3 | Every library reconnect discards the client, sleeps 1 s and **rescans all models** (17 on this aGate) before the operation is retried. | library `reconnect()` |
+| C3 | Every library reconnect discards the client, sleeps 1 s and **rescans all models** (17 on this aGate) before the operation is retried. It calls `scan()` **without** the base address `connect()` uses, and the scan closes its socket at the end. | library `reconnect()`; fwh-modbus fact-check |
 | C4 | `Connection issue (Response timeout) … reconnecting` appears **1,249–2,289 times a day** (10-09 to 10-12), rising to 130–170/h on 10-12. | container logs |
 | C5 | In the hour to about 19:40 on 10-12: **18** `Reconnection failed`. | container logs |
-| C6 | In a 60 s sample: the bridge had **at least 11** distinct connections to 192.168.0.110:502, with at most 2 open at once. The Local Bridge (`franklinwh-direct-connect-bridge`) had **at least 9**, also at most 2. Sampling every 2 s misses short ones. | `/proc/net/tcp` in each container's network namespace |
+| C6 | In a 60 s sample: the bridge had **at least 11** distinct connections to 192.168.0.110:502, with at most 2 open at once. This is consistent with C1's per-call connections, not with reconnects alone. The Local Bridge (`franklinwh-direct-connect-bridge`) had **at least 9**, also at most 2. Sampling every 2 s misses short ones. | `/proc/net/tcp` in each container's network namespace |
 | C7 | The Local Bridge is a Modbus client of this aGate: it has ESTABLISHED and TIME_WAIT sockets to :502, and its log shows repeated `franklinwh_modbus.controller: Connection failed: Response timeout`. | the same, plus its container log |
 | C8 | When reads fail, values from the cached model are still published as current ("Derived 4 battery key(s) from M713 model cache"). | #25; `poller` |
 
@@ -67,8 +67,9 @@ Each unknown has the experiment that answers it (§6.1).
 | U3 | The cost of a full model scan, and whether frequent reconnects or scans themselves cause timeouts | Decides whether to reconnect without rescanning | E4 |
 | U4 | Whether the 10-12 timeout was caused by contention, churn or the device | Root cause of (B) | E1–E5 together |
 | U5 | Whether re-sending the 3-step sequence during an active discharge interrupts output (P1) | Decides the retry and re-assert write strategy | E6 |
-| U6 | How long after a correct setpoint the battery reaches the commanded power (ramp) | Sets the verification delay and tolerance | E7 |
-| U7 | Why the aGate ignored a correct setpoint in #26 (mode TOU at the time?) | Whether re-send is the right remedy, or a mode change is needed first | E7, plus a review of #26 |
+| U6 | How long after a correct setpoint the battery reaches the commanded power (ramp). **Partly answered:** a −1500 W discharge reached full output within 2.1 s (the sampling interval) on 2026-10-09. Charge, other powers and TOU mode are not measured. | Sets the verification delay and tolerance | E7 (remaining cases) |
+| U7 | Why the aGate ignored a correct setpoint in #26 (mode TOU at the time?). One related data point: on 2026-10-09 a charge at 99% SoC was accepted with 0 W delivered. That doesn't establish #26's cause (a discharge, in TOU). | Whether re-send is the right remedy, or a mode change is needed first | E7, plus a review of #26 |
+| U9 | Whether Modbus *exception replies* that trigger reconnect and rescan (P3) account for part of C4's reconnect rate. **Hypothesis**, from fwh-modbus. | If so, a cheap fix: don't treat device exception replies as dead links | Classify logged exceptions (Phase 0b metrics) |
 | U8 | Whether the Energipays containers touch the aGate (TIME_WAIT entries seen, but no Modbus in their logs) | Contention inventory | E0 |
 
 ## 4. Goals
@@ -136,8 +137,12 @@ requested → sent ──(read-back ok and battery moving)──→ verified
 
 **Direction** (to be confirmed by E1–E4):
 
-- **One connection per aGate, one owner.** A single session object owns the TCP
-  connection, and every read, write and health check goes through its queue
+- **One connection per aGate, one owner, actually kept open.** Today nothing is
+  persistent (C1): pysunspec2 connects per call. Keeping one socket open means
+  connecting `dev.client` once and keeping it (the library already reaches it
+  as `self.dev.client` for its extension-register paths, and the client has
+  `read(addr, count)`). This is a library change. A single session object owns
+  the TCP connection, and every read, write and health check goes through its queue
   (the existing `modbus_lock`, extended to all users).
   - The vendor-register reads move onto the same connection (C1, C2). That may
     need a library hook to read raw registers through the sunspec2 client.
