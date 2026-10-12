@@ -1,6 +1,6 @@
 # Dispatch reliability and the Modbus connection: design
 
-**Status:** DRAFT for owner review (2026-10-12). Library facts fact-checked by fwh-modbus 2026-10-12: P1–P3 and C3 confirmed with additions, P9 updated, C1 corrected (per-call TCP, verified in the deployed pysunspec2 1.3.6). No code until this is
+**Status:** APPROVED by the owner 2026-10-12 (20:40). Phase 0b and Phase 1 started the same evening. Library facts fact-checked by fwh-modbus 2026-10-12: P1–P3 and C3 confirmed with additions, P9 updated, C1 corrected (per-call TCP, verified in the deployed pysunspec2 1.3.6). No code until this is
 approved, the aGate measurements in §6.1 have run, and the test rig in §6.2
 exists.
 **Issues:** #25, #26, #56.
