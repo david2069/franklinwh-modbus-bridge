@@ -126,7 +126,14 @@ Both now use `modbus/sunspec_enums.py`: 0 OK, 1 Warning, 2 Error, anything else
 "Unknown (n)". Alarm rows written before the fix are re-labelled on read from
 `value_raw`, so the 2026-07-05 pair now reads OK → Unknown (400) → OK. On the
 reference site only 0 (OK) has been observed live; the Warning and Error paths
-are tested in code only. Reported by fwh-modbus 2026-10-12.
+are tested in code only. Reported by fwh-modbus 2026-10-12. Full record
+(timeline, cause, impact): issue #55.
+
+**The `State400` reading (2026-07-05 01:29:05–19, one event, cause
+unconfirmed):** in the same poll M701.Alrm read 0x0190_0000, whose high word is
+the same 0x0190 (= 400) as Sta, and grid_mode briefly fell back to its default.
+All three cleared together 14 s later. The same word in two unrelated registers
+suggests a misaligned or corrupted read rather than a real device state.
 
 ---
 
