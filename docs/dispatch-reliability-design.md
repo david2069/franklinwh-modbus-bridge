@@ -365,3 +365,107 @@ hand.
   Phase 2 reduces baseline traffic.
 - **The cause of (B) may stay unknown.** Phase 1 still prevents silent loss,
   which is why it goes first.
+
+## 11. Future recommendation: modbus-connection as the transport (OUT OF CURRENT SCOPE)
+
+> **Not part of this design's scope or phasing.** This section records an
+> evaluation requested by the owner on 2026-10-12, so the reasoning is
+> available when the decision comes up. Nothing in Phases 0–3 depends on it,
+> and nothing here is scheduled.
+
+### 11.1 What it is
+
+[modbus-connection](https://github.com/home-assistant-libs/modbus-connection),
+from the Open Home Foundation (home-assistant-libs):
+- Apache-2.0; async only; Python ≥ 3.12.
+- Backends: pymodbus ≥ 3.11 or tmodbus.
+- Evaluated by balloob against about 60 Python Modbus libraries
+  ([gist](https://gist.github.com/balloob/b9fa91ba1a0914a9787f8f6ceb637b83),
+  2026-07-02). That gist rates franklinwh-modbus "Friction": it auto-reconnects,
+  sleeps between writes, and has a watchdog and read-back verify. It treats the
+  watchdog and verify as the owner's job, not gaps.
+- **Checked 2026-10-12 (PyPI):**
+  - latest 4.12.4;
+  - 41 releases since 1.0.0 on 2026-06-24;
+  - major versions 1–4 in about 3.5 months.
+- **Bridge runtime:** Python 3.12.15 and pymodbus 3.13.1 in the container, so
+  the requirements are met. `pyproject.toml` declares ≥ 3.11 and would need
+  raising.
+- **Features, per its README and docs** (summarised by fwh-modbus; not
+  independently tested here):
+  - one owner-held connection; requests serialised so frames never interleave;
+  - `for_unit()` handles that survive reconnects;
+  - connects on first use, reconnects on the next request without rescanning;
+  - `disconnect()` recycles a wedged link, waiting at most 0.5 s for the
+    request in flight;
+  - `message_spacing` paces requests;
+  - typed exceptions;
+  - SunSpec `scan()`, `SunSpecComponent` with a model-header check
+    (`SunSpecMapShiftError`), components generated from the official model
+    JSON (0-based V1.2 enums), and scale factors handled on reads and writes.
+
+### 11.2 Comparison against our findings
+
+| Finding (§2) | Today: franklinwh-modbus v0.9.5 + pysunspec2 | modbus-connection |
+|---|---|---|
+| C1: a TCP connection per read/write | Opens and closes per call (about 7 per send) | One persistent connection |
+| C3: full rescan on every reconnect | Yes (all 17 models; `scan()` without base address) | Reconnects without rescan |
+| C9/C14: no I/O lock; shared model and socket objects | Correctness relies entirely on the bridge's lock | Requests serialised by the library |
+| C14/U10: reply not matched to request (transaction id 0 unchecked) | Silent wrong values possible if requests interleave | pymodbus and tmodbus match transaction ids |
+| C15: reconnect not thread-safe | Unsafe with a concurrent reader | Async, single owner; unit handles survive recycles |
+| P3/U9: any error text containing "modbus" triggers reconnect and rescan | Yes | Typed exceptions; a device exception reply is not a dead link |
+| C10: a second socket for vendor registers | Separate pymodbus client | Plain register reads on the same connection |
+| C11: a library timer thread writes outside the lock | Yes (`threading.Timer` → `reset_control_state`) | No timer. The watchdog is the caller's, as in §5.2. |
+| Layout drift | Not detected | `SunSpecMapShiftError` on a header mismatch |
+| C16: aGate closes connections mid-request | Seen as "Response timeout" and a reconnect storm | **Unknown.** A persistent connection may behave better or worse on this aGate; untested (U1–U3). |
+| Multiple clients sharing :502 (bridge, Local Bridge) | Not addressed | **Not addressed.** It serialises within one process only. |
+
+### 11.3 Pros
+
+- **It is exactly the transport this design asks for** in §5.2: one owned,
+  serialised, persistent connection per device. It is also the pattern of
+  Home Assistant's own ModbusHub.
+- **It removes the library-side causes in one move:** C1, C3, C10, C14, C15,
+  P3/U9 and the reply-mismatch risk (U10).
+- **The bridge is already async,** so it fits better than a synchronous library
+  run in threads.
+- **SunSpec support** brings layout-drift detection and spec-generated enums
+  (V1.2, 0-based), consistent with #51 and #55.
+- **Maintained by the organisation behind Home Assistant,** and Apache-2.0.
+
+### 11.4 Cons and risks
+
+- **Young and fast-moving:** four major versions in about 3.5 months. It needs
+  an exact pin and an upgrade budget.
+- **It does not solve the shared port:** the bridge and the Local Bridge both
+  using :502 still needs one owning process or a proxy (§9.3).
+- **Control logic would have to live somewhere.** The M704 write sequence and
+  pacing, dispatch verification (`verify_dispatch` semantics), the command
+  watchdog, orphan release and the documented FranklinWH quirks
+  (`FRANKLINWH_SUNSPEC_QUIRKS.md`, `SUNSPEC_ENUM_BASIS.md`,
+  `CONNECTION_AND_THREADING.md` in franklinwh-modbus) all come from
+  franklinwh-modbus today.
+- **Conflicts with a project rule if the bridge adopts it alone.** CLAUDE.md:
+  "The franklinwh-modbus library handles all Modbus register I/O. This project
+  wraps it; it does not re-implement Modbus." The owner would have to change it.
+- **Divergence:** the Local Bridge also uses franklinwh-modbus. A bridge-only
+  switch would split the two bridges' transports, against the align-by-default
+  rule.
+- **Untested on this aGate:** whether it tolerates one long-lived connection is
+  unknown (C16, U1–U3).
+
+### 11.5 Recommended path, if and when it is taken up
+
+1. **First,** run Phase 0b (baseline) and experiments E1–E5 from this design.
+2. **Then a read-only trial in a coordinated window:** a minimal
+   modbus-connection poller reads the bridge's registers (the SunSpec models
+   and 15000–15039, 15510–15513, 16000–16002) with the bridge's poller paused.
+   Compare connection closes, "Response timeout" against "timed out", latency
+   and failures with the baseline.
+3. **If it wins:** adopt it **inside franklinwh-modbus**, as the owner's
+   forked-library roadmap item. The library exposes an async API that keeps the
+   dispatch semantics. The bridge, and later the Local Bridge, consume it, so
+   the project rule and cross-bridge alignment hold.
+4. **Not recommended:** the bridge switching transports on its own (§11.4).
+5. **Independent of all this,** Phase 1 (truthful dispatch) proceeds on the
+   current library, because it is needed whatever the transport.
