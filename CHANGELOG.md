@@ -13,6 +13,43 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **Login record, audit trail and "You have been logged out" with the reason**
+  (#50).
+  - Each login is recorded: who, when, IP and browser.
+  - Logins, failed logins, logouts and ended logins are audited, and also appear
+    in the Logs tab.
+  - Admins can list and revoke logins over REST.
+  - A page that loses its login shows why: logged out, account disabled,
+    deleted or password reset by an admin, revoked, expired, or dropped by the
+    browser. It used to show "Disconnected".
+  - Migration 55.
+- **Break-glass admin recovery** (#52): `docker exec -it fwhbridge-app bridge
+  recovery status | reset-admin-password`. See docs/admin-recovery.md.
+- **docs/security.md**: roles, HTTP/HTTPS settings, how logins end, the audit
+  trail, recovery, known gaps and a setup checklist.
+- **docs/point-history.md** (#47).
+
+### Changed
+
+- **Usernames are case-insensitive** (#50). A name differing from an existing
+  one only in case is refused.
+- **The live bridge runs the code baked into its image** (#48). No `./src` mount
+  and no `uvicorn --reload`, so saving a file no longer restarts it.
+  `docker-compose.dev.yml` restores hot-reload for development.
+
+### Fixed
+
+- **Battery health (713.Sta) decoded per SunSpec: 0 OK, 1 Warning, 2 Error**
+  (#51). The poller had ERROR = 3, and the alarm history used a guessed
+  activity enum (OK showed as "Idle"). Older alarm rows are re-labelled when
+  read.
+- **Point History switch saves when ticked** (#47). It was form state only, so
+  recording "never stayed on".
+- **INSTALL.md** (#52): `ALLOW_INSECURE_AUTH` allows plain-HTTP login and does
+  not bypass it; the shipped compose seeds admin/admin.
+
 ## [0.2.3] - 2026-10-08
 
 ### Changed
