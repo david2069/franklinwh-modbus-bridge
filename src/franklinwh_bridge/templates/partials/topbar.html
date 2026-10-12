@@ -102,8 +102,16 @@
   <!-- Right: Status indicators + actions -->
   <div class="flex items-center gap-2 lg:gap-4 shrink-0">
 
+    <!-- Signed out: the bridge is answering but refuses this page's login. -->
+    <button type="button" x-show="$store.app.signedOut" @click="$store.app.goToLogin()"
+            class="flex items-center gap-2 text-xs font-medium text-amber-400 hover:text-amber-300"
+            title="Your login has expired. Values on this page are frozen and buttons won't work until you log in again.">
+      <span class="hidden sm:inline">Signed out — log in</span>
+      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+    </button>
+
     <!-- Connection status (text-then-dot, matching the indicators on the left) -->
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2" x-show="!$store.app.signedOut">
       <span class="hidden sm:inline text-xs font-medium"
             :class="$store.app.connected ? 'text-emerald-400' : 'text-red-400'"
             x-text="$store.app.connected ? 'Connected' : 'Disconnected'"></span>

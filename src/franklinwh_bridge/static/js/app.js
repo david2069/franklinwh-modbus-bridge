@@ -233,6 +233,18 @@ function _reportOutage(startedAt, failures, lastError) {
   } catch (_) { /* never let reporting break the UI */ }
 }
 
+/** A 401 means the bridge answered but no longer accepts this page's login
+ *  (expired or cleared session). That is not "Disconnected": the page used to
+ *  say so, froze its values and failed every button silently. Flag it so the
+ *  top bar can offer a login link instead. No automatic redirect: that would
+ *  discard whatever the user was part-way through editing. */
+function _noteSignedIn(ok) {
+  try {
+    const s = window.Alpine && Alpine.store('app');
+    if (s) s.signedOut = !ok;
+  } catch (_) { /* never let this break the UI */ }
+}
+
 function _noteReachable(ok, info = {}) {
   try {
     const s = window.Alpine && Alpine.store('app');
@@ -317,6 +329,7 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
     // Respect a caller's own signal if it passed one.
     const r = await fetch(url, { ...options, signal: options.signal || ctl.signal });
     _noteReachable(true);   // it answered, whatever the status
+    _noteSignedIn(r.status !== 401 || String(url).includes('api/auth/login'));
     if (!r.ok) {
       let detail = `HTTP ${r.status}`;
       try {
@@ -547,6 +560,7 @@ document.addEventListener('alpine:init', () => {
 
     // Connection state
     connected: false,
+    signedOut: false,   // the bridge answered 401: login expired, see _noteSignedIn
     lastPollTs: null,
     version: '--',
     env: '',
@@ -633,6 +647,9 @@ document.addEventListener('alpine:init', () => {
     get isAdmin() { return this.me?.role === 'admin'; },
     async logout() {
       await fetchJSON('api/auth/logout', { method: 'POST' });
+      this.goToLogin();
+    },
+    goToLogin() {
       const base = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
       window.location.href = `${base}/login`;
     },
