@@ -1839,7 +1839,8 @@
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">Point History</div>
         <label class="flex items-center gap-2 text-xs">
-          <input type="checkbox" x-model="ph.enabled" class="accent-cyan-500">
+          <input type="checkbox" x-model="ph.enabled" @change="phToggleEnabled()"
+                 :disabled="phSaving" class="accent-cyan-500">
           <span :class="ph?.enabled ? 'text-cyan-400' : 'text-slate-500'"
                 x-text="ph?.enabled ? 'Recording' : 'Off'"></span>
         </label>
@@ -1900,6 +1901,7 @@
         </div>
 
         <p class="text-[10px] text-slate-600">
+          The switch saves the card straight away; other changes need Save.
           Takes effect on the next poll; nothing to restart. Reducing retention doesn't delete
           anything immediately — the hourly maintenance pass applies it.
         </p>
@@ -1916,6 +1918,7 @@
             <template x-if="!phSaving"><span>Save</span></template>
           </button>
           <button @click="loadPointHistory()" class="btn btn-sm btn-secondary">Refresh</button>
+          <span x-show="phDirty" class="self-center text-[10px] text-amber-400">Unsaved changes</span>
         </div>
       </div>
     </div>
