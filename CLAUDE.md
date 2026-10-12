@@ -49,6 +49,15 @@ pip install -e ~/dev/modbus
   never require hardware. Hardware tests are gated behind `-m hardware`.
 - One increment at a time: code -> syntax check -> tests -> verify -> commit.
 
+## Live bridge safety
+
+The dev compose bind-mounts `./src` and runs `uvicorn --reload`: **saving any
+Python file under `src/` restarts the running bridge** (one restart per save).
+A restart releases any active battery command and re-fires schedules whose
+window is open. Before editing `src/` while the bridge runs: check no command
+or schedule is active, keep 17:30–20:00 clear, and tell the owner first.
+Full practice and audit trail: `docs/restarts-and-shutdown.md`.
+
 ## Architecture rules
 
 - REST API is the canonical interface. All functionality is exposed through
