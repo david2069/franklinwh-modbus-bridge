@@ -180,6 +180,20 @@ Configuration is loaded with the following precedence (highest wins):
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `DATA_DIR` | `./data` | Data directory (DB, backups) |
 
+#### Login and security
+
+See [docs/security.md](docs/security.md) for roles, the login audit trail and
+recommended settings, and [docs/admin-recovery.md](docs/admin-recovery.md) if
+you are locked out.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_USERNAME` | `admin` | First admin, created on first start |
+| `ADMIN_PASSWORD` | *(generated, logged once)*; `admin` in the shipped compose | First admin's password. **Change it.** |
+| `ALLOW_INSECURE_AUTH` | *(off)*; `1` in the shipped compose | Allow login over plain HTTP. Does not bypass login. |
+| `SESSION_COOKIE_SECURE` | *(off)* | Send the login cookie only over HTTPS (set behind TLS) |
+| `SECURITY_SECRET_KEY` | *(generated, `DATA_DIR/.session_secret`)* | Login cookie signing key. Changing it ends every login. |
+
 ### Config File
 
 Create `config.yaml` in the working directory:

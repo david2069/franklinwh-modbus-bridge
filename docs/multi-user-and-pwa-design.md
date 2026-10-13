@@ -113,6 +113,15 @@ module `enabled` is orthogonal.
 
 ## 3. Auth architecture
 
+> **As built (2026-10-12):** the operator guide is [security.md](security.md).
+> Differences from this plan:
+> - The session key lives in `DATA_DIR/.session_secret`, not `app_config`.
+> - Each login now has a server-side record (`auth_sessions`) and an audit
+>   trail (`auth_events`), and the page shows why a login ended (PR #50).
+> - Break-glass recovery is a CLI (`bridge recovery`, PR #52).
+> - The login rate-limit, the CSRF custom header and HSTS below were **not**
+>   implemented.
+
 - **Primitives (no bespoke crypto):** `argon2-cffi` for `password_hash`;
   `SessionMiddleware` for signed session cookies; a generated `secret_key`
   persisted in the `app_config` key/value table when not provided via env.
