@@ -14,6 +14,7 @@ from franklinwh_bridge.modbus.home_load import STANDARD, HomeLoadSelector
 from franklinwh_bridge.modbus.register_watch import RegisterWatch
 from franklinwh_bridge.modbus.reserves import ActiveReserveReader
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
+from franklinwh_bridge.modbus.sunspec_enums import m713_sta_label
 
 logger = logging.getLogger(__name__)
 
@@ -478,11 +479,10 @@ class ModbusPoller:
                     logger.warning("Read %s failed: %s", method_name, exc)
                     quality = "stale"
 
-            # Derive battery health label from 713.Sta enum
-            _STA_MAP = {0: "OK", 1: "Warning", 3: "Error"}
+            # Battery health from 713.Sta (0 OK / 1 Warning / 2 Error).
             sta = points.get("status_raw")
             if sta is not None:
-                points["battery_health"] = _STA_MAP.get(sta, f"Unknown ({sta})")
+                points["battery_health"] = m713_sta_label(sta)
 
             # Normalise battery state: "Idle" → "Standby" to align with
             # SunSpec M713 Sta enum and FranklinWH app terminology.
