@@ -12,7 +12,7 @@ equipment: announce it, time it, and leave a reason in the record.
 
 | Cause | Typical trigger | Announced? |
 |---|---|---|
-| Code reload | Any edit under `src/` while the dev compose runs `uvicorn --reload` (the source is bind-mounted) | No — **one restart per saved file** |
+| Code reload | Any edit under `src/` **only** when running with `docker-compose.dev.yml` (source bind-mounted, `uvicorn --reload`) | No — **one restart per saved file** |
 | Container stop/restart | `docker compose restart`, `up -d` after a rebuild, Docker Desktop update | No |
 | Host reboot / power loss | macOS update, sleep policy, outage | No (power loss: no shutdown at all) |
 | Crash | Unhandled error in the process | No shutdown record |
@@ -28,18 +28,28 @@ None of these carries a reason today. See *Audit trail* below.
    (the 18:00 force discharge runs then).
 3. **Tell the owner first** if it is not your bridge — including an agent
    session about to edit Python files under `src/`.
-4. **Batch edits.** With `--reload`, every save is a restart; three files saved
+4. **Batch edits.** With the dev overlay's `--reload`, every save is a restart; three files saved
    is three restarts. Prefer working on a branch/worktree and syncing once.
 5. **Afterwards**, check the logs for `failed to start` and confirm the
    schedule engine started with the expected number of entries.
 
 ## Live bridges should not hot-reload
 
-`docker-compose.yml` is a **development** setup: `./src` is mounted and uvicorn
-runs with `--reload`. A bridge that controls a battery someone depends on
-should run without both (comment out the `./src` mount and drop `--reload`),
-so that only a deliberate rebuild or restart changes the running code. Develop
-against a second instance (mock gateway) instead.
+`docker-compose.yml` runs the code baked into the image: no `./src` mount and
+no `--reload` (since 2026-10-12). Only a deliberate rebuild and restart changes
+the running code:
+
+```bash
+docker compose up -d --build     # one restart; then check the logs
+docker logs --since 2m fwhbridge-app | grep -E "Connected to aGate|failed to start"
+```
+
+For hot-reload development, layer the dev overlay — against a mock gateway,
+never the live bridge:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
 
 ## Audit trail — what is recorded today
 

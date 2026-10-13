@@ -51,11 +51,14 @@ pip install -e ~/dev/modbus
 
 ## Live bridge safety
 
-The dev compose bind-mounts `./src` and runs `uvicorn --reload`: **saving any
-Python file under `src/` restarts the running bridge** (one restart per save).
-A restart releases any active battery command and re-fires schedules whose
-window is open. Before editing `src/` while the bridge runs: check no command
-or schedule is active, keep 17:30–20:00 clear, and tell the owner first.
+`docker-compose.yml` runs the code baked into the image: no `./src` mount, no
+`--reload`. Editing `src/` does **not** touch the running bridge; a change goes
+live only by `docker compose up -d --build` (one deliberate restart). A restart
+releases any active battery command and re-fires schedules whose window is
+open, so before deploying: check no command or schedule is active, keep
+17:30–20:00 clear, and check the logs for `Connected to aGate` afterwards.
+`docker-compose.dev.yml` restores hot-reload for development against a mock
+gateway only — never on the live bridge.
 Full practice and audit trail: `docs/restarts-and-shutdown.md`.
 
 ## Architecture rules

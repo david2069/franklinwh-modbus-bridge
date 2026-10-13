@@ -1,0 +1,17 @@
+# Hot-reload overlay for DEVELOPMENT ONLY.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Mounts ./src and runs uvicorn --reload: every saved .py file restarts the
+# bridge, which releases any active battery command and re-fires schedules whose
+# window is open. Never use it on a bridge that controls a real aGate someone
+# depends on — develop against a mock gateway instead.
+# See docs/restarts-and-shutdown.md.
+services:
+  app:
+    volumes:
+      - ./src:/app/src
+    command: >-
+      uvicorn franklinwh_bridge.main:app
+      --host 0.0.0.0 --port 8099 --workers 1
+      --reload --reload-dir /app/src
