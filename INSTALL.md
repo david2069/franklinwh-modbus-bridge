@@ -109,8 +109,13 @@ cp .env.example .env        # set MODBUS_HOST, MQTT_HOST, …
 docker compose up -d
 ```
 
-Open <http://localhost:8100>. First run prints a generated admin password to the
-log — `docker compose logs | grep -i password` — change it after signing in.
+Open <http://localhost:8100> and sign in. The shipped `docker-compose.yml` seeds
+the first admin from `ADMIN_USERNAME` / `ADMIN_PASSWORD`, which default to
+**admin / admin**: set them in `.env` before the first start, or change the
+password under **Settings → Admin → Users** straight after signing in. (With
+`ADMIN_PASSWORD` unset, first run generates one and prints it to the log —
+`docker compose logs | grep -i password`.) Locked out? See
+[docs/admin-recovery.md](docs/admin-recovery.md).
 
 MQTT is configured by hand here (**Settings → MQTT**): there is no Supervisor to
 ask.
@@ -126,8 +131,9 @@ pip install git+https://github.com/david2069/franklinwh-modbus.git@v0.9.3
 bridge run
 ```
 
-`ALLOW_INSECURE_AUTH=1` bypasses the login for local work. Never set it on
-anything reachable from a network.
+`ALLOW_INSECURE_AUTH=1` lets you **log in over plain HTTP** (without it, login
+requires HTTPS). It does not bypass the login. It is on in the shipped compose
+file for LAN use; behind TLS, remove it and set `SESSION_COOKIE_SECURE=1`.
 
 ---
 

@@ -298,5 +298,112 @@ def backup_restore(name: str = typer.Argument(..., help="Backup name")):
     asyncio.run(_restore())
 
 
+
+recovery_app = typer.Typer(
+    help="Break-glass admin recovery. Run inside the container: "
+    "docker exec -it fwhbridge-app bridge recovery ..."
+)
+app.add_typer(recovery_app, name="recovery")
+
+
+def _recovery_db():
+    from franklinwh_bridge.config.manager import AppConfig
+
+    return AppConfig().db_path
+
+
+def _print_status(st) -> None:
+    import datetime as dt
+
+    typer.echo(f"Database:     {st.db_path}")
+    typer.echo(f"Schema:       v{st.schema}")
+    typer.echo(f"In container: {'yes' if st.in_container else 'NO'}")
+    if not st.in_container:
+        typer.secho(
+            "  Warning: not inside a container. On a Docker install the bridge uses the\n"
+            "  database inside its volume; run: docker exec -it fwhbridge-app bridge recovery ...",
+            fg=typer.colors.YELLOW,
+        )
+    typer.echo(f"Accounts:     {len(st.users)}")
+    for u in st.users:
+        last = (
+            dt.datetime.fromtimestamp(u["last_login_at"]).strftime("%Y-%m-%d %H:%M")
+            if u["last_login_at"] else "never"
+        )
+        state = "enabled" if u["enabled"] else "DISABLED"
+        typer.echo(f"  {u['username']:<20} {u['role']:<7} {state:<9} last login {last}")
+    if not st.enabled_admins:
+        typer.secho(
+            "No enabled admin can log in. Fix: bridge recovery reset-admin-password",
+            fg=typer.colors.RED,
+        )
+
+
+@recovery_app.command("status")
+def recovery_status():
+    """Read-only: which database, and every account with role and state."""
+    from franklinwh_bridge.recovery import RecoveryError, status
+
+    try:
+        _print_status(status(_recovery_db()))
+    except RecoveryError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+
+@recovery_app.command("reset-admin-password")
+def recovery_reset_admin_password(
+    username: str = typer.Option("admin", help="Account to restore (created if missing)"),
+    password: str = typer.Option(
+        None, help="New password (min 8). Omit to generate one and print it once."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Don't ask for confirmation"),
+    allow_host: bool = typer.Option(
+        False, "--allow-host",
+        help="Run outside a container (a bridge installed without Docker only)",
+    ),
+):
+    """Restore admin access: reset the password, promote to admin, re-enable,
+    or create the account. Ends that account's open logins. Audited."""
+    from franklinwh_bridge.recovery import (
+        RecoveryError,
+        in_container,
+        reset_admin_password,
+        status,
+    )
+
+    db_path = _recovery_db()
+    try:
+        st = status(db_path)
+        _print_status(st)
+        typer.echo("")
+        if not in_container() and not allow_host:
+            # FWHAI's tool once "succeeded" on a host-side copy while the
+            # container kept the old database. Make that an explicit choice.
+            typer.secho(
+                "Refusing: not inside a container, so this may not be the database the "
+                "bridge uses.\nRun: docker exec -it fwhbridge-app bridge recovery "
+                "reset-admin-password\n(Bridge installed without Docker? Add --allow-host.)",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(2)
+        if not yes and not typer.confirm(
+            f"Reset '{username}' to an enabled admin with a new password?"
+        ):
+            raise typer.Exit(1)
+        r = reset_admin_password(db_path, username=username, password=password)
+    except RecoveryError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    typer.secho(f"\n{r.username}: {', '.join(r.changes)}.", fg=typer.colors.GREEN)
+    if r.sessions_ended:
+        typer.echo(f"Ended {r.sessions_ended} open login(s) for this account.")
+    if r.generated:
+        typer.echo("New password (shown once, not stored anywhere readable):")
+        typer.secho(f"  {r.password}", bold=True)
+    typer.echo("Log in now and change it under Settings → Admin → Users. No restart needed.")
+
+
 if __name__ == "__main__":
     app()
