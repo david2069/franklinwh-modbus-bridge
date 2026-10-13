@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 55
+CURRENT_SCHEMA_VERSION = 56
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -865,6 +865,30 @@ MIGRATIONS: dict[int, str] = {
         detail     TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_auth_events_ts ON auth_events (ts);
+    """,
+    56: """
+    -- One row per battery command, with how it ended (design PR #57 §5.1, §5.4).
+    -- Until now a dispatch that failed or never took effect was audited "ok"
+    -- (#25, #26, #56); this is the truthful record. ``requester`` says who
+    -- asked (schedule:<entry id> / manual / ...), so a future gateway API can
+    -- serve and arbitrate dispatches from it (§5.5.1).
+    CREATE TABLE IF NOT EXISTS dispatch_outcomes (
+        id           TEXT PRIMARY KEY,
+        gateway_id   TEXT NOT NULL,
+        requester    TEXT NOT NULL,
+        client_ref   TEXT,
+        action       TEXT NOT NULL,
+        requested_w  INTEGER NOT NULL,
+        created_at   REAL NOT NULL,
+        updated_at   REAL NOT NULL,
+        state        TEXT NOT NULL,
+        reason       TEXT,
+        actual_w     REAL,
+        verified_at  REAL,
+        ended_at     REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_outcomes_created ON dispatch_outcomes (created_at);
+    CREATE INDEX IF NOT EXISTS idx_dispatch_outcomes_gw ON dispatch_outcomes (gateway_id, created_at);
     """,
     46: """
     -- Every plan needs a real start date.

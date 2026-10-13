@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -32,6 +33,7 @@ from typing import Any
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate as eval_conditions
 from franklinwh_bridge.gateway.scheduler_sensors import snapshot as sensor_snapshot
 from franklinwh_bridge.gateway.scheduler_triggers import prev_fire_at
+from franklinwh_bridge.store import dispatch_outcomes
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,23 @@ _DISPLAY = {
 }
 # actions that hold sustained control (and thus get a release on window exit)
 _SUSTAINED = frozenset({"force_charge", "force_discharge", "force_standby"})
+
+# ── Dispatch verification (design PR #57 §5.1) ─────────────────────────────
+#: Wait before the next attempt after a failed send: 15 s, 30 s, then every 60 s.
+RETRY_BACKOFF_S = (15, 30, 60)
+#: Time after a send before checking the battery is moving. Discharge reached
+#: full output within 2.1 s on the reference aGate (2026-10-09); 90 s leaves room
+#: for charge and other modes, which were not measured.
+VERIFY_AFTER_S = 90
+#: Lost-setpoint re-sends allowed per window before giving up and notifying.
+MAX_REASSERTS = 3
+#: Points older than this are not used to judge a dispatch.
+POINTS_MAX_AGE_S = 45
+#: Battery power counts as "moving" at >= max(this, 20% of the request).
+MIN_RESPONSE_W = 100
+#: SoC margins within which the battery may legitimately not move.
+SOC_FULL_PCT = 98
+RESERVE_MARGIN_PCT = 3
 
 
 # ── pure helpers (unit-tested) ────────────────────────────────
@@ -425,6 +444,9 @@ class ScheduleEngine:
         # tkey -> the entry that fired, kept so its exit-tagged HA actions can run
         # when the activation ends (window/trigger inactive, exit condition, etc.).
         self._exit_entry: dict[tuple, dict] = {}
+        # Failed sustained dispatches waiting for a retry, per target:
+        # {entry_id, attempts, next_at, first_at, last_reason, win}.
+        self._retry: dict[tuple, dict] = {}
 
     # ---- lifecycle ----
 
@@ -807,6 +829,15 @@ class ScheduleEngine:
 
         # ── no winning entry: release/hold if we hold a sustained dispatch ──
         if win is None:
+            rec = self._retry.pop(tkey, None)
+            if rec is not None:
+                # The window closed without a single successful send.
+                w = rec["win"]
+                msg = (f"window ended without a successful dispatch "
+                       f"({rec['attempts']} attempt(s); last: {rec['last_reason']})")
+                await self._audit(w["id"], w["action"], tkey, "failed", msg)
+                await self._notify_owner(
+                    w, tkey, f"FAILED: {w.get('name') or w['id']} — {msg}", now)
             self._expired.pop(tkey, None)  # window over — next entry may re-fire
             self._gated.discard(tkey)  # gate resets; re-entry re-audits if gated
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
@@ -882,6 +913,17 @@ class ScheduleEngine:
                     await self._fire_exit_ha_actions(tkey, now)
                     return
 
+        # ── supervise our active dispatch: setpoint still there, battery moving? ──
+        if (
+            own
+            and own["action"] in _SUSTAINED
+            and own.get("mode") != "hold"
+            and handler.state.active
+            and own.get("entry_id") == win["id"]
+            and await self._supervise(tkey, handler, win, own, now)
+        ):
+            return
+
         # ── our sustained dispatch ended in-window (watchdog or external
         #    release)? Mark the window completed and don't re-fire until it's
         #    re-entered. The window — not a per-command watchdog — is the
@@ -942,6 +984,14 @@ class ScheduleEngine:
         ):
             return
 
+        # ── a failed dispatch is waiting for its next attempt ──
+        retry = self._retry.get(tkey)
+        if retry is not None and retry["entry_id"] != win["id"]:
+            self._retry.pop(tkey, None)  # a different entry won the target
+            retry = None
+        if retry is not None and now < retry["next_at"]:
+            return
+
         # ── entry gate: conditions must hold at fire-time ──
         # Checked only here, on the verge of a (new/changed) dispatch — not while
         # already owning idempotently (that returned above). A failing gate skips
@@ -966,7 +1016,7 @@ class ScheduleEngine:
 
         # ── dwell: eligible (window active + gate passing) continuously for N? ──
         hold_s = int(win.get("entry_hold_s") or 0)
-        if hold_s > 0:
+        if hold_s > 0 and retry is None:  # a retry already satisfied the dwell
             rec = self._dwell_since.get(tkey)
             if rec is None or rec[0] != win["id"]:
                 rec = (win["id"], now)
@@ -983,7 +1033,14 @@ class ScheduleEngine:
             self._dwelling.discard(tkey)
 
         self._expired.pop(tkey, None)  # fresh dispatch supersedes any old mark
-        await self._dispatch(handler, action, params, label=win.get("name", action))
+        await self._dispatch(
+            handler, action, params, label=win.get("name", action), requester=win["id"]
+        )
+        res = getattr(handler, "last_dispatch", None)
+        if action in _SUSTAINED and res is not None and not res.ok:
+            await self._dispatch_failed(win, tkey, res.reason, now)
+            return
+        recovered = self._retry.pop(tkey, None)
         # One-shot HA actions on this activation edge (after the battery action).
         if self._ha_fired.get(tkey) != win["id"]:
             self._ha_fired[tkey] = win["id"]
@@ -1012,11 +1069,24 @@ class ScheduleEngine:
             # exit + duration/window exit); legacy entries never do.
             "is_v2": _is_v2(win),
             "release_policy": win.get("release_policy") or "release",
+            # Verification state (design §5.1): when to check the battery,
+            # what was asked for, and what has already been tried.
+            "verify_at": now + timedelta(seconds=VERIFY_AFTER_S),
+            "requested_w": getattr(res, "requested_w", None),
+            "dispatch_id": getattr(handler, "active_dispatch_id", None),
+            "verified": False,
+            "resent": False,
+            "reasserts": 0,
         }
-        await self._audit(
-            win["id"], action, tkey, "ok",
-            f"dispatched {win.get('name', action)} — {_action_summary(action, params)}",
-        )
+        detail = f"dispatched {win.get('name', action)} — {_action_summary(action, params)}"
+        if recovered is not None:
+            detail += f" — recovered after {recovered['attempts']} failed attempt(s)"
+        await self._audit(win["id"], action, tkey, "ok", detail)
+        if recovered is not None:
+            await self._notify_owner(
+                win, tkey,
+                f"Recovered: {win.get('name') or win['id']} dispatched after "
+                f"{recovered['attempts']} failed attempt(s)", now)
 
     def _render(self, text: str, tkey: tuple, now: datetime | None) -> str:
         """Substitute %sensor.id% placeholders from the live snapshot.
@@ -1131,7 +1201,9 @@ class ScheduleEngine:
         if entry is not None:
             await self._run_ha_actions(entry, tkey, "exit", now)
 
-    async def _dispatch(self, handler: Any, action: str, params: dict, label: str) -> None:
+    async def _dispatch(
+        self, handler: Any, action: str, params: dict, label: str, requester: str | None = None,
+    ) -> None:
         if action == "none":
             return  # HA-actions-only entry: no battery command
         cmds = action_to_commands(action, params)
@@ -1139,11 +1211,201 @@ class ScheduleEngine:
             logger.warning("Schedule: unknown action %r — skipped", action)
             return
         logger.info("Schedule dispatch: %s (%s)", label, action)
-        await self._send(handler, cmds)
+        await self._send(handler, cmds, requester=f"schedule:{requester}" if requester else None)
 
-    async def _send(self, handler: Any, cmds: list[tuple[str, str]]) -> None:
+    async def _send(
+        self, handler: Any, cmds: list[tuple[str, str]], requester: str | None = None,
+    ) -> None:
+        # Pass the requester only to handlers that take it (test doubles may not).
+        takes_requester = requester is not None and "requester" in inspect.signature(
+            handler.handle_command).parameters
         for slug, value in cmds:
-            await handler.handle_command(slug, value)
+            if takes_requester:
+                await handler.handle_command(slug, value, requester=requester)
+            else:
+                await handler.handle_command(slug, value)
+
+    # ── dispatch verification (design PR #57 §5.1) ─────────────────────────
+
+    async def _dispatch_failed(self, win: dict, tkey: tuple, reason: str, now: datetime) -> None:
+        """A send that did not take: audit it truthfully, don't own the window,
+        and schedule the next attempt with backoff. Notifies on the first failure."""
+        rec = self._retry.get(tkey)
+        if rec is None or rec["entry_id"] != win["id"]:
+            rec = {"entry_id": win["id"], "attempts": 0, "first_at": now, "win": win}
+        rec["attempts"] += 1
+        delay = RETRY_BACKOFF_S[min(rec["attempts"] - 1, len(RETRY_BACKOFF_S) - 1)]
+        rec["next_at"] = now + timedelta(seconds=delay)
+        rec["last_reason"] = reason
+        self._retry[tkey] = rec
+        self._owned.pop(tkey, None)
+        await self._audit(
+            win["id"], win["action"], tkey, "failed",
+            f"dispatch failed: {reason} — attempt {rec['attempts']}, retrying in {delay}s",
+        )
+        if rec["attempts"] == 1:
+            await self._notify_owner(
+                win, tkey,
+                f"FAILED: {win.get('name') or win['id']} — {reason}. Retrying.", now)
+
+    def _fresh_points(self, gw_id: str, now: datetime) -> dict | None:
+        """Latest polled points if recent and good, else None (never a Modbus call)."""
+        if self._points_fn is None:
+            return None
+        try:
+            pts = self._points_fn(gw_id) or {}
+        except Exception:
+            return None
+        ts = pts.get("_sample_ts")
+        if ts is None or pts.get("_sample_quality") not in (None, "ok"):
+            return None
+        if now.timestamp() - float(ts) > POINTS_MAX_AGE_S:
+            return None
+        return pts
+
+    async def _supervise(
+        self, tkey: tuple, handler: Any, win: dict, own: dict, now: datetime,
+    ) -> bool:
+        """Check an owned, active dispatch against fresh points.
+
+        Re-asserts a setpoint the aGate dropped (WSetEna 0), and after
+        VERIFY_AFTER_S checks the battery is moving the commanded way: if not,
+        re-sends once, then records not_effective and notifies. Returns True
+        when it acted this tick (the caller stops there).
+        """
+        pts = self._fresh_points(tkey[2], now)
+        if pts is None:
+            return False
+        name = win.get("name") or win["id"]
+
+        # 1. Setpoint lost? Re-send it (output is already gone, so the send's
+        #    WSetEna=0 first step can't interrupt anything).
+        ena = pts.get("wset_enabled")
+        if ena is not None and int(ena) == 0:
+            if own.get("reasserts", 0) >= MAX_REASSERTS:
+                if not own.get("gave_up"):
+                    own["gave_up"] = True
+                    msg = f"setpoint lost {MAX_REASSERTS} times — not re-sending again this window"
+                    await self._audit(win["id"], own["action"], tkey, "failed", msg)
+                    await self._notify_owner(win, tkey, f"FAILED: {name} — {msg}", now)
+                return True
+            own["reasserts"] = own.get("reasserts", 0) + 1
+            await self._dispatch(handler, win["action"], win.get("params", {}),
+                                 label=f"{name} (re-assert)", requester=win["id"])
+            res = getattr(handler, "last_dispatch", None)
+            if res is not None and not res.ok:
+                await self._dispatch_failed(win, tkey, f"re-assert failed: {res.reason}", now)
+                return True
+            own["dispatch_id"] = getattr(handler, "active_dispatch_id", None)
+            own["verify_at"] = now + timedelta(seconds=VERIFY_AFTER_S)
+            own["verified"] = False
+            await self._outcome(
+                own["dispatch_id"], "reasserted",
+                reason="aGate dropped the setpoint (WSetEna=0); re-sent")
+            await self._audit(
+                win["id"], own["action"], tkey, "reasserted",
+                f"aGate dropped the setpoint (WSetEna=0) — re-sent "
+                f"({own['reasserts']}/{MAX_REASSERTS})",
+            )
+            return True
+
+        # 2. Battery moving the commanded way?
+        if own.get("verified") or own.get("ineffective_final") or now < own["verify_at"]:
+            return False
+        req = own.get("requested_w")
+        bw = pts.get("battery_power_w")  # + discharging, - charging
+        if req is None or bw is None:
+            return False
+        req, bw = int(req), float(bw)
+        if req == 0:  # standby: the battery should be (near) idle
+            moving_right = abs(bw) <= max(MIN_RESPONSE_W, 200)
+        else:
+            expect_sign = 1 if req < 0 else -1  # BatteryCommand: negative = discharge
+            threshold = max(MIN_RESPONSE_W, 0.2 * abs(req))
+            moving_right = bw * expect_sign >= threshold
+            if not moving_right and self._soc_limited(pts, discharging=req < 0):
+                own["verified"] = True  # can't judge at a SoC limit; don't flag
+                await self._audit(
+                    win["id"], own["action"], tkey, "unverifiable",
+                    f"battery at {bw:.0f} W, SoC {pts.get('soc')}% at its limit — not judged",
+                )
+                return False
+        if moving_right:
+            own["verified"] = True
+            await self._outcome(own.get("dispatch_id"), "verified",
+                                           actual_w=bw)
+            await self._audit(
+                win["id"], own["action"], tkey, "verified",
+                f"battery at {bw:.0f} W (requested {abs(req)} W)",
+            )
+            return False
+        if not own.get("resent"):
+            own["resent"] = True
+            await self._outcome(
+                own.get("dispatch_id"), "not_effective", actual_w=bw,
+                reason=f"battery at {bw:.0f} W after {VERIFY_AFTER_S}s")
+            await self._audit(
+                win["id"], own["action"], tkey, "not_effective",
+                f"setpoint accepted but battery at {bw:.0f} W (requested {abs(req)} W) "
+                f"after {VERIFY_AFTER_S}s — re-sending once",
+            )
+            await self._dispatch(handler, win["action"], win.get("params", {}),
+                                 label=f"{name} (re-send)", requester=win["id"])
+            res = getattr(handler, "last_dispatch", None)
+            if res is not None and not res.ok:
+                await self._dispatch_failed(win, tkey, f"re-send failed: {res.reason}", now)
+                return True
+            own["dispatch_id"] = getattr(handler, "active_dispatch_id", None)
+            own["verify_at"] = now + timedelta(seconds=VERIFY_AFTER_S)
+            return True
+        own["ineffective_final"] = True
+        await self._outcome(
+            own.get("dispatch_id"), "not_effective", actual_w=bw,
+            reason=f"battery at {bw:.0f} W after a re-send")
+        msg = (f"battery at {bw:.0f} W (requested {abs(req)} W) even after a re-send — "
+               f"not effective")
+        await self._audit(win["id"], own["action"], tkey, "not_effective", msg)
+        await self._notify_owner(win, tkey, f"NOT EFFECTIVE: {name} — {msg}", now)
+        return False
+
+    async def _outcome(self, dispatch_id: str | None, state: str, **kw: Any) -> None:
+        if self._db is not None:
+            await dispatch_outcomes.update(self._db, dispatch_id, state, **kw)
+
+    @staticmethod
+    def _soc_limited(pts: dict, discharging: bool) -> bool:
+        """At a SoC limit the battery may legitimately not move."""
+        soc = pts.get("soc")
+        if soc is None:
+            return False
+        if discharging:
+            reserve = pts.get("active_reserve_pct")
+            return reserve is not None and float(soc) <= float(reserve) + RESERVE_MARGIN_PCT
+        return float(soc) >= SOC_FULL_PCT
+
+    async def _notify_owner(self, win: dict, tkey: tuple, message: str, now: datetime) -> None:
+        """Tell the owner about a failed or recovered dispatch, through the
+        entry's own notify target(s) (its ha_actions of kind "notify")."""
+        targets = {
+            (a.get("instance_id"), a.get("service"))
+            for a in (win.get("ha_actions") or [])
+            if a.get("kind") == "notify" and a.get("instance_id") and a.get("service")
+        }
+        if not targets or self._ha_notify_fn is None:
+            logger.warning("Schedule %s: %s (no notify target configured)", win["id"], message)
+            await self._audit(win["id"], "notify", tkey, "skipped",
+                              f"{message[:80]} — no notify target on this entry")
+            return
+        for inst, svc in sorted(targets):
+            try:
+                res = await self._ha_notify_fn(inst, svc, "FranklinWH bridge", message)
+            except Exception as exc:
+                res = {"ok": False, "error": str(exc) or type(exc).__name__}
+            detail = f"[alert] notify.{svc}: {message[:60]}"
+            if not res.get("ok"):
+                detail += f" — {res.get('error')}"
+            await self._audit(win["id"], "ha_action", tkey,
+                              "ha_action" if res.get("ok") else "failed", detail)
 
     async def _apply_release(
         self, handler: Any, policy: str, own: dict, gw_id: str, now: datetime

@@ -22,6 +22,7 @@ from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
+from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store.db import (
     create_gateway,
     create_service,
@@ -1158,7 +1159,8 @@ async def send_gateway_command(
             "result": "Command handler not available",
         }
 
-    await inst.command_handler.handle_command(body.slug, body.value)
+    await inst.command_handler.handle_command(
+        body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
     return {
         "ok": inst.command_handler.state.last_success,
         "slug": body.slug,
@@ -1181,3 +1183,16 @@ async def get_gateway_battery_limits(gw_id: str, request: Request):
             "source": "default",
         }
     return inst.command_handler.power_limits
+
+
+@router.get("/gateways/{gw_id}/dispatch-outcomes")
+async def list_dispatch_outcomes(gw_id: str, request: Request, limit: int = 100):
+    """Every battery command sent to this gateway and how it ended, newest first.
+
+    States: sent / failed / verified / not_effective / reasserted / released /
+    release_unverified / superseded (design PR #57 §5.1). ``requester`` says
+    who asked: ``schedule:<entry id>`` or ``manual``.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    return {"gateway_id": gw_id,
+            "outcomes": await dispatch_outcomes.recent(db, gw_id, limit=limit)}

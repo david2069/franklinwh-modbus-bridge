@@ -172,7 +172,8 @@ async def send_command(
         )
         return {"ok": False, "slug": body.slug, "result": "Command handler not available"}
 
-    await command_handler.handle_command(body.slug, body.value)
+    await command_handler.handle_command(
+        body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
     return {
         "ok": command_handler.state.last_success,
         "slug": body.slug,

@@ -749,7 +749,7 @@ class MqttPublisher:
             return
         raw = message.payload
         payload = raw.decode() if isinstance(raw, bytes) else str(raw)
-        await handler.handle_command(parts[3], payload)
+        await handler.handle_command(parts[3], payload, requester="mqtt")
 
     async def _subscribe_listener(self, client: aiomqtt.Client) -> None:
         """Background task: listen for incoming command messages."""

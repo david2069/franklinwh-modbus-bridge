@@ -595,8 +595,13 @@ async def lifespan(app: FastAPI):
         # can't report "I'm a collar" over Modbus. Merge it in so automations
         # can gate on gateway.device_type / gateway.battery_capable.
         dev_type = getattr(getattr(inst, "config", None), "device_type", None) or "agate"
+        # When and how well these points were read, so dispatch supervision only
+        # acts on fresh data (design PR #57 §5.1); never a Modbus call.
+        last = getattr(getattr(inst, "sample_bus", None), "last_sample", None)
         return {
             **pts,
+            "_sample_ts": getattr(last, "ts", None),
+            "_sample_quality": getattr(last, "quality", None),
             "device_type": dev_type,
             **energy_totals.current_totals(gw_id),
             **ha_registry.entity_values(),
