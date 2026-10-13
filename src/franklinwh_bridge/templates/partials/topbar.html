@@ -102,8 +102,15 @@
   <!-- Right: Status indicators + actions -->
   <div class="flex items-center gap-2 lg:gap-4 shrink-0">
 
+    <!-- Logged out: the bridge answers but refuses this page's login. -->
+    <button type="button" x-show="$store.app.loggedOut" @click="$store.app.goToLogin()"
+            class="flex items-center gap-2 text-xs font-medium text-amber-400 hover:text-amber-300">
+      <span class="hidden sm:inline">Logged out — log in</span>
+      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+    </button>
+
     <!-- Connection status (text-then-dot, matching the indicators on the left) -->
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2" x-show="!$store.app.loggedOut">
       <span class="hidden sm:inline text-xs font-medium"
             :class="$store.app.connected ? 'text-emerald-400' : 'text-red-400'"
             x-text="$store.app.connected ? 'Connected' : 'Disconnected'"></span>

@@ -41,6 +41,11 @@
     button:disabled { opacity: .6; cursor: default; }
     .err { margin-top: 14px; font-size: 13px; color: #f87171; min-height: 18px; }
     .hint { margin-top: 16px; font-size: 11px; color: #475569; text-align: center; }
+    .ended { display: none; margin-bottom: 16px; padding: 10px 12px; border-radius: 8px;
+             font-size: 13px; line-height: 1.45; color: #fcd34d;
+             background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .35); }
+    .ended b { display: block; color: #fbbf24; margin-bottom: 2px; }
+    .ended small { display: block; margin-top: 4px; color: #a8a29e; }
   </style>
 </head>
 <body>
@@ -51,6 +56,7 @@
       </div>
       <div><h1>FranklinWH Bridge</h1><p>Sign in to continue</p></div>
     </div>
+    <div class="ended" id="ended" role="status"></div>
     <label for="u">Username</label>
     <input id="u" name="username" autocomplete="username" autofocus>
     <label for="p">Password</label>
@@ -61,6 +67,32 @@
   </form>
   <script>
     const base = document.querySelector('base').getAttribute('href').replace(/\/$/, '');
+
+    // Why the last login on this browser ended, if it did. Reopening the
+    // bridge after a login ends lands here (GET / redirects), so this is
+    // where most people need the reason. A plain logout isn't news.
+    (async () => {
+      let sid = null;
+      try { sid = localStorage.getItem('fwh-login-sid'); } catch (_) {}
+      if (!sid) return;
+      try {
+        const r = await fetch(`${base}/api/auth/session-status?sid=${encodeURIComponent(sid)}`);
+        const st = await r.json();
+        if (st.state === 'active' || st.reason === 'logout') return;
+        const el = document.getElementById('ended');
+        const at = st.ended_at ? new Date(st.ended_at * 1000).toLocaleString() : '';
+        el.innerHTML = '';
+        const b = document.createElement('b'); b.textContent = 'You have been logged out';
+        const t = document.createElement('span'); t.textContent = st.reason_text || '';
+        const sm = document.createElement('small');
+        sm.textContent = [st.username && `Account: ${st.username}`, at && `Ended: ${at}`,
+                          st.ended_by && `By: ${st.ended_by}`]
+          .filter(Boolean).join(' · ');
+        el.append(b, t, sm);
+        el.style.display = 'block';
+        if (st.username) document.getElementById('u').value = st.username;
+      } catch (_) { /* no reason available; the form still works */ }
+    })();
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('btn');
     const err = document.getElementById('err');
@@ -75,6 +107,8 @@
         });
         if (res.ok) {
           const body = await res.json().catch(() => ({}));
+          // Kept so a page that later loses its login can ask the bridge why.
+          try { if (body.session_id) localStorage.setItem('fwh-login-sid', body.session_id); } catch (_) {}
           const role = body.user && body.user.role;
           const dest = (role === 'user' || role === 'viewer') ? '/user' : '/';
           window.location.href = `${base}${dest}`;

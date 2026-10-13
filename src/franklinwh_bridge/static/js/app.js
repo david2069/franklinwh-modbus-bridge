@@ -233,6 +233,40 @@ function _reportOutage(startedAt, failures, lastError) {
   } catch (_) { /* never let reporting break the UI */ }
 }
 
+/** A 401 means the bridge answered but no longer accepts this page's login.
+ *  That is not "Disconnected" (which the page used to show, with frozen
+ *  values and buttons that silently did nothing). Ask the bridge why the
+ *  login ended and show it in the logged-out modal. Once per page: every
+ *  poll after this would 401 too. */
+let _loggedOutHandled = false;
+async function _noteLoggedOut(detail) {
+  if (_loggedOutHandled) return;
+  _loggedOutHandled = true;
+  let info = {
+    reason: detail?.reason || 'unknown',
+    reason_text: detail?.reason_text || 'The bridge no longer accepts this page\'s login.',
+    ended_at: detail?.ended_at || null,
+    ended_by: detail?.ended_by || null,
+    username: null,
+  };
+  // The cookie may simply be gone (no reason in the 401). The login id saved
+  // at sign-in lets the bridge say what happened to that login.
+  let sid = null;
+  try { sid = localStorage.getItem('fwh-login-sid'); } catch (_) {}
+  if (sid) {
+    try {
+      const r = await fetch(`api/auth/session-status?sid=${encodeURIComponent(sid)}`);
+      const st = await r.json();
+      if (st && st.state === 'ended') info = { ...info, ...st };
+    } catch (_) { /* keep what the 401 said */ }
+  }
+  info.noticed_at = Date.now() / 1000;
+  try {
+    const s = window.Alpine && Alpine.store('app');
+    if (s) s.loggedOut = info;
+  } catch (_) {}
+}
+
 function _noteReachable(ok, info = {}) {
   try {
     const s = window.Alpine && Alpine.store('app');
@@ -319,10 +353,15 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
     _noteReachable(true);   // it answered, whatever the status
     if (!r.ok) {
       let detail = `HTTP ${r.status}`;
+      let raw = null;
       try {
         const j = await r.json();
-        if (j && j.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+        raw = j && j.detail;
+        if (raw) detail = typeof raw === 'string' ? raw : (raw.message || JSON.stringify(raw));
       } catch (_) {}
+      if (r.status === 401 && !String(url).includes('api/auth/login')) {
+        _noteLoggedOut(raw && typeof raw === 'object' ? raw : null);
+      }
       throw new Error(detail);
     }
     return await r.json();
@@ -547,6 +586,8 @@ document.addEventListener('alpine:init', () => {
 
     // Connection state
     connected: false,
+    loggedOutDismissed: false,  // "Stay on this page" in the logged-out modal
+    loggedOut: null,    // set on a 401: {reason, reason_text, ended_at, ...} — see _noteLoggedOut
     lastPollTs: null,
     version: '--',
     env: '',
@@ -633,6 +674,9 @@ document.addEventListener('alpine:init', () => {
     get isAdmin() { return this.me?.role === 'admin'; },
     async logout() {
       await fetchJSON('api/auth/logout', { method: 'POST' });
+      this.goToLogin();
+    },
+    goToLogin() {
       const base = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
       window.location.href = `${base}/login`;
     },

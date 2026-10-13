@@ -8,10 +8,19 @@
   const RING_C = 490.088; // 2 * pi * r(78)
   const $ = (id) => document.getElementById(id);
 
+  // A 401 means this page's login has ended. The login page shows why (it
+  // asks the bridge using the login id saved at sign-in), so go there.
+  let leaving = false;
+  function onUnauthorized(status) {
+    if (status !== 401 || leaving) return;
+    leaving = true;
+    window.location.href = `${base}/login`;
+  }
+
   async function getJSON(path) {
     try {
       const r = await fetch(`${base}/${path}`, { headers: { Accept: 'application/json' } });
-      if (!r.ok) return { _status: r.status, error: `HTTP ${r.status}` };
+      if (!r.ok) { onUnauthorized(r.status); return { _status: r.status, error: `HTTP ${r.status}` }; }
       return await r.json();
     } catch (e) {
       return { error: e.message };
@@ -26,7 +35,10 @@
         body: JSON.stringify(body),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) return { error: data.detail || `HTTP ${r.status}`, _status: r.status };
+      if (!r.ok) {
+        onUnauthorized(r.status);
+        return { error: data.detail || `HTTP ${r.status}`, _status: r.status };
+      }
       return data;
     } catch (e) {
       return { error: e.message };

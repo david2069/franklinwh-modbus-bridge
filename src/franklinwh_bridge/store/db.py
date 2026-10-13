@@ -46,7 +46,7 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 54
+CURRENT_SCHEMA_VERSION = 55
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -833,6 +833,38 @@ MIGRATIONS: dict[int, str] = {
      WHERE active_reserve_pct IS NULL;
     UPDATE metrics_archive SET active_reserve_pct = COALESCE(self_reserve_pct, tou_reserve_pct)
      WHERE active_reserve_pct IS NULL;
+    """,
+    55: """
+    -- Login record + audit. Until now a login was only a signed cookie, so a
+    -- page that lost it could say nothing but "Disconnected" and the bridge
+    -- had no trace of who logged in, from where, or why a login ended.
+    -- auth_sessions: one row per login; ended_at/end_reason say why it ended.
+    -- auth_events: login, failed login, logout and session-end audit trail.
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+        id           TEXT PRIMARY KEY,
+        user_id      TEXT NOT NULL,
+        username     TEXT NOT NULL,
+        created_at   REAL NOT NULL,
+        last_seen_at REAL NOT NULL,
+        ip           TEXT,
+        user_agent   TEXT,
+        ended_at     REAL,
+        end_reason   TEXT,
+        ended_by     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id);
+    CREATE TABLE IF NOT EXISTS auth_events (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts         REAL NOT NULL,
+        event      TEXT NOT NULL,
+        username   TEXT,
+        user_id    TEXT,
+        session_id TEXT,
+        ip         TEXT,
+        user_agent TEXT,
+        detail     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_events_ts ON auth_events (ts);
     """,
     46: """
     -- Every plan needs a real start date.
@@ -2167,8 +2199,19 @@ async def get_user(db: aiosqlite.Connection, user_id: str) -> dict | None:
 
 
 async def get_user_by_username(db: aiosqlite.Connection, username: str) -> dict | None:
+    """Look a user up by name, ignoring case ("Admin" logs in as "admin").
+
+    The column's UNIQUE constraint is case-sensitive, so an older database can
+    hold both "Admin" and "admin"; an exact match wins then. New names that
+    differ only in case are refused at creation (users_api), not by an index,
+    because adding one would stop such a database from starting.
+    """
     db.row_factory = aiosqlite.Row
-    async with db.execute("SELECT * FROM users WHERE username = ?", (username,)) as cur:
+    async with db.execute(
+        "SELECT * FROM users WHERE username = ? COLLATE NOCASE "
+        "ORDER BY (username = ?) DESC LIMIT 1",
+        (username, username),
+    ) as cur:
         row = await cur.fetchone()
         return _decode_user(dict(row)) if row else None
 
