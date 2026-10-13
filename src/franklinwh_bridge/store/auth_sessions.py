@@ -32,7 +32,10 @@ REASONS: dict[str, str] = {
     "logout": "You logged out.",
     "user_disabled": "Your account was disabled by an administrator.",
     "user_deleted": "Your account was deleted by an administrator.",
-    "password_changed": "Your password was changed by an administrator.",
+    "password_changed": (
+        "Your password was changed — by you on another device, by an "
+        "administrator, or by admin recovery."
+    ),
     "revoked": "An administrator ended this login.",
     "expired": "Your login expired after 14 days without use.",
     "browser_dropped": (

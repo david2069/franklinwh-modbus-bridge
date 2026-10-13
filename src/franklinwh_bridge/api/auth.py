@@ -11,9 +11,10 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from franklinwh_bridge.gateway.modules import ROLE_CAPABILITIES
-from franklinwh_bridge.security import verify_password
+from franklinwh_bridge.security import hash_password, verify_password
 from franklinwh_bridge.store import auth_sessions
 from franklinwh_bridge.store.db import (
     get_user,
@@ -266,6 +267,55 @@ async def session_status(request: Request, sid: str = "") -> dict[str, Any]:
         "ended_by": s.get("ended_by"),
         "last_seen_at": s.get("last_seen_at"),
     }
+
+
+#: Passwords anyone would try first. A password in this set (or equal to the
+#: username) is reported as weak by the setup wizard and refused here.
+GUESSABLE_PASSWORDS = frozenset({"admin", "password", "franklin", "franklinwh", "12345678"})
+MIN_PASSWORD_LEN = 8
+
+
+def is_guessable(user: dict) -> bool:
+    """True if the account's password is a default anyone would try first."""
+    candidates = GUESSABLE_PASSWORDS | {user.get("username", ""), user.get("username", "").lower()}
+    return any(c and verify_password(user["password_hash"], c) for c in candidates)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=MIN_PASSWORD_LEN, max_length=200)
+
+
+@router.post("/auth/password")
+async def change_own_password(body: PasswordChange, request: Request):
+    """Change your own password. Your other logins end; this one stays."""
+    if _is_ingress(request):
+        raise HTTPException(400, "signed in through Home Assistant: no bridge password to change")
+    user = await require_auth(request)
+    db = request.app.state.db
+    fresh = await get_user(db, user["id"])
+    if fresh is None or not verify_password(fresh["password_hash"], body.current_password):
+        await auth_sessions.record_event(
+            db, "password_change_failed", username=user["username"], user_id=user["id"],
+            request=request, detail="wrong current password",
+        )
+        raise HTTPException(400, "current password is wrong")
+    new = body.new_password
+    if new.lower() in GUESSABLE_PASSWORDS or new.lower() == user["username"].lower():
+        raise HTTPException(400, "choose a password that isn't a common default or your username")
+    if verify_password(fresh["password_hash"], new):
+        raise HTTPException(400, "the new password is the same as the current one")
+    await update_user(db, user["id"], password_hash=hash_password(new))
+    own_sid = getattr(request.state, "auth_sid", None)
+    ended = await auth_sessions.end_user_sessions(
+        db, user["id"], "password_changed", by=user["username"],
+        except_sid=own_sid, request=request,
+    )
+    await auth_sessions.record_event(
+        db, "password_changed", username=user["username"], user_id=user["id"],
+        session_id=own_sid, request=request, detail=f"self-service; {ended} other login(s) ended",
+    )
+    return {"ok": True, "other_logins_ended": ended}
 
 
 @router.get("/auth/me")

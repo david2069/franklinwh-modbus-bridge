@@ -272,6 +272,65 @@
             </div>
           </template>
 
+          <!-- Accounts: who can log in, and a default password -->
+          <template x-if="step === 'accounts' && accounts">
+            <div class="space-y-3">
+              <p class="font-semibold">Your login</p>
+              <p class="text-xs text-slate-400">
+                This bridge asks everyone to log in. Anyone with an <b>admin</b> or <b>user</b> login
+                can make your battery charge or discharge, so treat it like your FranklinWH app login.
+              </p>
+
+              <template x-if="accounts?.you?.weak_password">
+                <div class="rounded border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+                  <p class="text-xs text-amber-300">
+                    You're signed in as <b x-text="accounts?.you?.username"></b> with a password anyone
+                    would try first (such as "admin"). Change it now.
+                  </p>
+                  <input type="password" x-model="pw.current" placeholder="Current password"
+                         autocomplete="current-password" class="form-control !py-1 !text-xs w-full">
+                  <input type="password" x-model="pw.next" placeholder="New password (at least 8 characters)"
+                         autocomplete="new-password" class="form-control !py-1 !text-xs w-full">
+                  <input type="password" x-model="pw.confirm" placeholder="New password again"
+                         autocomplete="new-password" class="form-control !py-1 !text-xs w-full"
+                         @keydown.enter="changePassword()">
+                  <button type="button" @click="changePassword()" :disabled="busy"
+                          class="btn btn-sm btn-primary disabled:opacity-50">
+                    <span x-text="busy ? 'Changing…' : 'Change password'"></span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="accounts?.you && !accounts.you.weak_password">
+                <p class="text-xs text-emerald-400"
+                   x-text="pwDone ? '✓ Password changed. Your other logins have been signed out.'
+                                  : '✓ Your password isn\'t a common default.'"></p>
+              </template>
+
+              <div>
+                <p class="text-xs text-slate-400 mb-1">Logins on this bridge</p>
+                <template x-for="a in (accounts?.accounts || [])" :key="a.username">
+                  <div class="flex items-center gap-2 text-xs py-0.5">
+                    <span class="font-mono" x-text="a.username"></span>
+                    <span class="text-slate-500" x-text="a.role"></span>
+                    <span class="text-slate-500" x-show="!a.enabled">(disabled)</span>
+                    <span class="text-amber-300" x-show="a.weak_password">· guessable password</span>
+                  </div>
+                </template>
+              </div>
+
+              <p class="text-xs text-slate-400">
+                <b>admin</b>: everything · <b>user</b>: phone dashboard, can charge/discharge ·
+                <b>viewer</b>: look only. Give each person their own login with the lowest role
+                that works, under Settings → Admin → Users.
+              </p>
+              <p class="text-xs text-slate-500">
+                Locked out later? An admin password can be reset from the bridge's terminal:
+                <span class="font-mono">bridge recovery reset-admin-password</span>
+                (see docs/admin-recovery.md).
+              </p>
+            </div>
+          </template>
+
           <!-- 6. Home Assistant checklist -->
           <template x-if="step === 'checklist'">
             <div class="space-y-2">
@@ -340,8 +399,12 @@
                     class="btn btn-sm btn-primary disabled:opacity-50">
               <span x-text="busy ? 'Creating…' : 'Create demo'"></span>
             </button>
-            <button type="button" x-show="step === 'timezone'" @click="enterChecklist()"
+            <button type="button" x-show="step === 'timezone'" @click="enterAccounts()"
                     class="btn btn-sm btn-secondary">Skip for now</button>
+            <button type="button" x-show="step === 'accounts' && accounts?.you?.weak_password" @click="enterChecklist()"
+                    class="btn btn-sm btn-secondary">Not now</button>
+            <button type="button" x-show="step === 'accounts' && !accounts?.you?.weak_password" @click="enterChecklist()"
+                    class="btn btn-sm btn-primary">Next</button>
             <button type="button" x-show="step === 'timezone'" @click="confirmTimezone()" :disabled="busy"
                     class="btn btn-sm btn-primary disabled:opacity-50">That's right</button>
             <button type="button" x-show="step === 'checklist'" @click="close()"
