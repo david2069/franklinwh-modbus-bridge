@@ -95,18 +95,9 @@ def test_reset_is_audited_in_the_logs_tab(db_path):
     assert any("break-glass recovery" in m and "user=admin" in m for m in msgs)
 
 
-def test_ends_open_logins_and_writes_auth_event_when_those_tables_exist(db_path):
-    # The login record (auth_sessions/auth_events) may or may not be deployed yet.
+def test_ends_open_logins_and_writes_auth_event(db_path):
     uid = _user(db_path, "admin")["id"]
     with sqlite3.connect(db_path) as c:
-        c.executescript(
-            "CREATE TABLE auth_sessions (id TEXT PRIMARY KEY, user_id TEXT, username TEXT,"
-            " created_at REAL, last_seen_at REAL, ip TEXT, user_agent TEXT, ended_at REAL,"
-            " end_reason TEXT, ended_by TEXT);"
-            "CREATE TABLE auth_events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL,"
-            " event TEXT, username TEXT, user_id TEXT, session_id TEXT, ip TEXT,"
-            " user_agent TEXT, detail TEXT);"
-        )
         c.execute(
             "INSERT INTO auth_sessions (id, user_id, username, created_at, last_seen_at)"
             " VALUES ('s1', ?, 'admin', 1, 1)", (uid,),
@@ -117,7 +108,7 @@ def test_ends_open_logins_and_writes_auth_event_when_those_tables_exist(db_path)
         assert c.execute("SELECT end_reason, ended_by FROM auth_sessions").fetchone() == (
             "password_changed", "recovery",
         )
-        assert c.execute("SELECT event FROM auth_events").fetchone() == ("break_glass_reset",)
+        assert c.execute("SELECT event FROM auth_events").fetchall() == [("break_glass_reset",)]
 
 
 def test_cli_reset_refuses_outside_a_container_unless_allowed(db_path, monkeypatch):
