@@ -5,6 +5,7 @@ import time
 import pytest
 
 from franklinwh_bridge.modbus.sample import Sample
+from franklinwh_bridge.store.alarms import compute_grid_mode_intervals
 from franklinwh_bridge.store.db import init_db
 from franklinwh_bridge.store.metrics import (
     DEFAULT_RETENTION_DAYS,
@@ -13,6 +14,7 @@ from franklinwh_bridge.store.metrics import (
     get_retention_days,
     get_storage_stats,
     purge_old,
+    query_grid_mode_transitions,
     query_metrics,
     query_metrics_daterange,
     record_sample,
@@ -579,3 +581,83 @@ async def test_archive_honours_configured_raw_age(tmp_path):
         assert remaining == 1  # the 1-day-old row stays raw
     finally:
         await db.close()
+
+
+# ── grid_mode across buckets (#78) ───────────────────────────
+
+
+async def _grid_modes(db, rows, gateway_id="default"):
+    await db.executemany(
+        "INSERT INTO metrics (ts, battery_w, grid_w, solar_w, home_w, soc, grid_mode, gateway_id) "
+        "VALUES (?, 0, 0, 0, 0, 50, ?, ?)",
+        [(ts, mode, gateway_id) for ts, mode in rows],
+    )
+    await db.commit()
+
+
+# The 2026-10-15 islanding, at poll resolution: 51 s of "PV Clipped", then
+# Grid Forming until the end of the range.
+ISLANDING = [
+    (1000.0, "Grid Following"), (1010.0, "Grid Following"),
+    (1020.0, "PV Clipped"), (1030.0, "PV Clipped"), (1071.0, "Grid Forming"),
+    (1081.0, "Grid Forming"), (1091.0, "Grid Forming"),
+]
+
+
+async def test_transitions_keep_real_interval_bounds(db):
+    await _grid_modes(db, ISLANDING)
+    pts = await query_grid_mode_transitions(db, 0, 2000)
+
+    assert [(p["ts"], p["grid_mode"]) for p in pts] == [
+        (1000.0, "Grid Following"), (1020.0, "PV Clipped"),
+        (1071.0, "Grid Forming"), (1091.0, "Grid Forming"),
+    ]
+    rows = compute_grid_mode_intervals(pts)
+    clip = next(r for r in rows if r["name"] == "PV Clipped")
+    forming = next(r for r in rows if r["name"] == "Grid Forming")
+    assert (clip["ts"], clip["end_ts"], clip["ongoing"]) == (1020.0, 1071.0, False)
+    assert (forming["ts"], forming["ongoing"]) == (1071.0, True)
+
+
+async def test_transitions_are_per_gateway(db):
+    await _grid_modes(db, [(1000.0, "Grid Following"), (1020.0, "Grid Forming")], "a")
+    await _grid_modes(db, [(1010.0, "Grid Following"), (1030.0, "Grid Following")], "b")
+    pts = await query_grid_mode_transitions(db, 0, 2000)
+    assert [(p["gateway_id"], p["ts"]) for p in pts] == [
+        ("a", 1000.0), ("a", 1020.0), ("b", 1010.0), ("b", 1030.0),
+    ]
+
+
+async def test_a_bucket_reports_grid_forming_over_pv_clipped(db):
+    """Text MAX() picked "PV Clipped" for any bucket holding one such sample
+    and Grid Forming never showed. Islanded is the more significant state."""
+    await _grid_modes(db, ISLANDING)
+    pts = await query_metrics_daterange(db, 0, 1000 + 7 * 3600, bucket_seconds=3600)
+    assert [p["grid_mode"] for p in pts if p.get("grid_mode")] == ["Grid Forming"]
+
+
+async def test_events_api_reports_both_intervals_from_raw_rows(db):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from franklinwh_bridge.api import admin
+
+    await _grid_modes(db, ISLANDING)
+    app = FastAPI()
+    app.state.db = db
+    app.include_router(admin.router)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        body = (await c.get("/api/events", params={"start": 0, "end": 40 * 86400})).json()
+    got = sorted((e["name"], e["ts"], e["duration_seconds"]) for e in body["events"])
+    assert got == [("Grid Forming", 1071.0, 20.0), ("PV Clipped", 1020.0, 51.0)]
+
+
+async def test_null_grid_mode_runs_are_one_transition_not_many(db):
+    await _grid_modes(db, [
+        (1000.0, None), (1010.0, None), (1020.0, None),
+        (1030.0, "Grid Following"), (1040.0, "Grid Following"),
+    ])
+    pts = await query_grid_mode_transitions(db, 0, 2000)
+    assert [(p["ts"], p["grid_mode"]) for p in pts] == [
+        (1000.0, None), (1030.0, "Grid Following"), (1040.0, "Grid Following"),
+    ]
