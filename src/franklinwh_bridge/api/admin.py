@@ -45,6 +45,7 @@ from franklinwh_bridge.store.metrics import (
     get_retention_days,
     get_storage_stats,
     import_metrics_csv,
+    query_grid_mode_transitions,
     query_metrics,
     query_metrics_daterange,
     query_metrics_with_archive,
@@ -512,10 +513,17 @@ async def get_events(
     raw_alarms = await query_alarm_events(db, start_ts, end_ts, gateway_id=gateway_id)
     alarm_rows = pair_alarm_events(raw_alarms)
 
-    metrics_points = await query_metrics_daterange(
+    # From transitions in the raw rows, per gateway: bucketed rows report
+    # one mode per bucket, which stretched and mislabelled intervals (#78).
+    transitions = await query_grid_mode_transitions(
         db, start_ts, end_ts, gateway_id=gateway_id
     )
-    clip_rows = compute_grid_mode_intervals(metrics_points)
+    by_gw: dict[str, list[dict]] = {}
+    for t in transitions:
+        by_gw.setdefault(t["gateway_id"], []).append(t)
+    clip_rows = [
+        row for pts in by_gw.values() for row in compute_grid_mode_intervals(pts)
+    ]
 
     events = sorted(alarm_rows + clip_rows, key=lambda e: e["ts"], reverse=True)
     return {"events": events, "count": len(events)}

@@ -21,6 +21,17 @@ DEFAULT_RETENTION_DAYS = 30
 # 5-min buckets. Configurable; must be <= retention. Older raw → archive table.
 DEFAULT_RAW_AGE_DAYS = 7
 
+#: Aggregate for ``grid_mode`` across a bucket. A plain MAX() compares the
+#: labels as text, and "PV Clipped" > "Grid Forming" > "Grid Following", so one
+#: PV Clipped sample claimed a whole bucket and Grid Forming never showed (#78).
+#: This ranks by significance instead: islanded beats curtailed beats normal.
+#: The rank digit is prefixed for MAX() and stripped again.
+GRID_MODE_AGG = (
+    "substr(MAX(CASE grid_mode"
+    " WHEN 'Grid Forming' THEN '3' WHEN 'PV Clipped' THEN '2'"
+    " WHEN 'Grid Following' THEN '1' ELSE '0' END || grid_mode), 2)"
+)
+
 # Power metric point names to extract from poller samples
 POWER_METRIC_KEYS: dict[str, str] = {
     "battery_power_w": "battery_w",
@@ -281,7 +292,7 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800, gat
             MAX(mode_name),
             MAX(self_reserve_pct),
             MAX(tou_reserve_pct),
-            MAX(grid_mode),
+            {GRID_MODE_AGG},
             MAX(active_reserve_pct)
         FROM metrics
         WHERE ts >= ?{gw_filter}
@@ -311,6 +322,62 @@ async def query_metrics(db: aiosqlite.Connection, range_seconds: int = 1800, gat
                 }
             )
     return rows
+
+
+async def query_grid_mode_transitions(
+    db: aiosqlite.Connection,
+    start_ts: float,
+    end_ts: float,
+    gateway_id: str | None = None,
+) -> list[dict]:
+    """Every sample where ``grid_mode`` changes, plus each gateway's last one.
+
+    Events History builds its grid-mode intervals from this, never from
+    bucketed rows: a bucket is minutes to hours wide and can only report one
+    mode, which stretched a 51 s "PV Clipped" to 2 h and hid Grid Forming
+    (#78). Transitions keep each interval's real start and end at poll
+    resolution (archive rows, older than the raw window, are 5-min buckets).
+    The trailing sample closes an interval still open at the end of the range.
+    """
+    gw_filter = " AND gateway_id = ?" if gateway_id else ""
+    gw_p: list = [gateway_id] if gateway_id else []
+    try:
+        async with db.execute("SELECT 1 FROM metrics_archive LIMIT 1"):
+            pass
+        source = f"""
+            SELECT ts, gateway_id, grid_mode FROM metrics
+            WHERE ts >= ? AND ts <= ?{gw_filter}
+            UNION ALL
+            SELECT ts, gateway_id, grid_mode FROM metrics_archive
+            WHERE ts >= ? AND ts <= ?{gw_filter}
+        """
+        params: list = [start_ts, end_ts, *gw_p, start_ts, end_ts, *gw_p]
+    except Exception:
+        source = (
+            "SELECT ts, gateway_id, grid_mode FROM metrics"
+            f" WHERE ts >= ? AND ts <= ?{gw_filter}"
+        )
+        params = [start_ts, end_ts, *gw_p]
+
+    query = f"""
+        SELECT ts, gateway_id, grid_mode FROM (
+            SELECT ts, gateway_id, grid_mode,
+                   LAG(grid_mode) OVER w AS prev_mode,
+                   LAG(ts) OVER w AS prev_ts,
+                   LEAD(ts) OVER w AS next_ts
+            FROM ({source})
+            WINDOW w AS (PARTITION BY gateway_id ORDER BY ts)
+        )
+        -- First row is prev_ts IS NULL, not prev_mode IS NULL: grid_mode can
+        -- itself be NULL, and every row after one would then pass.
+        WHERE prev_ts IS NULL OR grid_mode IS NOT prev_mode OR next_ts IS NULL
+        ORDER BY gateway_id, ts
+    """
+    async with db.execute(query, params) as cur:
+        return [
+            {"ts": r[0], "gateway_id": r[1], "grid_mode": r[2]}
+            for r in await cur.fetchall()
+        ]
 
 
 async def query_metrics_daterange(
@@ -411,7 +478,7 @@ async def query_metrics_daterange(
             CAST((ts - ?) / ? AS INTEGER) AS bucket,
             AVG(battery_w), AVG(grid_w), AVG(solar_w), AVG(home_w), AVG(soc),
             AVG(ambient_temp_c), AVG(cabinet_temp_c), MAX(mode_name),
-            MAX(self_reserve_pct), MAX(tou_reserve_pct), MAX(grid_mode),
+            MAX(self_reserve_pct), MAX(tou_reserve_pct), {GRID_MODE_AGG},
             MAX(active_reserve_pct)
         FROM {source}
         GROUP BY bucket
@@ -637,7 +704,7 @@ async def archive_old_metrics(
     # any bucket already present (guards against re-archiving rows orphaned by
     # earlier runs, which would otherwise create duplicate archive rows).
     await db.execute(
-        """
+        f"""
         INSERT INTO metrics_archive (ts, battery_w, grid_w, solar_w, home_w, soc, sample_count, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode, active_reserve_pct, gateway_id)
         SELECT bucket_ts, battery_w, grid_w, solar_w, home_w, soc, sample_count, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode, active_reserve_pct, gateway_id
         FROM (
@@ -654,7 +721,7 @@ async def archive_old_metrics(
                 MAX(mode_name) AS mode_name,
                 MAX(self_reserve_pct) AS self_reserve_pct,
                 MAX(tou_reserve_pct) AS tou_reserve_pct,
-                MAX(grid_mode) AS grid_mode,
+                {GRID_MODE_AGG} AS grid_mode,
                 MAX(active_reserve_pct) AS active_reserve_pct,
                 gateway_id
             FROM metrics
@@ -739,7 +806,7 @@ async def query_metrics_with_archive(
             MAX(mode_name),
             MAX(self_reserve_pct),
             MAX(tou_reserve_pct),
-            MAX(grid_mode),
+            {GRID_MODE_AGG},
             MAX(active_reserve_pct)
         FROM (
             SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode, active_reserve_pct

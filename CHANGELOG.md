@@ -82,6 +82,11 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Events History grid-mode intervals** (#78). The 30-day view stretched a
+  51 s "PV Clipped" to 2 h and never showed Grid Forming: rows were bucketed
+  and `MAX(grid_mode)` compared the labels as text. Intervals are now built
+  from the raw transitions, and every bucketed view (charts, the 5-minute
+  archive) ranks Grid Forming over PV Clipped over Grid Following.
 - **SunSpec Explorer reset to model 1 and reloaded its catalog every 10 s**
   (#69, #70). The gateway watcher fired on every refresh.
 - **Chart modal on a phone** (#65, #68): it now opens full-screen, its controls
