@@ -58,6 +58,13 @@ HISTORISED_POINTS: tuple[str, ...] = (
     "soc",
     "cabinet_temp_c",
     "ambient_temp_c",
+    # Raw vendor registers, stored as read (uint16). Meanings are one site's
+    # readings, not documented: 15013 tracks battery power at 1 W resolution
+    # (M714.DCW is in 100 W steps; sign while charging not yet observed), and
+    # 15035 is SoC x10. Recorded raw so the history can test those readings
+    # instead of baking them in.
+    "vreg_15013",
+    "vreg_15035",
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -133,6 +140,9 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "ambient_temp_c": (-40.0, 120.0),
     "battery_1_voltage_v": (0.0, 1500.0),
     "battery_current_a": (-1000.0, 1000.0),
+    # 0xFFFF is the aGate's "not available" marker, not a reading.
+    "vreg_15013": (0.0, 65534.0),
+    "vreg_15035": (0.0, 1000.0),
 }
 _DEFAULT_LIMIT = (-100_000.0, 100_000.0)   # watts / VA / var
 
