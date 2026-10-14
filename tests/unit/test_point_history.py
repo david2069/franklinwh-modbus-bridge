@@ -232,3 +232,19 @@ async def test_storage_stats_report_what_is_held(db):
     assert stats["rows"] == 3
     assert stats["points"] == 2
     assert stats["span_days"] == pytest.approx(1.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_raw_vendor_registers_are_recorded_and_0xffff_is_not(db):
+    """15013 (battery W at 1 W) and 15035 (SoC x10) are stored raw. 0xFFFF is
+    the aGate's not-available marker and must not land in the series."""
+    n = await record_points(db, {"vreg_15013": 255, "vreg_15035": 412}, ts=1.0)
+    assert n == 2
+    n = await record_points(db, {"vreg_15013": 0xFFFF, "vreg_15035": 0xFFFF}, ts=2.0)
+    assert n == 0
+    async with db.execute(
+        "SELECT point_id, value FROM metric_samples ORDER BY point_id"
+    ) as cur:
+        assert [tuple(r) for r in await cur.fetchall()] == [
+            ("vreg_15013", 255.0), ("vreg_15035", 412.0)
+        ]
