@@ -28,7 +28,7 @@ async def test_health_survives_gateway_added_mid_probe(monkeypatch):
     instances = {"a": _inst("10.0.0.1"), "b": _inst("10.0.0.2")}
     hc = HealthChecker(SimpleNamespace(instances=instances))
 
-    async def probe(host, port):
+    async def probe(host, port, *_):
         instances.setdefault("c", _inst("10.0.0.3"))  # registry changes mid-pass
         return True
 
@@ -43,7 +43,7 @@ async def test_health_one_failing_gateway_does_not_skip_the_rest(monkeypatch):
     instances = {"bad": _inst("10.0.0.1"), "good": _inst("10.0.0.2")}
     hc = HealthChecker(SimpleNamespace(instances=instances))
 
-    async def probe(host, port):
+    async def probe(host, port, *_):
         if host == "10.0.0.1":
             raise RuntimeError("boom")
         return True

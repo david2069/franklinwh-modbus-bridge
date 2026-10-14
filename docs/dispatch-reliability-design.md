@@ -204,6 +204,12 @@ use Modbus on the reference aGate is an owner decision (§9).
 
 ### 5.4 Measurement (Phase 0b, ships before any fix)
 
+> **Built (2026-10-15):** `link_stats` (migration 57), collector in
+> `gateway/link_stats.py`, `GET /api/gateways/{id}/link-stats`.
+> `dispatch_outcomes` shipped earlier with Phase 1 (migration 56,
+> `GET /api/gateways/{id}/dispatch-outcomes`). Not yet built: the Link health
+> panel, HA sensors, the per-request trace, library rescan *phases* (§9.5).
+
 **Why first:**
 - **A baseline.** A6 ("timeouts fall to the baseline") needs today's rates
   recorded *before* anything changes; once a fix ships, the "before" is gone.

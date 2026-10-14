@@ -13,7 +13,7 @@ import time
 from zoneinfo import ZoneInfo
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from franklinwh_bridge.api.auth import require_capability
@@ -23,6 +23,7 @@ from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store import dispatch_outcomes
+from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store.db import (
     create_gateway,
     create_service,
@@ -1052,7 +1053,7 @@ async def test_gateway_tcp(gw_id: str, request: Request):
             "latency_ms": 0,
         }
 
-    result = await tcp_probe(row["host"], row["port"])
+    result = await tcp_probe(row["host"], row["port"], gateway_id=gw_id, path="test")
     return {"gateway_id": gw_id, **result.to_dict()}
 
 
@@ -1196,3 +1197,72 @@ async def list_dispatch_outcomes(gw_id: str, request: Request, limit: int = 100)
     db: aiosqlite.Connection = request.app.state.db
     return {"gateway_id": gw_id,
             "outcomes": await dispatch_outcomes.recent(db, gw_id, limit=limit)}
+
+
+# ── Link health (Phase 0b, design §5.4) ──────────────────────
+
+
+class LinkStatsRow(BaseModel):
+    """One ``link_stats`` row. Request rows fill the request columns; the
+    ``kind = 'link'`` row fills the connection-level ones. See
+    ``franklinwh_bridge.gateway.link_stats`` for what each column means."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    gateway_id: str
+    hour_start: float
+    kind: str
+    path: str = ""
+    partial: int = 0
+    count: int | None = None
+    ok: int | None = None
+    empty: int | None = None
+    timeout_no_reply: int | None = None
+    timeout_closed: int | None = None
+    error: int | None = None
+    error_classes: dict[str, int] | None = None
+    lat_p50_ms: float | None = None
+    lat_p95_ms: float | None = None
+    lat_max_ms: float | None = None
+    conns_opened: dict[str, int] | None = None
+    reconnects: int | None = None
+    reconnects_failed: int | None = None
+    rescans: int | None = None
+    rescans_failed: int | None = None
+    rescan_max_ms: float | None = None
+    lib_retries: int | None = None
+    max_consec_fail: int | None = None
+    newest_good_age_s: float | None = None
+    polls: int | None = None
+    cache_polls: int | None = None
+    overlaps: int | None = None
+    overlap_pairs: dict[str, int] | None = None
+    max_in_flight: int | None = None
+    max_established: int | None = None
+
+
+class LinkStatsResponse(BaseModel):
+    gateway_id: str
+    hours: int
+    since: float
+    #: Hours already written to the database, oldest first.
+    rows: list[LinkStatsRow]
+    #: The hour still being collected (and any closed hour not yet written).
+    open_hour: list[LinkStatsRow]
+
+
+@router.get("/gateways/{gw_id}/link-stats", response_model=LinkStatsResponse)
+async def get_link_stats(
+    gw_id: str, request: Request, hours: int = Query(24, ge=1, le=24 * 90),
+) -> LinkStatsResponse:
+    """Hourly link health for one gateway: requests by kind and code path
+    (outcomes, latency), connections, reconnects, rescans, overlap, sockets.
+    Read-only measurement; the baseline the connection work is judged by."""
+    db: aiosqlite.Connection = request.app.state.db
+    since = (time.time() // 3600 - hours + 1) * 3600
+    stored = await link_stats_store.query(db, gw_id, since)
+    return LinkStatsResponse(
+        gateway_id=gw_id, hours=hours, since=since,
+        rows=[LinkStatsRow(**r) for r in stored],
+        open_hour=[LinkStatsRow(**r) for r in link_stats_store.open_hour(gw_id)],
+    )

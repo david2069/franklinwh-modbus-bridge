@@ -58,7 +58,7 @@ async def run_diagnostics(inst: GatewayInstance, log_buffer: Any | None = None) 
     host = inst.config.host
     port = inst.config.port
 
-    tcp_modbus = await tcp_probe(host, port)
+    tcp_modbus = await tcp_probe(host, port, gateway_id=inst.gateway_id, path="diagnostics")
     tcp_local_api = await tcp_probe(host, LOCAL_API_PORT)
 
     if inst.poller is not None and hasattr(inst.poller, "probe_protocol"):

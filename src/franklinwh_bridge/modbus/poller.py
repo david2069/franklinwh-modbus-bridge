@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.home_load import STANDARD, HomeLoadSelector
 from franklinwh_bridge.modbus.register_watch import RegisterWatch
 from franklinwh_bridge.modbus.reserves import ActiveReserveReader
@@ -97,6 +98,7 @@ class ModbusPoller:
         self._ac_type: int = 0  # 0=Single, 1=Split, 2=Three-Phase
         self._battery_port_count: int = 1  # M714 NPrt (1 = single battery)
         self._vreg_client: Any | None = None  # cached pymodbus client
+        self._ever_connected = False  # a later connect counts as a reconnect
         self._last_good_ext: dict[str, int | float] = {}  # previous good extension values
         self._stats = stats  # OperationalStats (optional)
         self._modbus_lock = modbus_lock or asyncio.Lock()
@@ -140,7 +142,8 @@ class ModbusPoller:
             model = self._controller.get_model(713) or self._controller.get_model(1)
             if model is None:
                 raise RuntimeError("No cached SunSpec model available to probe")
-            model.read()
+            with link_stats.track(self._gateway_id, "diag", "diagnostics"):
+                model.read()
 
         t0 = time.monotonic()
         try:
@@ -184,9 +187,19 @@ class ModbusPoller:
     async def _connect(self) -> bool:
         async with self._modbus_lock:
             try:
-                result = await asyncio.to_thread(self._controller.connect)
+                def _do_connect() -> Any:
+                    with link_stats.track(self._gateway_id, "connect", "poller") as req:
+                        r = self._controller.connect()
+                        if not r:
+                            req.fail("connect returned False")
+                        return r
+
+                result = await asyncio.to_thread(_do_connect)
                 self._state.connected = bool(result)
+                if self._ever_connected:
+                    link_stats.note_reconnect(self._gateway_id, self._state.connected)
                 if self._state.connected:
+                    self._ever_connected = True
                     if self._state.consecutive_errors > 0:
                         logger.warning(
                             "Reconnected to aGate at %s after %d errors",
@@ -201,6 +214,8 @@ class ModbusPoller:
             except Exception as exc:
                 self._state.connected = False
                 self._state.last_error = str(exc)
+                if self._ever_connected:
+                    link_stats.note_reconnect(self._gateway_id, False)
                 logger.error("Connection failed: %s", exc)
                 return False
 
@@ -221,7 +236,9 @@ class ModbusPoller:
                 if method is None:
                     continue
                 try:
-                    result = await asyncio.to_thread(method)
+                    result = await asyncio.to_thread(
+                        self._tracked, method, "model_read", "startup",
+                    )
                     if isinstance(result, dict):
                         for k, v in result.items():
                             if isinstance(v, dict):
@@ -235,7 +252,7 @@ class ModbusPoller:
             m702 = self._controller.get_model(702)
             if m702:
                 try:
-                    m702.read()
+                    self._tracked(m702.read, "model_read", "startup", check=False)
                     sf = getattr(m702, "W_SF", None)
                     sf_val = sf.value if sf and sf.value is not None else 0
                     for attr, key in [
@@ -255,7 +272,7 @@ class ModbusPoller:
                 model = self._controller.get_model(mid)
                 if model:
                     try:
-                        model.read()
+                        self._tracked(model.read, "model_read", "startup", check=False)
                         logger.debug("Startup read M%d OK", mid)
                     except Exception as exc:
                         logger.debug("Startup read M%d failed: %s", mid, exc)
@@ -282,7 +299,7 @@ class ModbusPoller:
             return
 
         try:
-            m701.read()
+            self._tracked(m701.read, "model_read", "startup", check=False)
             ac_pt = getattr(m701, "ACType", None)
             if ac_pt and hasattr(ac_pt, "value") and ac_pt.value is not None:
                 val = int(ac_pt.value)
@@ -468,7 +485,9 @@ class ModbusPoller:
                 if method is None:
                     continue
                 try:
-                    result = await asyncio.to_thread(method)
+                    result = await asyncio.to_thread(
+                        self._tracked, method, "model_read", "poller",
+                    )
                     if isinstance(result, dict):
                         for k, v in result.items():
                             if isinstance(v, dict):
@@ -521,7 +540,7 @@ class ModbusPoller:
             # Fallback: derive critical battery keys from raw model cache
             # when the library's read_battery_status() returned {} (failed
             # silently).  Prevents dashboard/HA "--" on transient failures.
-            self._derive_battery_from_model(points)
+            from_cache = bool(self._derive_battery_from_model(points))
 
             # Extract per-battery stack data from individual_batteries array
             # (new in franklinwh-modbus multi-battery update)
@@ -539,6 +558,21 @@ class ModbusPoller:
 
         if not points:
             quality = "error"
+
+        # Link health (Phase 0b): a "stale" poll published some values from
+        # the library's model cache, which is what C8 asks to count.
+        link_stats.note_poll(
+            self._gateway_id, good=quality != "error",
+            from_cache=from_cache or quality == "stale",
+        )
+        # Off the event loop: the first call may resolve a hostname.
+        host = getattr(self._controller, "ip_address", None)
+        if host:
+            with contextlib.suppress(Exception):
+                link_stats.note_established(self._gateway_id, await asyncio.to_thread(
+                    link_stats.count_established, str(host),
+                    int(getattr(self._controller, "port", 502) or 502),
+                ))
 
         return Sample.now(self._gateway_id, points, quality)
 
@@ -574,7 +608,7 @@ class ModbusPoller:
                     raw[f"{mid}.{pt_name}"] = val
         return raw
 
-    def _derive_battery_from_model(self, points: dict[str, Any]) -> None:
+    def _derive_battery_from_model(self, points: dict[str, Any]) -> list[str]:
         """Fill in critical battery keys from raw model cache when missing.
 
         The library's ``read_battery_status()`` returns ``soh``, ``wh_rating``,
@@ -590,7 +624,7 @@ class ModbusPoller:
         """
         m713 = self._controller.get_model(713)
         if not m713:
-            return
+            return []
 
         # Scale factors from the model (already cached from last .read())
         sf_pct = self._get_scale_factor(m713, "Pct_SF")
@@ -619,6 +653,7 @@ class ModbusPoller:
                 len(filled),
                 ", ".join(filled),
             )
+        return filled
 
     def _extract_per_battery(self, points: dict[str, Any]) -> None:
         """Extract per-battery stack telemetry from individual_batteries.
@@ -707,6 +742,15 @@ class ModbusPoller:
 
         return points
 
+    def _tracked(self, fn: Callable[[], Any], kind: str, path: str,
+                 check: bool = True) -> Any:
+        """Run one blocking aGate request under link-health measurement."""
+        with link_stats.track(self._gateway_id, kind, path) as req:
+            result = fn()
+            if check:
+                req.check(result)
+            return result
+
     def _get_vreg_client(self) -> Any:
         """Get or create a reusable pymodbus client for vendor register reads.
 
@@ -724,6 +768,7 @@ class ModbusPoller:
                 self._controller.ip_address, port=self._controller.port,
                 timeout=self._timeout,
             )
+            link_stats.note_connection(self._gateway_id, "vendor")
             self._vreg_client.connect()
         return self._vreg_client
 
@@ -756,14 +801,20 @@ class ModbusPoller:
             uid = self._controller.unit_id
 
             # Range 1: 15000-15039 (undocumented vendor range)
-            r1 = client.read_holding_registers(15000, count=40, device_id=uid)
+            r1 = self._tracked(
+                lambda: client.read_holding_registers(15000, count=40, device_id=uid),
+                "vreg_read", "poller",
+            )
             if not r1.isError():
                 for i, val in enumerate(r1.registers):
                     points[f"vreg_{15000 + i}"] = val
 
             # Range 2: 15510-15513 (PV energy counters — uint32 high:low pairs)
             # Only these 4 registers; 15500-15509 handled by library.
-            r2 = client.read_holding_registers(15510, count=4, device_id=uid)
+            r2 = self._tracked(
+                lambda: client.read_holding_registers(15510, count=4, device_id=uid),
+                "vreg_read", "poller",
+            )
             if not r2.isError():
                 for i, val in enumerate(r2.registers):
                     points[f"vreg_{15510 + i}"] = val
@@ -771,7 +822,10 @@ class ModbusPoller:
                 points["pv_energy_proximal_wh"] = (r2.registers[2] << 16) | r2.registers[3]
 
             # Range 3: 16000-16002 (high-resolution extension registers)
-            r3 = client.read_holding_registers(16000, count=3, device_id=uid)
+            r3 = self._tracked(
+                lambda: client.read_holding_registers(16000, count=3, device_id=uid),
+                "vreg_read", "poller",
+            )
             if not r3.isError():
                 for i, val in enumerate(r3.registers):
                     points[f"vreg_{16000 + i}"] = val

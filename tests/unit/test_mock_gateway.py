@@ -165,7 +165,7 @@ async def test_health_checker_skips_tcp_probe_for_mock(monkeypatch):
     hc = HealthChecker(reg)
     probed = []
 
-    async def fake_probe(host, port):
+    async def fake_probe(host, port, *_):
         probed.append(host)
         return False  # every real probe fails → unreachable
 

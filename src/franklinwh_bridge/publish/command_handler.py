@@ -40,6 +40,7 @@ from typing import Any
 
 import aiosqlite
 
+from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store.db import log_control_event, save_control_state
 
@@ -244,7 +245,9 @@ class CommandHandler:
     async def _read_hw_state(self) -> dict | None:
         try:
             async with self._modbus_lock:
-                return await asyncio.to_thread(self._controller.read_control_status)
+                return await asyncio.to_thread(
+                    self._io, "model_read", self._controller.read_control_status,
+                )
         except Exception as exc:
             logger.debug("Could not read hw state for audit: %s", exc)
             return None
@@ -411,7 +414,8 @@ class CommandHandler:
         # to prevent interleaving with poller reads.
         async with self._modbus_lock:
             success, msg = await asyncio.to_thread(
-                self._controller.send_command, cmd, duration_s=lib_duration
+                self._io, "write", self._controller.send_command, cmd,
+                duration_s=lib_duration,
             )
 
             # Write WSetRvrtTms to keep the aGate in VPP (remote-control) mode.
@@ -607,7 +611,7 @@ class CommandHandler:
         # ramp-down (safer for an actively-dispatching battery).
         fast = reason == "shutdown"
         async with self._modbus_lock:
-            success = await asyncio.to_thread(self._full_release, fast)
+            success = await asyncio.to_thread(self._io, "write", self._full_release, fast)
 
         # Read back: a release is only done when WSetEna is 0 (design §5.1.5).
         hw = await self._read_hw_state()
@@ -657,6 +661,20 @@ class CommandHandler:
 
         logger.info("Battery command released: %s (reason=%s)", self._state.last_result, reason)
 
+    def _io(self, kind: str, fn: Any, *args: Any, **kwargs: Any) -> Any:
+        """Run one blocking aGate call under link-health measurement (Phase
+        0b). Only counts: the result and any exception pass through as-is.
+        A ``(False, msg)`` or ``False`` result is counted as an error."""
+        with link_stats.track(self._gateway_id, kind, "command") as req:
+            result = fn(*args, **kwargs)
+            ok = result[0] if isinstance(result, tuple) and result else result
+            if ok is False:
+                req.fail(str(result[1]) if isinstance(result, tuple) and len(result) > 1
+                         else "returned False")
+            elif kind == "model_read":
+                req.check(result)
+            return result
+
     def _reset_control_state(self, fast: bool) -> bool:
         """Call the controller's release, requesting a fast (no-handshake)
         release when ``fast`` and the installed library supports it.
@@ -689,9 +707,10 @@ class CommandHandler:
         try:
             m704 = self._controller.get_model(704)
             if m704:
-                m704.WSetRvrtTms.value = 0
-                m704.WSetEnaRvrt.value = 0
-                m704.write()
+                with link_stats.track(self._gateway_id, "write", "command"):
+                    m704.WSetRvrtTms.value = 0
+                    m704.WSetEnaRvrt.value = 0
+                    m704.write()
                 logger.info(
                     "Cleared revert timer: WSetRvrtTms=0, WSetEnaRvrt=0 (exit VPP mode)"
                 )
@@ -715,9 +734,10 @@ class CommandHandler:
                 # Fresh read to avoid writing stale values — the poller may
                 # have called m704.read() between send_command and now,
                 # overwriting the in-memory model.
-                m704.read()
-                m704.WSetRvrtTms.value = duration_s
-                m704.write()
+                with link_stats.track(self._gateway_id, "write", "command"):
+                    m704.read()
+                    m704.WSetRvrtTms.value = duration_s
+                    m704.write()
                 logger.info(
                     "Wrote WSetRvrtTms=%ds (VPP mode activated)", duration_s
                 )
@@ -743,7 +763,7 @@ class CommandHandler:
         else:
             try:
                 async with self._modbus_lock:
-                    success, msg = await asyncio.to_thread(method, mode_val)
+                    success, msg = await asyncio.to_thread(self._io, "write", method, mode_val)
                 self._state.last_result = _strip_speculation(msg)
                 self._state.last_success = success
                 if success:
@@ -783,7 +803,7 @@ class CommandHandler:
         else:
             try:
                 async with self._modbus_lock:
-                    success, msg = await asyncio.to_thread(method, pct)
+                    success, msg = await asyncio.to_thread(self._io, "write", method, pct)
                 self._state.last_result = _strip_speculation(msg)
                 self._state.last_success = success
                 if success:

@@ -39,7 +39,7 @@ def _make_instance(poller, host="127.0.0.1", port=502, mock=False):
 
 
 def _stub_tcp_probe(monkeypatch, ok: bool, error: str | None = None):
-    async def fake(host, port, timeout=5.0):
+    async def fake(host, port, timeout=5.0, **_):
         return ProbeResult(ok=ok, host=host, port=port, latency_ms=1.0 if ok else None, error=error)
 
     monkeypatch.setattr(diagnostics, "tcp_probe", fake)
