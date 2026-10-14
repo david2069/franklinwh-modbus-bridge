@@ -58,10 +58,16 @@
   --text-secondary: #cbd5e1; /* slate-300 */
   --text-muted:     #94a3b8; /* slate-400 — boosted from slate-500 for readability */
   --text-faint:     #64748b; /* slate-500 */
+
+  /* Native option popups and date pickers follow color-scheme; without it
+     they rendered light on the dark UI (#66). */
+  color-scheme: dark;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2394a3b8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
 }
 
 /* ── Theme: Light ──────────────────────────────────────── */
 [data-theme="light"] {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
   --bg:           #f1f5f9; /* slate-100 */
   --surface-0:    #ffffff;
   --surface-1:    #f8fafc; /* slate-50 */
@@ -316,6 +322,23 @@ body {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .form-control option { background: var(--surface-1); }
+
+/* Every <select>, not just .form-control: about a third of them are styled
+   with ad-hoc Tailwind classes instead, and all of them kept the platform's
+   native chrome (iOS's grey double-chevron) (#66). The :not()s lift this to
+   (0,2,1) so the chevron's room survives .form-control and .px-* padding;
+   list boxes (multiple/size) keep native rendering. */
+select:not([multiple]):not([size]) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.5em center;
+  background-size: 0.75em;
+  padding-right: 1.75em;
+  cursor: pointer;
+}
+select:disabled { cursor: not-allowed; opacity: 0.6; }
 
 /* ── Buttons ────────────────────────────────────────────── */
 .btn {
