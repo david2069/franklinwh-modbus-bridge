@@ -38,6 +38,11 @@ lands, not backfilled later.
   - Also connections opened, reconnects and library rescans, failed-poll runs,
     polls served from cache, overlapping requests and socket counts.
   - `GET /api/gateways/{id}/link-stats`. Measurement only; dispatch is unchanged.
+- **Point history records raw 701.DERMode and register 15016** (#76, #36).
+  DERMode is the grid-mode bitfield, so an islanding event's "PV Clipped"
+  minute can be told apart (raw 4 vs 6). 15016 is an unmapped status register
+  that changes with off-grid and dispatch. Both are recorded only once ticked
+  in Settings → Point history.
 - **Point history records raw vendor registers 15013 and 15035** (#73): battery
   W at 1 W and SoC x10 (one site's readings, not documented). They can be
   charted from the DC card. They are only recorded once ticked in Settings →
