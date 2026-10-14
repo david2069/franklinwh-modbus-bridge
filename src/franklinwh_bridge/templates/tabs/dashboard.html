@@ -1085,6 +1085,7 @@
           <input type="datetime-local" x-model="dateEnd"
                  class="bg-slate-900 border border-white/[0.1] rounded px-2 py-1 text-[11px] text-slate-300 font-mono">
         </div>
+        <span class="text-[10px] text-slate-500" x-text="fmt.tz()"></span>
         <button @click="loadDateRange()"
                 class="btn btn-sm btn-primary !text-[10px] !px-3">Load</button>
         <span x-show="chartRange === 'custom'" class="text-[10px] text-purple-400 font-medium">Custom range active</span>
@@ -1337,6 +1338,7 @@
         <input type="datetime-local" x-model="eventsDateEnd"
                class="bg-slate-900 border border-white/[0.1] rounded px-2 py-1 text-[11px] text-slate-300 font-mono">
       </div>
+      <span class="text-[10px] text-slate-500" x-text="fmt.tz()"></span>
       <button @click="loadEventsDateRange()"
               class="btn btn-sm btn-primary !text-[10px] !px-3">Load</button>
       <span x-show="eventsRange === 'custom'" class="text-[10px] text-purple-400 font-medium">Custom range active</span>
@@ -1393,7 +1395,7 @@
             <!-- Column priority: identity + severity on every screen; register
                  and duration return once there's room. Beats horizontal scroll,
                  which hides the fact that columns exist at all. -->
-            <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">TIME</th>
+            <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">TIME <span class="font-normal" x-text="'(' + fmt.tz() + ')'"></span></th>
             <th class="hidden lg:table-cell text-left px-3 py-2 text-slate-500 font-semibold">REGISTER</th>
             <th class="text-left px-3 py-2 text-slate-500 font-semibold">SUNSPEC GROUP.POINT</th>
             <th class="text-left px-3 py-2 text-slate-500 font-semibold">VALUE</th>
@@ -1403,7 +1405,7 @@
         <tbody>
           <template x-for="(ev, idx) in filteredEventsData" :key="idx">
             <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
-              <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" :title="formatEventTime(ev.ts)">
+              <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" :title="fmt.at(ev.ts)">
                 <span class="md:hidden" x-text="fmt.short(ev.ts)"></span>
                 <span class="hidden md:inline" x-text="formatEventTime(ev.ts)"></span>
               </td>
@@ -1474,7 +1476,7 @@
         <table class="w-full text-xs">
           <thead class="sticky top-0 bg-slate-800 z-10">
             <tr class="border-b border-white/[0.08]">
-              <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">TIME</th>
+              <th class="text-left px-3 py-2 text-slate-500 font-semibold whitespace-nowrap">TIME <span class="font-normal" x-text="'(' + fmt.tz() + ')'"></span></th>
               <th class="text-left px-3 py-2 text-slate-500 font-semibold">REGISTER</th>
               <th class="text-left px-3 py-2 text-slate-500 font-semibold">SUNSPEC GROUP.POINT</th>
               <th class="text-left px-3 py-2 text-slate-500 font-semibold">VALUE</th>
@@ -1484,7 +1486,7 @@
           <tbody>
             <template x-for="(ev, idx) in filteredEventsData" :key="idx">
               <tr class="border-b border-white/[0.04] hover:bg-slate-700/20 transition">
-                <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" x-text="formatEventTime(ev.ts)"></td>
+                <td class="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap" :title="fmt.at(ev.ts)" x-text="formatEventTime(ev.ts)"></td>
                 <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.register ?? '—'"></td>
                 <td class="px-3 py-1.5 font-mono text-slate-400" x-text="ev.point ?? ev.source"></td>
                 <td class="px-3 py-1.5">

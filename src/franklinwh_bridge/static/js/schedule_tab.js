@@ -68,9 +68,10 @@ const TRIGGER_PRESETS = [
 // Month labels for the monthly-trigger month picker (Jan=1..Dec=12).
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// The bridge's today: schedules run on its clock, so a one-off dated entry
+// defaults to its date, not the viewing device's (#79).
 function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return bridgeTime.ymd(Date.now());
 }
 
 function emptyTree() { return { match: 'ALL', conditions: [] }; }
@@ -213,7 +214,8 @@ function scheduleTab() {
     // pattern, not real days, so it couldn't show what actually happened —
     // which is what the mode/SoC/dispatch overlays are for. Past/future days
     // belong to the calendar view (backlog), not a 7-button row.
-    previewDay: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, // Mon=0
+    // Mon=0, the BRIDGE's weekday (#79): the timeline is its day, not the viewer's.
+    previewDay: (bridgeTime.parts(Date.now()).wd + 6) % 7,
     // Entries list defaults to ENABLED: a disabled rule can't act, so it's
     // reference material rather than what you came to check. Not persisted —
     // "enabled" should be what you land on each visit.
@@ -349,10 +351,9 @@ function scheduleTab() {
 
     fmtTs(ts) {
       if (!ts) return '—';
-      const d = new Date(ts * 1000);
-      const p = (n) => String(n).padStart(2, '0');
-      // dd/mm prefix so the audit trail is unambiguous across days
-      return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      // dd/mm prefix so the audit trail is unambiguous across days; the
+      // bridge's zone, which is the clock the schedules ran on (#79).
+      return `${bridgeTime.dayMonth(ts * 1000)} ${bridgeTime.time(ts * 1000, true)}`;
     },
 
     auditClass(r) {
@@ -384,7 +385,7 @@ function scheduleTab() {
     get serverWeekday() {
       const ms = (this._midnightTs
         || (Date.now() / 1000 - (this.timeline.now_min || 0) * 60)) * 1000;
-      const d = new Date(ms).getDay();
+      const d = bridgeTime.parts(ms).wd;
       return d === 0 ? 6 : d - 1;
     },
     get linkIsForToday() { return this.previewDay === this.serverWeekday; },
@@ -851,15 +852,19 @@ function scheduleTab() {
 
     nextFireLabel(e) {
       if (!e.next_fire) return '—';
-      const dt = new Date(e.next_fire);
-      const now = new Date();
-      const sameDay = dt.toDateString() === now.toDateString();
-      const t = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
-      if (sameDay) return `Today ${t}`;
+      // next_fire is the bridge's wall clock, usually with no offset
+      // (datetime.isoformat() of a naive local time). Read it in the
+      // bridge's zone, not the viewer's (#79).
+      const s = String(e.next_fire);
+      const ms = /(Z|[+-]\d\d:?\d\d)$/.test(s) ? Date.parse(s) : bridgeTime.fromInput(s);
+      if (!Number.isFinite(ms)) return s;
+      const now = Date.now();
+      const t = bridgeTime.time(ms);
+      if (bridgeTime.sameDay(ms, now)) return `Today ${t}`;
       if (e.when_spec && e.when_spec.date) return `${e.when_spec.date} ${t}`;
-      const daysAway = Math.round((dt - now) / 86400000);
-      if (daysAway >= 0 && daysAway < 7) return `${WEEKDAYS[(dt.getDay() + 6) % 7]} ${t}`;
-      return `${dt.toISOString().slice(0, 10)} ${t}`;
+      const daysAway = Math.round((ms - now) / 86400000);
+      if (daysAway >= 0 && daysAway < 7) return `${WEEKDAYS[(bridgeTime.parts(ms).wd + 6) % 7]} ${t}`;
+      return `${bridgeTime.ymd(ms)} ${t}`;
     },
 
     // A segment belongs to the selected gateway view? 'site' targets paint on
@@ -952,7 +957,7 @@ function scheduleTab() {
     /** The now-marker only means something on today's column, and only when the
      *  current time falls inside the zoom window. */
     get nowVisible() {
-      const today = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+      const today = this.serverWeekday;   // the bridge's weekday (#79)
       const n = this.timeline.now_min;
       return this.previewDay === today && n >= this.zoomFrom && n <= this.zoomTo;
     },

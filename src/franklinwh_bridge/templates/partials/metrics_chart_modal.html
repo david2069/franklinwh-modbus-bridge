@@ -107,6 +107,8 @@
             <input type="datetime-local" class="form-control !py-0.5 !text-[11px]"
                    x-model="historyEnd" @change="applyCustomRange()">
           </label>
+          {# From/To are read in the bridge's zone (#79), so say which. #}
+          <span class="text-[10px] text-slate-500" x-text="'times in ' + fmt.tz()"></span>
         </div>
       </template>
 

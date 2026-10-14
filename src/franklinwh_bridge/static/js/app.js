@@ -17,26 +17,29 @@ const fmt = {
     if (s < 3600) return `${Math.floor(s/60)}m ago`;
     return `${Math.floor(s/3600)}h ago`;
   },
-  // Wall-clock HH:MM of a unix timestamp (for the last-poll indicator).
-  clock: (ts) => {
+  // Wall-clock HH:MM of a unix timestamp (for the last-poll indicator), in
+  // the BRIDGE's zone, not the viewing device's (#79; time_fmt.js).
+  clock: (ts) => (ts == null ? 'never' : bridgeTime.time(ts * 1000)),
+  // Full timestamp with its zone label, used as a tooltip on the HH:MM label.
+  // When the viewing device is in another zone, its own time follows,
+  // labelled, so both readings are on hand without doubling every row.
+  at: (ts) => {
     if (ts == null) return 'never';
-    const d = new Date(ts * 1000);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const ms = ts * 1000, note = bridgeTime.viewerNote(ms);
+    return `${bridgeTime.full(ms)} ${bridgeTime.label(ms)}${note ? ` (${note})` : ''}`;
   },
-  // Full local timestamp, used as a tooltip on the HH:MM label.
-  at: (ts) => (ts == null ? 'never' : new Date(ts * 1000).toLocaleString()),
   // Compact stamp for dense tables: "2 Sep 12:57", or just "12:57" for today.
-  // A full toLocaleString() is ~24 characters and dominates a phone-width row;
-  // pair this with the full value in a title= so nothing is actually lost.
+  // A full stamp is ~24 characters and dominates a phone-width row; pair this
+  // with fmt.at in a title= so nothing is actually lost. The zone label goes
+  // once in the column header (fmt.tz), not on every row.
   short: (ts) => {
     if (ts == null) return '—';
-    const d = new Date(ts * 1000);
-    const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const now = new Date();
-    const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth()
-      && d.getFullYear() === now.getFullYear();
-    return sameDay ? hm : `${d.getDate()} ${d.toLocaleDateString([], { month: 'short' })} ${hm}`;
+    const ms = ts * 1000;
+    const hm = bridgeTime.time(ms);
+    return bridgeTime.sameDay(ms, Date.now()) ? hm : `${bridgeTime.dayMon(ms)} ${hm}`;
   },
+  // The zone every time on the page is shown in, for headers and legends.
+  tz: () => bridgeTime.label(),
 };
 
 // ── Mock gateway synthetic history ───────────────────────────

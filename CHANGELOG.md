@@ -87,6 +87,17 @@ lands, not backfilled later.
   and `MAX(grid_mode)` compared the labels as text. Intervals are now built
   from the raw transitions, and every bucketed view (charts, the 5-minute
   archive) ranks Grid Forming over PV Clipped over Grid Following.
+- **Times are shown in the bridge's timezone, labelled** (#79). The UI used the
+  viewing device's zone with no label, so a device 2 h ahead showed the 18:00
+  discharge as 20:40.
+  - Every time is now in the bridge's zone (the one its schedules and records
+    use), from `GET /api/system/timezone`.
+  - The zone is named once per view: column headers, chart axis titles and
+    range pickers, e.g. "TIME (AEDT)".
+  - When the device is in another zone, the top bar, hover titles and chart
+    tooltips also give its own time, labelled ("your time 09:56 NZDT").
+  - Date-range inputs and "today" (energy flow, history presets, schedule
+    dates) use the bridge's calendar too.
 - **SunSpec Explorer reset to model 1 and reloaded its catalog every 10 s**
   (#69, #70). The gateway watcher fired on every refresh.
 - **Chart modal on a phone** (#65, #68): it now opens full-screen, its controls

@@ -75,8 +75,9 @@ function logsTab() {
       const p = {};
       if (this.rangePreset === 'all') return p;
       if (this.rangePreset === 'custom') {
-        if (this.customStart) p.start_ts = new Date(this.customStart).getTime() / 1000;
-        if (this.customEnd) p.end_ts = new Date(this.customEnd).getTime() / 1000;
+        // Custom range is typed in the bridge's zone, like every shown time (#79).
+        if (this.customStart) p.start_ts = bridgeTime.fromInput(this.customStart) / 1000;
+        if (this.customEnd) p.end_ts = bridgeTime.fromInput(this.customEnd) / 1000;
         return p;
       }
       const secs = this._rangeSeconds[this.rangePreset];
@@ -168,13 +169,12 @@ function logsTab() {
 
     formatTs(ts) {
       if (!ts) return '--';
-      const d = new Date(ts * 1000);
-      const p = (x) => String(x).padStart(2, '0');
-      const time = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      // In the bridge's zone, so a line reads the same as `docker logs` (#79);
+      // the column header carries the zone label.
+      const ms = ts * 1000;
+      const time = bridgeTime.time(ms, true);
       // Show a date prefix for anything not from today (persisted logs span days).
-      const now = new Date();
-      const sameDay = d.toDateString() === now.toDateString();
-      return sameDay ? time : `${p(d.getDate())}/${p(d.getMonth() + 1)} ${time}`;
+      return bridgeTime.sameDay(ms, Date.now()) ? time : `${bridgeTime.dayMonth(ms)} ${time}`;
     },
 
     levelChipClass(level) {
