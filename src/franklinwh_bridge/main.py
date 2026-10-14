@@ -61,6 +61,7 @@ from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.security import seed_admin, session_secret_key
+from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store import point_history
 from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
@@ -489,6 +490,11 @@ async def lifespan(app: FastAPI):
                     await point_history.purge_points(db, ph_cfg["retention_days"])
             except Exception as exc:
                 logger.warning("Point history purge failed: %s", exc)
+
+            try:
+                await link_stats_store.purge(db)
+            except Exception as exc:
+                logger.warning("Link stats purge failed: %s", exc)
             await asyncio.sleep(3600)
 
     purge_task = asyncio.create_task(_metrics_purge_loop())
@@ -513,6 +519,16 @@ async def lifespan(app: FastAPI):
                     await purge_logs(db, time.time() - LOG_RETENTION_DAYS * 86400)
 
     log_flush_task = asyncio.create_task(_log_flush_loop())
+
+    # ── Link health (Phase 0b): write each closed hour ────────
+    # The collector seals an hour in memory when it rolls over; this writes
+    # it. A minute's lag on an hourly rollup costs nothing.
+    async def _link_stats_loop() -> None:
+        while True:
+            await asyncio.sleep(60)
+            await link_stats_store.flush(db)
+
+    link_stats_task = asyncio.create_task(_link_stats_loop())
 
     # ── Schedule Engine (SCH1) ────────────────────────────────
     # Resolver maps a schedule target to live (gateway_id, command-handler)
@@ -937,6 +953,13 @@ async def lifespan(app: FastAPI):
 
     # 2. Stop all gateways (releases commands, stops pollers, disconnects)
     await registry.stop_all()
+
+    # 2a. Write link health, including the partial hour (after the gateways
+    #     stop, so their release and disconnect are in it).
+    link_stats_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await link_stats_task
+    await link_stats_store.flush(db, final=True)
 
     # 2. Cancel metrics purge task
     if purge_task and not purge_task.done():

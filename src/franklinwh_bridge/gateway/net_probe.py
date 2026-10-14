@@ -12,6 +12,8 @@ import socket
 import time
 from dataclasses import dataclass
 
+from franklinwh_bridge.gateway import link_stats
+
 DEFAULT_TIMEOUT_S = 5.0
 
 
@@ -33,10 +35,17 @@ class ProbeResult:
         }
 
 
-async def tcp_probe(host: str, port: int, timeout: float = DEFAULT_TIMEOUT_S) -> ProbeResult:
-    """Attempt a raw TCP connection to host:port. Never raises."""
+async def tcp_probe(
+    host: str, port: int, timeout: float = DEFAULT_TIMEOUT_S,
+    gateway_id: str | None = None, path: str = "health",
+) -> ProbeResult:
+    """Attempt a raw TCP connection to host:port. Never raises.
 
-    def _connect() -> float:
+    With *gateway_id*, the probe is counted in that gateway's link health
+    (Phase 0b): it is one more connection to the aGate.
+    """
+
+    def _raw() -> float:
         t0 = time.monotonic()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
@@ -45,6 +54,13 @@ async def tcp_probe(host: str, port: int, timeout: float = DEFAULT_TIMEOUT_S) ->
         finally:
             sock.close()
         return time.monotonic() - t0
+
+    def _connect() -> float:
+        if not gateway_id:
+            return _raw()
+        link_stats.note_connection(gateway_id, "probe")
+        with link_stats.track(gateway_id, "probe", path):
+            return _raw()
 
     try:
         elapsed = await asyncio.wait_for(

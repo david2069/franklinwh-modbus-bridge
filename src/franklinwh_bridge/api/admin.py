@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from franklinwh_bridge.api.auth import require_capability
+from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.alarms import (
@@ -168,8 +169,10 @@ async def test_gateway(request: Request, gateway_id: str = "default") -> dict:
         t0 = time.monotonic()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5)
+        link_stats.note_connection(gateway_id, "probe")
         try:
-            sock.connect((host, port))
+            with link_stats.track(gateway_id, "probe", "test"):
+                sock.connect((host, port))
         finally:
             sock.close()
         return time.monotonic() - t0
@@ -252,7 +255,8 @@ async def read_model(model_id: int, request: Request, gateway_id: str = "default
             model_obj = controller.get_model(model_id)
             if model_obj is None:
                 return {"error": f"Model {model_id} not found on device"}
-            model_obj.read()
+            with link_stats.track(gateway_id, "diag", "explorer"):
+                model_obj.read()
             values: dict[str, Any] = {}
             pts = getattr(model_obj, "points", None)
             if pts:
@@ -762,11 +766,14 @@ async def execute_sequence(
             seq_logger.addHandler(handler)
             seq_logger.setLevel(logging.INFO)
 
-            def _run(ctrl=controller) -> bool:
+            def _run(ctrl=controller, gw=target_id) -> bool:
                 dev = ctrl.dev
                 seq = SunSpecSequencer(dev)
                 seq.verbose = True
-                return seq.run_sequence(steps, dry_run=body.dry_run)
+                if body.dry_run:
+                    return seq.run_sequence(steps, dry_run=True)
+                with link_stats.track(gw, "diag", "sequencer") as req:
+                    return req.check(seq.run_sequence(steps, dry_run=False))
 
             if modbus_lock:
                 async with modbus_lock:

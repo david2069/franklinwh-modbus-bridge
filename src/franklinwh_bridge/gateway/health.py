@@ -88,7 +88,7 @@ class HealthChecker:
         if inst.config.mock:
             inst.status.health = "connected" if inst.status.polling else "unknown"
         else:
-            tcp_ok = await self._tcp_probe(host, port)
+            tcp_ok = await self._tcp_probe(host, port, gw_id)
             if not tcp_ok:
                 inst.status.health = "unreachable"
             elif inst.status.connected and inst.status.polling:
@@ -103,9 +103,9 @@ class HealthChecker:
             )
 
     @staticmethod
-    async def _tcp_probe(host: str, port: int) -> bool:
+    async def _tcp_probe(host: str, port: int, gateway_id: str | None = None) -> bool:
         """Attempt a TCP connection. Returns True if the port is reachable."""
-        result = await tcp_probe(host, port, timeout=TCP_TIMEOUT_S)
+        result = await tcp_probe(host, port, timeout=TCP_TIMEOUT_S, gateway_id=gateway_id)
         return result.ok
 
     async def check_one(self, gateway_id: str) -> str:
@@ -117,7 +117,7 @@ class HealthChecker:
         if inst.config.mock:  # no socket to probe — see _check_all
             inst.status.health = "connected" if inst.status.polling else "unknown"
             return inst.status.health
-        tcp_ok = await self._tcp_probe(inst.config.host, inst.config.port)
+        tcp_ok = await self._tcp_probe(inst.config.host, inst.config.port, gateway_id)
         if not tcp_ok:
             inst.status.health = "unreachable"
         elif inst.status.connected and inst.status.polling:

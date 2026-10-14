@@ -46,9 +46,52 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 56
+CURRENT_SCHEMA_VERSION = 57
 
 MIGRATIONS: dict[int, str] = {
+    57: """
+    -- Link health per gateway per hour (design PR #57 §5.4, Phase 0b). The
+    -- baseline Phase 2 is measured against; read-only instrumentation.
+    -- Request rows: kind = model_read|vreg_read|write|connect|probe|diag,
+    -- path = the code path that sent it. One 'link' row per gateway-hour
+    -- (path '') carries the connection-level columns. A restart inside an
+    -- hour leaves two rows for it (the first partial = 1); readers sum.
+    -- See franklinwh_bridge/gateway/link_stats.py for every column.
+    CREATE TABLE IF NOT EXISTS link_stats (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        gateway_id        TEXT NOT NULL,
+        hour_start        REAL NOT NULL,
+        kind              TEXT NOT NULL,
+        path              TEXT NOT NULL DEFAULT '',
+        partial           INTEGER NOT NULL DEFAULT 0,
+        count             INTEGER,
+        ok                INTEGER,
+        empty             INTEGER,
+        timeout_no_reply  INTEGER,
+        timeout_closed    INTEGER,
+        error             INTEGER,
+        error_classes     TEXT,
+        lat_p50_ms        REAL,
+        lat_p95_ms        REAL,
+        lat_max_ms        REAL,
+        conns_opened      TEXT,
+        reconnects        INTEGER,
+        reconnects_failed INTEGER,
+        rescans           INTEGER,
+        rescans_failed    INTEGER,
+        rescan_max_ms     REAL,
+        lib_retries       INTEGER,
+        max_consec_fail   INTEGER,
+        newest_good_age_s REAL,
+        polls             INTEGER,
+        cache_polls       INTEGER,
+        overlaps          INTEGER,
+        overlap_pairs     TEXT,
+        max_in_flight     INTEGER,
+        max_established   INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_link_stats_gw_hour ON link_stats (gateway_id, hour_start);
+    """,
     1: """
     CREATE TABLE IF NOT EXISTS schema_version (
         version INTEGER PRIMARY KEY,

@@ -16,6 +16,7 @@ from typing import Any
 
 import aiosqlite
 
+from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import (
     capture_catalog,
     extract_catalog_from_controller,
@@ -128,6 +129,10 @@ class GatewayInstance:
             return
 
         cfg = self.config
+        # Link-health measurement (Phase 0b): count library connects and
+        # log-reported retries/rescans, attributed to this gateway.
+        link_stats.install()
+        link_stats.register_address(self.gateway_id, cfg.host, cfg.port)
         self.controller = FranklinWHController(
             ip_address=cfg.host, port=cfg.port, unit_id=cfg.unit_id,
             timeout=cfg.timeout,
@@ -233,7 +238,9 @@ class GatewayInstance:
     async def _init_and_poll(self) -> None:
         """Connect, discover device info, release stale commands, start polling."""
         try:
-            connected = await asyncio.to_thread(self.controller.connect)
+            connected = await asyncio.to_thread(
+                self._tracked, self.controller.connect, "connect", "startup",
+            )
             if not connected:
                 self.status.health = "unreachable"
                 self.status.last_error = "Connection failed"
@@ -268,7 +275,9 @@ class GatewayInstance:
             # Capture SunSpec catalog
             try:
                 dev_info = await asyncio.to_thread(
-                    extract_catalog_from_controller, self.controller,
+                    self._tracked,
+                    lambda: extract_catalog_from_controller(self.controller),
+                    "model_read", "catalog",
                 )
                 cat_hash, _ = await capture_catalog(
                     dev_info, self._db, self.gateway_id,
@@ -288,7 +297,9 @@ class GatewayInstance:
             async def _reader_fn():
                 try:
                     info = await asyncio.to_thread(
-                        extract_catalog_from_controller, ctrl,
+                        self._tracked,
+                        lambda: extract_catalog_from_controller(ctrl),
+                        "model_read", "catalog",
                     )
                     return info, None
                 except Exception as exc:
@@ -314,10 +325,20 @@ class GatewayInstance:
             self.status.last_error = str(exc)
             logger.error("Gateway %s init failed: %s", self.gateway_id, exc)
 
+    def _tracked(self, fn: Any, kind: str, path: str, check: bool = True) -> Any:
+        """Run one blocking aGate request under link-health measurement."""
+        with link_stats.track(self.gateway_id, kind, path) as req:
+            result = fn()
+            if check:
+                req.check(result)
+            return result
+
     async def _discover_device(self) -> None:
         """Read nameplate to get serial, model, firmware."""
         try:
-            nameplate = await asyncio.to_thread(self.controller.read_nameplate)
+            nameplate = await asyncio.to_thread(
+                self._tracked, self.controller.read_nameplate, "model_read", "startup",
+            )
             if nameplate.get("serial"):
                 self.device_info = DeviceInfo(
                     serial=nameplate["serial"],
@@ -345,7 +366,9 @@ class GatewayInstance:
     async def _log_startup_state(self) -> None:
         """Log hardware control state at startup."""
         try:
-            hw_state = await asyncio.to_thread(self.controller.read_control_status)
+            hw_state = await asyncio.to_thread(
+                self._tracked, self.controller.read_control_status, "model_read", "startup",
+            )
             await log_control_event(
                 self._db,
                 event="startup_hw_snapshot",
@@ -373,14 +396,17 @@ class GatewayInstance:
             time.time() - prev_state["started_at"],
         )
         try:
-            await asyncio.to_thread(self.controller.reset_control_state)
+            await asyncio.to_thread(
+                self._tracked, self.controller.reset_control_state, "write", "startup", False,
+            )
             try:
                 m704 = self.controller.get_model(704)
                 if m704:
-                    m704.read()
-                    m704.WSetRvrtTms.value = 0
-                    m704.WSetEnaRvrt.value = 0
-                    m704.write()
+                    with link_stats.track(self.gateway_id, "write", "startup"):
+                        m704.read()
+                        m704.WSetRvrtTms.value = 0
+                        m704.WSetEnaRvrt.value = 0
+                        m704.write()
             except Exception:
                 pass
             await save_control_state(self._db, active=False, gateway_id=self.gateway_id)
