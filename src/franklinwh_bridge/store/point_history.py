@@ -65,6 +65,15 @@ HISTORISED_POINTS: tuple[str, ...] = (
     # instead of baking them in.
     "vreg_15013",
     "vreg_15035",
+    # 15016: a status register, meaning unmapped (#36). Seen at one site as 2
+    # on-grid, 6 with a WSet dispatch active, 3 islanded. Only its changes
+    # were logged; a series lets those states be lined up against the rest.
+    "vreg_15016",
+    # Raw 701.DERMode bitfield (bit 0 Grid Following, 1 Grid Forming, 2 PV
+    # Clipped). The library's grid_mode label tests bit 2 first, so a raw 6
+    # and a raw 4 both read "PV Clipped"; only the raw value tells them apart
+    # (#76: ~1 min of "PV Clipped" at each islanding, with no solar).
+    "701.DERMode",
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -143,6 +152,9 @@ _LIMITS: dict[str, tuple[float, float]] = {
     # 0xFFFF is the aGate's "not available" marker, not a reading.
     "vreg_15013": (0.0, 65534.0),
     "vreg_15035": (0.0, 1000.0),
+    "vreg_15016": (0.0, 65534.0),
+    # bitfield32: 0xFFFFFFFF is SunSpec's not-implemented value.
+    "701.DERMode": (0.0, 4294967294.0),
 }
 _DEFAULT_LIMIT = (-100_000.0, 100_000.0)   # watts / VA / var
 

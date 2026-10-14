@@ -248,3 +248,16 @@ async def test_raw_vendor_registers_are_recorded_and_0xffff_is_not(db):
         assert [tuple(r) for r in await cur.fetchall()] == [
             ("vreg_15013", 255.0), ("vreg_15035", 412.0)
         ]
+
+
+@pytest.mark.asyncio
+async def test_raw_dermode_is_recorded_so_forming_and_clipped_can_be_told_apart(db):
+    """#76: the grid_mode label maps raw 4 and raw 6 both to "PV Clipped"."""
+    assert await record_points(db, {"701.DERMode": 6, "vreg_15016": 3}, ts=1.0) == 2
+    assert await record_points(db, {"701.DERMode": 0xFFFFFFFF}, ts=2.0) == 0
+    async with db.execute(
+        "SELECT point_id, value FROM metric_samples ORDER BY point_id"
+    ) as cur:
+        assert [tuple(r) for r in await cur.fetchall()] == [
+            ("701.DERMode", 6.0), ("vreg_15016", 3.0)
+        ]

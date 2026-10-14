@@ -50,6 +50,8 @@
         { key: 'current_l2_a',  label: 'Current L2',     unit: 'A',  colour: '#fdba74' },
         { key: 'current_l3_a',  label: 'Current L3',     unit: 'A',  colour: '#fca5a5' },
         { key: 'pf_l1',         label: 'PF L1',          unit: 'PF', colour: '#d8b4fe' },
+        // Raw bitfield: 1 Following, 2 Forming, 4 PV Clipped (#76).
+        { key: '701.DERMode',   label: 'DERMode (raw bits)', unit: 'bits', colour: '#94a3b8' },
       ],
     },
     dc: {
@@ -67,6 +69,7 @@
         // battery W at 1 W, 15035 is SoC x10. Labelled raw on purpose.
         { key: 'vreg_15013', label: 'Battery W (15013, raw)', unit: 'W',  colour: '#2dd4bf' },
         { key: 'vreg_15035', label: 'SoC ×10 (15035, raw)',   unit: '‰',  colour: '#facc15' },
+        { key: 'vreg_15016', label: 'Status (15016, raw)',    unit: 'code', colour: '#c084fc' },
       ],
     },
   };
