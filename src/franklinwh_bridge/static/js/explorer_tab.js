@@ -101,7 +101,12 @@ function explorerTab() {
       this.$watch('hideEmptyModels', () => this._reselectIfStale());
 
       // Follow the gateway selector: each aGate has its own SunSpec catalog.
-      this.$watch(() => this.gwId, () => {
+      // Compare ids ourselves: Alpine 3.14's $watch fires whenever the getter
+      // re-runs, with no equality check, and gwId reads gatewayList, which the
+      // app replaces every 10s. Unguarded, this reset the selection and
+      // reloaded the catalog on every tick (#69).
+      this.$watch(() => this.gwId, (id, prev) => {
+        if (id === prev) return;
         this.selectedModelId = null;
         this.models = [];
         this.loadGateway();
