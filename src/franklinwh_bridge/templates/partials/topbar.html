@@ -56,37 +56,45 @@
     </div>
   </div>
 
-  <!-- Centre: System status indicators (order + visibility driven by topbarPrefs) -->
-  <div class="hidden xl:flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider">
+  <!-- Centre: System status indicators (order + visibility driven by topbarPrefs).
+       Shown from md up (#82): at xl only, a zoomed-in or medium window dropped
+       them silently, including the red Grid dot that says the aGate is
+       islanded. Below xl the labels give way and each dot keeps a tooltip. -->
+  <div class="hidden md:flex items-center gap-2 xl:gap-3 text-[10px] font-semibold uppercase tracking-wider">
     <!-- Grid -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='grid')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='grid')}`"
-         class="flex items-center gap-1.5">
-      <span class="text-slate-500">Grid</span>
+         class="flex items-center gap-1.5"
+         :title="'Grid: ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected')">
+      <span class="hidden xl:inline text-slate-500">Grid</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="$store.app.points.connection_state === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
     <!-- Solar -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='solar')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='solar')}`"
-         class="flex items-center gap-1.5">
-      <span class="text-slate-500">Solar</span>
+         class="flex items-center gap-1.5"
+         :title="'Solar: ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating')">
+      <span class="hidden xl:inline text-slate-500">Solar</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="($store.app.solarPowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
     <!-- Load -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='load')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='load')}`"
-         class="flex items-center gap-1.5">
-      <span class="text-slate-500">Load</span>
+         class="flex items-center gap-1.5"
+         :title="'Load: ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none')">
+      <span class="hidden xl:inline text-slate-500">Load</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="($store.app.homePowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-slate-600'"></span>
     </div>
     <!-- Battery -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='battery')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='battery')}`"
-         class="flex items-center gap-1.5">
-      <span :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
+         class="flex items-center gap-1.5"
+         :title="'Battery: ' + ($store.app.points.battery_state || 'Standby')">
+      <span class="hidden xl:inline"
+            :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
                     $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-500'"
             x-text="$store.app.points.battery_state || 'Standby'"></span>
       <span class="w-1.5 h-1.5 rounded-full"
