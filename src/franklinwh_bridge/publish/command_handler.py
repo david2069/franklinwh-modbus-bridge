@@ -78,6 +78,9 @@ def _strip_speculation(msg: str) -> str:
 
 
 DEFAULT_WATCHDOG_S = 0  # 0 = no time limit (run until explicitly released)
+#: WSetRvrtTms written for an open-ended dispatch. It holds remote control
+#: against app overrides; it is not a backstop (PICS Issue 4: no revert at 0).
+OPEN_ENDED_RVRT_S = 7200
 DEFAULT_MAX_POWER_W = 5000
 SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
 
@@ -420,7 +423,8 @@ class CommandHandler:
             # is still required to lock out mobile-app overrides.
             # For indefinite commands (duration=0), use max value to keep VPP locked.
             if success:
-                rvrt_s = self._state.watchdog_s if self._state.watchdog_s > 0 else 7200
+                rvrt_s = (self._state.watchdog_s if self._state.watchdog_s > 0
+                          else OPEN_ENDED_RVRT_S)
                 await asyncio.to_thread(self._write_revert_timer, rvrt_s)
 
         # Read the setpoint back. The library's own "verify" step only logs it
@@ -481,7 +485,12 @@ class CommandHandler:
         if self._state.watchdog_s > 0:
             limits.append(f"time limit {self._state.watchdog_s}s")
         else:
-            limits.append("no time limit")
+            # Name the aGate's timer, so a reader of "no time limit" doesn't
+            # assume nothing was written, nor that the aGate will stop it.
+            limits.append(
+                f"no time limit; aGate revert timer {OPEN_ENDED_RVRT_S}s,"
+                " not enforced by the aGate (PICS Issue 4)"
+            )
         if self._target_soc > 0:
             limits.append(f"target SoC {self._target_soc}%")
         await self._log_event(

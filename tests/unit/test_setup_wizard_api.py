@@ -111,7 +111,7 @@ def test_normalise_subnet_refuses(raw):
 # ── classification ────────────────────────────────────────────────────────────
 
 def test_result_rows():
-    row = setup_api.result_row(_result("192.168.0.110", **AGATE))
+    row = setup_api.result_row(_result("192.0.2.10", **AGATE))
     assert row["kind"] == "agate"
     assert row["device_type"] == "agate"
     assert row["suggested_name"] == "aGate 0091"
@@ -132,9 +132,9 @@ def test_result_rows():
 
 @pytest.mark.parametrize(("rows", "expected"), [
     ([], "pending"),
-    ([("default", "192.168.0.110", 0, 1_700_000_000.0)], "done_real"),
+    ([("default", "192.0.2.10", 0, 1_700_000_000.0)], "done_real"),
     ([("default", "", 0, None), ("demo", "mock", 1, None)], "done_demo"),
-    ([("default", "192.168.0.110", 0, None)], "pending"),  # never connected
+    ([("default", "192.0.2.10", 0, None)], "pending"),  # never connected
 ])
 async def test_migration_49_existing_installs_skip_the_wizard(tmp_path, rows, expected):
     db = await init_db(tmp_path / "bridge.db")
@@ -337,10 +337,10 @@ async def test_subnets_include_networks_of_configured_aGates(fresh_client, monke
         return [{"subnet": "10.0.2.0/24", "source": "supervisor"}]
 
     monkeypatch.setattr(setup_api, "candidate_subnets", no_local)
-    resp = await fresh_client.patch("/api/gateways/default", json={"host": "192.168.0.110"})
+    resp = await fresh_client.patch("/api/gateways/default", json={"host": "192.0.2.10"})
     assert resp.status_code == 200
     body = (await fresh_client.get("/api/setup/subnets")).json()
-    assert {"subnet": "192.168.0.0/24", "source": "configured_gateway"} in body["subnets"]
+    assert {"subnet": "192.0.2.0/24", "source": "configured_gateway"} in body["subnets"]
     assert body["subnets"][0]["subnet"] == "10.0.2.0/24"  # the host's own still first
 
 

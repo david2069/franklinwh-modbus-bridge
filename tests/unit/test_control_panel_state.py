@@ -42,6 +42,7 @@ async def test_log_and_state_are_recorded_against_the_handlers_gateway(db):
     assert ("target_soc_set", "target SoC 40% — by manual", "garage") in rows
     sent = next(d for e, d, _ in rows if e == "command_sent")
     assert "no time limit" in sent and "target SoC 40%" in sent
+    assert "aGate revert timer 7200s, not enforced" in sent
 
     # Crash-recovery state lands on the garage row, not the primary gateway's.
     assert (await load_control_state(db, "garage")).get("active")
