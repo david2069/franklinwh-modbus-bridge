@@ -15,6 +15,35 @@ lands, not backfilled later.
 
 ### Added
 
+- **Truthful dispatch: verify, retry, re-assert, notify** (#58, Phase 1 of
+  docs/dispatch-reliability-design.md).
+  - A battery command counts as active only if the library accepted it AND
+    WSetEna reads back as 1. Otherwise it is recorded as failed, with the reason.
+    A release reads WSetEna back too.
+  - Scheduled dispatches: a failed send is retried with backoff until the
+    window ends. While running, a dropped setpoint is re-asserted (up to 3 times),
+    and after 90 s battery power is checked: `verified` or `not_effective`.
+  - The entry's HA notify target is told of failure, recovery, giving up and
+    not-effective.
+  - `dispatch_outcomes` (migration 56): one row per command with requester,
+    requested vs actual power and final state;
+    `GET /api/gateways/{id}/dispatch-outcomes`.
+  - Who and how for every command (#59): `user:<name>`, `mqtt`,
+    `schedule:<id>`, `bridge:<reason>`. Dispatches the bridge did not send are
+    detected. The Sequencer needs control permission and records each run.
+- **Link-health measurement, `link_stats`** (#74, Phase 0b, migration 57).
+  - Per gateway per hour, kept 90 days: every aGate request by kind and code
+    path, with outcome (no-reply timeouts separate from closed connections) and
+    latency p50/p95/max.
+  - Also connections opened, reconnects and library rescans, failed-poll runs,
+    polls served from cache, overlapping requests and socket counts.
+  - `GET /api/gateways/{id}/link-stats`. Measurement only; dispatch is unchanged.
+- **Point history records raw vendor registers 15013 and 15035** (#73): battery
+  W at 1 W and SoC x10 (one site's readings, not documented). They can be
+  charted from the DC card. They are only recorded once ticked in Settings →
+  Point history.
+- **docs/dispatch-reliability-design.md** (#57): dispatch reliability and
+  Modbus connection design, approved 2026-10-12.
 - **Login record, audit trail and "You have been logged out" with the reason**
   (#50).
   - Each login is recorded: who, when, IP and browser.
@@ -37,6 +66,9 @@ lands, not backfilled later.
 
 ### Changed
 
+- **An open-ended dispatch's log line names the aGate revert timer** (#72):
+  `[no time limit; aGate revert timer 7200s, not enforced by the aGate (PICS
+  Issue 4)]`. It used to say only `[no time limit]`.
 - **Usernames are case-insensitive** (#50). A name differing from an existing
   one only in case is refused.
 - **The live bridge runs the code baked into its image** (#48). No `./src` mount
@@ -45,6 +77,14 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **SunSpec Explorer reset to model 1 and reloaded its catalog every 10 s**
+  (#69, #70). The gateway watcher fired on every refresh.
+- **Chart modal on a phone** (#65, #68): it now opens full-screen, its controls
+  wrap instead of running off the edge, and stray taps no longer close it.
+- **Dropdowns are styled throughout the UI** (#66, #68): a themed chevron in
+  place of the platform's native look; the dark theme sets `color-scheme`.
+- **The aGate's LAN address was removed** from the public docs and test data
+  (#72).
 - **Battery health (713.Sta) decoded per SunSpec: 0 OK, 1 Warning, 2 Error**
   (#51). The poller had ERROR = 3, and the alarm history used a guessed
   activity enum (OK showed as "Idle"). Older alarm rows are re-labelled when
