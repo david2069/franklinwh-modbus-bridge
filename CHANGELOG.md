@@ -82,6 +82,11 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Top bar status indicators stay visible on medium windows** (#82). They
+  were shown only at 1280 px and wider, so a zoomed-in or medium window
+  dropped them silently, including the red Grid dot for an islanded aGate.
+  From 768 px they now show as dots with tooltips; the text labels return at
+  1280 px.
 - **Events History grid-mode intervals** (#78). The 30-day view stretched a
   51 s "PV Clipped" to 2 h and never showed Grid Forming: rows were bucketed
   and `MAX(grid_mode)` compared the labels as text. Intervals are now built
