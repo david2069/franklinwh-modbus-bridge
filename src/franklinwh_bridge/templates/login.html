@@ -65,6 +65,7 @@
     <div class="err" id="err"></div>
     <div class="hint">FranklinWH Modbus Bridge</div>
   </form>
+  <script src="static/js/time_fmt.js?v={{ cache_bust }}"></script>
   <script>
     const base = document.querySelector('base').getAttribute('href').replace(/\/$/, '');
 
@@ -80,7 +81,10 @@
         const st = await r.json();
         if (st.state === 'active' || st.reason === 'logout') return;
         const el = document.getElementById('ended');
-        const at = st.ended_at ? new Date(st.ended_at * 1000).toLocaleString() : '';
+        // Before login the bridge's zone can't be fetched, so this is the
+        // device's time — and the label says so (#79).
+        const at = st.ended_at
+          ? `${bridgeTime.full(st.ended_at * 1000)} ${bridgeTime.label(st.ended_at * 1000)}` : '';
         el.innerHTML = '';
         const b = document.createElement('b'); b.textContent = 'You have been logged out';
         const t = document.createElement('span'); t.textContent = st.reason_text || '';

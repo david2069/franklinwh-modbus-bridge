@@ -548,8 +548,9 @@ function dashboardTab() {
         Alpine.store('app').toast('Select both start and end dates', 'error');
         return;
       }
-      const startTs = new Date(this.dateStart).getTime() / 1000;
-      const endTs = new Date(this.dateEnd).getTime() / 1000;
+      // Typed in the bridge's zone, like every time on the chart (#79).
+      const startTs = bridgeTime.fromInput(this.dateStart) / 1000;
+      const endTs = bridgeTime.fromInput(this.dateEnd) / 1000;
       if (endTs <= startTs) {
         Alpine.store('app').toast('End date must be after start date', 'error');
         return;
@@ -630,24 +631,21 @@ function dashboardTab() {
     },
 
     _formatChartLabel(ts) {
-      const d = new Date(ts * 1000);
-      const now = new Date();
-      const sameDay = d.toDateString() === now.toDateString();
+      // Bridge's zone, labelled once in the axis title (#79).
+      const ms = ts * 1000;
       const range = this.chartRange;
 
       if (range === 'live' || range === '30m' || range === '1h') {
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return bridgeTime.time(ms, true);
       }
       if (range === '2h' || range === '4h' || range === '6h' || range === '8h' || range === '12h' || range === '18h' || range === '24h') {
-        if (!sameDay) {
-          return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
-                 d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (!bridgeTime.sameDay(ms, Date.now())) {
+          return `${bridgeTime.dayMon(ms)} ${bridgeTime.time(ms)}`;
         }
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return bridgeTime.time(ms);
       }
       // 7d, 30d, custom — always show date + time
-      return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' +
-             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${bridgeTime.dayMon(ms)} ${bridgeTime.time(ms)}`;
     },
 
     async _loadMetrics() {
@@ -934,6 +932,7 @@ function dashboardTab() {
                 return true;
               },
               callbacks: {
+                title: (items) => (items.length ? `${items[0].label} ${bridgeTime.label()}` : ''),
                 label: (item) => {
                   if (item.datasetIndex === 7) {
                     const mode = item.chart._modeData?.[item.dataIndex];
@@ -959,6 +958,8 @@ function dashboardTab() {
           scales: {
             x: {
               ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 10 },
+              // Labels are in the bridge's zone (_formatChartLabel); say which (#79).
+              title: { display: true, text: `Time (${bridgeTime.label()})`, color: '#64748b', font: { size: 10 } },
               grid: { color: 'rgba(255,255,255,0.04)' },
             },
             y: {
@@ -1000,8 +1001,7 @@ function dashboardTab() {
 
     _recordPoint() {
       const pts = Alpine.store('app').points;
-      const now = new Date();
-      const label = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const label = bridgeTime.time(Date.now(), true);   // bridge's zone (#79)
 
       _liveHistory.labels.push(label);
       _liveHistory.battery.push(pts.battery_power_w ?? null);
@@ -1151,8 +1151,8 @@ function dashboardTab() {
         Alpine.store('app').toast('Select both start and end dates', 'error');
         return;
       }
-      const startTs = new Date(this.eventsDateStart).getTime() / 1000;
-      const endTs = new Date(this.eventsDateEnd).getTime() / 1000;
+      const startTs = bridgeTime.fromInput(this.eventsDateStart) / 1000;   // bridge's zone (#79)
+      const endTs = bridgeTime.fromInput(this.eventsDateEnd) / 1000;
       if (endTs <= startTs) {
         Alpine.store('app').toast('End date must be after start date', 'error');
         return;
@@ -1172,8 +1172,8 @@ function dashboardTab() {
         const activeGw = Alpine.store('app')?.activeGateway;
         let url;
         if (this.eventsRange === 'custom') {
-          const startTs = new Date(this.eventsDateStart).getTime() / 1000;
-          const endTs = new Date(this.eventsDateEnd).getTime() / 1000;
+          const startTs = bridgeTime.fromInput(this.eventsDateStart) / 1000;
+          const endTs = bridgeTime.fromInput(this.eventsDateEnd) / 1000;
           url = `api/events?start=${startTs}&end=${endTs}`;
         } else {
           url = `api/events?range=${this.eventsRange}`;
@@ -1200,7 +1200,9 @@ function dashboardTab() {
 
     formatEventTime(ts) {
       if (!ts) return '';
-      return new Date(ts * 1000).toLocaleString();
+      // Bridge's zone (#79). The column header names the zone and the
+      // cell's title gives fmt.at (both zones), so rows stay one stamp wide.
+      return bridgeTime.full(ts * 1000);
     },
 
     severityChipClass(severity) {
@@ -1329,6 +1331,7 @@ function dashboardTab() {
                 titleColor: '#f8fafc', bodyColor: '#cbd5e1',
                 filter: item => item.datasetIndex !== 4,
                 callbacks: {
+                  title: (items) => (items.length ? `${items[0].label} ${bridgeTime.label()}` : ''),
                   label: item => {
                     if (item.datasetIndex === 3) return `SoC: ${item.parsed.y?.toFixed(1)}%`;
                     return `${item.dataset.label}: ${(item.parsed.y/1000).toFixed(2)} kW`;
@@ -1337,7 +1340,8 @@ function dashboardTab() {
               },
             },
             scales: {
-              x: { ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.03)' } },
+              x: { ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.03)' },
+                   title: { display: true, text: `Time (${bridgeTime.label()})`, color: '#64748b', font: { size: 9 } } },
               y: { suggestedMin: -maxW, suggestedMax: maxW, ticks: { color: '#64748b', font: { size: 9 }, callback: v => (v/1000).toFixed(1)+'k' }, grid: { color: 'rgba(255,255,255,0.04)' } },
               y2: { position: 'right', display: soc.some(v => v != null), suggestedMin: 0, suggestedMax: 100, ticks: { color: '#64748b', font: { size: 8 }, callback: v => v+'%' }, grid: { drawOnChartArea: false } },
               yMode: { display: false, min: -1, max: 1 },
@@ -1423,6 +1427,7 @@ function dashboardTab() {
                 return true;
               },
               callbacks: {
+                title: (items) => (items.length ? `${items[0].label} ${bridgeTime.label()}` : ''),
                 label: (item) => {
                   if (item.datasetIndex === 7) {
                     const mode = item.chart._modeData?.[item.dataIndex];
@@ -1448,6 +1453,7 @@ function dashboardTab() {
           scales: {
             x: {
               ticks: { color: '#64748b', font: { size: 11 }, maxTicksLimit: 15 },
+              title: { display: true, text: `Time (${bridgeTime.label()})`, color: '#64748b', font: { size: 11 } },
               grid: { color: 'rgba(255,255,255,0.04)' },
             },
             y: {

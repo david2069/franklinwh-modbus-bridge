@@ -139,7 +139,10 @@
     $('reserveRow').style.display = hasReserve ? 'flex' : 'none';
     if (hasReserve) $('reserveVal').textContent = `${Math.round(reserve)}%`;
 
-    $('foot').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    // Bridge's clock, labelled; the device's own time too when it differs (#79).
+    const now = Date.now(), note = bridgeTime.viewerNote(now);
+    $('foot').textContent = `Updated ${bridgeTime.time(now, true)} ${bridgeTime.label(now)}`
+      + (note ? ` · ${note}` : '');
   }
 
   function renderConnectivity(c) {
@@ -152,13 +155,9 @@
   }
 
   // ── Energy flow (Sankey) + day selection ────────────────────
-  const todayISO = () => {
-    // Local date, not toISOString(): that converts to UTC first, so anywhere
-    // east of Greenwich the "today" button would ask for yesterday after 10am.
-    const d = new Date();
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+  // The BRIDGE's date (#79): the aGate's totals reset at its midnight, not
+  // the device's. (Not toISOString(): that's UTC.)
+  const todayISO = () => bridgeTime.ymd(Date.now());
 
   let selectedDay = todayISO();
   let selectedPeriod = 'day';   // day | week | month | year
@@ -167,46 +166,25 @@
   // the reconstructed year totals until the next 10s poll.
   let lastSensors = null;
 
-  /** Local-midnight epoch seconds for the selected period, anchored on the
-   *  chosen date. Local, not UTC — the aGate's daily totals reset at local
-   *  midnight, so a UTC span disagrees with every other figure by the offset. */
+  /** Epoch seconds for the selected period at the bridge's midnights — the
+   *  aGate's daily totals reset there, so any other zone's span disagrees
+   *  with every other figure by the offset (#79). */
   function periodSpan() {
-    const [y, m, d] = selectedDay.split('-').map(Number);
-    const start = new Date(y, m - 1, d);
-    const end = new Date(y, m - 1, d);
-    if (selectedPeriod === 'week') {
-      start.setDate(start.getDate() - ((start.getDay() + 6) % 7));  // Monday-start
-      end.setTime(start.getTime()); end.setDate(end.getDate() + 7);
-    } else if (selectedPeriod === 'month') {
-      start.setDate(1);
-      end.setTime(start.getTime()); end.setMonth(end.getMonth() + 1);
-    } else if (selectedPeriod === 'year') {
-      start.setMonth(0, 1);
-      end.setTime(start.getTime()); end.setFullYear(end.getFullYear() + 1);
-    } else {
-      end.setDate(end.getDate() + 1);
-    }
-    return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)];
+    return bridgeTime.periodSpan(selectedDay, selectedPeriod);
   }
 
   /** A week anchored on Thursday still starts on Monday; showing only the
    *  anchor date would misdescribe what the diagram covers. */
   function describeSpan(s, e) {
     if (selectedPeriod === 'day') return '';
-    const d = (secs) => new Date(secs * 1000);
-    if (selectedPeriod === 'year') return String(d(s).getFullYear());
-    if (selectedPeriod === 'month') {
-      return d(s).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    }
-    const f = (secs) => d(secs).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+    if (selectedPeriod === 'year') return String(bridgeTime.parts(s * 1000).y);
+    if (selectedPeriod === 'month') return bridgeTime.monthYear(s * 1000);
+    const f = (secs) => bridgeTime.dayMon(secs * 1000);
     return `${f(s)} – ${f(e - 1)}`;
   }
 
   function shiftDay(days) {
-    const [y, m, d] = selectedDay.split('-').map(Number);
-    const dt = new Date(y, m - 1, d + days);
-    const p = (n) => String(n).padStart(2, '0');
-    selectedDay = `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+    selectedDay = bridgeTime.shiftYmd(selectedDay, days);
     syncDayControls();
     loadFlow();
   }
@@ -562,14 +540,22 @@
     syncDayControls();
     loadFlow();
   });
-  $('dayInput').max = todayISO();
+  // The bridge's zone first (#79): "today", the day spans and every time on
+  // this page use it. If it can't be read, the page still works in this
+  // device's zone, and bridgeTime labels it as such.
+  (async () => {
+    const tz = await getJSON('api/system/timezone');
+    if (tz && tz.timezone) bridgeTime.setZone(tz.timezone, tz.abbreviation);
+    selectedDay = todayISO();
+    $('dayInput').max = todayISO();
 
-  loadMe();
-  loadSite();
-  syncDayControls();
-  loadFlow();
-  tick();
-  setInterval(tick, 10000);
+    loadMe();
+    loadSite();
+    syncDayControls();
+    loadFlow();
+    tick();
+    setInterval(tick, 10000);
+  })();
   // The Sankey is a whole-day integral; refreshing it on the 10s power tick
   // would redraw constantly for a figure that moves by minutes.
   setInterval(() => { if (selectedDay === todayISO()) loadFlow(); }, 120000);

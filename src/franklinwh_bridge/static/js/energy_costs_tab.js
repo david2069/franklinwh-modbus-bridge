@@ -196,8 +196,7 @@ function energyCostsTab() {
     },
     fmtDate(ts) {
       if (ts == null) return '—';
-      const d = new Date(ts * 1000);
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      return bridgeTime.dayMon(ts * 1000);   // bridge's zone (#79)
     },
     dollars(v) { return (v == null ? 0 : v) < 0 ? '-$' + Math.abs(v).toFixed(2) : '$' + Number(v || 0).toFixed(2); },
 

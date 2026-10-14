@@ -62,7 +62,7 @@ function controlsTab() {
     },
 
     _logEntry(slug, value, ok, message) {
-      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const ts = bridgeTime.time(Date.now(), true);  // bridge's zone (#79)
       const label = slug.replace(/^battery_command_/, '').replace(/_/g, ' ');
       this.commandLog.push({ ts, slug: label, value, ok, message });
       // Cap at 50 entries

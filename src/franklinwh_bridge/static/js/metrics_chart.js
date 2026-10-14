@@ -119,30 +119,28 @@
     return _buf[kind];
   }
 
+  // Every time on these charts is in the BRIDGE's zone (#79; time_fmt.js),
+  // and the x-axis title names it.
   function clockLabel(ms) {
-    return new Date(ms).toLocaleTimeString([], { hour12: false });
+    return bridgeTime.time(ms, true);
   }
 
   /** Tick label for a historical axis: a multi-day span needs the date too,
    *  or every tick reads as the same handful of clock times. */
   function stampLabel(ms, spanMs) {
-    const d = new Date(ms);
-    const time = d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const time = bridgeTime.time(ms);
     if (spanMs <= 36 * 3600000) return time;
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
+    return `${bridgeTime.dayMonth(ms)} ${time}`;
   }
 
-  /** `datetime-local` wants local wall-clock with no zone suffix, so the usual
-   *  toISOString() (which converts to UTC) shifts the value by the offset. */
+  /** `datetime-local` holds a wall-clock with no zone. Both directions use
+   *  the bridge's zone, so the range typed is the range on the axis. */
   function toLocalInput(ms) {
-    const d = new Date(ms);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-      + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return bridgeTime.toInput(ms);
   }
 
   function fromLocalInput(value) {
-    const ms = new Date(value).getTime();
+    const ms = bridgeTime.fromInput(value);
     return Number.isFinite(ms) ? ms : null;
   }
 
@@ -156,13 +154,14 @@
   ];
 
   function presetRange(key) {
-    const now = new Date();
-    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    // "Today" is the bridge's day, not the viewing device's.
+    const now = Date.now();
+    const midnight = bridgeTime.startOfDay(now);
     switch (key) {
-      case 'today':     return [midnight, now.getTime()];
-      case 'yesterday': return [midnight - 86400000, midnight];
-      case '7d':        return [now.getTime() - 7 * 86400000, now.getTime()];
-      default:          return [now.getTime() - 86400000, now.getTime()];
+      case 'today':     return [midnight, now];
+      case 'yesterday': return [bridgeTime.startOfDay(midnight - 3600000), midnight];
+      case '7d':        return [now - 7 * 86400000, now];
+      default:          return [now - 86400000, now];
     }
   }
 
@@ -531,6 +530,8 @@
               maxTicksLimit: 7, color: '#94a3b8', font: { size: 10 },
               callback: (v) => (isHistory ? stampLabel(v, xSpan) : clockLabel(v)),
             },
+            title: { display: true, text: `Time (${bridgeTime.label()})`,
+                     color: '#94a3b8', font: { size: 10 } },
             grid: { color: 'rgba(148,163,184,.12)' },
           },
         };
@@ -575,9 +576,12 @@
               tooltip: {
                 enabled: true,
                 callbacks: {
-                  title: (items) => (isHistory
-                    ? new Date(items[0].parsed.x).toLocaleString([], { hour12: false })
-                    : clockLabel(items[0].parsed.x)),
+                  title: (items) => {
+                    const x = items[0].parsed.x;
+                    const main = `${isHistory ? bridgeTime.full(x) : clockLabel(x)} ${bridgeTime.label(x)}`;
+                    const note = bridgeTime.viewerNote(x);
+                    return note ? [main, note] : main;
+                  },
                 },
               },
             },

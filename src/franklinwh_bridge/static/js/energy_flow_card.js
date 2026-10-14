@@ -44,19 +44,14 @@ function energyFlowCard() {
       this.$watch('$store.app.activeGateway', () => this.load());
     },
 
-    /** Local calendar date. toISOString() would convert to UTC first, which
-     *  east of Greenwich hands back yesterday for most of the working day. */
+    /** The BRIDGE's calendar date (#79): the aGate's daily totals reset at its
+     *  midnight, not the viewing device's. (Not toISOString(): that's UTC.) */
     _localToday() {
-      const d = new Date();
-      const p = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      return bridgeTime.ymd(Date.now());
     },
 
     shiftDay(days) {
-      const [y, m, d] = this.day.split('-').map(Number);
-      const dt = new Date(y, m - 1, d + days);
-      const p = (n) => String(n).padStart(2, '0');
-      const next = `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+      const next = bridgeTime.shiftYmd(this.day, days);
       if (next > this.today) return;
       this.day = next;
       this.load();
@@ -68,30 +63,11 @@ function energyFlowCard() {
       this.load();
     },
 
-    /** Local-midnight epoch seconds for the selected period.
-     *  Local, not UTC — the aGate's own daily totals reset at local midnight,
-     *  so a UTC span disagrees with every other figure by the offset. */
+    /** Epoch seconds for the selected period, at the bridge's midnights —
+     *  the aGate's own daily totals reset there, so a span in any other zone
+     *  disagrees with every other figure by the offset (#79). */
     _span() {
-      const [y, m, d] = this.day.split('-').map(Number);
-      const start = new Date(y, m - 1, d);
-      const end = new Date(y, m - 1, d);
-      if (this.period === 'week') {
-        // Monday-start, matching energy_totals.period_start().
-        start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-        end.setTime(start.getTime());
-        end.setDate(end.getDate() + 7);
-      } else if (this.period === 'month') {
-        start.setDate(1);
-        end.setTime(start.getTime());
-        end.setMonth(end.getMonth() + 1);
-      } else if (this.period === 'year') {
-        start.setMonth(0, 1);
-        end.setTime(start.getTime());
-        end.setFullYear(end.getFullYear() + 1);
-      } else {
-        end.setDate(end.getDate() + 1);
-      }
-      return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)];
+      return bridgeTime.periodSpan(this.day, this.period);
     },
 
     setPeriod(p) {
@@ -103,13 +79,9 @@ function energyFlowCard() {
      *  starts on Monday, and showing only the anchor date would mislead. */
     _describeSpan(s, e) {
       if (this.period === 'day') return '';
-      const f = (secs) => new Date(secs * 1000).toLocaleDateString(undefined,
-        { day: '2-digit', month: 'short' });
-      if (this.period === 'year') return String(new Date(s * 1000).getFullYear());
-      if (this.period === 'month') {
-        return new Date(s * 1000).toLocaleDateString(undefined,
-          { month: 'long', year: 'numeric' });
-      }
+      const f = (secs) => bridgeTime.dayMon(secs * 1000);
+      if (this.period === 'year') return String(bridgeTime.parts(s * 1000).y);
+      if (this.period === 'month') return bridgeTime.monthYear(s * 1000);
       return `${f(s)} – ${f(e - 1)}`;
     },
 

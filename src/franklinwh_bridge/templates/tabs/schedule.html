@@ -49,6 +49,8 @@
          identify, so losing it on a small screen costs nothing. -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
       <div class="card-label !mb-0">Visual Timeline
+        {# The timeline is the bridge's day on the bridge's clock (#79). #}
+        <span class="normal-case text-slate-500" x-text="'(' + fmt.tz() + ')'"></span>
         <span class="hidden lg:inline text-slate-600 normal-case">— when the bridge overrides the gateway's mode (VPP setpoint)</span></div>
       <div class="flex items-center gap-2 min-w-0">
         <select x-model="timelineGateway" class="form-control !py-0.5 !text-[11px] flex-1 min-w-0 sm:flex-none sm:w-auto">
@@ -498,7 +500,7 @@
     <div x-show="audit.length">
       <!-- column headers -->
       <div class="hidden sm:flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500 border-b border-white/[0.06] pb-1 mb-1">
-        <span class="w-20 lg:w-32 shrink-0">Time</span>
+        <span class="w-20 lg:w-32 shrink-0">Time <span class="normal-case" x-text="'(' + fmt.tz() + ')'"></span></span>
         <span class="w-36 shrink-0">Entry</span>
         <span class="w-28 shrink-0">Status</span>
         <span class="hidden lg:block w-32 shrink-0">Target</span>
@@ -510,7 +512,7 @@
                beneath, so nothing is truncated to uselessness in a 5-column row. -->
           <div class="flex flex-col sm:flex-row sm:items-center gap-x-2 text-xs border-b border-white/[0.03] py-1">
             <div class="flex items-center gap-2 sm:contents">
-              <span class="font-mono text-slate-500 w-20 lg:w-32 shrink-0" :title="fmtTs(ev.ts)">
+              <span class="font-mono text-slate-500 w-20 lg:w-32 shrink-0" :title="fmt.at(ev.ts)">
                 <span class="lg:hidden" x-text="fmt.short(ev.ts)"></span>
                 <span class="hidden lg:inline" x-text="fmtTs(ev.ts)"></span>
               </span>

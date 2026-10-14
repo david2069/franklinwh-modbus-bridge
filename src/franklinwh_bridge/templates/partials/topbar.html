@@ -124,10 +124,19 @@
          x-show="$store.app.quality && $store.app.quality !== 'ok'"
          x-text="$store.app.quality"></div>
 
-    <!-- Last poll (wall-clock HH:MM; full timestamp on hover) -->
-    <span class="hidden md:inline text-xs text-slate-500"
-          :title="$store.app.hasAnyGateway ? 'Last poll: ' + fmt.at($store.app.lastPollTs) : 'No aGate or demo gateway set up yet'"
-          x-text="$store.app.hasAnyGateway ? fmt.clock($store.app.lastPollTs) : 'No gateway yet'"></span>
+    <!-- Last poll, in the BRIDGE's zone and labelled with it (#79). When this
+         device is in another zone, a second, labelled line gives its own time:
+         both readings, never an unlabelled one. Full stamp on hover. -->
+    <span class="hidden md:inline-flex flex-col items-end leading-tight text-xs text-slate-500"
+          :title="$store.app.hasAnyGateway ? 'Last poll: ' + fmt.at($store.app.lastPollTs) : 'No aGate or demo gateway set up yet'">
+      <span data-testid="topbar-clock"
+            x-text="$store.app.hasAnyGateway
+              ? (fmt.clock($store.app.lastPollTs) + ($store.app.lastPollTs ? ' ' + fmt.tz() : ''))
+              : 'No gateway yet'"></span>
+      <span data-testid="topbar-viewer-clock" class="text-[10px] text-slate-500/80"
+            x-show="$store.app.hasAnyGateway && $store.app.lastPollTs && bridgeTime.viewerDiffers($store.app.lastPollTs * 1000)"
+            x-text="$store.app.lastPollTs ? bridgeTime.viewerNote($store.app.lastPollTs * 1000) : ''"></span>
+    </span>
 
     <!-- Release control button -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='release')?.visible !== false"
