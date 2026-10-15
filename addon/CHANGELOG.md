@@ -10,6 +10,9 @@ in the repository.
 ## 0.2.4 — 2026-10-15
 
 ### Home Assistant
+- **Its own Home Assistant device: "FranklinWH Modbus <short serial>".** It is
+  no longer merged with FWHAI's or the Local Bridge's device for the same aGate.
+  After updating, delete the old empty device if one is left.
 - **Choose the MQTT namespace.** New installs use `fwh_mb`, which keeps this
   bridge's device and entities apart from other FranklinWH integrations on the
   same Home Assistant (FWHAI, the Local Bridge). Existing installs keep

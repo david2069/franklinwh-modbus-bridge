@@ -332,7 +332,7 @@ async def test_publisher_is_switched_to_the_new_namespace(db, broker):
         get_entity_by_slug("operating_mode"), pub.device_info, prefix=pub.topic_prefix
     )
     assert payload["unique_id"] == f"fwh_mb_{SID}_operating_mode"
-    assert payload["device"]["identifiers"] == [f"fwh_mb_{SERIAL}"]
+    assert payload["device"]["identifiers"] == [f"fwh_mb_modbus_{SERIAL}"]
     assert payload["command_topic"] == f"fwh_mb/{SID}/control/operating_mode/set"
     handler = pub._command_handler
     await pub._handle_mqtt_message(_Msg(f"franklinwh/{SID}/control/operating_mode/set", b"x"))

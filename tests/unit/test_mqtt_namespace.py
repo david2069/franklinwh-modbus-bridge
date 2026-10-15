@@ -55,7 +55,7 @@ def test_default_output_is_unchanged():
     payload = build_discovery_payload(ent, DeviceInfo(serial=SERIAL))
     assert payload["unique_id"] == "franklinwh_00000001_battery_soc"
     assert payload["availability_topic"] == "franklinwh/00000001/availability"
-    assert payload["device"]["identifiers"] == [f"franklinwh_{SERIAL}"]
+    assert payload["device"]["identifiers"] == [f"franklinwh_modbus_{SERIAL}"]
     assert ent.discovery_topic("00000001") == (
         "homeassistant/sensor/franklinwh_00000001_battery_soc/config"
     )
@@ -74,7 +74,7 @@ async def test_custom_namespace_reaches_discovery_and_availability():
     assert payload["unique_id"] == "fwh_mb_00000001_battery_soc"
     assert payload["state_topic"] == "fwh_mb/00000001/battery/battery_soc"
     assert payload["availability_topic"] == "fwh_mb/00000001/availability"
-    assert payload["device"]["identifiers"] == [f"fwh_mb_{SERIAL}"]
+    assert payload["device"]["identifiers"] == [f"fwh_mb_modbus_{SERIAL}"]
     assert not any("franklinwh" in t or "homeassistant" in t for t in client.published)
 
 

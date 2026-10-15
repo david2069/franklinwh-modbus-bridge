@@ -50,7 +50,7 @@ def _registries(prefix: str = "franklinwh") -> tuple[list[dict], list[dict]]:
             "id": "dev_ours",
             "name": "aGate Home",
             "name_by_user": None,
-            "identifiers": [["mqtt", f"{prefix}_{SERIAL}"]],
+            "identifiers": [["mqtt", f"{prefix}_modbus_{SERIAL}"]],
             "sw_version": "Modbus Bridge v1.0.0",
         },
         # Another producer (FWHAI / Local Bridge) for the same aGate, with the
@@ -195,7 +195,7 @@ async def test_custom_namespace():
     ids = _ids(out["yaml"])
     assert "sensor.state_of_charge" in ids
     assert "sensor.old_soc" not in ids
-    assert out["devices"][0]["identifier"] == f"fwh_mb_{SERIAL}"
+    assert out["devices"][0]["identifier"] == f"fwh_mb_modbus_{SERIAL}"
 
     # The default-prefix publisher doesn't recognise an fwh_mb device at all.
     with pytest.raises(DashboardError) as err:
@@ -235,7 +235,7 @@ async def test_multi_device_titles_name_the_device():
     )
     entities.append(_ent("sensor.shed_soc", "franklinwh_shed_gw_battery_soc", device="dev_shed"))
     ours = our_devices(pub)
-    assert [d.identifier for d in ours] == [f"franklinwh_{SERIAL}", shed_ident]
+    assert [d.identifier for d in ours] == [f"franklinwh_modbus_{SERIAL}", shed_ident]
     cards = select_ours(devices, entities, ours, "franklinwh")
     text = render(cards)
     doc = yaml.safe_load(text)  # "Shed: aGate" needs quoting to stay valid YAML

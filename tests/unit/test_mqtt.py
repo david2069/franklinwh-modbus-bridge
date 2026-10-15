@@ -118,7 +118,7 @@ def test_build_discovery_payload_sensor(device_info):
     assert device["manufacturer"] == "FranklinWH Technologies Co., Ltd"
     assert device["model"] == "aGate X"
     assert device["serial_number"] == "10060006A02F00000001"
-    assert "franklinwh_10060006A02F00000001" in device["identifiers"]
+    assert "franklinwh_modbus_10060006A02F00000001" in device["identifiers"]
 
 
 def test_build_discovery_payload_kw_sensor(device_info):
@@ -161,7 +161,9 @@ def test_device_info_short_id(device_info):
 
 def test_device_info_ha_block(device_info):
     block = device_info.ha_device_block(app_version="0.1.0")
-    assert block["name"] == "FHP"
+    # One device per integration, named for it plus the short serial (owner
+    # decision 2026-10-15) — not the gateway's own name.
+    assert block["name"] == "FranklinWH Modbus 00000001"
     # Split across HA's two device slots, which it renders as "Firmware" and
     # "Hardware" — one long concatenated line wrapped badly on the device page.
     assert block["sw_version"] == "Modbus Bridge v0.1.0"
@@ -186,7 +188,7 @@ def test_duplicate_serial_does_not_collide():
 
     # Default keeps the historic serial-only namespace (backward compatible).
     assert default.short_id == "00000001"
-    assert default.ha_device_block()["identifiers"] == [f"franklinwh_{serial}"]
+    assert default.ha_device_block()["identifiers"] == [f"franklinwh_modbus_{serial}"]
 
     # The additional gateway is namespaced by gateway_id → no collision.
     # The FORM changed (2026-09-13) from "{gateway_id}_{serial_tail}" to the
