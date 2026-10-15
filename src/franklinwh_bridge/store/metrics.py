@@ -175,13 +175,14 @@ class SQLiteMetrics:
 # ---------------------------------------------------------------------------
 
 
-# Absolute power ceiling for metrics DB writes.  Any value above this is
-# physically impossible for residential FranklinWH systems and indicates
-# Modbus register corruption (e.g. 0xFFFF sentinel = 65535 or summed
-# sentinels = 196605).  This is a last-resort guard — the poller's
-# _sanitize_extension_values() should catch these first.
-_METRICS_MAX_POWER_W = 15_000
-_METRICS_MAX_HOME_W = 50_000  # home can spike during mode transitions
+# Last-resort corruption guard for metrics DB writes — the poller's
+# _sanitize_extension_values() catches the 0xFFFF sentinel first. It was
+# 15 kW, on the assumption that nothing residential exceeds that; solar is the
+# owner's own array and can be any size, so a 33 kW (DC) site had every
+# high-output sample dropped from Power History (#122). Only physically absurd
+# values (summed sentinels = 196,605) are rejected now, matching the poller.
+_METRICS_MAX_POWER_W = 150_000
+_METRICS_MAX_HOME_W = 150_000
 
 # Modbus uint16 "not available" sentinel
 _METRICS_SENTINEL = 65535

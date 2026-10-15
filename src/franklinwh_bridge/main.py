@@ -78,6 +78,7 @@ from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     UNCONFIGURED_DESCRIPTION,
+    get_app_config,
     get_gateway,
     get_gateways,
     get_mqtt_config,
@@ -323,6 +324,10 @@ async def lifespan(app: FastAPI):
         mqtt_config, gateway_id=gateway_id,
     )
     app.state.mqtt_publisher = mqtt_publisher
+    # Unpublish stays in force across restarts until Republish (#131).
+    if (await get_app_config(db, "mqtt_discovery_paused", "0")) == "1":
+        mqtt_publisher.set_discovery_paused(True)
+        logger.info("MQTT discovery is unpublished (paused) — Republish to restore entities")
     mqtt_publisher.on_published = lambda: mark_published(db)
 
     await mqtt_publisher.sync_groups(db)
@@ -985,6 +990,32 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_start_gateways())
     mqtt_device_reconcile = asyncio.create_task(_reconcile_mqtt_devices())
 
+    async def _clean_up_leftovers() -> None:
+        """Once, after gateways have connected and published: remove this
+        bridge's own stale discovery configs and empty old HA devices, so users
+        don't delete them by hand (publish/cleanup.py)."""
+        await asyncio.sleep(90)
+        try:
+            from franklinwh_bridge.publish import cleanup
+
+            await cleanup.sweep_broker(mqtt_publisher)
+            rows = await get_gateways(db)
+            idents = cleanup.old_identifiers(
+                mqtt_publisher.topic_prefix,
+                [(g["id"], g.get("serial") or "") for g in rows if not g.get("mock")],
+            )
+            # Whichever HA reads this broker has the old devices; check each
+            # connected one — nothing matches where they don't exist.
+            for row in ha_registry.status():
+                if row.get("connected"):
+                    await cleanup.remove_empty_old_devices(ha_registry.get(row["id"]), idents)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Leftover clean-up failed: %s", exc)
+
+    leftover_cleanup = asyncio.create_task(_clean_up_leftovers())
+
     # ── Health Components ─────────────────────────────────────
     register_component(
         "poller",
@@ -1061,6 +1092,8 @@ async def lifespan(app: FastAPI):
         mqtt_broker_watch.cancel()
     if not mqtt_device_reconcile.done():
         mqtt_device_reconcile.cancel()
+    if not leftover_cleanup.done():
+        leftover_cleanup.cancel()
 
     # 2. Stop all gateways (releases commands, stops pollers, disconnects)
     await registry.stop_all()

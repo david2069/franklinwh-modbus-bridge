@@ -7,6 +7,19 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.6 — 2026-10-16
+
+### Fixes
+- **Power History no longer drops samples above 15 kW.** A second 15 kW limit,
+  in the history recorder, threw away every sample above it, so large arrays
+  had gaps at high output. Root cause: a 15 kW "nothing residential is bigger"
+  assumption added to filter corrupt readings; solar arrays can be any size.
+- **Unpublish now stays unpublished** until you press Republish (it used to
+  undo itself within a second), and covers every gateway.
+- **Old devices from earlier versions are cleaned up automatically**: stale
+  entries on the broker, and empty old "FranklinWH …" devices in Home
+  Assistant. Other integrations' devices are never touched.
+
 ## 0.2.5 — 2026-10-16
 
 ### Fixes

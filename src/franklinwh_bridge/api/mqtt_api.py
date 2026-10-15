@@ -16,9 +16,12 @@ from franklinwh_bridge.config.environment import detect_environment
 from franklinwh_bridge.config.mqtt_broker import ENV_VARS, env_values, resolve_broker
 from franklinwh_bridge.config.supervisor import discover_mqtt
 from franklinwh_bridge.publish.namespace import NamespaceError, change_namespace, namespace_info
-from franklinwh_bridge.store.db import get_mqtt_config, set_mqtt_config
+from franklinwh_bridge.store.db import get_mqtt_config, set_app_config, set_mqtt_config
 
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
+
+#: "1" while Unpublish is in force (#131); Republish sets "0".
+DISCOVERY_PAUSED_KEY = "mqtt_discovery_paused"
 
 
 class MqttConfigUpdate(BaseModel):
@@ -178,6 +181,7 @@ async def get_status(request: Request):
         "last_publish_ts": state.last_publish_ts,
         "last_error": state.last_error,
         "discovery_published": state.discovery_published,
+        "discovery_paused": getattr(publisher, "discovery_paused", False),
         "entity_count": len(publisher.entities),
         # The broker actually in use. As an add-on it comes from the Supervisor
         # and is never written to the stored config, so /config alone showed
@@ -217,6 +221,7 @@ async def republish_discovery(request: Request):
     if publisher is None:
         raise HTTPException(503, "MQTT publisher not configured")
     publisher.request_discovery_republish()
+    await set_app_config(request.app.state.db, DISCOVERY_PAUSED_KEY, "0")
     return {"status": "discovery_republish_queued"}
 
 
@@ -226,7 +231,9 @@ async def unpublish_discovery(request: Request):
     if publisher is None:
         raise HTTPException(503, "MQTT publisher not configured")
     count = await publisher.unpublish_discovery()
-    return {"status": "discovery_unpublished", "topics_cleared": count}
+    # Stays unpublished across restarts until Republish (#131).
+    await set_app_config(request.app.state.db, DISCOVERY_PAUSED_KEY, "1")
+    return {"status": "discovery_unpublished", "topics_cleared": count, "paused": True}
 
 
 @router.get("/detect-broker")

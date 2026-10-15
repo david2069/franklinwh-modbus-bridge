@@ -303,6 +303,9 @@ class MqttPublisher:
         self._discovery_prefix = discovery_prefix
         self._queue: asyncio.Queue[MqttMessage] = asyncio.Queue(maxsize=1000)
         self._state = MqttState()
+        # Set by Unpublish (#131): the run loop must not put the entities straight
+        # back. Cleared by Republish. Persisted by the API (app_config).
+        self._discovery_paused = False
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._device_info: DeviceInfo | None = None
@@ -904,7 +907,8 @@ class MqttPublisher:
                     logger.info("MQTT connected to %s:%d", self._host, self._port)
 
                     await self._publish_availability(client, online=True)
-                    if self._has_discoverable() and not self._state.discovery_published:
+                    if (self._has_discoverable() and not self._state.discovery_published
+                            and not self._discovery_paused):
                         await self._publish_discovery(client)
 
                     listener_task = None
@@ -936,7 +940,8 @@ class MqttPublisher:
                             except TimeoutError:
                                 pass
 
-                            if self._has_discoverable() and not self._state.discovery_published:
+                            if (self._has_discoverable() and not self._state.discovery_published
+                                    and not self._discovery_paused):
                                 await self._publish_discovery(client)
                                 await self._publish_availability(client, online=True)
                         if self._offline_on_stop:
@@ -1155,8 +1160,41 @@ class MqttPublisher:
         return counts
 
     def request_discovery_republish(self) -> None:
-        """Flag discovery for re-publish on the next connection cycle."""
+        """Flag discovery for re-publish on the next connection cycle.
+
+        Also ends an Unpublish pause (#131): Republish is how entities come back.
+        """
+        self._discovery_paused = False
         self._state.discovery_published = False
+
+    def published_discovery(self) -> tuple[set[str], set[str]]:
+        """(short ids, discovery topics) this publisher currently publishes.
+
+        For the stale-config sweep (publish/cleanup.py): anything of ours on
+        the broker outside this set is a leftover.
+        """
+        sids: set[str] = set()
+        topics: set[str] = set()
+        if self._device_info:
+            sid = self._device_info.short_id
+            sids.add(sid)
+            for e in list(self._entities) + list(self._promoted_entities):
+                topics.add(self._discovery_topic(e, sid))
+        for dev in self._devices.values():
+            if dev.device_info:
+                sid = dev.device_info.short_id
+                sids.add(sid)
+                for e in dev.entities or []:
+                    topics.add(self._discovery_topic(e, sid))
+        return sids, topics
+
+    @property
+    def discovery_paused(self) -> bool:
+        """True after Unpublish until Republish (#131)."""
+        return self._discovery_paused
+
+    def set_discovery_paused(self, paused: bool) -> None:
+        self._discovery_paused = bool(paused)
 
     async def unpublish_discovery(self) -> int:
         """Send empty retained payloads to ALL discovery topics (tombstones).
@@ -1165,10 +1203,19 @@ class MqttPublisher:
         ``self._entities`` list, so orphaned entities from previous phase
         configurations are also cleaned up.
         """
-        if not self._device_info:
+        # Every gateway's device, not only the primary's — extra gateways'
+        # entities were left in Home Assistant. And pause first: the run loop
+        # republished within a second, so Unpublish undid itself (#131).
+        self._discovery_paused = True
+        sids: list[str] = []
+        if self._device_info:
+            sids.append(self._device_info.short_id)
+        for dev in self._devices.values():
+            if dev.device_info and dev.device_info.short_id not in sids:
+                sids.append(dev.device_info.short_id)
+        if not sids:
             return 0
 
-        short_id = self._device_info.short_id
         count = 0
         try:
             async with aiomqtt.Client(
@@ -1177,12 +1224,13 @@ class MqttPublisher:
                 username=self._username,
                 password=self._password,
             ) as client:
-                for entity in BRIDGE_ENTITIES:
-                    topic = self._discovery_topic(entity, short_id)
-                    await client.publish(topic, b"", retain=True)
-                    count += 1
-                avail_topic = self._availability_topic(short_id)
-                await client.publish(avail_topic, b"", retain=True)
+                for short_id in sids:
+                    for entity in BRIDGE_ENTITIES:
+                        topic = self._discovery_topic(entity, short_id)
+                        await client.publish(topic, b"", retain=True)
+                        count += 1
+                    avail_topic = self._availability_topic(short_id)
+                    await client.publish(avail_topic, b"", retain=True)
         except Exception as exc:
             logger.error("Failed to unpublish discovery: %s", exc)
             raise
