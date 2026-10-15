@@ -58,7 +58,7 @@ class OurDevice:
 
 
 def group_for(entity: EntityDef | None) -> str:
-    """Card group for an EntityDef; an unknown slug lands in Diagnostics."""
+    """Card group for an EntityDef (None → Diagnostics, for callers that pass one)."""
     if entity is None or entity.entity_category in ("diagnostic", "config"):
         return DIAGNOSTICS
     # state_group "control" holds active_reserve_pct, a read-only sensor that
@@ -73,12 +73,17 @@ def group_for(entity: EntityDef | None) -> str:
 
 
 def _ordered_defs(published: list[EntityDef] | None) -> list[EntityDef]:
-    out = list(BRIDGE_ENTITIES)
+    """Exactly the entities this device publishes, in BRIDGE_ENTITIES order.
+
+    Only what we announced over MQTT: not every entity the bridge knows
+    (phase, battery-port and group filtering leave some out), and never
+    another producer's entity that shares the device or unique_id prefix.
+    """
+    published = list(published or [])
+    slugs = {e.slug for e in published}
+    out = [e for e in BRIDGE_ENTITIES if e.slug in slugs]
     seen = {e.slug for e in out}
-    for e in published or []:
-        if e.slug not in seen:
-            out.append(e)
-            seen.add(e.slug)
+    out.extend(e for e in published if e.slug not in seen)
     return out
 
 
@@ -163,11 +168,18 @@ def select_ours(
             continue
         slug = uid[len(head) :]
         index = next((i for i, e in enumerate(dev.defs) if e.slug == slug), None)
-        entity = dev.defs[index] if index is not None else None
+        if index is None:
+            # Not an entity this bridge publishes. Another producer that
+            # announces the same device identifier and unique_id prefix
+            # (FWHAI's defaults match ours) lands on the SAME HA device, so
+            # its entities pass both checks above. Listing them as
+            # "Diagnostics" put 155 entities in the card instead of ours.
+            continue
+        entity = dev.defs[index]
         group = group_for(entity)
         if group == DIAGNOSTICS and not include_diagnostics:
             continue
-        key = (index if index is not None else len(dev.defs), slug)
+        key = (index, slug)
         buckets[ha_dev].append((key, group, eid))
 
     out: list[DeviceCards] = []
@@ -268,6 +280,12 @@ async def build_dashboard(
     return {
         "yaml": yaml_text,
         "entity_count": sum(len(c.entity_ids) for c in cards),
+        # What we publish (for this card's diagnostics setting), so the UI can
+        # say "N of M published entities found in Home Assistant".
+        "published_count": sum(
+            1 for c in cards for e in c.device.defs
+            if include_diagnostics or group_for(e) != DIAGNOSTICS
+        ),
         "devices": [
             {
                 "name": c.name,
