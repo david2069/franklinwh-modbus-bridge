@@ -154,6 +154,21 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **A broker saved in Settings is now used, and Save & Reconnect applies it**
+  (#103). At startup the environment's MQTT host always replaced the saved one.
+  Even an unset `MQTT_HOST` did, through its `localhost` default. So a broker
+  saved in Settings was never used, not even after a restart, and Reconnect
+  restarted against the old broker.
+  - One rule per field (host, port, username, password): an `MQTT_*` variable
+    that is set and not empty wins; then the value saved in Settings; then, as
+    an add-on, the Supervisor's broker; then `localhost:1883`. It lives in
+    `config/mqtt_broker.py` and is used at startup and on
+    `POST /api/mqtt/reconnect`.
+  - `GET /api/mqtt/config` adds `sources` and `env_vars`. The edit form starts
+    from the broker in use, and a field the environment sets is read-only,
+    with the variable named. `PATCH` refuses to change one (409).
+  - No live change: docker-compose sets `MQTT_HOST`, which still wins.
+
 - **Writes need the admin role** (#102). Most feature routers checked only for
   a session, so a signed-in **viewer** (and any other role) could reconfigure
   gateways, MQTT and modules, stop gateways, edit and run schedules, and
