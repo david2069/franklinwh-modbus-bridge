@@ -416,6 +416,17 @@ def _kwh(points: Points, key: str) -> float | None:
     return round(wh / 1000.0, 3) if wh is not None else None
 
 
+def _solar_actual_vs(p: Points) -> dict[str, float | None]:
+    """Actual solar today (energy.solar.today_kwh) against the forecast."""
+    from franklinwh_bridge.gateway.solar_forecast import actual_vs_forecast
+
+    return actual_vs_forecast(
+        _num(p, "energy_solar_today_kwh"),
+        _num(p, "solar_forecast_today_kwh"),
+        _num(p, "solar_forecast_remaining_kwh"),
+    )
+
+
 SENSORS: list[SensorDef] = [
     SensorDef("battery.soc_pct", "Battery SOC (%)", "%", "number", lambda p, _n: _num(p, "soc")),
     # Reserve-SOC setpoints (the "floor" the aGate holds). Exposed so an
@@ -830,6 +841,47 @@ SENSORS: list[SensorDef] = [
         "number",
         lambda p, _n: _kwh(p, "dc_energy_discharged_wh"),
     ),
+    # ── Weather + solar forecast (Open-Meteo, #88) ──
+    # Same ids as the Local Bridge so automations port between the bridges.
+    # None until a location is set and a forecast has been fetched, so a
+    # condition on them fails closed.
+    SensorDef(
+        "weather.temp_c", "Weather: temperature (°C)", "°C", "number",
+        lambda p, _n: _num(p, "weather_temp_c"),
+    ),
+    SensorDef(
+        "weather.condition", "Weather: condition (Clear, Overcast, Rain, …)", None, "enum",
+        lambda p, _n: _text(p, "weather_condition"),
+    ),
+    SensorDef(
+        "weather.code", "Weather: WMO weather code", None, "number",
+        lambda p, _n: _num(p, "weather_code"),
+    ),
+    SensorDef(
+        "solar_forecast.today_kwh", "Solar forecast: today (kWh)", "kWh", "number",
+        lambda p, _n: _num(p, "solar_forecast_today_kwh"),
+    ),
+    SensorDef(
+        "solar_forecast.today_peak_kw", "Solar forecast: today peak (kW)", "kW", "number",
+        lambda p, _n: _num(p, "solar_forecast_today_peak_kw"),
+    ),
+    SensorDef(
+        "solar_forecast.remaining_kwh", "Solar forecast: remaining today (kWh)", "kWh",
+        "number", lambda p, _n: _num(p, "solar_forecast_remaining_kwh"),
+    ),
+    SensorDef(
+        "solar_forecast.tomorrow_kwh", "Solar forecast: tomorrow (kWh)", "kWh", "number",
+        lambda p, _n: _num(p, "solar_forecast_tomorrow_kwh"),
+    ),
+    SensorDef(
+        "solar_forecast.day_pct", "Solar actual today as % of today's forecast", "%",
+        "number", lambda p, _n: _solar_actual_vs(p)["solar_forecast.day_pct"],
+    ),
+    SensorDef(
+        "solar_forecast.vs_expected_pct",
+        "Solar actual vs forecast-to-now (%, 100 = on track)", "%", "number",
+        lambda p, _n: _solar_actual_vs(p)["solar_forecast.vs_expected_pct"],
+    ),
     SensorDef("time.hour", "Hour of day (0..23, local)", None, "number", lambda _p, n: n.hour),
     SensorDef("time.dow", "Day of week (0=Mon..6=Sun)", None, "number", lambda _p, n: n.weekday()),
     SensorDef("time.month", "Month (1..12)", None, "number", lambda _p, n: n.month),
@@ -929,6 +981,8 @@ _GROUP_LABELS = {
     "bonus": "Demand / Tariff",
     "fixed": "Fixed Charges",
     "service": "Utility Plan",
+    "weather": "Weather",
+    "solar_forecast": "Solar Forecast",
     "time": "Time",
 }
 

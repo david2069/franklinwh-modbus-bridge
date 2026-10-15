@@ -53,6 +53,9 @@ def _gateway_points(request: Request, gateway: str) -> dict:
     fixed = getattr(request.app.state, "fixed_charges", None)
     if fixed is not None:
         pts = {**pts, **fixed.as_points()}
+    solar = getattr(request.app.state, "solar_forecast", None)
+    if solar is not None:
+        pts = {**pts, **solar.as_points()}
     return pts
 
 

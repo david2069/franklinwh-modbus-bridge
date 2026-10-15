@@ -35,6 +35,7 @@ from franklinwh_bridge.api.point_history_api import router as point_history_rout
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.setup_api import router as setup_router
+from franklinwh_bridge.api.solar_api import router as solar_router
 from franklinwh_bridge.api.tariff_api import router as tariff_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
@@ -58,6 +59,7 @@ from franklinwh_bridge.gateway.ha import HaRegistry
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
+from franklinwh_bridge.gateway.solar_forecast import SolarForecastService
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.security import seed_admin, session_secret_key
@@ -580,6 +582,14 @@ async def lifespan(app: FastAPI):
     await constants.load()
     app.state.constants = constants
 
+    # ── Weather + solar forecast (Open-Meteo, #88) ────────────
+    # Off until a location is set. The loop keeps the cache warm so the sync
+    # points merge below never waits on the network.
+    solar_forecast = SolarForecastService(db)
+    await solar_forecast.load()
+    app.state.solar_forecast = solar_forecast
+    solar_forecast_task = asyncio.create_task(solar_forecast.run())
+
     # ── Utility-service billing/tariff windows (demand.*/bonus.* sensors) ──
     billing = BillingStore(db)
     await billing.load()
@@ -625,6 +635,7 @@ async def lifespan(app: FastAPI):
             **billing.as_points(),
             **demand_tracker.as_points(),
             **fixed_charges.as_points(),
+            **solar_forecast.as_points(),
         }
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────
@@ -948,6 +959,9 @@ async def lifespan(app: FastAPI):
     await schedule_engine.stop()
     await health_checker.stop()
     await ha_registry.stop()
+    solar_forecast_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await solar_forecast_task
     if mqtt_broker_watch is not None and not mqtt_broker_watch.done():
         mqtt_broker_watch.cancel()
 
@@ -1047,6 +1061,7 @@ app.include_router(setup_router, dependencies=_AUTH)
 app.include_router(modules_router, dependencies=_AUTH)
 app.include_router(energy_router, dependencies=_AUTH)
 app.include_router(point_history_router, dependencies=_AUTH)
+app.include_router(solar_router, dependencies=_AUTH)
 # No _AUTH here: the router's own deps already require a user, and the GET
 # must stay reachable for any signed-in role so the modal can render.
 app.include_router(disclaimer_router)

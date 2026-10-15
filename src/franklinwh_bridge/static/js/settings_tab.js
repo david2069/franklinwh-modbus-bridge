@@ -73,6 +73,13 @@ function settingsTab() {
     constants: {},
     constantsSpec: {},
     constantsSaving: false,
+
+    // Location & Solar (Open-Meteo forecast, #88)
+    solarEdit: { pv_latitude: '', pv_longitude: '', pv_kwp: 5, pv_tilt: 20, pv_azimuth: 0 },
+    solarConfigured: false,
+    solarAzimuthHelp: '',
+    solarHaInstances: [],
+    solarSaving: false,
     // Gateway management
     gwList: [],
     gwBusy: false,
@@ -109,6 +116,7 @@ function settingsTab() {
       await this.loadGateways();
       await this.loadHaInstances();
       await this.loadConstants();
+      await this.loadSolar();
       await this.loadModules();
       if (Alpine.store('app').isAdmin) await this.loadUsers();
       setInterval(() => {
@@ -740,6 +748,58 @@ function settingsTab() {
         }
       } finally {
         this.constantsSaving = false;
+      }
+    },
+
+    // ── Location & Solar (Open-Meteo weather + PV forecast) ──────
+    _applySolar(data) {
+      const v = data.values || {};
+      this.solarEdit = {
+        pv_latitude: v.pv_latitude ?? '',
+        pv_longitude: v.pv_longitude ?? '',
+        pv_kwp: v.pv_kwp, pv_tilt: v.pv_tilt, pv_azimuth: v.pv_azimuth,
+      };
+      this.solarConfigured = !!data.configured;
+      this.solarAzimuthHelp = data.azimuth_help || '';
+      this.solarHaInstances = data.ha_instances || [];
+    },
+    async loadSolar() {
+      try {
+        this._applySolar(await fetchJSON('api/solar/settings'));
+      } catch (e) { /* card shows defaults; the save path reports errors */ }
+    },
+    async saveSolar() {
+      const num = (v) => (v === '' || v == null) ? null : Number(v);
+      const e = this.solarEdit;
+      const body = {
+        pv_latitude: num(e.pv_latitude), pv_longitude: num(e.pv_longitude),
+        pv_kwp: num(e.pv_kwp), pv_tilt: num(e.pv_tilt), pv_azimuth: num(e.pv_azimuth),
+      };
+      for (const k of ['pv_kwp', 'pv_tilt', 'pv_azimuth']) if (body[k] == null) delete body[k];
+      this.solarSaving = true;
+      try {
+        this._applySolar(await fetchJSON('api/solar/settings', {
+          method: 'PUT', body: JSON.stringify(body),
+        }));
+        Alpine.store('app').toast('Location & solar saved', 'info');
+      } catch (err) {
+        Alpine.store('app').toast('Save failed: ' + err.message, 'error');
+      } finally {
+        this.solarSaving = false;
+      }
+    },
+    async useHaLocation() {
+      const inst = this.solarHaInstances[0];
+      if (!inst) return;
+      this.solarSaving = true;
+      try {
+        this._applySolar(await fetchJSON(
+          'api/solar/location/from-ha?instance=' + encodeURIComponent(inst.id), { method: 'POST' }));
+        Alpine.store('app').toast(`Location read from ${inst.name}`, 'info');
+      } catch (err) {
+        Alpine.store('app').toast('Could not read the location: ' + err.message, 'error');
+      } finally {
+        this.solarSaving = false;
       }
     },
 
