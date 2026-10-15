@@ -934,10 +934,13 @@ function settingsTab() {
       await this.loadNemSpot();
     },
     /** "14:35 AEDT" for an AEMO settlement epoch (s), in the bridge's zone. */
+    // AEMO's SETTLEMENTDATE is the END of the 5-minute dispatch interval, so
+    // the price in force is for the five minutes up to it. "settled 18:25" at
+    // 18:22 read as a time in the future (#110).
     nemSettlement(spot) {
       if (!spot || spot.settlement_ts == null) return (spot && spot.settlement) || '';
-      const ms = spot.settlement_ts * 1000;
-      return bridgeTime.time(ms) + ' ' + bridgeTime.label(ms);
+      const end = spot.settlement_ts * 1000;
+      return bridgeTime.time(end - 300000) + '–' + bridgeTime.time(end) + ' ' + bridgeTime.label(end);
     },
     nemPrice(c) { return c == null ? '—' : Number(c).toFixed(2) + ' c/kWh'; },
 

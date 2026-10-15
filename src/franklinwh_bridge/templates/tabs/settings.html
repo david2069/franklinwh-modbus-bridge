@@ -2008,8 +2008,8 @@
             <span class="font-semibold font-mono"
                   :class="nemSpot.spot.price_c_kwh < 0 ? 'text-emerald-400' : 'text-slate-200'"
                   x-text="nemPrice(nemSpot.spot.price_c_kwh)"></span>
-            <span class="text-slate-500" x-text="'· ' + nemSpot.spot.rrp_mwh + ' $/MWh · settled ' + nemSettlement(nemSpot.spot)"
-                  :title="'AEMO SETTLEMENTDATE (NEM time, AEST): ' + nemSpot.spot.settlement"></span>
+            <span class="text-slate-500" x-text="'· ' + nemSpot.spot.rrp_mwh + ' $/MWh · for ' + nemSettlement(nemSpot.spot)"
+                  :title="'5-minute dispatch interval ending at AEMO SETTLEMENTDATE ' + nemSpot.spot.settlement + ' (NEM time, AEST)'"></span>
             <span x-show="nemSpot.spot.stale" class="text-amber-400"
                   title="The last fetch from AEMO failed; this is the last good price">· stale</span>
           </span>

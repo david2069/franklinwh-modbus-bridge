@@ -170,6 +170,17 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Spot price interval, and HA conditions you can tell apart** (#110).
+  - Wholesale spot price: "settled 18:25" at 18:22 read as a future time.
+    AEMO's settlement time is the end of the 5-minute interval, so it now
+    reads "for 18:20–18:25 AEDT".
+  - Schedule editor: a long sensor name keeps its end in the condition picker
+    ("… Express - Home General Price" / "… Home Feed In Price" instead of two
+    identical "HA Live: Amber Express - H…"). The full name and id show on hover.
+  - The "live:" value is rounded and carries the sensor's unit
+    ("0.1339 $/kWh", not "0.1339303"). Raw HA prices are $/kWh while
+    `tariff.*` prices are c/kWh.
+
 - **A broker saved in Settings is now used, and Save & Reconnect applies it**
   (#103). At startup the environment's MQTT host always replaced the saved one.
   Even an unset `MQTT_HOST` did, through its `localhost` default. So a broker
