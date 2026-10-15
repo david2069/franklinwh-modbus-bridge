@@ -46,9 +46,20 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 58
+CURRENT_SCHEMA_VERSION = 59
 
 MIGRATIONS: dict[int, str] = {
+    59: """
+    -- Dynamic (live) tariffs (#89 part B). A closed billing period records HOW
+    -- its energy was priced, so history can say "Wholesale (live)" rather than
+    -- read like a static plan, and how much energy had NO price (a live price
+    -- was missing, a gap over an hour, or a static plan's uncovered hour).
+    --   pricing_kind:  'static' | 'dynamic' | 'mixed' (both within one period)
+    --   pricing_label: e.g. 'Wholesale (live) · AEMO NEM NSW1'
+    -- The columns are added by MIGRATION_COLUMNS[59] first, so a re-run is
+    -- safe; the rows written before this keep the defaults ('static', 0 kWh).
+    SELECT 1;
+    """,
     58: """
     -- Interim REST API access (#99): an 'api' role (view + control, REST only)
     -- and an account expiry date. The role CHECK from migration 32 can only be
@@ -1134,6 +1145,12 @@ MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
         ("metrics_archive", "active_reserve_pct", "INTEGER"),
     ],
     58: [("users", "expires_at", "REAL")],
+    59: [
+        ("billing_periods", "pricing_kind", "TEXT NOT NULL DEFAULT 'static'"),
+        ("billing_periods", "pricing_label", "TEXT NOT NULL DEFAULT ''"),
+        ("billing_periods", "unpriced_import_kwh", "REAL NOT NULL DEFAULT 0"),
+        ("billing_periods", "unpriced_export_kwh", "REAL NOT NULL DEFAULT 0"),
+    ],
 }
 
 
@@ -1950,6 +1967,8 @@ _BILLING_PERIOD_FIELDS = (
     "service_id", "retailer", "network", "plan_version",
     # Consumption priced by the rate model (migration 41).
     "energy_cost", "energy_credit",
+    # How the energy was priced + what had no price (migration 59, #89).
+    "pricing_kind", "pricing_label", "unpriced_import_kwh", "unpriced_export_kwh",
 )
 
 
@@ -2047,7 +2066,9 @@ async def insert_billing_period(db: aiosqlite.Connection, record: dict) -> None:
     # Per-field defaults: the numeric columns fall back to 0, but the supplier
     # columns are TEXT and would otherwise be written as the integer 0, which
     # then renders as "0" where a retailer name belongs.
-    text_defaults = {"retailer": "", "network": ""}
+    text_defaults = {
+        "retailer": "", "network": "", "pricing_kind": "static", "pricing_label": "",
+    }
     defaults: dict = {"service_id": None, "plan_version": 1, **text_defaults}
     await db.execute(
         f"INSERT INTO billing_periods ({cols}) VALUES ({placeholders}) "

@@ -22,6 +22,7 @@ from __future__ import annotations
 import calendar
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -37,6 +38,11 @@ logger = logging.getLogger(__name__)
 _KEY = "demand_state"
 _PERSIST_INTERVAL_S = 60
 _INTERVAL_MIN = 30  # NEM demand interval
+#: A dynamic plan prices a slice at the live rate at its END. A slice longer
+#: than this (the bridge was down, or polling stalled) is not priced at all:
+#: the live rate an hour later says nothing about when that energy flowed. Its
+#: kWh are still counted, as unpriced. The Local Bridge's "gaps > 1 h ignored".
+_DYNAMIC_MAX_SLICE_S = 3600
 
 
 def _period_start(now: datetime, cycle_day: int) -> datetime:
@@ -68,9 +74,14 @@ class DemandTracker:
         *,
         gateway_id: str = "default",
         fixed_charges: Any = None,
+        live_prices: Callable[[dict], dict] | None = None,
     ) -> None:
         self._db = db
         self._billing = billing
+        #: ``pricing.dynamic`` -> live {buy, sell} $/kWh (#89 part B); main.py
+        #: passes ``NemPricingService.dynamic_prices``. None -> a dynamic plan
+        #: prices nothing (all unpriced), never the static rates.
+        self._live_prices = live_prices
         #: Optional FixedChargesStore — its accrual is folded into the closing
         #: period's ``net_total`` so history reflects the whole bill, not just
         #: the usage-driven part. ``None`` → fixed charges count as 0.
@@ -103,6 +114,13 @@ class DemandTracker:
             "period_import_kwh": 0.0,
             "unpriced_import_kwh": 0.0,  # import the plan priced no rate for
             "unpriced_export_kwh": 0.0,
+            # #89 part B: when the previous sample was taken (a dynamic slice
+            # longer than an hour is not priced), and how much energy each
+            # pricing kind priced this period (history labels a period that
+            # was switched mid-way "mixed").
+            "last_sample_ts": None,
+            "live_priced_kwh": 0.0,
+            "static_priced_kwh": 0.0,
         }
 
     async def load(self) -> None:
@@ -188,6 +206,11 @@ class DemandTracker:
         # Resolve against consumption BEFORE this delta: the kWh being priced
         # is the one that takes you up to the boundary, not past it.
         rate = self._rate_now(now, self._s.get("period_import_kwh", 0.0))
+        dynamic = self._dynamic() is not None
+        last_ts = self._s.get("last_sample_ts")
+        if dynamic and last_ts is not None and sample.ts - last_ts > _DYNAMIC_MAX_SLICE_S:
+            rate = {}  # too long a slice to price at one live rate -> unpriced
+        priced_key = "live_priced_kwh" if dynamic else "static_priced_kwh"
         if isinstance(imp, (int, float)) and prev_import_wh is not None:
             d_kwh = (float(imp) - prev_import_wh) / 1000.0
             if d_kwh > 0:
@@ -196,6 +219,7 @@ class DemandTracker:
                     self._s["unpriced_import_kwh"] += d_kwh
                 else:
                     self._s["import_cost"] += d_kwh * rate["buy"]
+                    self._s[priced_key] = self._s.get(priced_key, 0.0) + d_kwh
 
         # ── export accumulation inside the reward + charge windows ───
         if isinstance(exp, (int, float)):
@@ -208,6 +232,7 @@ class DemandTracker:
                     self._s["unpriced_export_kwh"] += d_kwh
                 else:
                     self._s["export_credit"] += d_kwh * rate["sell"]
+                    self._s[priced_key] = self._s.get(priced_key, 0.0) + d_kwh
                 bcfg = self._billing.bonus_config()
                 if bcfg and _in_window(bcfg["window"], now):
                     self._s["bonus_export_wh"] += delta
@@ -215,6 +240,7 @@ class DemandTracker:
                 if ccfg and _in_window(ccfg["window"], now):
                     self._s["charge_export_wh"] += delta
             self._s["last_export_wh"] = exp
+        self._s["last_sample_ts"] = sample.ts
 
         if sample.ts - self._last_persist >= _PERSIST_INTERVAL_S:
             self._last_persist = sample.ts
@@ -225,7 +251,12 @@ class DemandTracker:
 
         When it does it is authoritative, and the legacy export-bonus window
         must not also credit the same kWh.
+
+        A dynamic plan returns False: its live sell price is the wholesale
+        feed-in, and a retailer's bonus window stays on top of it (#89).
         """
+        if self._dynamic() is not None:
+            return False
         try:
             pts = self._billing.as_points()
         except Exception:  # pragma: no cover - defensive
@@ -235,9 +266,32 @@ class DemandTracker:
         default = pts.get("tariff_default_rate") or {}
         return default.get("sell") is not None
 
+    def _dynamic(self) -> dict | None:
+        """The active plan's live-price provider, or None for a static plan."""
+        fn = getattr(self._billing, "dynamic_config", None)
+        try:
+            return fn() if callable(fn) else None
+        except Exception:  # pragma: no cover - defensive
+            return None
+
     def _rate_now(self, now: datetime, used_kwh: float | None = None) -> dict:
-        """Resolved buy/sell for this instant, or empty if no plan is set up."""
+        """Resolved buy/sell for this instant, or empty if no plan is set up.
+
+        A dynamic plan resolves to the LIVE price (no seasons, no tiers). A
+        side with no live price is None, so that energy goes to unpriced.
+        """
         from franklinwh_bridge.gateway.rate_model import resolve
+
+        dyn = self._dynamic()
+        if dyn is not None:
+            from franklinwh_bridge.gateway.dynamic_pricing import as_rate
+
+            try:
+                prices = self._live_prices(dyn) if self._live_prices else None
+            except Exception as exc:  # pragma: no cover - pricing must not stop tracking
+                logger.debug("Live price failed: %s", exc)
+                prices = None
+            return as_rate(prices)
 
         try:
             pts = self._billing.as_points()
@@ -300,6 +354,9 @@ class DemandTracker:
                 or self._billing.bonus_config()
                 or self._billing.charge_config()
                 or (self._fixed and self._fixed.charges())
+                # A dynamic plan's energy is the bill; record it even when no
+                # surcharge is configured.
+                or self._dynamic() is not None
             ):
                 return
             from franklinwh_bridge.gateway.scheduler_sensors import snapshot
@@ -344,6 +401,7 @@ class DemandTracker:
                 # real bill — were simply absent.
                 "energy_cost": _f(vals.get("energy_import_cost")),
                 "energy_credit": _f(vals.get("energy_export_credit")),
+                **self._pricing_record(),
                 "net_total": round(
                     demand_charge + charge_cost + fixed_charges
                     + _f(vals.get("energy_import_cost"))
@@ -383,6 +441,34 @@ class DemandTracker:
             await insert_billing_period(self._db, record)
         except Exception as exc:  # pragma: no cover - reporting must not break tracking
             logger.debug("billing-period snapshot failed: %s", exc)
+
+    def _pricing_record(self) -> dict[str, Any]:
+        """How the closing period's energy was priced, for billing history."""
+        from franklinwh_bridge.gateway.dynamic_pricing import label
+
+        live = float(self._s.get("live_priced_kwh") or 0.0)
+        static = float(self._s.get("static_priced_kwh") or 0.0)
+        dyn = self._dynamic()
+        if live > 0 and static > 0:
+            kind = "mixed"
+        elif live > 0 or (dyn is not None and static == 0):
+            kind = "dynamic"
+        else:
+            kind = "static"
+        if kind == "static":
+            lbl = ""
+        elif dyn is not None:
+            lbl = label(dyn)
+        else:  # switched back to static before the close
+            lbl = label(None)
+        if kind == "mixed":
+            lbl = f"Static + {lbl}"
+        return {
+            "pricing_kind": kind,
+            "pricing_label": lbl,
+            "unpriced_import_kwh": round(float(self._s.get("unpriced_import_kwh") or 0.0), 3),
+            "unpriced_export_kwh": round(float(self._s.get("unpriced_export_kwh") or 0.0), 3),
+        }
 
     def as_points(self, now: datetime | None = None) -> dict[str, float]:
         """Calculator outputs merged into the sensor snapshot. The sensors

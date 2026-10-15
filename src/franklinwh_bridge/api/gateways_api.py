@@ -273,6 +273,15 @@ class ServiceUpdate(BaseModel):
     pto_date: float | None = None
     pto_reference: str | None = Field(default=None, max_length=120)
 
+    @field_validator("pricing")
+    @classmethod
+    def _pricing_kind(cls, v: dict | None) -> dict | None:
+        """``pricing.kind`` static|dynamic, and a dynamic plan's provider
+        (#89 part B). Everything else in pricing passes through unchanged."""
+        from franklinwh_bridge.gateway.dynamic_pricing import normalise_pricing
+
+        return normalise_pricing(v)
+
     @field_validator("country")
     @classmethod
     def _upper_country(cls, v: str | None) -> str | None:
@@ -420,8 +429,17 @@ async def import_service(
 
     profile = {k: v for k, v in bundle.profile.items() if k in _PORTABLE_SERVICE_FIELDS}
     unknown = sorted(set(bundle.profile) - set(_PORTABLE_SERVICE_FIELDS))
+    from franklinwh_bridge.gateway.dynamic_pricing import normalise_pricing, pricing_problems
+
     pricing = profile.get("pricing") if isinstance(profile.get("pricing"), dict) else {}
-    problems = validate_rates(pricing.get("seasons"), pricing.get("default_rate"))
+    # A dynamic profile carries no static rates; check its provider instead.
+    problems = pricing_problems(pricing)
+    if problems is None:
+        try:
+            normalise_pricing(pricing)
+            problems = validate_rates(pricing.get("seasons"), pricing.get("default_rate"))
+        except ValueError as exc:
+            problems = [str(exc)]
 
     report = {
         "ok": not problems,
@@ -463,6 +481,10 @@ class RateValidateBody(BaseModel):
 
     seasons: list[dict] = Field(default_factory=list)
     default_rate: dict | None = None
+    #: #89 part B: "dynamic" validates the live-price provider instead of the
+    #: static seasons (a dynamic plan carries no rates of its own).
+    kind: str | None = Field(default=None, pattern=r"^(static|dynamic)$")
+    dynamic: dict | None = None
 
 
 @router.post("/tariff/validate-rates")
@@ -473,9 +495,13 @@ async def validate_rates(body: RateValidateBody):
     price — a UI that validated separately would drift from it. Returns
     ``{ok, problems: [...]}`` where problems are plain sentences.
     """
+    from franklinwh_bridge.gateway.dynamic_pricing import pricing_problems
     from franklinwh_bridge.gateway.rate_model import TIME_PERIOD_LABELS, validate
 
-    problems = validate(body.seasons, body.default_rate)
+    dyn_problems = pricing_problems({"kind": body.kind, "dynamic": body.dynamic})
+    problems = (
+        dyn_problems if dyn_problems is not None else validate(body.seasons, body.default_rate)
+    )
     return {
         "ok": not problems, "problems": problems,
         "time_period_labels": TIME_PERIOD_LABELS,
@@ -550,6 +576,10 @@ async def patch_service(service_id: str, body: ServiceUpdate, request: Request):
     fixed = getattr(request.app.state, "fixed_charges", None)
     if fixed is not None:
         await fixed.load()
+    # A plan now priced from a NEM region gets that region fetched now.
+    nem = getattr(request.app.state, "nem_pricing", None)
+    if nem is not None:
+        nem.wake()
     return result
 
 

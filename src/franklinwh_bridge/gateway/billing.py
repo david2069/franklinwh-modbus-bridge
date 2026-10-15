@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from franklinwh_bridge.gateway.dynamic_pricing import is_dynamic, normalise_dynamic
 from franklinwh_bridge.store.db import get_services
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,9 @@ class BillingStore:
         #: Tariff-wide rate — what a kWh costs when no time period overrides.
         #: A flat or tiered tariff needs nothing else.
         self._default_rate: dict = {}
+        #: Live pricing (#89 part B): the plan service's ``pricing.dynamic``
+        #: when its ``pricing.kind`` is "dynamic", else None (static).
+        self._dynamic: dict | None = None
         # First service with each flag drives the demand/bonus/charge calc (v1).
         self._demand_cfg: dict | None = None
         self._bonus_cfg: dict | None = None
@@ -73,6 +77,7 @@ class BillingStore:
         demand, bonus, imports = [], [], []
         seasons: list[dict] = []
         default_rate: dict = {}
+        dynamic: dict | None = None
         demand_cfg = bonus_cfg = charge_cfg = None
         plan = None
         for s in services:
@@ -98,6 +103,17 @@ class BillingStore:
                     "plan_version": int(s.get("plan_version") or 1),
                     "pto_status": (s.get("pto_status") or "unknown").strip(),
                 }
+                # The plan service decides static vs dynamic. A dynamic block
+                # that no longer validates still counts as dynamic, with no
+                # provider: its energy goes to unpriced kWh rather than being
+                # silently priced at the static rates it was switched away from.
+                sp = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
+                if is_dynamic(sp):
+                    try:
+                        dynamic = normalise_dynamic(sp.get("dynamic"))
+                    except ValueError as exc:
+                        logger.warning("Service %s dynamic pricing invalid: %s", s.get("id"), exc)
+                        dynamic = {}
             pricing = s.get("pricing") if isinstance(s.get("pricing"), dict) else {}
             cycle_day = int(_num(pricing.get("billing_cycle_day"), 1)) or 1
             if s.get("has_peak_demand") and isinstance(s.get("demand_window"), dict):
@@ -153,6 +169,7 @@ class BillingStore:
         self._imports = imports
         self._seasons = seasons
         self._default_rate = default_rate
+        self._dynamic = dynamic
         self._demand_cfg, self._bonus_cfg = demand_cfg, bonus_cfg
         self._charge_cfg = charge_cfg
         if plan is not None:
@@ -166,6 +183,13 @@ class BillingStore:
 
     def charge_config(self) -> dict | None:
         return self._charge_cfg
+
+    def dynamic_config(self) -> dict | None:
+        """The active plan's live-price provider, or None for a static plan."""
+        return None if self._dynamic is None else dict(self._dynamic)
+
+    def pricing_kind(self) -> str:
+        return "static" if self._dynamic is None else "dynamic"
 
     def plan(self) -> dict:
         """What the electricity plan permits (defaults are permissive)."""
@@ -181,6 +205,7 @@ class BillingStore:
             "tariff_import_windows": self._imports,
             "tariff_seasons": self._seasons,
             "tariff_default_rate": self._default_rate,
+            "tariff_pricing_kind": self.pricing_kind(),
             "tariff_demand_rate": d.get("rate", 0.0),
             "tariff_export_bonus_rate": (self._bonus_cfg or {}).get("rate", 0.0),
             "tariff_export_charge_rate": c.get("rate", 0.0),

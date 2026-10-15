@@ -122,3 +122,80 @@ async def put_spot_settings(body: SpotSettingsBody, request: Request, _user: dic
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
     return _settings_response(svc)
+
+
+# ── Dynamic (live) tariff (#89 part B) ────────────────────────
+
+DYNAMIC_NOTE = (
+    "Energy is priced at the live rate. Demand, export-bonus, export-charge "
+    "and standing charges still apply on top. With no live price for a slice, "
+    "that energy is recorded as unpriced."
+)
+
+
+class DynamicLive(BaseModel):
+    buy_c_kwh: float | None = None
+    sell_c_kwh: float | None = None
+    buy: float | None = Field(default=None, description="$/kWh")
+    sell: float | None = Field(default=None, description="$/kWh")
+    source: str | None = None
+    sell_source: str | None = None
+    label: str = ""
+    settlement_ts: int | None = None
+    stale: bool = False
+
+
+class DynamicTariffResponse(BaseModel):
+    kind: str = Field(description="the ACTIVE plan's pricing kind: static|dynamic")
+    dynamic: dict[str, Any] | None = Field(
+        default=None, description="the provider shown (the preview's, else the active plan's)"
+    )
+    preview: bool = False
+    live: DynamicLive | None = None
+    regions: list[str]
+    ha_options: list[dict[str, Any]]
+    note: str = DYNAMIC_NOTE
+
+
+@router.get("/dynamic", response_model=DynamicTariffResponse)
+async def tariff_dynamic(
+    request: Request,
+    source: str | None = None,
+    region: str | None = None,
+    buy_entity: str | None = None,
+    feedin_entity: str | None = None,
+):
+    """The live price a dynamic plan is (or would be) priced at.
+
+    With no ``source``: the ACTIVE plan's provider and the live price billing
+    is using now (``live`` is null for a static plan). With ``source`` (``nem``
+    + ``region``, or ``ha`` + ``buy_entity`` [+ ``feedin_entity``]): a preview
+    for the tariff editor, before anything is saved. Invalid input -> 422.
+    """
+    from franklinwh_bridge.gateway.dynamic_pricing import normalise_dynamic
+
+    svc = _service(request)
+    billing = getattr(request.app.state, "billing", None)
+    kind = billing.pricing_kind() if billing is not None else "static"
+
+    if source is not None:
+        try:
+            dyn = normalise_dynamic({
+                "source": source, "region": region,
+                "buy_entity": buy_entity, "feedin_entity": feedin_entity,
+            })
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        preview = True
+    else:
+        dyn = billing.dynamic_config() if billing is not None else None
+        preview = False
+
+    live = None
+    if dyn is not None:
+        got = await svc.preview_prices(dyn) if preview else svc.dynamic_prices(dyn)
+        live = DynamicLive(**{k: got.get(k) for k in DynamicLive.model_fields if k in got})
+    return DynamicTariffResponse(
+        kind=kind, dynamic=dyn, preview=preview, live=live,
+        regions=list(REGIONS), ha_options=_ha_options(request),
+    )

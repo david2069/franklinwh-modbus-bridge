@@ -1369,6 +1369,99 @@
                      boundaries differ (AGL's peak import is 15:00-21:00 but its
                      evening feed-in is 17:00-21:00), and it priced nothing. -->
                 <div x-show="tariffTab === 'import'" x-cloak class="space-y-2">
+                  <!-- Rate type (#89 part B): Static rates below, or a LIVE
+                       price (AEMO NEM spot / an HA price entity). Same shape
+                       as the Local Bridge's tariff editor. The static rates
+                       stay on file while Dynamic is on. -->
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="text-slate-500">Rate type</span>
+                    <span class="flex rounded overflow-hidden border border-white/10">
+                      <button type="button" @click="setPricingKind('static')"
+                              class="px-2 py-0.5 text-[11px]"
+                              :class="!isDynamicPricing ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Static</button>
+                      <button type="button" @click="setPricingKind('dynamic')"
+                              class="px-2 py-0.5 text-[11px]"
+                              :class="isDynamicPricing ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-500 hover:text-slate-300'">Dynamic (live)</button>
+                    </span>
+                  </div>
+
+                  <template x-if="isDynamicPricing">
+                    <div class="rounded border border-white/[0.06] p-2 space-y-2">
+                      <div class="text-[11px] text-emerald-300">Dynamic — energy priced at the live rate
+                        <span class="text-slate-500">→ billing, tariff.buy_rate / sell_rate and tariff.spot_price while this plan is active</span></div>
+                      <label class="flex items-center gap-2 text-xs">
+                        <span class="text-slate-500 w-20 shrink-0">Provider</span>
+                        <select x-model="serviceEdit.pricing.dynamic.source" @change="dynamicChanged()"
+                                class="form-control !py-0.5 !text-xs flex-1">
+                          <option value="nem" :selected="serviceEdit.pricing.dynamic.source !== 'ha'">AEMO NEM wholesale spot</option>
+                          <option value="ha" :selected="serviceEdit.pricing.dynamic.source === 'ha'">Home Assistant price entity</option>
+                        </select>
+                      </label>
+                      <label x-show="serviceEdit.pricing.dynamic.source !== 'ha'" class="flex items-center gap-2 text-xs">
+                        <span class="text-slate-500 w-20 shrink-0">Region</span>
+                        <select x-model="serviceEdit.pricing.dynamic.region" @change="dynamicChanged()"
+                                class="form-control !py-0.5 !text-xs flex-1">
+                          <template x-for="r in dynRegions" :key="r">
+                            <option :value="r" :selected="r === serviceEdit.pricing.dynamic.region" x-text="r"></option>
+                          </template>
+                        </select>
+                      </label>
+                      <template x-if="serviceEdit.pricing.dynamic.source === 'ha'">
+                        <div class="space-y-1.5">
+                          <label class="flex items-center gap-2 text-xs">
+                            <span class="text-slate-500 w-20 shrink-0">Buy price</span>
+                            <select x-model="serviceEdit.pricing.dynamic.buy_entity" @change="dynamicChanged()"
+                                    class="form-control !py-0.5 !text-xs flex-1 min-w-0">
+                              <option value="">— choose an entity —</option>
+                              <template x-for="o in dynHaOptions" :key="'b' + o.id">
+                                <option :value="o.id" :selected="o.id === serviceEdit.pricing.dynamic.buy_entity"
+                                        x-text="o.label + (o.unit ? ' (' + o.unit + ')' : '')"></option>
+                              </template>
+                            </select>
+                          </label>
+                          <label class="flex items-center gap-2 text-xs">
+                            <span class="text-slate-500 w-20 shrink-0">Feed-in</span>
+                            <select x-model="serviceEdit.pricing.dynamic.feedin_entity" @change="dynamicChanged()"
+                                    class="form-control !py-0.5 !text-xs flex-1 min-w-0">
+                              <option value="">Same as buy price</option>
+                              <template x-for="o in dynHaOptions" :key="'f' + o.id">
+                                <option :value="o.id" :selected="o.id === serviceEdit.pricing.dynamic.feedin_entity"
+                                        x-text="o.label + (o.unit ? ' (' + o.unit + ')' : '')"></option>
+                              </template>
+                            </select>
+                          </label>
+                          <div x-show="!dynHaOptions.length" class="text-[10px] text-amber-300/80">
+                            No numeric Home Assistant entities are exposed yet. Expose your price sensor in HA Entities first.
+                          </div>
+                        </div>
+                      </template>
+                      <!-- The live price this provider gives right now. -->
+                      <div class="rounded border border-white/[0.06] px-2 py-1.5 text-xs">
+                        <template x-if="dynLive && dynLive.buy_c_kwh != null">
+                          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                            <span class="text-slate-500">Now</span>
+                            <span>buy <span class="font-mono text-slate-100" x-text="Number(dynLive.buy_c_kwh).toFixed(2)"></span> c/kWh</span>
+                            <span>sell <span class="font-mono text-slate-100" x-text="Number(dynLive.sell_c_kwh).toFixed(2)"></span> c/kWh</span>
+                            <span class="text-[10px] text-slate-500" x-text="dynLive.label"></span>
+                            <span x-show="dynLive.stale" class="text-[10px] text-amber-300">stale</span>
+                          </div>
+                        </template>
+                        <template x-if="!dynLive || dynLive.buy_c_kwh == null">
+                          <span class="text-slate-500" x-text="dynLoading ? 'Fetching the live price…' : 'No live price right now. Energy in that time is recorded as unpriced, not priced at an old rate.'"></span>
+                        </template>
+                      </div>
+                      <div class="text-[10px] text-slate-500" x-text="dynNote"></div>
+                      <template x-if="rateProblems.length">
+                        <div class="rounded border border-amber-500/30 bg-amber-500/10 p-2 space-y-0.5">
+                          <template x-for="(p, pi) in rateProblems" :key="'dp' + pi">
+                            <div class="text-[10px] text-amber-200/80" x-text="p"></div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <div x-show="!isDynamicPricing" class="space-y-2">
                   <!-- TARIFF-WIDE RATE. What a kWh costs when no time period
                        overrides it. A flat or tiered tariff needs nothing
                        below this — seasons exist to override, not as a
@@ -1709,6 +1802,7 @@
                       </template>
                     </div>
                   </template>
+                  </div><!-- /static rates -->
                 </div>
 
                 <!-- Fixed / standing charges (levied regardless of usage) -->
