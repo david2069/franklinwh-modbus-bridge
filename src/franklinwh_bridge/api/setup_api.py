@@ -465,6 +465,9 @@ async def create_demo(body: DemoRequest, request: Request):
     Always a separate gateway — never the primary: the primary owns the
     unprefixed MQTT topics, and synthetic data there would land in the same HA
     entities (and long-term statistics) a real aGate uses later.
+
+    Not published to Home Assistant until the user says so (#96): as an add-on
+    a demo used to put a "Demo aGate" device into the user's real HA unasked.
     """
     db = request.app.state.db
     gw_id = await _unique_id(db, "demo")
@@ -474,6 +477,7 @@ async def create_demo(body: DemoRequest, request: Request):
             name=body.name,
             mock=True,
             description="Demo gateway — simulated data and controls",
+            publish_to_ha=False,
         ),
         request,
     )
@@ -543,6 +547,40 @@ async def post_use_ha(body: UseHaUpdate, request: Request):
     return await get_checklist(request)
 
 
+class PublishToHaUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    gateway_id: str = Field(..., min_length=1, max_length=63)
+    publish: bool
+
+
+@router.post("/publish-to-ha", dependencies=[Depends(_REQUIRE_ADMIN)])
+async def post_publish_to_ha(body: PublishToHaUpdate, request: Request):
+    """The wizard's "Publish <gateway>'s entities to Home Assistant?" (#96).
+
+    The same switch as ``PATCH /api/gateways/{id}`` ``publish_to_ha``, and
+    applied the same way — live: off removes the entities from HA, on
+    publishes them. Returns the checklist, which reflects the answer.
+    """
+    if await get_gateway(request.app.state.db, body.gateway_id) is None:
+        raise HTTPException(404, f"Gateway '{body.gateway_id}' not found")
+    await patch_gateway(body.gateway_id, GatewayUpdate(publish_to_ha=body.publish), request)
+    return await get_checklist(request)
+
+
+async def _publishing(db: aiosqlite.Connection) -> list[dict[str, Any]]:
+    """Each gateway and whether it is published to Home Assistant."""
+    return [
+        {
+            "gateway_id": g["id"],
+            "name": g.get("name") or g["id"],
+            "mock": bool(g.get("mock")),
+            "enabled": bool(g.get("enabled", 1)),
+            "publish_to_ha": bool(g.get("publish_to_ha", 1)),
+        }
+        for g in await get_gateways(db)
+    ]
+
+
 @router.get("/checklist", dependencies=[Depends(_REQUIRE_ADMIN)])
 async def get_checklist(request: Request):
     """Step 6: is everything between the bridge and Home Assistant working?
@@ -551,12 +589,15 @@ async def get_checklist(request: Request):
     manual step) / ``skipped`` (not using Home Assistant), with a ``detail``.
     """
     env = detect_environment()
+    db = request.app.state.db
     items: list[dict[str, Any]] = []
-    if not await _use_ha(request.app.state.db, env):
+    publishing = await _publishing(db)
+    if not await _use_ha(db, env):
         for item_id in ("mqtt_broker", "ha_connection", "ha_mqtt_integration", "ha_entities"):
             items.append({"id": item_id, "status": "skipped",
                           "detail": "Not using Home Assistant"})
-        return {"environment": env, "use_ha": False, "ask_use_ha": True, "items": items}
+        return {"environment": env, "use_ha": False, "ask_use_ha": True, "items": items,
+                "gateways": publishing}
 
     broker = getattr(request.app.state, "mqtt_broker", None) or {}
     publisher = getattr(request.app.state, "mqtt_publisher", None)
@@ -623,8 +664,13 @@ async def get_checklist(request: Request):
             entities.update(status="ok" if n else "fail", count=n, stale=stale, detail=detail)
         except Exception as exc:
             logger.debug("Entity registry check failed: %s", exc)
+    # Nothing chosen to publish: no entities is the expected answer, not a fault.
+    if not any(g["publish_to_ha"] and g["enabled"] for g in publishing):
+        entities.update(status="skipped", count=0,
+                        detail="No gateway is published to Home Assistant")
     items.extend([integration, entities])
-    return {"environment": env, "use_ha": True, "ask_use_ha": env != "ha_addon", "items": items}
+    return {"environment": env, "use_ha": True, "ask_use_ha": env != "ha_addon", "items": items,
+            "gateways": publishing}
 
 
 # ── accounts ──────────────────────────────────────────────────────────────────

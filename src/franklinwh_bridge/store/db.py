@@ -1357,9 +1357,12 @@ async def create_gateway(
     timeout: float = 10.0,
     mock: bool = False,
     device_type: str = "agate",
+    publish_to_ha: bool = True,
 ) -> dict:
     """Create a new gateway. ``device_type`` is 'agate' (full battery system)
-    or 'mac1' (Meter Adaptor Collar — metering only, far fewer models)."""
+    or 'mac1' (Meter Adaptor Collar — metering only, far fewer models).
+    ``publish_to_ha`` is set at creation, before the gateway first starts, so
+    an opted-out gateway never reaches Home Assistant even briefly (#96)."""
     now = time.time()
     # Find next display_order
     async with db.execute("SELECT COALESCE(MAX(display_order), -1) + 1 FROM gateways") as cur:
@@ -1367,8 +1370,9 @@ async def create_gateway(
 
     await db.execute(
         "INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at, "
-        "description, poll_interval, timeout, display_order, mock, device_type) "
-        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
+        "description, poll_interval, timeout, display_order, mock, device_type, "
+        "publish_to_ha) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             gateway_id,
             name,
@@ -1382,6 +1386,7 @@ async def create_gateway(
             order,
             int(mock),
             device_type if device_type in DEVICE_TYPES else "agate",
+            int(publish_to_ha),
         ),
     )
     await db.commit()

@@ -100,6 +100,7 @@
       checklist: [],
       environment: '',
       useHa: true,
+      gatewayPublish: [],        // checklist `gateways`: [{gateway_id, name, mock, publish_to_ha}]
 
       // Accounts step
       accounts: null,            // GET /api/setup/accounts body
@@ -148,7 +149,7 @@
           step: 'intent', busy: false, error: '', tab: 'search', subnets: [],
           subnetInput: '', scan: null, manual: { host: '', port: 502, unit_id: 1 },
           probeRow: null, picks: [], connected: [], reading: null,
-          demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [],
+          demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [], gatewayPublish: [],
           accounts: null, pw: { current: '', next: '', confirm: '' }, pwDone: false,
         });
       },
@@ -412,9 +413,7 @@
         this.busy = true;
         try {
           const d = await api('checklist');
-          this.environment = d.environment;
-          this.useHa = d.use_ha !== false;
-          this.checklist = d.items || [];
+          this.applyChecklist(d);
         } catch (e) {
           this.error = e.message;
         } finally {
@@ -427,9 +426,38 @@
         this.error = '';
         try {
           const d = await api('use-ha', { method: 'POST', body: { use_ha: value } });
-          this.environment = d.environment;
-          this.useHa = d.use_ha !== false;
-          this.checklist = d.items || [];
+          this.applyChecklist(d);
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.busy = false;
+        }
+      },
+
+      applyChecklist(d) {
+        this.environment = d.environment;
+        this.useHa = d.use_ha !== false;
+        this.checklist = d.items || [];
+        this.gatewayPublish = d.gateways || [];
+      },
+
+      // The gateways this run of the wizard set up — the ones it asks about
+      // publishing (#96). A demo starts unpublished; a real aGate published.
+      get setupGateways() {
+        const ids = this.demoId ? [this.demoId] : this.connected.map(c => c.gateway_id);
+        return ids
+          .map(id => this.gatewayPublish.find(g => g.gateway_id === id))
+          .filter(Boolean);
+      },
+
+      async setPublish(gw, value) {
+        this.busy = true;
+        this.error = '';
+        try {
+          const d = await api('publish-to-ha', {
+            method: 'POST', body: { gateway_id: gw.gateway_id, publish: value },
+          });
+          this.applyChecklist(d);
         } catch (e) {
           this.error = e.message;
         } finally {

@@ -329,7 +329,9 @@ async def lifespan(app: FastAPI):
             if not found:
                 continue
             await mqtt_publisher.reconfigure({k: v for k, v in found.items() if v is not None})
-            if mqtt_config.get("enabled", True):
+            # The stored value, not the one read at startup: "Enabled" can be
+            # switched while we wait (#96).
+            if (await get_mqtt_config(db)).get("enabled", True):
                 await mqtt_publisher.start()
             app.state.mqtt_broker = {"source": "supervisor", "waiting_for_broker": False}
             logger.info(
@@ -774,7 +776,23 @@ async def lifespan(app: FastAPI):
            publisher kept a stale binding or none at all.
 
         Now callable repeatedly and from anywhere a gateway (re)starts.
+
+        Honours the gateway's "Publish to Home Assistant" (#96). Off: its
+        discovery is tombstoned (if it was bound) and it is unbound, so nothing
+        of it reaches HA — and True is returned, since there is nothing left
+        to wait for. On: bound as before, which re-publishes discovery.
         """
+        gw_row = None
+        try:
+            gw_row = await get_gateway(db, "default")
+        except Exception as exc:
+            logger.debug("default gateway lookup failed: %s", exc)
+        if gw_row is not None and not gw_row.get("publish_to_ha", 1):
+            # Tombstones are queued only while bound, so repeat calls are quiet.
+            mqtt_publisher.unbind_default_device(tombstone=True)
+            return True
+        mqtt_publisher.resume_default_device()
+
         inst = registry.get("default")
         if inst is None or not inst.device_info:
             return False
@@ -783,12 +801,8 @@ async def lifespan(app: FastAPI):
         if inst.command_handler:
             inst.command_handler._on_state_changed = mqtt_publisher.publish_command_state
             mqtt_publisher.set_command_handler(inst.command_handler)
-        try:
-            gw_row = await get_gateway(db, "default")
-            if gw_row:
-                mqtt_publisher.set_phase_view(gw_row.get("phase_view", "both"))
-        except Exception as exc:
-            logger.debug("phase_view lookup failed: %s", exc)
+        if gw_row:
+            mqtt_publisher.set_phase_view(gw_row.get("phase_view", "both"))
         return True
 
     app.state.wire_default_mqtt = wire_default_mqtt

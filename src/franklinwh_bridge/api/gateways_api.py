@@ -600,6 +600,9 @@ class GatewayCreate(BaseModel):
     # Home load register (#35): 'standard' = 15506 (100 W steps, documented),
     # 'high_res' = 16000 (~1 W, undocumented, sanity-checked against 15506).
     home_load_source: str | None = Field(default=None, pattern=r"^(standard|high_res)$")
+    # Publish its entities to Home Assistant (#96). Set before the first start,
+    # so an opted-out gateway (the setup wizard's demo) never appears in HA.
+    publish_to_ha: bool = True
 
 
 class GatewayUpdate(BaseModel):
@@ -747,6 +750,7 @@ async def add_gateway(body: GatewayCreate, request: Request):
         timeout=body.timeout,
         mock=body.mock,
         device_type=body.device_type,
+        publish_to_ha=body.publish_to_ha,
     )
     if body.home_load_source and body.home_load_source != gw.get("home_load_source"):
         gw = await update_gateway(db, body.gateway_id, home_load_source=body.home_load_source)

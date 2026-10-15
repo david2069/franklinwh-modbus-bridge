@@ -15,6 +15,20 @@ lands, not backfilled later.
 
 ### Added
 
+- **Publishing to Home Assistant is opt-in per gateway, and switchable live** (#96).
+  - The setup wizard's Home Assistant step asks "Publish *<gateway>*'s entities
+    to Home Assistant?" for the gateway it just set up (`POST
+    /api/setup/publish-to-ha`, admin only). A demo gateway is now created with
+    `publish_to_ha = 0`; a real aGate stays published. As an add-on this is the
+    only HA question; in Docker it is shown once "use with Home Assistant" is Yes.
+  - Settings → Home Assistant → "Publish to Home Assistant": a switch per
+    gateway (`PATCH /api/gateways/{id}` `publish_to_ha`) and one for MQTT
+    publishing as a whole (`PATCH /api/mqtt/config` `enabled`). Both apply at
+    once. Off removes that gateway's entities from HA.
+  - `POST /api/gateways` accepts `publish_to_ha`, set before the gateway first
+    starts. The wizard checklist lists each gateway's publish state, and shows
+    "Bridge entities in Home Assistant" as skipped when nothing is published.
+
 - **Weather + solar forecast from Open-Meteo** (#88), matching the Local Bridge.
   - Free, no key. Off until a latitude and longitude are set in Settings →
     Site & Gateways → "Location & Solar" (or read from a configured Home
@@ -125,6 +139,18 @@ lands, not backfilled later.
     with "Staged …", meaning stored, not sent. Changing the power of an active
     dispatch also includes the re-send's result.
   - `CommandHandler.handle_command` returns `{ok, result}` for the call.
+
+- **The primary gateway ignored "Publish to Home Assistant"** (#96). Its
+  checkbox in the gateway edit modal did nothing. Off now tombstones its
+  discovery topics (the full entity registry plus promoted points, under the
+  configured prefixes) and its availability, and drops its samples without the
+  "unregistered gateway" warning. On binds it again and re-publishes discovery.
+  Live, no restart. With it on, the published topics and payloads are unchanged.
+- **MQTT "Enabled" needed a restart** (#96). Saving it now starts the
+  publisher, or publishes "offline" availability and stops it. Entities are
+  not removed (Unpublish does that). An add-on still waiting for Mosquitto
+  starts when the broker appears, reading the saved value. `POST
+  /api/mqtt/reconnect` no longer starts a disabled publisher.
 
 - **Setup wizard's Home Assistant step, and tab naming** (#94).
   - It asks "Will you use this bridge with Home Assistant?". Answering No

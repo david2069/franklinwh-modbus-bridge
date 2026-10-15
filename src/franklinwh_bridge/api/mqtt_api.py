@@ -69,7 +69,31 @@ async def update_config(body: MqttConfigUpdate, request: Request):
             "it is not supported yet (#87)",
         )
     config = await set_mqtt_config(db, updates)
+    if "enabled" in updates:
+        # Every time, not only on a change: start/stop are idempotent, and this
+        # also brings a publisher that drifted from the stored value back.
+        await _apply_enabled(request, bool(updates["enabled"]))
     return _redact_config(config)
+
+
+async def _apply_enabled(request: Request, enabled: bool) -> None:
+    """Start or stop the publisher now that "Enabled" changed (#96).
+
+    It used to be saved and only read at the next restart. Stopping says
+    "offline" first, so HA shows the entities unavailable rather than frozen at
+    their last value; it does NOT remove them — Unpublish does that.
+    """
+    publisher = getattr(request.app.state, "mqtt_publisher", None)
+    if publisher is None:
+        return
+    if enabled:
+        broker = getattr(request.app.state, "mqtt_broker", None) or {}
+        if broker.get("waiting_for_broker"):
+            # The Supervisor watcher starts it once Mosquitto appears.
+            return
+        await publisher.start()
+        return
+    await publisher.stop(offline=publisher.state.connected)
 
 
 @router.get("/status")
@@ -105,6 +129,10 @@ async def reconnect(request: Request):
     if publisher is None:
         raise HTTPException(503, "MQTT publisher not configured")
     await publisher.stop()
+    # A disabled publisher stays stopped: reconnecting must not override
+    # "Enabled" off (#96).
+    if not (await get_mqtt_config(request.app.state.db)).get("enabled", True):
+        return {"status": "disabled"}
     await publisher.start()
     return {"status": "reconnecting"}
 
