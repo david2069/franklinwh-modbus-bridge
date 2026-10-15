@@ -602,15 +602,19 @@
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Topic Prefix</label>
-          <input type="text" x-model="mqttEdit.topic_prefix"
-                 class="form-control !py-1 !text-xs w-full font-mono"
+          <input type="text" x-model="mqttEdit.topic_prefix" readonly
+                 class="form-control !py-1 !text-xs w-full font-mono opacity-60 cursor-not-allowed"
+                 title="Changing this re-creates every Home Assistant entity, so it can't be changed here yet (#87)"
                  placeholder="franklinwh">
+          <p class="text-[10px] text-slate-500 mt-0.5">Fixed for now: changing it re-creates every HA entity.</p>
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Discovery Prefix</label>
-          <input type="text" x-model="mqttEdit.discovery_prefix"
-                 class="form-control !py-1 !text-xs w-full font-mono"
+          <input type="text" x-model="mqttEdit.discovery_prefix" readonly
+                 class="form-control !py-1 !text-xs w-full font-mono opacity-60 cursor-not-allowed"
+                 title="Changing this re-creates every Home Assistant entity, so it can't be changed here yet (#87)"
                  placeholder="homeassistant">
+          <p class="text-[10px] text-slate-500 mt-0.5">Fixed for now: changing it re-creates every HA entity.</p>
         </div>
 
         <!-- Test result -->

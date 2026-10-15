@@ -12,6 +12,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+#: MQTT namespace defaults: the topic root, and the prefix of every unique_id and
+#: device identifier. Stored per install in mqtt_config.topic_prefix /
+#: discovery_prefix. Changing either re-creates every entity in Home Assistant,
+#: so existing installs keep these (#87, #90).
+DEFAULT_TOPIC_PREFIX = "franklinwh"
+DEFAULT_DISCOVERY_PREFIX = "homeassistant"
+
 
 @dataclass
 class EntityDef:
@@ -60,19 +67,24 @@ class EntityDef:
             return f"{scaled:.{self.value_precision}f}"
         return str(scaled)
 
-    def unique_id(self, short_id: str) -> str:
-        return f"franklinwh_{short_id}_{self.slug}"
+    def unique_id(self, short_id: str, prefix: str = DEFAULT_TOPIC_PREFIX) -> str:
+        return f"{prefix}_{short_id}_{self.slug}"
 
-    def state_topic(self, short_id: str) -> str:
-        return f"franklinwh/{short_id}/{self.state_group}/{self.slug}"
+    def state_topic(self, short_id: str, prefix: str = DEFAULT_TOPIC_PREFIX) -> str:
+        return f"{prefix}/{short_id}/{self.state_group}/{self.slug}"
 
-    def command_topic(self, short_id: str) -> str | None:
+    def command_topic(self, short_id: str, prefix: str = DEFAULT_TOPIC_PREFIX) -> str | None:
         if self.is_control:
-            return f"franklinwh/{short_id}/control/{self.slug}/set"
+            return f"{prefix}/{short_id}/control/{self.slug}/set"
         return None
 
-    def discovery_topic(self, short_id: str) -> str:
-        return f"homeassistant/{self.ha_type}/franklinwh_{short_id}_{self.slug}/config"
+    def discovery_topic(
+        self,
+        short_id: str,
+        prefix: str = DEFAULT_TOPIC_PREFIX,
+        discovery_prefix: str = DEFAULT_DISCOVERY_PREFIX,
+    ) -> str:
+        return f"{discovery_prefix}/{self.ha_type}/{prefix}_{short_id}_{self.slug}/config"
 
 
 # ---------------------------------------------------------------------------

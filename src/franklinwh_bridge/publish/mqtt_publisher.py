@@ -21,11 +21,14 @@ if TYPE_CHECKING:
 
 from franklinwh_bridge.modbus.sample import Sample
 from franklinwh_bridge.publish.command_handler import CommandHandler
-from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES, EntityDef
+from franklinwh_bridge.publish.entities import (
+    BRIDGE_ENTITIES,
+    DEFAULT_DISCOVERY_PREFIX,
+    DEFAULT_TOPIC_PREFIX,
+    EntityDef,
+)
 
 logger = logging.getLogger(__name__)
-
-TOPIC_PREFIX = "franklinwh"
 
 #: Seconds a gateway may publish before registration without being warned about
 #: (samples routinely arrive just before start → sync registers it).
@@ -143,7 +146,9 @@ class DeviceInfo:
             return _slug(self.gateway_id)
         return self._serial_tail
 
-    def ha_device_block(self, app_version: str = "") -> dict:
+    def ha_device_block(
+        self, app_version: str = "", prefix: str = DEFAULT_TOPIC_PREFIX,
+    ) -> dict:
         name = self.name or f"FranklinWH {self.short_id}"
 
         # Name this bridge explicitly as the producer.
@@ -170,9 +175,9 @@ class DeviceInfo:
         # Device identifier mirrors short_id's namespacing so duplicate serials
         # don't merge into one HA device.
         if self.gateway_id and self.gateway_id != "default":
-            identifier = _slug(f"franklinwh_{self.gateway_id}_{self.serial}")
+            identifier = _slug(f"{prefix}_{self.gateway_id}_{self.serial}")
         else:
-            identifier = f"franklinwh_{self.serial}"
+            identifier = f"{prefix}_{self.serial}"
         block: dict = {
             "identifiers": [identifier],
             "name": name,
@@ -192,17 +197,18 @@ def build_discovery_payload(
     entity: EntityDef,
     device_info: DeviceInfo,
     app_version: str = "",
+    prefix: str = DEFAULT_TOPIC_PREFIX,
 ) -> dict:
     """Build an HA MQTT Discovery config payload for a single entity."""
     short_id = device_info.short_id
-    avail_topic = f"{TOPIC_PREFIX}/{short_id}/availability"
+    avail_topic = f"{prefix}/{short_id}/availability"
 
     payload: dict = {
-        "unique_id": entity.unique_id(short_id),
+        "unique_id": entity.unique_id(short_id, prefix),
         "name": entity.name,
-        "state_topic": entity.state_topic(short_id),
+        "state_topic": entity.state_topic(short_id, prefix),
         "availability_topic": avail_topic,
-        "device": device_info.ha_device_block(app_version),
+        "device": device_info.ha_device_block(app_version, prefix),
     }
 
     if entity.unit:
@@ -216,7 +222,7 @@ def build_discovery_payload(
     if entity.entity_category:
         payload["entity_category"] = entity.entity_category
 
-    cmd_topic = entity.command_topic(short_id)
+    cmd_topic = entity.command_topic(short_id, prefix)
     if cmd_topic:
         payload["command_topic"] = cmd_topic
 
@@ -248,8 +254,8 @@ class MqttPublisher:
         gateway_id: str = "default",
         client_id: str = "franklinwh_bridge",
         qos: int = 0,
-        topic_prefix: str = "franklinwh",
-        discovery_prefix: str = "homeassistant",
+        topic_prefix: str = DEFAULT_TOPIC_PREFIX,
+        discovery_prefix: str = DEFAULT_DISCOVERY_PREFIX,
     ) -> None:
         self._host = host
         self._port = port
@@ -473,14 +479,14 @@ class MqttPublisher:
         if tombstone and dev.device_info and dev.entities:
             sid = dev.device_info.short_id
             for entity in dev.entities:
-                topic = entity.discovery_topic(sid)
+                topic = self._discovery_topic(entity, sid)
                 msg = MqttMessage(topic=topic, payload="", retain=True)
                 try:
                     self._queue.put_nowait(msg)
                 except asyncio.QueueFull:
                     break
             # Also tombstone availability
-            avail_topic = f"{TOPIC_PREFIX}/{sid}/availability"
+            avail_topic = self._availability_topic(sid)
             with contextlib.suppress(asyncio.QueueFull):
                 self._queue.put_nowait(
                     MqttMessage(
@@ -498,6 +504,22 @@ class MqttPublisher:
     def gateway_id(self) -> str:
         """The gateway this publisher owns via the legacy single-device path."""
         return self._gateway_id
+
+    @property
+    def topic_prefix(self) -> str:
+        """Topic root and unique_id/device-identifier prefix in use (#90)."""
+        return self._topic_prefix
+
+    @property
+    def discovery_prefix(self) -> str:
+        """HA discovery topic root in use (#90)."""
+        return self._discovery_prefix
+
+    def _discovery_topic(self, entity: EntityDef, short_id: str) -> str:
+        return entity.discovery_topic(short_id, self._topic_prefix, self._discovery_prefix)
+
+    def _availability_topic(self, short_id: str) -> str:
+        return f"{self._topic_prefix}/{short_id}/availability"
 
     def devices(self) -> list[str]:
         """Gateway ids with a registered MQTT device (snapshot, safe to mutate
@@ -575,13 +597,13 @@ class MqttPublisher:
         # Tombstone removed entities
         if removed:
             for entity in removed:
-                topic = entity.discovery_topic(short_id)
+                topic = self._discovery_topic(entity, short_id)
                 await client.publish(topic, b"", retain=True)
 
         for entity in entities:
-            topic = entity.discovery_topic(short_id)
+            topic = self._discovery_topic(entity, short_id)
             payload = build_discovery_payload(
-                entity, device_info, app_version=app_version,
+                entity, device_info, app_version=app_version, prefix=self._topic_prefix,
             )
             if entity.slug in overrides:
                 payload["max"] = overrides[entity.slug]
@@ -595,12 +617,12 @@ class MqttPublisher:
         status = "online" if online else "offline"
         # Legacy single device
         if self._device_info:
-            topic = f"{TOPIC_PREFIX}/{self._device_info.short_id}/availability"
+            topic = self._availability_topic(self._device_info.short_id)
             await client.publish(topic, status, retain=True)
         # Multi-gateway devices
         for dev in self._devices.values():
             if dev.device_info:
-                topic = f"{TOPIC_PREFIX}/{dev.device_info.short_id}/availability"
+                topic = self._availability_topic(dev.device_info.short_id)
                 await client.publish(topic, status, retain=True)
 
     def _warn_unregistered(self, gw_id: str) -> None:
@@ -682,7 +704,7 @@ class MqttPublisher:
             ):
                 continue
 
-            topic = entity.state_topic(short_id)
+            topic = entity.state_topic(short_id, self._topic_prefix)
             msg = MqttMessage(
                 topic=topic,
                 payload="None" if value is None else entity.format_value(value),
@@ -708,7 +730,7 @@ class MqttPublisher:
             value = points.get(entity.stat_key)
             if value is None:
                 continue
-            topic = entity.state_topic(short_id)
+            topic = entity.state_topic(short_id, self._topic_prefix)
             msg = MqttMessage(topic=topic, payload=entity.format_value(value), retain=True)
             try:
                 self._queue.put_nowait(msg)
@@ -736,12 +758,15 @@ class MqttPublisher:
     async def _handle_mqtt_message(self, message: aiomqtt.Message) -> None:
         """Dispatch an incoming MQTT command to the gateway its topic names.
 
-        Topic: ``franklinwh/<short_id>/control/<slug>/set``. Routed by the
+        Topic: ``<topic_prefix>/<short_id>/control/<slug>/set``. Routed by the
         short_id — this used to send every command to the DEFAULT gateway's
-        handler whatever device it was addressed to.
+        handler whatever device it was addressed to. Only our own namespace is
+        acted on: another producer's control topics are not ours to obey.
         """
         parts = str(message.topic).split("/")
         if not (len(parts) >= 5 and parts[2] == "control" and parts[-1] == "set"):
+            return
+        if parts[0] != self._topic_prefix:
             return
         handler = self._command_targets().get(parts[1])
         if handler is None:
@@ -789,7 +814,7 @@ class MqttPublisher:
                             # Subscribe each commandable device as it appears
                             # (gateways register after we connect).
                             for sid in self._command_targets().keys() - subscribed:
-                                cmd_topic = f"{TOPIC_PREFIX}/{sid}/control/+/set"
+                                cmd_topic = f"{self._topic_prefix}/{sid}/control/+/set"
                                 await client.subscribe(cmd_topic)
                                 subscribed.add(sid)
                                 logger.info("Subscribed to command topics: %s", cmd_topic)
@@ -861,8 +886,8 @@ class MqttPublisher:
             gateway_id=gateway_id,
             client_id=config.get("client_id", "franklinwh_bridge"),
             qos=config.get("qos", 0),
-            topic_prefix=config.get("topic_prefix", "franklinwh"),
-            discovery_prefix=config.get("discovery_prefix", "homeassistant"),
+            topic_prefix=config.get("topic_prefix") or DEFAULT_TOPIC_PREFIX,
+            discovery_prefix=config.get("discovery_prefix") or DEFAULT_DISCOVERY_PREFIX,
         )
 
     async def reconfigure(self, config: dict) -> None:
@@ -908,10 +933,10 @@ class MqttPublisher:
                 password=self._password,
             ) as client:
                 for entity in BRIDGE_ENTITIES:
-                    topic = entity.discovery_topic(short_id)
+                    topic = self._discovery_topic(entity, short_id)
                     await client.publish(topic, b"", retain=True)
                     count += 1
-                avail_topic = f"{self._topic_prefix}/{short_id}/availability"
+                avail_topic = self._availability_topic(short_id)
                 await client.publish(avail_topic, b"", retain=True)
         except Exception as exc:
             logger.error("Failed to unpublish discovery: %s", exc)

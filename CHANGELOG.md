@@ -82,6 +82,17 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **MQTT Topic Prefix / Discovery Prefix settings now apply** (#90, part 1 of
+  #87). They were stored but ignored, because every topic, unique_id and device
+  identifier was hard-coded `franklinwh` / `homeassistant`.
+  - The stored values are now used throughout. The defaults give byte-identical
+    output, so nothing changes for existing installs.
+  - Incoming commands are acted on only under our own topic prefix.
+  - The setup "entities in HA" check counts only our namespace.
+  - Changing either prefix is refused (409) and the Settings fields are
+    read-only. A change re-creates every HA entity, so it waits for the
+    confirmed change flow (#87). The values must be MQTT- and unique_id-safe.
+
 - **Top bar status indicators stay visible on medium windows** (#82). They
   were shown only at 1280 px and wider, so a zoomed-in or medium window
   dropped them silently, including the red Grid dot for an islanded aGate.
