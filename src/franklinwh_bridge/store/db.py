@@ -46,9 +46,37 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 57
+CURRENT_SCHEMA_VERSION = 58
 
 MIGRATIONS: dict[int, str] = {
+    58: """
+    -- Interim REST API access (#99): an 'api' role (view + control, REST only)
+    -- and an account expiry date. The role CHECK from migration 32 can only be
+    -- widened by rebuilding the table (SQLite has no ALTER CONSTRAINT). Every
+    -- row, id and password hash is copied as-is; nothing references users by
+    -- foreign key, and the only index is UNIQUE(username)'s automatic one.
+    -- expires_at (epoch seconds, NULL = never) is added beforehand by
+    -- MIGRATION_COLUMNS, so a re-run copies it rather than dropping it.
+    DROP TABLE IF EXISTS users_v58;
+    CREATE TABLE users_v58 (
+        id            TEXT PRIMARY KEY,
+        username      TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role          TEXT NOT NULL DEFAULT 'viewer'
+                        CHECK (role IN ('admin','user','viewer','api')),
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        created_at    REAL NOT NULL DEFAULT 0,
+        updated_at    REAL NOT NULL DEFAULT 0,
+        last_login_at REAL,
+        expires_at    REAL
+    );
+    INSERT INTO users_v58 (id, username, password_hash, role, enabled, created_at,
+                           updated_at, last_login_at, expires_at)
+        SELECT id, username, password_hash, role, enabled, created_at,
+               updated_at, last_login_at, expires_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_v58 RENAME TO users;
+    """,
     57: """
     -- Link health per gateway per hour (design PR #57 §5.4, Phase 0b). The
     -- baseline Phase 2 is measured against; read-only instrumentation.
@@ -1105,6 +1133,7 @@ MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
         ("metrics", "active_reserve_pct", "INTEGER"),
         ("metrics_archive", "active_reserve_pct", "INTEGER"),
     ],
+    58: [("users", "expires_at", "REAL")],
 }
 
 
@@ -2240,13 +2269,19 @@ async def log_sources(db: aiosqlite.Connection) -> list[str]:
 
 # ── Users (multi-user Phase 1) ───────────────────────────────
 
-_USER_FIELDS = ("username", "password_hash", "role", "enabled")
+_USER_FIELDS = ("username", "password_hash", "role", "enabled", "expires_at")
 
 
 def _decode_user(row: dict) -> dict:
     d = dict(row)
     d["enabled"] = bool(d.get("enabled", 1))
     return d
+
+
+def user_expired(user: dict, now: float | None = None) -> bool:
+    """True once the account's ``expires_at`` (epoch s, None = never) has passed."""
+    exp = user.get("expires_at")
+    return exp is not None and (time.time() if now is None else now) >= exp
 
 
 async def count_users(db: aiosqlite.Connection) -> int:
@@ -2294,15 +2329,16 @@ async def create_user(
     password_hash: str,
     role: str = "viewer",
     enabled: bool = True,
+    expires_at: float | None = None,
 ) -> dict:
     import uuid
 
     user_id = f"user_{uuid.uuid4().hex[:8]}"
     now = time.time()
     await db.execute(
-        "INSERT INTO users (id, username, password_hash, role, enabled, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (user_id, username, password_hash, role, int(enabled), now, now),
+        "INSERT INTO users (id, username, password_hash, role, enabled, created_at, "
+        "updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, username, password_hash, role, int(enabled), now, now, expires_at),
     )
     await db.commit()
     return await get_user(db, user_id)  # type: ignore[return-value]

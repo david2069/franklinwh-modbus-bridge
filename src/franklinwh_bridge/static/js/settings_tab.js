@@ -61,8 +61,16 @@ function settingsTab() {
     modules: [],
     // Users (admin)
     users: [],
-    newUser: { username: '', password: '', role: 'user' },
+    newUser: { username: '', password: '', role: 'user', expires: '' },
+    newUserPwShown: false,
     showAddUser: false,
+    // Sign-in activity (admin): GET api/auth/events
+    authEvents: [],
+    authEventsFilter: { username: '', event: '', limit: 200 },
+    AUTH_EVENT_TYPES: [
+      'login', 'login_failed', 'login_throttled', 'session_ended', 'session_adopted',
+      'password_changed', 'password_change_failed', 'break_glass_reset',
+    ],
     // Home Assistant instances (inbound entity access)
     haInstances: [],
     haEditId: null,        // instance id being edited, or 'new', or null
@@ -119,7 +127,7 @@ function settingsTab() {
       await this.loadConstants();
       await this.loadSolar();
       await this.loadModules();
-      if (Alpine.store('app').isAdmin) await this.loadUsers();
+      if (Alpine.store('app').isAdmin) { await this.loadUsers(); await this.loadAuthEvents(); }
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
@@ -620,14 +628,47 @@ function settingsTab() {
       const data = await fetchJSON('api/users');
       if (Array.isArray(data)) this.users = data;
     },
+    /** "YYYY-MM-DD" (a date input) -> epoch s at the END of that day, bridge time. */
+    expiryFromDate(ymd) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '');
+      if (!m) return null;
+      return Math.floor(bridgeTime.fromParts(+m[1], +m[2], +m[3], 23, 59, 59) / 1000);
+    },
+    /** Badge for a user's expiry: expired / expires in N days, or null. */
+    expiryBadge(u) {
+      if (u.expires_at == null) return null;
+      const left = u.expires_at - Date.now() / 1000;
+      if (left <= 0) return { text: 'expired', cls: 'bg-red-500/15 text-red-300' };
+      const days = Math.ceil(left / 86400);
+      return {
+        text: days <= 1 ? 'expires today' : `expires in ${days} days`,
+        cls: days <= 14 ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-500/15 text-slate-300',
+      };
+    },
+    /** A long random password (URL-safe, 32 chars ≈ 190 bits), shown so it can be copied. */
+    generateUserPassword() {
+      const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      const bytes = new Uint8Array(32);
+      crypto.getRandomValues(bytes);
+      this.newUser.password = Array.from(bytes, (b) => abc[b & 63]).join('');
+      this.newUserPwShown = true;
+    },
     async createUser() {
       if (!this.newUser.username.trim() || !this.newUser.password) {
         Alpine.store('app').toast('Username and password required', 'error'); return;
       }
-      const data = await fetchJSON('api/users', { method: 'POST', body: JSON.stringify(this.newUser) });
+      const { expires, ...body } = this.newUser;
+      if (expires) {
+        body.expires_at = this.expiryFromDate(expires);
+        if (body.expires_at == null || body.expires_at <= Date.now() / 1000) {
+          Alpine.store('app').toast('Expiry date must be in the future', 'error'); return;
+        }
+      }
+      const data = await fetchJSON('api/users', { method: 'POST', body: JSON.stringify(body) });
       if (data && !data.error) {
         await this.loadUsers();
-        this.newUser = { username: '', password: '', role: 'user' };
+        this.newUser = { username: '', password: '', role: 'user', expires: '' };
+        this.newUserPwShown = false;
         this.showAddUser = false;
         Alpine.store('app').toast('User created', 'info');
       } else {
@@ -641,6 +682,42 @@ function settingsTab() {
     },
     setUserRole(u, role) { this.patchUser(u, { role }, `${u.username} → ${role}`); },
     toggleUserEnabled(u) { this.patchUser(u, { enabled: !u.enabled }, `${u.username} ${u.enabled ? 'disabled' : 'enabled'}`); },
+    async editUserExpiry(u) {
+      const v = await Alpine.store('app').promptText({
+        title: `Expiry for ${u.username}`,
+        message: 'Last day the account can sign in (it ends at the end of that day, bridge time). Leave empty for no expiry.',
+        inputType: 'date', confirmLabel: 'Save',
+        value: u.expires_at ? bridgeTime.ymd(u.expires_at * 1000) : '',
+      });
+      if (v === null || v === undefined) return;   // cancelled
+      if (!v) { this.patchUser(u, { expires_at: null }, `${u.username}: no expiry`); return; }
+      const exp = this.expiryFromDate(v);
+      if (exp == null) { Alpine.store('app').toast('Not a date', 'error'); return; }
+      this.patchUser(u, { expires_at: exp }, `${u.username} expires ${bridgeTime.dayMon(exp * 1000)}`);
+    },
+    // ── Sign-in activity (admin) ──────────────────────────────
+    async loadAuthEvents() {
+      const f = this.authEventsFilter;
+      const q = new URLSearchParams({ limit: String(f.limit || 200) });
+      if (f.username) q.set('username', f.username);
+      if (f.event) q.set('event', f.event);
+      const data = await fetchJSON(`api/auth/events?${q}`);
+      if (Array.isArray(data)) this.authEvents = data;
+    },
+    /** Names to filter by: accounts, plus names seen in the activity (failed
+     *  sign-ins with names that are not accounts). */
+    authEventUsernames() {
+      const names = new Set(this.users.map((u) => u.username));
+      for (const e of this.authEvents) if (e.username) names.add(e.username);
+      if (this.authEventsFilter.username) names.add(this.authEventsFilter.username);
+      return [...names].sort((a, b) => a.localeCompare(b));
+    },
+    authEventClass(ev) {
+      if (ev === 'login_failed' || ev === 'login_throttled' || ev === 'password_change_failed') return 'text-red-300';
+      if (ev === 'login') return 'text-emerald-300';
+      if (ev === 'break_glass_reset') return 'text-amber-300';
+      return 'text-slate-300';
+    },
     async resetUserPassword(u) {
       const pw = await Alpine.store('app').promptText({
         title: `Reset password`, message: `New password for ${u.username}:`,

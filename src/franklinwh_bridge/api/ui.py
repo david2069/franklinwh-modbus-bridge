@@ -15,6 +15,7 @@ from franklinwh_bridge import disclaimer
 from franklinwh_bridge.api.auth import get_current_user, require_auth, require_capability
 from franklinwh_bridge.api.disclaimer_api import _client_ip
 from franklinwh_bridge.api.gateways_api import require_known_slug
+from franklinwh_bridge.gateway.modules import API_ONLY_ROLES
 
 # Hoisted so it is built once at import rather than per-request: ruff's B008
 # allows Depends() itself in a default, but not a factory call nested in it.
@@ -102,13 +103,30 @@ def _log_disclaimer_once(request: Request) -> None:
 _HTML_HEADERS = {"Cache-Control": "no-cache"}
 
 
+def _api_only_page(request: Request, base_path: str, user: dict) -> HTMLResponse:
+    """403 page for an ``api`` account (#99): REST only, so no web pages.
+
+    Not a redirect: /login would bounce a signed-in user back here. The page
+    says why and offers Sign out, so a person who typed the API account into
+    the login form is not stuck.
+    """
+    return templates.TemplateResponse(
+        request, "api_only.html",
+        {"base_path": base_path, "username": user.get("username", "")},
+        status_code=403, headers=_HTML_HEADERS,
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, user: dict | None = Depends(get_current_user)):
-    """Serve the main SPA shell. Unauthenticated → /login; non-admin → /user."""
+    """Serve the main SPA shell. Unauthenticated → /login; non-admin → /user;
+    an api account gets the "REST API only" page."""
     _log_disclaimer_once(request)
     base_path = _base_path(request)
     if user is None:
         return RedirectResponse(f"{base_path}/login", status_code=302)
+    if user.get("role") in API_ONLY_ROLES:
+        return _api_only_page(request, base_path, user)
     if user.get("role") in ("user", "viewer"):
         return RedirectResponse(f"{base_path}/user", status_code=302)
     return templates.TemplateResponse(
@@ -126,6 +144,8 @@ async def user_dashboard(request: Request, user: dict | None = Depends(get_curre
     base_path = _base_path(request)
     if user is None:
         return RedirectResponse(f"{base_path}/login", status_code=302)
+    if user.get("role") in API_ONLY_ROLES:
+        return _api_only_page(request, base_path, user)
     return templates.TemplateResponse(
         request,
         "user.html",
@@ -138,6 +158,8 @@ async def user_dashboard(request: Request, user: dict | None = Depends(get_curre
 async def login_page(request: Request, user: dict | None = Depends(get_current_user)):
     """The login form. Already-authenticated users go to their role's home."""
     base_path = _base_path(request)
+    if user is not None and user.get("role") in API_ONLY_ROLES:
+        return _api_only_page(request, base_path, user)
     if user is not None:
         return RedirectResponse(_home_for(base_path, user), status_code=302)
     return templates.TemplateResponse(

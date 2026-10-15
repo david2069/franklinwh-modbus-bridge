@@ -47,6 +47,18 @@ async def test_demoted_and_disabled_admin_is_restored(db_path):
     assert "promoted viewer → admin" in r.changes and "re-enabled" in r.changes
 
 
+async def test_expired_admin_has_the_expiry_cleared(db_path):
+    """#99: an account past its expiry is locked out like a disabled one."""
+    db = await init_db(db_path)
+    await update_user(db, _user(db_path, "admin")["id"], expires_at=1.0)
+    await db.close()
+
+    r = reset_admin_password(db_path, password="new-password-1")
+
+    assert _user(db_path, "admin")["expires_at"] is None
+    assert "expiry cleared" in r.changes
+
+
 def test_deleted_admin_is_created(db_path):
     with sqlite3.connect(db_path) as c:
         c.execute("DELETE FROM users WHERE username = 'admin'")

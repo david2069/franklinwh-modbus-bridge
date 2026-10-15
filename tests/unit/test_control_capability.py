@@ -34,7 +34,8 @@ def test_no_role_gains_control_by_accident():
     """A new role added without thinking about hardware defaults to safe."""
     allowed = {r for r, caps in ROLE_CAPABILITIES.items() if "control" in caps}
 
-    assert allowed == {"admin", "user"}
+    # "api" added deliberately (#99, owner decision 2026-10-15: view + control).
+    assert allowed == {"admin", "user", "api"}
 
 
 # ── The enforcement ───────────────────────────────────────────

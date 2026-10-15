@@ -1,10 +1,16 @@
 """Admin user management — list / create / update / delete users. Admin-only.
 
-Guards against lockout: you can't delete, disable, or demote the last enabled
-admin. Passwords are argon2-hashed; hashes are never returned.
+Guards against lockout: you can't delete, disable, demote, or set an expiry on
+the last enabled admin. Passwords are argon2-hashed; hashes are never returned.
+
+Roles: admin, user, viewer, and api (#99: REST only, view + control; the web
+pages refuse it). ``expires_at`` (epoch seconds, null = never) ends an account:
+sign-in is refused after it and open logins end on their next request.
 """
 
 from __future__ import annotations
+
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -19,24 +25,29 @@ from franklinwh_bridge.store.db import (
     get_user_by_username,
     get_users,
     update_user,
+    user_expired,
 )
 
 # Every route requires an admin.
 router = APIRouter(prefix="/api", tags=["users"], dependencies=[Depends(require_role("admin"))])
 
-_ROLES = r"^(admin|user|viewer)$"
+_ROLES = r"^(admin|user|viewer|api)$"
 
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=1, max_length=64)
     password: str = Field(..., min_length=1)
     role: str = Field(default="viewer", pattern=_ROLES)
+    #: Epoch seconds after which the account can no longer sign in; None = never.
+    expires_at: float | None = Field(default=None, ge=0)
 
 
 class UserUpdate(BaseModel):
     role: str | None = Field(default=None, pattern=_ROLES)
     enabled: bool | None = None
     password: str | None = Field(default=None, min_length=1)
+    #: Send null to clear the expiry; leave it out to keep it unchanged.
+    expires_at: float | None = Field(default=None, ge=0)
 
 
 def _redact(u: dict) -> dict:
@@ -50,7 +61,10 @@ def _acting(request: Request) -> tuple[str | None, str | None]:
 
 
 def _enabled_admins(users: list[dict]) -> list[dict]:
-    return [u for u in users if u["role"] == "admin" and u["enabled"]]
+    """Admins who can still sign in: enabled and not past their expiry."""
+    return [
+        u for u in users if u["role"] == "admin" and u["enabled"] and not user_expired(u)
+    ]
 
 
 @router.get("/users")
@@ -66,7 +80,10 @@ async def create_new_user(body: UserCreate, request: Request):
     clash = await get_user_by_username(db, body.username)
     if clash is not None:
         raise HTTPException(409, f"user '{clash['username']}' already exists")
-    u = await create_user(db, body.username, hash_password(body.password), role=body.role)
+    u = await create_user(
+        db, body.username, hash_password(body.password), role=body.role,
+        expires_at=body.expires_at,
+    )
     return _redact(u)
 
 
@@ -77,15 +94,23 @@ async def update_existing_user(user_id: str, body: UserUpdate, request: Request)
     if existing is None:
         raise HTTPException(404, "user not found")
 
-    # Lockout guard: can't demote/disable the last enabled admin.
-    removing_admin = (body.role is not None and body.role != "admin") or body.enabled is False
+    # Lockout guard: can't demote/disable/expire the last enabled admin.
+    setting_expiry = "expires_at" in body.model_fields_set and body.expires_at is not None
+    removing_admin = (
+        (body.role is not None and body.role != "admin")
+        or body.enabled is False
+        or setting_expiry
+    )
     if (
         existing["role"] == "admin"
         and existing["enabled"]
+        and not user_expired(existing)
         and removing_admin
         and len(_enabled_admins(await get_users(db))) <= 1
     ):
-        raise HTTPException(400, "can't demote or disable the last enabled admin")
+        raise HTTPException(
+            400, "can't demote, disable or set an expiry on the last enabled admin"
+        )
 
     updates: dict = {}
     if body.role is not None:
@@ -94,10 +119,14 @@ async def update_existing_user(user_id: str, body: UserUpdate, request: Request)
         updates["enabled"] = body.enabled
     if body.password:
         updates["password_hash"] = hash_password(body.password)
+    if "expires_at" in body.model_fields_set:
+        updates["expires_at"] = body.expires_at
     updated = await update_user(db, user_id, **updates)
 
     # End the account's open logins, so its pages say why rather than go blank.
     by, own_sid = _acting(request)
+    if setting_expiry and body.expires_at <= time.time():
+        await auth_sessions.end_user_sessions(db, user_id, "expired", by=by, request=request)
     if body.enabled is False:
         await auth_sessions.end_user_sessions(
             db, user_id, "user_disabled", by=by, request=request

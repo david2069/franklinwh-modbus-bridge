@@ -29,6 +29,31 @@ lands, not backfilled later.
     starts. The wizard checklist lists each gateway's publish state, and shows
     "Bridge entities in Home Assistant" as skipped when nothing is published.
 
+- **Interim REST API access: `api` role, account expiry, sign-in audit view,
+  failed-login throttling** (#99).
+  - Role `api` = `view` + `control` only (owner, 2026-10-15): reads and
+    battery commands over `/api/…`, no admin surface. REST only: `/`, `/user`
+    and `/login` answer 403 with a "This account is for the REST API only"
+    page and a Sign out button.
+  - `users.expires_at` (epoch s, null = never). Sign-in after it is refused
+    (same 401 as any failure; audit `login_failed` "account expired"), and an
+    open login ends on its next request (end reason `expired`, ended by
+    "account expiry date"). Settings → Admin → Users: set/clear an expiry
+    (end of the chosen day, bridge time), "expired" / "expires in N days"
+    badges, and a Generate button for a long random password. The last
+    enabled admin can't be given an expiry; `bridge recovery
+    reset-admin-password` clears one.
+  - Migration 58 rebuilds `users` to widen the role CHECK and add
+    `expires_at`, keeping every row, id and password hash.
+  - Settings → Admin → "Sign-in activity": `GET /api/auth/events` (now with
+    `username` and `event` filters), newest first, bridge-time column.
+  - Throttling per (username as typed, client IP): 5 failures within 15 min
+    → 429 with `Retry-After` for 60 s, password not checked meanwhile, one
+    `login_throttled` audit event (WARNING) per lockout; a successful sign-in
+    resets it. Same answer for names that don't exist. In memory: a restart
+    clears it.
+  - `directconnectapi` is not seeded; the owner creates it in Users.
+
 - **Weather + solar forecast from Open-Meteo** (#88), matching the Local Bridge.
   - Free, no key. Off until a latitude and longitude are set in Settings →
     Site & Gateways → "Location & Solar" (or read from a configured Home
