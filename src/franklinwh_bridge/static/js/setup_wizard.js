@@ -101,6 +101,7 @@
       environment: '',
       useHa: true,
       gatewayPublish: [],        // checklist `gateways`: [{gateway_id, name, mock, publish_to_ha}]
+      namespace: null,           // checklist `namespace`: GET /api/mqtt/namespace body
 
       // Accounts step
       accounts: null,            // GET /api/setup/accounts body
@@ -149,7 +150,7 @@
           step: 'intent', busy: false, error: '', tab: 'search', subnets: [],
           subnetInput: '', scan: null, manual: { host: '', port: 502, unit_id: 1 },
           probeRow: null, picks: [], connected: [], reading: null,
-          demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [], gatewayPublish: [],
+          demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [], gatewayPublish: [], namespace: null,
           accounts: null, pw: { current: '', next: '', confirm: '' }, pwDone: false,
         });
       },
@@ -439,6 +440,29 @@
         this.useHa = d.use_ha !== false;
         this.checklist = d.items || [];
         this.gatewayPublish = d.gateways || [];
+        this.namespace = d.namespace || null;
+      },
+
+      // Before anything is published the namespace changes freely (#87); after,
+      // the wizard only shows it and Settings has the confirmed change.
+      async setNamespace(value) {
+        if (!this.namespace || this.namespace.published || value === this.namespace.topic_prefix) return;
+        this.busy = true;
+        this.error = '';
+        try {
+          const resp = await fetch('api/mqtt/namespace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic_prefix: value }),
+          });
+          const data = await resp.json().catch(() => null);
+          if (!resp.ok) throw new Error((data && typeof data.detail === 'string') ? data.detail : `Request failed (${resp.status})`);
+          this.applyChecklist(await api('checklist'));
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.busy = false;
+        }
       },
 
       // The gateways this run of the wizard set up — the ones it asks about

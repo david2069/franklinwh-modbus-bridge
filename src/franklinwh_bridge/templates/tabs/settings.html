@@ -627,9 +627,18 @@
           <span class="font-mono" :class="mqttConfig.tls_mode && mqttConfig.tls_mode !== 'off' ? 'text-emerald-400' : 'text-slate-500'"
                 x-text="mqttConfig.tls_mode ?? 'off'"></span>
         </div>
-        <div class="flex justify-between">
+        <div class="flex justify-between items-center gap-2">
           <span class="text-slate-500">Topic Prefix</span>
-          <span class="font-mono text-slate-300" x-text="mqttConfig.topic_prefix ?? '--'"></span>
+          <span class="flex items-center gap-2">
+            <span class="font-mono text-slate-300" x-text="mqttConfig.topic_prefix ?? '--'"></span>
+            <button type="button" x-show="$store.app.isAdmin" @click="openNamespaceDialog()"
+                    data-testid="change-namespace"
+                    class="btn btn-sm btn-secondary !py-0.5 !text-[11px]">Change namespace…</button>
+          </span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Client ID</span>
+          <span class="font-mono text-slate-400" x-text="mqttConfig.client_id ?? '--'"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Discovery Prefix</span>
@@ -741,17 +750,17 @@
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Topic Prefix</label>
           <input type="text" x-model="mqttEdit.topic_prefix" readonly
                  class="form-control !py-1 !text-xs w-full font-mono opacity-60 cursor-not-allowed"
-                 title="Changing this re-creates every Home Assistant entity, so it can't be changed here yet (#87)"
-                 placeholder="franklinwh">
-          <p class="text-[10px] text-slate-500 mt-0.5">Fixed for now: changing it re-creates every HA entity.</p>
+                 title="Changing this re-creates every Home Assistant entity: use Change namespace… (#87)"
+                 placeholder="fwh_mb">
+          <p class="text-[10px] text-slate-500 mt-0.5">Changed with <span class="text-slate-400">Change namespace…</span>, which removes this bridge's old entities first.</p>
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Discovery Prefix</label>
           <input type="text" x-model="mqttEdit.discovery_prefix" readonly
                  class="form-control !py-1 !text-xs w-full font-mono opacity-60 cursor-not-allowed"
-                 title="Changing this re-creates every Home Assistant entity, so it can't be changed here yet (#87)"
+                 title="Fixed: Home Assistant's own discovery prefix"
                  placeholder="homeassistant">
-          <p class="text-[10px] text-slate-500 mt-0.5">Fixed for now: changing it re-creates every HA entity.</p>
+          <p class="text-[10px] text-slate-500 mt-0.5">Fixed: it has to match Home Assistant's MQTT discovery prefix.</p>
         </div>
 
         <!-- Test result -->
@@ -799,6 +808,96 @@
             <button @click="confirmRepublish = false" class="btn btn-sm btn-secondary">Cancel</button>
             <button @click="confirmRepublish = false; republishDiscovery()" class="btn btn-sm btn-primary">Republish</button>
           </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Change MQTT namespace (#87) -->
+    <template x-teleport="body">
+      <div x-show="nsDialog" x-cloak data-testid="namespace-dialog"
+           class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+           @keydown.escape.window="nsBusy || (nsDialog = false)">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="nsBusy || (nsDialog = false)"></div>
+        <div class="relative bg-slate-800 border border-amber-500/20 rounded-xl shadow-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100">
+          <div class="text-sm font-semibold text-slate-200 mb-2">Change MQTT namespace</div>
+          <p class="text-xs text-slate-400 mb-3">
+            The namespace prefixes every topic, entity unique id and device identifier this bridge
+            publishes. A namespace of its own keeps this bridge's entities apart from other
+            FranklinWH integrations on the same Home Assistant.
+          </p>
+          <template x-if="!nsResult">
+            <div class="space-y-3 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-500">Now</span>
+                <span class="font-mono text-slate-300" x-text="nsInfo?.topic_prefix ?? '--'"></span>
+              </div>
+              <div class="space-y-1.5">
+                <template x-for="p in (nsInfo?.presets || [])" :key="p.value">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="ns-choice" :value="p.value" x-model="nsChoice">
+                    <span class="font-mono text-slate-200" x-text="p.value"></span>
+                    <span class="text-slate-500" x-text="'— ' + p.label"></span>
+                  </label>
+                </template>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="ns-choice" value="custom" x-model="nsChoice">
+                  <span class="text-slate-200">Custom</span>
+                  <input type="text" x-model.trim="nsCustom" @focus="nsChoice = 'custom'"
+                         class="form-control !py-0.5 !text-xs w-32 font-mono" placeholder="fwh_home">
+                </label>
+                <p x-show="nsChoice === 'custom'" class="text-[10px] text-slate-500">
+                  fwh_ plus 2–8 lowercase letters or digits. Reserved for other producers:
+                  <span class="font-mono" x-text="(nsInfo?.reserved || []).join(', ')"></span>.
+                </p>
+                <p x-show="nsProblem" class="text-[11px] text-red-400" x-text="nsProblem"></p>
+              </div>
+              <div x-show="nsInfo?.published" class="rounded border border-amber-500/30 bg-amber-900/10 p-2.5 space-y-1.5 text-slate-300">
+                <p class="font-semibold text-amber-400">What happens</p>
+                <ul class="list-disc pl-4 space-y-1">
+                  <li>Home Assistant creates <span class="font-medium">new entities and a new device</span> under the new namespace.</li>
+                  <li>Dashboards, automations and scripts that use the old entity ids need updating.</li>
+                  <li>Whether Home Assistant carries the old entities' history over is <span class="font-medium">not established</span> — assume it doesn't.</li>
+                  <li>Only entities <span class="font-medium">this bridge</span> published are removed from the old namespace. Another integration's entities there are left untouched.</li>
+                </ul>
+              </div>
+              <p x-show="nsInfo && !nsInfo.published" class="text-slate-400">
+                Nothing has been published to Home Assistant yet, so nothing is removed or re-created.
+              </p>
+              <p class="text-[10px] text-slate-500">
+                The discovery prefix (<span class="font-mono" x-text="nsInfo?.discovery_prefix ?? 'homeassistant'"></span>)
+                stays as it is: it has to match Home Assistant's.
+              </p>
+              <p x-show="nsError" class="text-[11px] text-red-400" x-text="nsError"></p>
+              <div class="flex justify-end gap-2 pt-1">
+                <button @click="nsDialog = false" :disabled="nsBusy" class="btn btn-sm btn-secondary">Cancel</button>
+                <button @click="changeNamespace()" :disabled="nsBusy || !nsInfo || !!nsProblem || nsTarget === nsInfo?.topic_prefix"
+                        data-testid="namespace-confirm"
+                        class="btn btn-sm bg-amber-600 hover:bg-amber-500 text-white border-0 disabled:opacity-50"
+                        x-text="nsBusy ? 'Changing…' : (nsInfo?.published ? 'Change and re-create entities' : 'Change')"></button>
+              </div>
+            </div>
+          </template>
+          <template x-if="nsResult">
+            <div class="space-y-2 text-xs">
+              <p class="text-emerald-400">
+                Now publishing as <span class="font-mono" x-text="nsResult.topic_prefix"></span>
+                (was <span class="font-mono" x-text="nsResult.from"></span>).
+              </p>
+              <template x-if="nsResult.scanned">
+                <ul class="space-y-0.5 text-slate-300">
+                  <li><span class="font-mono" x-text="nsResult.removed_ours"></span> of this bridge's old entities removed</li>
+                  <li><span class="font-mono" x-text="nsResult.left_foreign"></span> belonging to other integrations left in place</li>
+                  <li><span class="font-mono" x-text="nsResult.not_found"></span> topics had nothing on the broker</li>
+                </ul>
+              </template>
+              <div class="flex justify-end pt-1">
+                <button @click="nsDialog = false" class="btn btn-sm btn-primary">Done</button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </template>

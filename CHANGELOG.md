@@ -15,6 +15,39 @@ lands, not backfilled later.
 
 ### Added
 
+- **Choose and change the MQTT namespace** (#87, part B). The namespace
+  (`mqtt_config.topic_prefix`) prefixes every topic, unique_id and HA device
+  identifier. Its own namespace keeps this bridge apart from FWHAI and the
+  Local Bridge on a shared broker (#120).
+  - New installs start on **`fwh_mb`**. "New" means no gateway with an
+    address, serial, past connection or mock, and nothing ever published.
+    Existing installs keep `franklinwh`. The decision is made once and stored
+    in `app_config.mqtt_namespace_chosen`.
+  - Allowed: `fwh_mb` (recommended), `franklinwh` (legacy), or a custom
+    `^fwh_[a-z0-9]{2,8}$`. `fwhai`, `fwh_ai` and `fwh_lb` are reserved for the
+    other producers. The policy is one constant: `publish/namespace.py`
+    `NAMESPACE_POLICY`.
+  - `GET /api/mqtt/namespace` returns the current namespace and the choices.
+    `POST /api/mqtt/namespace` `{topic_prefix, confirm}` (admin) changes it.
+    Before anything has been published it just switches. After, `confirm` is
+    required, and the change:
+    1. reads the old namespace's retained discovery configs;
+    2. empties only those whose device `sw_version` starts with
+       "Modbus Bridge" (another producer's are left, as are the old
+       availability and state topics);
+    3. switches topics, unique_ids, device identifiers and the command
+       subscription live, and republishes.
+
+    It reports `removed_ours` / `left_foreign` / `not_found`, and logs a
+    WARNING and an audit event. If the broker can't be reached, nothing
+    changes.
+  - Settings → Home Assistant → MQTT Broker: **Change namespace…** opens a
+    dialog with the choices, the consequences and the counts afterwards.
+  - The setup wizard's Home Assistant step shows the namespace, and lets you
+    choose it while nothing has been published.
+  - `PATCH /api/mqtt/config` still refuses a prefix change (409), and now
+    points to the new endpoint. The discovery prefix stays fixed.
+
 - **`GET /api/energy/battery-hours`** (#116): per-hour battery charge and
   discharge kWh for a local day (default today), integrated from the sampled
   `battery_w` and split by sign, so an hour that charged and then discharged
@@ -209,6 +242,15 @@ lands, not backfilled later.
   `docker-compose.dev.yml` restores hot-reload for development.
 
 ### Fixed
+
+- **Each install has its own MQTT client id** (#118). Every install connected
+  as `franklinwh_bridge`. A broker keeps one connection per client id, so two
+  bridges on one broker would knock each other off in a loop. At first start
+  the shared default is replaced with `franklinwh_bridge_<8 hex>`, saved and
+  logged. A value someone set is kept. Settings → MQTT Broker shows it. If
+  the connection drops 3 times in 2 minutes, a WARNING names the client id.
+  Whether the reconnect loop seen on the add-on was this collision is not
+  established.
 
 - **Solar Forecast card unreadable in Light mode** (#116). The card hard-coded
   dark slates; the Light theme overrides some of them but not the panels'

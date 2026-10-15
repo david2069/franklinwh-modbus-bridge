@@ -230,6 +230,15 @@ Available MQTT config fields: `host`, `port`, `username`, `password`,
 `tls_mode` (off/tls/tls_insecure), `enabled`, `client_id`, `qos` (0-2),
 `retain_discovery`, `topic_prefix`, `discovery_prefix`.
 
+`topic_prefix` is the bridge's MQTT namespace (topics, unique_ids, device
+identifiers). New installs start on `fwh_mb`; existing installs keep
+`franklinwh`. PATCH refuses to change it, because a change re-creates every
+Home Assistant entity. Use `POST /api/mqtt/namespace` (`{"topic_prefix":
+"fwh_mb", "confirm": true}`, admin only) or Settings → Home Assistant → MQTT
+Broker → Change namespace…. It removes only the old discovery configs this
+bridge published, then republishes under the new namespace (#87).
+`discovery_prefix` stays fixed.
+
 ## Startup
 
 ### Development Mode

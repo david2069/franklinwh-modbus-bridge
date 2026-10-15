@@ -367,6 +367,34 @@
                           + ' You can change this later in Settings → Home Assistant.'"></p>
                     </div>
                   </template>
+                  <!-- MQTT namespace (#87): free to choose until something is published -->
+                  <template x-if="namespace">
+                    <div class="text-xs space-y-1" data-testid="namespace-choice">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span>Namespace in Home Assistant:</span>
+                        <template x-if="!namespace.published">
+                          <span class="flex flex-wrap gap-2">
+                            <template x-for="p in namespace.presets" :key="p.value">
+                              <button type="button" @click="setNamespace(p.value)" :disabled="busy"
+                                      class="btn btn-sm font-mono"
+                                      :class="namespace.topic_prefix === p.value ? 'btn-primary' : 'btn-secondary'"
+                                      :title="p.label" x-text="p.value"></button>
+                            </template>
+                          </span>
+                        </template>
+                        <span x-show="namespace.published" class="font-mono font-semibold" x-text="namespace.topic_prefix"></span>
+                      </div>
+                      <p class="text-slate-400">
+                        <span class="font-mono">fwh_mb</span> separates this bridge's entities from other
+                        FranklinWH integrations on the same Home Assistant;
+                        <span class="font-mono">franklinwh</span> is the shared legacy namespace.
+                      </p>
+                      <p x-show="namespace.published" class="text-slate-500">
+                        Already published, so changing it re-creates the entities: Settings → Home Assistant →
+                        MQTT Broker → Change namespace….
+                      </p>
+                    </div>
+                  </template>
                 </div>
               </template>
               <template x-for="item in checklist" :key="item.id">

@@ -96,7 +96,7 @@ async def test_get_mqtt_config_api(client):
     assert data["host"] == "localhost"
     assert data["port"] == 1883
     assert data["enabled"] is True
-    assert data["topic_prefix"] == "franklinwh"
+    assert data["topic_prefix"] == "fwh_mb"  # a fresh install starts on fwh_mb (#87)
 
 
 async def test_patch_mqtt_config_api(client):

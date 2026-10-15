@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 #: MQTT namespace defaults: the topic root, and the prefix of every unique_id and
 #: device identifier. Stored per install in mqtt_config.topic_prefix /
 #: discovery_prefix. Changing either re-creates every entity in Home Assistant,
-#: so existing installs keep these (#87, #90).
+#: so existing installs keep these (#87, #90). A NEW install starts on "fwh_mb"
+#: instead (publish/namespace.py); this is the legacy value and the fallback.
 DEFAULT_TOPIC_PREFIX = "franklinwh"
 DEFAULT_DISCOVERY_PREFIX = "homeassistant"
 
