@@ -1,7 +1,18 @@
-# Install lifecycle: Home Assistant entities and MQTT (draft for review)
+# Install lifecycle: Home Assistant entities and MQTT
 
-Status: **draft, 2026-10-16**, reviewed by the Direct Connect bridge session. Nothing in this document is implemented unless it says "today".
+Status: **policy, decisions accepted by the owner on 2026-10-16** (§10). Reviewed by the Direct
+Connect bridge session. Nothing in this document is implemented unless it says "today".
 Code references are to v0.2.6 (`105918b`).
+
+### Where the rules live
+
+| Layer | What | Where |
+|---|---|---|
+| Policy | Principles, lifecycle types, required outcomes, reserved namespaces, decision record | this document |
+| Release and test procedure | Gates G0–G3, HAOS acceptance runs, sign-off checklist (shared by both bridges) | `franklinwh-direct-connect-bridge` `docs/TEST_POLICY.md` |
+| User procedures | Update, reinstall, uninstall and purge, add-on ↔ Docker, step by step | `INSTALL.md`, `addon/DOCS.md`; written as each mechanism ships |
+
+A change to this policy is a PR that updates §10's decision record.
 
 This document defines every way the bridge gets installed, updated, reinstalled and removed,
 and what each must do to Home Assistant (devices, entities, entity IDs, history) and to the
@@ -129,7 +140,7 @@ In-life events, each with a required outcome:
 | L2 | Detect our leftovers. Offer: **adopt** (same namespace and ids → HA re-links entities and history) or **purge then start clean**. Never create duplicates silently. | not detected; a former `franklinwh` install gets a second device | #130's probe covers 3 topics; needs the full inventory (M3) |
 | L3a | Nothing changes in HA or on the broker except new or removed entities listed in the release notes; removed ones are tombstoned and verified. | holds, except the 90 s sweep is unverified (QoS 0) | M1 |
 | L3b | Migration runs once, is verified, and is reported: old device removed only when empty, entity_ids kept, history kept. | 0.2.4 had no migration; clean-up only from 0.2.6, current prefix only, not mocks | M6 + rule: identity changes ship alone |
-| L4 | Exactly as L3a. | add-on: data lives in `/data`, which the Supervisor removes on uninstall (seen: "Removing app data folder", with `remove_config`; without it **to verify**); `addon_config` is mapped but unused. So a reinstall is probably L2 | M7 |
+| L4 | Exactly as L3a. | **Broken for the add-on.** Data lives in `/data`, which the Supervisor deletes on **every** uninstall, including "keep data" (measured on HAOS 18.3 / Supervisor 2026.10.2: `Removing app data folder` with `remove_config: false`; the reinstall seeded a new admin, lost the demo gateway and chose the namespace afresh). So every add-on reinstall is L2 today. The mapped `addon_config` folder **survives** a keep-data uninstall and is deleted by a delete-data one (measured). | M7 |
 | L5 | As L4, plus a fresh MQTT client id and a warning if another live install shares the `install_id`. | DB restore copies `client_id`, so two installs can collide (#118 again) | M8 |
 | L6 | Before uninstalling: remove all our discovery, state and availability topics, every namespace this install used, every gateway (deleted ones too), and HA devices left empty. Show verified counts and a dry run first. | none (BR-24 unimplemented). Unpublish is the closest: bound gateways only, no promoted points, no state, no HA registry | M4 |
 | L7 | Entities go **unavailable**, not "available with frozen values"; artefacts stay for a later L2-adopt. | stay `online` with frozen values | M2 |
@@ -162,8 +173,7 @@ In-life events, each with a required outcome:
 - Deleting a demo, or purging, removes everything it published (E5, L6). The 0.2.6 clean-up must
   not skip mocks. Old demo devices are the most common leftover (#8).
 - The demo gateway id is part of its identity. Two bridges on one namespace that both create
-  `demo` collide, so a demo's short id should carry the install's short `install_id`. That is an
-  identity change for demos only; it ships alone and its old artefacts are purged.
+  `demo` collide. Decision D5: documented as **one demo per broker**; no identity change.
 - Demo energy sensors feed HA long-term statistics, which outlive the entity. The wizard already
   warns about this; purge cannot remove statistics.
 
@@ -194,7 +204,7 @@ Rules:
 | **M4** | **Purge** ("Remove from Home Assistant…"). Built on M3 + M1: scope = everything / one namespace / one broker / one gateway. Shown in Settings and in the add-on docs as the step *before* uninstalling. Optionally removes empty HA devices of ours. | BR-24, L6, E7, E10 |
 | **M5** | **Delete and unpublish do what they say.** Gateway delete runs M4 scoped to that gateway *before* deleting the row. Publish-off clears state and availability too. | BR-23, E3, E5 |
 | **M6** | **Identity migration framework.** For L3b only: record the old tuple, publish new, verify HA moved the entities (needs an HA restart, per the Mac mini VM test), then remove old. Never needed if principle 1 holds. | L3b |
-| **M7** | **Data where "keep data" keeps it.** Move the add-on DB to the mapped `addon_config` (`/config`), migrating from `/data` on first start. Verify on HAOS what uninstall does to each. | L4 |
+| **M7** | **Data where "keep data" keeps it.** Move the add-on DB to the mapped `addon_config` (`/config` inside the add-on), migrating from `/data` on first start. Measured: `addon_config` survives a keep-data uninstall; `/data` never does. The folder is named after the add-on slug, which includes a hash of the **repository URL**, so installing from a different repository URL (e.g. a branch) is a new install with an empty folder: L2, not L4. | L4 |
 | **M8** | **Install identity.** `install_id` (UUID) in the DB plus a namespace history table. `client_id` includes the install id; restore (L5) regenerates it. Two installs on one broker must never share a client id (#118). | L2, L5 |
 | **M9** | **Downgrade guard.** Refuse to publish on a newer schema. | L8 |
 | **M10** | **Mock parity test** and key alignment (§5). | E2 |
@@ -216,21 +226,23 @@ Release rules (from the test policy):
 
 | Step | Release | Area | Contents | Issues |
 |---|---|---|---|---|
+| S1 | **0.2.7, hotfix, first** | security | Add-on auth: treat a request as ingress only when it comes from the Supervisor's ingress proxy with the ingress headers; everything else authenticates. Regression test; G1 port-auth check | GHSA-hhm2-xvvc-f6ww (private) |
 | R0 | — (now) | docs/process | **Freeze identity changes.** Hold PR #130. Merge this doc and the test policy. Correct user docs: Change namespace and Unpublish aren't reliable yet; delete doesn't unpublish. Guidance for HA Live (below). | — |
-| R1 | 0.2.7 | packaging | M12 build provenance; add-on branch builds for testing | #140 |
-| R2 | 0.2.8 | MQTT | M1 verified removal, applied to every existing tombstone path; M2 LWT/offline | #136 |
-| R3 | 0.2.9 | MQTT/HA lifecycle | M3 inventory (read-only, dry run) | BR-26 |
-| R4 | 0.3.0 | MQTT/HA lifecycle | M4 purge + M5 delete/unpublish; mocks included in clean-up | BR-23/24, #8 |
+| R1 | 0.2.8 | packaging | M12 build provenance; add-on branch builds for testing | #140 |
+| R2 | 0.2.9 | MQTT | M1 verified removal, applied to every existing tombstone path; M2 LWT/offline | #136 |
+| R3+R4 | 0.3.0 | lifecycle/clean-up | M3 inventory (dry run) + M4 purge + M5 delete/unpublish; mocks included in clean-up; empty HA devices of ours removed | BR-23/24/26, #8 |
 | R5 | 0.3.1 | setup wizard | PR #130 rebased: naming choice, reinstall detection on M3, adopt-or-purge for L2 | #130 |
 | R6 | 0.3.2 | store/packaging | M7 data location + M8 install identity | L4, L5 |
 | R7 | any, small | mock | M10 + M11 (no identity change) | demo unknowns |
-| R8 | later, alone | identity | Demo short id per install (§5); FWHAI and Direct Connect identifier moves happen in their own repos | #120 |
+| R8 | — | identity | Not done (decision 5): one demo per broker is documented instead. FWHAI and Direct Connect identifier moves happen in their own repos (Direct Connect: `fwh_dc`, its #92) | #120 |
 
 **HA Live, until R4:**
 - Update in place; don't uninstall with data deletion.
 - Don't use Change namespace (#136).
 - Don't delete gateways that are published; switch Publish off first, then check HA.
-- Leave port 8099 unpublished (security advisory pending).
+- Don't uninstall and reinstall the add-on expecting to keep settings: until R6 every reinstall starts fresh (§4 L4).
+- Leave port 8099 unpublished, and don't install untrusted add-ons alongside the bridge, until S1
+  ships (private advisory).
 - Leftover devices can be deleted by hand in HA once they have no entities.
 
 ## 9. Acceptance matrix (runs as TEST_POLICY G1)
@@ -255,13 +267,16 @@ check is the diff, not "the UI says OK". HA keeps devices from earlier installs,
 | 10 | coexistence | Modbus bridge + Direct Connect bridge (+ FWHAI if available) on one HA and broker | no merged devices, no shared unique_ids, no cross-commands; **socket count on the aGate's :502 is one** |
 | 11 | E11 | edit a gateway's poll interval and phase view | same device and entity_ids; availability gap ≤ one poll; never left `offline` |
 
-## 10. Decisions for the owner
+## 10. Decision record
 
-1. Freeze identity changes until R4 (principle 1, R0)?
-2. Default answer for L2: adopt the old namespace, or purge and start on `fwh_mb`?
-3. Should purge also remove empty HA devices through the registry API, or only MQTT artefacts
-   (and let HA drop devices when their configs go)?
-4. Move add-on data to `addon_config` (M7)? It changes where backups find the DB.
-5. Demo short id per install (R8): worth an identity change for demos, or document "one demo per
-   broker"?
-6. Release cadence in §8: acceptable, or merge R3 into R4?
+Accepted by the owner on 2026-10-16.
+
+| # | Decision | Reason |
+|---|---|---|
+| D1 | **Identity changes are frozen until R3+R4 ships.** No change to namespace defaults, device identifiers, device names, unique_ids, topics or slugs. | Every past failure came from an identity change with no purge or migration behind it. |
+| D2 | **L2 default is adopt.** A fresh install that finds our leftovers offers adopt (keep the old namespace and ids; HA keeps entity_ids and history) as the default; purge is an explicit choice. | Adopt loses nothing and can be undone; purge cannot. |
+| D3 | **Purge removes empty HA devices of ours**, through the registry API: only devices whose identifiers are ours and that hold **zero** entities, after the MQTT removal is verified, and listed in the dry run first. | HA otherwise keeps empty devices (measured). |
+| D4 | **Add-on data moves to `addon_config`** (M7, R6). | Measured: `/data` is deleted on every uninstall; `addon_config` survives "keep data". |
+| D5 | **No per-install demo id.** Document "one demo per broker"; purge and delete remove demos. | Demos are throwaway; not worth an identity change. |
+| D6 | **Release order:** S1 security hotfix → R1 provenance → R2 verified removal + offline → R3+R4 inventory and purge → R5 naming choice (#130) → R6 data location and install id; R7 any time. | Security first; R3 alone gives users nothing. |
+| D7 | **This document is the repo's lifecycle policy**; the shared TEST_POLICY is the release and test procedure; user procedures go in INSTALL.md and addon/DOCS.md. | One home per rule. |

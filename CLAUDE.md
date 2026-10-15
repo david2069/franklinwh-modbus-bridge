@@ -61,6 +61,19 @@ open, so before deploying: check no command or schedule is active, keep
 gateway only — never on the live bridge.
 Full practice and audit trail: `docs/restarts-and-shutdown.md`.
 
+## Lifecycle and release policy
+
+- `docs/install-lifecycle.md` is the policy for install, update, reinstall and
+  uninstall, and their effect on HA devices, entities and retained MQTT topics.
+  Any change to MQTT/HA publishing, clean-up, the setup wizard or add-on
+  packaging must meet it; a change to the policy updates its §10 decision record.
+- **Identity changes are frozen** (D1) until the purge release (R3+R4): no change
+  to namespace defaults, device identifiers, device names, unique_ids, topics or
+  slugs.
+- Releases and testing follow the shared test policy:
+  `franklinwh-direct-connect-bridge` `docs/TEST_POLICY.md` (gates G0–G3, HAOS
+  acceptance run with a trace, owner merges the release PR).
+
 ## Architecture rules
 
 - REST API is the canonical interface. All functionality is exposed through
