@@ -13,6 +13,18 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.6] — 2026-10-16
+
+### Added
+
+- **Old leftovers are removed automatically.** About 90 s after start the
+  bridge removes its own stale discovery configs from the broker (ours by
+  `sw_version`, including the v0.1.0 form, for our gateways, and no longer
+  published). It also removes empty old devices from every connected Home
+  Assistant: devices with exactly a pre-0.2.4 identifier of ours and **no**
+  entities. Another integration's configs and a merged device still holding its
+  entities are never touched (`publish/cleanup.py`).
+
 ### Fixed
 
 - **Power History dropped every sample above 15 kW** (#122). A second 15 kW

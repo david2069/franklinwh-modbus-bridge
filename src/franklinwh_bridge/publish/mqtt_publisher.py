@@ -1167,6 +1167,27 @@ class MqttPublisher:
         self._discovery_paused = False
         self._state.discovery_published = False
 
+    def published_discovery(self) -> tuple[set[str], set[str]]:
+        """(short ids, discovery topics) this publisher currently publishes.
+
+        For the stale-config sweep (publish/cleanup.py): anything of ours on
+        the broker outside this set is a leftover.
+        """
+        sids: set[str] = set()
+        topics: set[str] = set()
+        if self._device_info:
+            sid = self._device_info.short_id
+            sids.add(sid)
+            for e in list(self._entities) + list(self._promoted_entities):
+                topics.add(self._discovery_topic(e, sid))
+        for dev in self._devices.values():
+            if dev.device_info:
+                sid = dev.device_info.short_id
+                sids.add(sid)
+                for e in dev.entities or []:
+                    topics.add(self._discovery_topic(e, sid))
+        return sids, topics
+
     @property
     def discovery_paused(self) -> bool:
         """True after Unpublish until Republish (#131)."""
