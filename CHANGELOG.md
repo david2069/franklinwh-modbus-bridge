@@ -222,6 +222,12 @@ lands, not backfilled later.
 
 ### Changed
 
+- **SunSpec Explorer names the extension registers we've identified.** They
+  are labelled **unconfirmed**, from one site's recorded readings and the
+  library notes, not FranklinWH documentation: 15013 (battery power at ~1 W,
+  sign while charging not established), 15016 (status code), 15035 (SoC ×10),
+  16001/16002 (reserve mirrors). Values stay raw.
+
 - **Solar Forecast card aligned with the Local Bridge's** (#116). Tinted day
   panels (amber border today, blue tomorrow) headed "THU, 15 OCT", a big kWh
   figure and "Peak X kW @ HH:MM"; actual-so-far kWh and % with a progress bar

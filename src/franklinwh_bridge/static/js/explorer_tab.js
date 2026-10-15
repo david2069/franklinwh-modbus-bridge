@@ -22,9 +22,23 @@ const VENDOR_EXT_15500 = [
 
 const VENDOR_EXT_16000 = [
   { addr: 16000, name: 'HomeLoadHiRes', desc: 'Home Load (High Resolution)', keys: ['vreg_16000'], unit: 'W', access: 'R', type: 'uint16' },
-  { addr: 16001, name: 'Reg16001',      desc: 'Unknown',                     keys: ['vreg_16001'], unit: '',  access: 'R', type: 'uint16' },
-  { addr: 16002, name: 'Reg16002',      desc: 'Unknown',                     keys: ['vreg_16002'], unit: '',  access: 'R', type: 'uint16' },
+  // Per franklinwh-modbus QUIRKS "Register 16000": the block mirrors 15508/15509.
+  // Undocumented by FranklinWH; one site's readings — labelled as such.
+  { addr: 16001, name: 'SelfReserveMirror', desc: 'Self-Consumption reserve, mirrors 15508 (unconfirmed)', keys: ['vreg_16001'], unit: '%', access: 'R', type: 'uint16' },
+  { addr: 16002, name: 'TouReserveMirror',  desc: 'TOU reserve, mirrors 15509 per library notes (unconfirmed)', keys: ['vreg_16002'], unit: '%', access: 'R', type: 'uint16' },
 ];
+
+// 15000-15039 is undocumented. These are what one site's recorded readings
+// suggest (PR #73, #76, #77) — NOT FranklinWH documentation. Values stay raw;
+// the description says what was observed so it can be tested, not trusted.
+const VENDOR_EXT_15000_NOTES = {
+  15013: { name: 'BatteryPowerRaw', unit: 'W',
+           desc: 'Battery power at ~1 W (unconfirmed; one site). Sign while charging not established — raw 65269 seen = −267 if int16' },
+  15016: { name: 'StatusRaw',
+           desc: 'Status code (unconfirmed; one site): 2 on-grid, 6 with WSet active, 3 islanded' },
+  15035: { name: 'SocX10Raw', unit: '‰',
+           desc: 'State of charge ×10 (unconfirmed; one site)' },
+};
 
 // PICS status codes and cycle order
 const PICS_CODES = ['U', 'S', 'T', 'F', 'X'];
@@ -534,14 +548,15 @@ function explorerTab() {
       // 15000-15039: Undocumented vendor range
       for (let a = 15000; a <= 15039; a++) {
         const value = this._stableExt(a, pts['vreg_' + a]);
+        const note = VENDOR_EXT_15000_NOTES[a];
         regs.push({
           addr: a,
-          name: 'Reg' + a,
-          desc: 'Unknown',
+          name: note ? note.name : 'Reg' + a,
+          desc: note ? note.desc : 'Unknown',
           value: value,
           type: 'uint16',
           access: 'R',
-          unit: '',
+          unit: (note && note.unit) || '',
           hex: value != null ? ('0000' + value.toString(16).toUpperCase()).slice(-4) : null,
         });
       }
