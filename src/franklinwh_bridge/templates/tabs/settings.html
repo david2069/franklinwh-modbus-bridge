@@ -38,44 +38,60 @@
   </div>
 
   <!-- Users (admin only) -->
-  <div class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak>
+  <div class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak data-testid="users-card">
     <div class="flex items-center justify-between mb-1">
       <div class="card-label !mb-0">Users</div>
       <button type="button" class="btn btn-sm btn-secondary" @click="showAddUser = !showAddUser" x-text="showAddUser ? 'Cancel' : '+ Add User'"></button>
     </div>
-    <p class="text-xs text-slate-500 mb-3">Who can sign in and what they can do. <span class="text-slate-400">admin</span> = full access; <span class="text-slate-400">user</span>/<span class="text-slate-400">viewer</span> = view-only (Dashboard).</p>
+    <p class="text-xs text-slate-500 mb-3">Who can sign in and what they can do. <span class="text-slate-400">admin</span> = full access; <span class="text-slate-400">user</span> = Dashboard + charge/discharge; <span class="text-slate-400">viewer</span> = Dashboard, look only; <span class="text-slate-400">api</span> = REST API only (read + battery commands, no web pages, no admin). An expiry date ends an account at the end of that day (bridge time).</p>
     <template x-if="showAddUser">
       <div class="flex items-end gap-2 flex-wrap mb-3 pb-3 border-b border-white/[0.06]">
         <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Username</span>
-          <input x-model="newUser.username" class="form-control !py-1 !text-xs"></label>
+          <input x-model="newUser.username" data-testid="new-user-name" class="form-control !py-1 !text-xs"></label>
         <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Password</span>
-          <input type="password" x-model="newUser.password" class="form-control !py-1 !text-xs"></label>
+          <span class="flex items-center gap-1">
+            <input :type="newUserPwShown ? 'text' : 'password'" x-model="newUser.password" data-testid="new-user-password"
+                   class="form-control !py-1 !text-xs font-mono" :class="newUserPwShown ? 'w-72' : ''">
+            <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" data-testid="new-user-generate"
+                    @click="generateUserPassword()" title="Fill in a long random password and show it, so you can copy it">Generate</button>
+          </span></label>
         <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Role</span>
-          <select x-model="newUser.role" class="form-control !py-1 !text-xs w-24">
-            <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option>
+          <select x-model="newUser.role" data-testid="new-user-role" class="form-control !py-1 !text-xs w-24">
+            <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option><option value="api">api</option>
           </select></label>
-        <button type="button" class="btn btn-sm btn-primary" @click="createUser()">Create</button>
+        <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Expires (optional)</span>
+          <input type="date" x-model="newUser.expires" data-testid="new-user-expires" class="form-control !py-1 !text-xs"></label>
+        <button type="button" class="btn btn-sm btn-primary" data-testid="new-user-create" @click="createUser()">Create</button>
       </div>
     </template>
     <div class="space-y-2">
       <template x-for="u in users" :key="u.id">
-        <div class="flex items-center justify-between rounded border border-white/[0.06] px-3 py-2 gap-3 flex-wrap">
+        <div class="flex items-center justify-between rounded border border-white/[0.06] px-3 py-2 gap-3 flex-wrap" :data-testid="'user-row-' + u.username">
           <div class="flex items-center gap-2 min-w-[150px]">
             <span class="w-7 h-7 rounded-full bg-cyan-500/15 text-cyan-300 grid place-items-center text-xs font-semibold uppercase" x-text="u.username.slice(0,1)"></span>
             <div>
-              <div class="text-sm text-slate-200" x-text="u.username"></div>
+              <div class="text-sm text-slate-200 flex items-center gap-1.5 flex-wrap">
+                <span x-text="u.username"></span>
+                <span x-show="u.role === 'api'" class="text-[9px] uppercase tracking-wide px-1.5 rounded bg-violet-500/15 text-violet-300">REST only</span>
+                <span x-show="expiryBadge(u)" data-testid="user-expiry-badge"
+                      class="text-[9px] uppercase tracking-wide px-1.5 rounded"
+                      :class="expiryBadge(u)?.cls" :title="u.expires_at ? 'expires ' + fmt.at(u.expires_at) : ''"
+                      x-text="expiryBadge(u)?.text"></span>
+              </div>
               <div class="text-[10px] text-slate-500" x-show="u.last_login_at" x-text="'last login ' + fmt.at(u.last_login_at)"></div>
+              <div class="text-[10px] text-slate-500" x-show="u.expires_at" x-text="'expires ' + fmt.at(u.expires_at)"></div>
             </div>
           </div>
           <div class="flex items-center gap-2">
             <select :value="u.role" @change="setUserRole(u, $event.target.value)" class="form-control !py-1 !text-xs w-24">
-              <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option>
+              <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option><option value="api">api</option>
             </select>
             <button type="button" @click="toggleUserEnabled(u)"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
                     :class="u.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="u.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
               <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="u.enabled ? 'translate-x-4' : 'translate-x-1'"></span>
             </button>
+            <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="editUserExpiry(u)" title="Set or clear the expiry date">expiry</button>
             <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="resetUserPassword(u)">reset pw</button>
             <button type="button" @click="deleteUser(u)" title="Delete user" class="text-red-400/60 hover:text-red-400 transition-colors">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -83,6 +99,55 @@
           </div>
         </div>
       </template>
+    </div>
+  </div>
+
+  <!-- Sign-in activity (admin only): GET /api/auth/events -->
+  <div class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak data-testid="auth-events-card">
+    <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+      <div class="card-label !mb-0">Sign-in activity</div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select x-model="authEventsFilter.username" @change="loadAuthEvents()" data-testid="auth-events-user" class="form-control !py-1 !text-xs w-32">
+          <option value="">all users</option>
+          <template x-for="name in authEventUsernames()" :key="name"><option :value="name" x-text="name"></option></template>
+        </select>
+        <select x-model="authEventsFilter.event" @change="loadAuthEvents()" data-testid="auth-events-event" class="form-control !py-1 !text-xs w-36">
+          <option value="">all events</option>
+          <template x-for="ev in AUTH_EVENT_TYPES" :key="ev"><option :value="ev" x-text="ev"></option></template>
+        </select>
+        <select x-model.number="authEventsFilter.limit" @change="loadAuthEvents()" class="form-control !py-1 !text-xs w-20" title="Rows to show">
+          <option :value="50">50</option><option :value="200">200</option><option :value="1000">1000</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-secondary" @click="loadAuthEvents()">Refresh</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Sign-ins, failed sign-ins, throttled attempts, logouts and logins ended, newest first. A failed-login lockout (5 failures in 15 min → 60 s) is kept in memory: a restart clears it, not this record.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left text-[10px] uppercase tracking-wide text-slate-500 border-b border-white/[0.06]">
+            <th class="py-1 pr-3 font-medium" x-text="'Time (' + bridgeTime.label() + ')'"></th>
+            <th class="py-1 pr-3 font-medium">Event</th>
+            <th class="py-1 pr-3 font-medium">User</th>
+            <th class="py-1 pr-3 font-medium">IP</th>
+            <th class="py-1 pr-3 font-medium">User agent</th>
+            <th class="py-1 font-medium">Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="e in authEvents" :key="e.id">
+            <tr class="border-b border-white/[0.03] align-top" data-testid="auth-event-row">
+              <td class="py-1 pr-3 whitespace-nowrap text-slate-400" :title="fmt.at(e.ts)" x-text="fmt.short(e.ts)"></td>
+              <td class="py-1 pr-3 whitespace-nowrap" :class="authEventClass(e.event)" x-text="e.event"></td>
+              <td class="py-1 pr-3 whitespace-nowrap text-slate-300" x-text="e.username || '—'"></td>
+              <td class="py-1 pr-3 whitespace-nowrap font-mono text-slate-400" x-text="e.ip || '—'"></td>
+              <td class="py-1 pr-3 text-slate-500 max-w-[14rem] truncate" :title="e.user_agent || ''" x-text="e.user_agent || '—'"></td>
+              <td class="py-1 text-slate-400" x-text="e.detail || ''"></td>
+            </tr>
+          </template>
+          <tr x-show="!authEvents.length"><td colspan="6" class="py-2 text-slate-500">No matching sign-in activity.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 

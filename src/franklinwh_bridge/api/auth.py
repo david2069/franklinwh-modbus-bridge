@@ -14,12 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from franklinwh_bridge.gateway.modules import ROLE_CAPABILITIES
+from franklinwh_bridge.login_throttle import LoginThrottle, throttle_key
 from franklinwh_bridge.security import hash_password, verify_password
 from franklinwh_bridge.store import auth_sessions
 from franklinwh_bridge.store.db import (
     get_user,
     get_user_by_username,
     update_user,
+    user_expired,
 )
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -109,6 +111,16 @@ async def get_current_user(request: Request) -> dict | None:
         _end_reason(request, code, session)
         request.session.clear()
         return None
+    if user_expired(user):
+        # The account's expiry date passed while this login was open (#99).
+        if sid:
+            await auth_sessions.end_session(
+                db, sid, "expired", by="account expiry date", request=request
+            )
+            session = await auth_sessions.get_session(db, sid)
+        _end_reason(request, "expired", session)
+        request.session.clear()
+        return None
 
     if session is None:
         sid = await auth_sessions.create_session(db, user, request)
@@ -169,6 +181,14 @@ def require_capability(capability: str):
     return _dep
 
 
+def _throttle(request: Request) -> LoginThrottle:
+    """The app's failed-login throttle (in memory; a restart clears it)."""
+    t = getattr(request.app.state, "login_throttle", None)
+    if t is None:
+        t = request.app.state.login_throttle = LoginThrottle()
+    return t
+
+
 async def _read_credentials(request: Request) -> tuple[str, str]:
     ctype = request.headers.get("content-type", "")
     if "application/json" in ctype:
@@ -189,20 +209,41 @@ async def login(request: Request):
         )
     username, password = await _read_credentials(request)
     db = request.app.state.db
-    user = await get_user_by_username(db, username)
-    if user is None or not user.get("enabled") or not verify_password(
-        user["password_hash"], password
-    ):
-        why = (
-            "no such user" if user is None
-            else "account disabled" if not user.get("enabled")
-            else "wrong password"
+    throttle = _throttle(request)
+    key = throttle_key(username, request.client.host if request.client else None)
+    wait = throttle.retry_after(key)
+    if wait is not None:
+        # Refused before the password is looked at, whether or not the name
+        # exists, so a lockout reveals nothing. Audited once, when it began.
+        raise HTTPException(
+            429, "too many failed sign-ins; try again shortly",
+            headers={"Retry-After": str(wait)},
         )
+    user = await get_user_by_username(db, username)
+    why = (
+        "no such user" if user is None
+        else "account disabled" if not user.get("enabled")
+        else "account expired" if user_expired(user)
+        else None if verify_password(user["password_hash"], password)
+        else "wrong password"
+    )
+    if why is not None:
         await auth_sessions.record_event(
             db, "login_failed", username=username[:64],
             user_id=(user or {}).get("id"), request=request, detail=why,
         )
+        if throttle.record_failure(key):
+            await auth_sessions.record_event(
+                db, "login_throttled", username=username[:64],
+                user_id=(user or {}).get("id"), request=request,
+                detail=(
+                    f"{throttle.max_failures} failed sign-ins within "
+                    f"{int(throttle.window_s // 60)} min; refused for "
+                    f"{int(throttle.lockout_s)} s"
+                ),
+            )
         raise HTTPException(401, "invalid username or password")
+    throttle.record_success(key)
     request.session.clear()
     sid = await auth_sessions.create_session(db, user, request)
     request.session["user_id"] = user["id"]
@@ -354,8 +395,14 @@ async def revoke_session(
 
 
 @router.get("/auth/events", dependencies=[Depends(require_role("admin"))])
-async def list_auth_events(request: Request, limit: int = 200):
-    """Audit trail: logins, failed logins, logouts, logins ended (newest first)."""
+async def list_auth_events(
+    request: Request, limit: int = 200, username: str = "", event: str = ""
+):
+    """Audit trail: logins, failed logins, logouts, logins ended (newest first).
+
+    ``username`` (as typed at sign-in, any case) and ``event`` narrow it.
+    """
     return await auth_sessions.list_events(
-        request.app.state.db, limit=max(1, min(limit, 1000))
+        request.app.state.db, limit=max(1, min(limit, 1000)),
+        username=username.strip() or None, event=event.strip() or None,
     )

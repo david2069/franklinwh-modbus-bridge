@@ -149,6 +149,11 @@ def reset_admin_password(
                 "updated_at = ? WHERE id = ?",
                 (pw_hash, now, user_id),
             )
+            # An expired admin is locked out too (#99). Older schemas lack the column.
+            # sqlite3.Row: `in row` tests values, so .keys() is needed here.
+            if "expires_at" in row.keys() and row["expires_at"] is not None:  # noqa: SIM118
+                conn.execute("UPDATE users SET expires_at = NULL WHERE id = ?", (user_id,))
+                changes.insert(-1, "expiry cleared")
             action = "reset"
 
         ended = 0

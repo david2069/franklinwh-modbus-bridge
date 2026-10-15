@@ -37,7 +37,12 @@ REASONS: dict[str, str] = {
         "administrator, or by admin recovery."
     ),
     "revoked": "An administrator ended this login.",
-    "expired": "Your login expired after 14 days without use.",
+    # Also used when the ACCOUNT's expiry date passes (#99); ended_by then
+    # says "account expiry date", so the page shows which one it was.
+    "expired": (
+        "Your login expired: 14 days without use, or your account's expiry "
+        "date has passed."
+    ),
     "browser_dropped": (
         "This browser stopped sending its login: site data was cleared, "
         "private browsing ended, or the browser removed the cookie."
@@ -82,7 +87,7 @@ async def record_event(
         (time.time(), event, username, user_id, session_id, ip, ua, detail),
     )
     await db.commit()
-    level = logging.WARNING if event == "login_failed" else logging.INFO
+    level = logging.WARNING if event in ("login_failed", "login_throttled") else logging.INFO
     logger.log(
         level, "Auth: %s user=%s ip=%s%s",
         event, username or "-", ip or "-", f" ({detail})" if detail else "",
@@ -175,9 +180,25 @@ async def list_sessions(
         return [dict(r) for r in await cur.fetchall()]
 
 
-async def list_events(db: aiosqlite.Connection, limit: int = 200) -> list[dict]:
+async def list_events(
+    db: aiosqlite.Connection,
+    limit: int = 200,
+    *,
+    username: str | None = None,
+    event: str | None = None,
+) -> list[dict]:
+    """Newest first. ``username`` matches ignoring case; ``event`` exactly."""
     db.row_factory = aiosqlite.Row
+    where, args = [], []
+    if username:
+        where.append("username = ? COLLATE NOCASE")
+        args.append(username)
+    if event:
+        where.append("event = ?")
+        args.append(event)
+    clause = f"WHERE {' AND '.join(where)} " if where else ""
     async with db.execute(
-        "SELECT * FROM auth_events ORDER BY ts DESC, id DESC LIMIT ?", (limit,)
+        f"SELECT * FROM auth_events {clause}ORDER BY ts DESC, id DESC LIMIT ?",  # noqa: S608
+        (*args, limit),
     ) as cur:
         return [dict(r) for r in await cur.fetchall()]

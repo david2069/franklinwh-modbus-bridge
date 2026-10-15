@@ -54,7 +54,14 @@ ROLE_CAPABILITIES: dict[str, set[str]] = {
     # its name says and must never reach a control route.
     "user": {"view", "control"},
     "viewer": {"view"},
+    # "api" is a REST client (e.g. the Local Bridge / Direct Connect, #99):
+    # read and command, no admin surface, and no web pages (api/ui.py refuses
+    # them). Owner decision 2026-10-15: view + control only.
+    "api": {"view", "control"},
 }
+
+#: Roles that sign in to the REST API only; the HTML pages refuse them.
+API_ONLY_ROLES = frozenset({"api"})
 
 
 async def _overrides(db: Any) -> dict:
