@@ -245,6 +245,13 @@ def build_discovery_payload(
 class MqttPublisher:
     """Async MQTT publisher with queue, HA Discovery, and reconnect."""
 
+    #: The default gateway's "Publish to Home Assistant" is off (#96): its
+    #: samples are dropped without the "unregistered gateway" warning. A class
+    #: attribute so publishers built without __init__ (tests) read it as off.
+    _default_suppressed: bool = False
+    #: Set by ``stop(offline=True)``: the run loop says "offline" on its way out.
+    _offline_on_stop: bool = False
+
     def __init__(
         self,
         host: str = "localhost",
@@ -298,7 +305,62 @@ class MqttPublisher:
 
     def set_device_info(self, info: DeviceInfo) -> None:
         self._device_info = info
+        self._default_suppressed = False
         self._state.discovery_published = False
+
+    @property
+    def default_suppressed(self) -> bool:
+        """True while the default gateway's "Publish to Home Assistant" is off."""
+        return self._default_suppressed
+
+    def resume_default_device(self) -> None:
+        """Publishing is wanted for the default gateway again; it is bound by
+        the next ``set_device_info``. Until then an unbound default warns as
+        unregistered, as it always did."""
+        self._default_suppressed = False
+
+    def unbind_default_device(self, tombstone: bool = True) -> int:
+        """Stop publishing the default gateway to HA, live (#96).
+
+        The counterpart of ``set_device_info`` for a gateway whose "Publish to
+        Home Assistant" is off. With ``tombstone`` and a device bound, queues an
+        empty retained payload for every discovery topic it could have — the
+        full BRIDGE_ENTITIES registry plus promoted points, as Unpublish does —
+        and for its availability topic, so HA removes the entities rather than
+        leaving them unavailable. Then unbinds, so samples and command state
+        are no longer queued and its control topics are no longer obeyed.
+
+        Returns the number of tombstones queued. Idempotent: with nothing bound
+        it only (re)marks the gateway as suppressed.
+        """
+        count = 0
+        info = self._device_info
+        if tombstone and info is not None:
+            sid = info.short_id
+            seen: set[str] = set()
+            for entity in [*BRIDGE_ENTITIES, *self._promoted_entities]:
+                topic = self._discovery_topic(entity, sid)
+                if topic in seen:
+                    continue
+                seen.add(topic)
+                try:
+                    self._queue.put_nowait(MqttMessage(topic=topic, payload="", retain=True))
+                except asyncio.QueueFull:
+                    logger.warning("MQTT queue full — not every tombstone was queued")
+                    break
+                count += 1
+            with contextlib.suppress(asyncio.QueueFull):
+                self._queue.put_nowait(
+                    MqttMessage(topic=self._availability_topic(sid), payload="", retain=True)
+                )
+            logger.info(
+                "Default gateway unpublished from Home Assistant: %d discovery "
+                "topics tombstoned", count,
+            )
+        self._device_info = None
+        self._command_handler = None
+        self._default_suppressed = True
+        return count
 
     def _rebuild_entity_lists(self) -> None:
         """Rebuild active/removed entity lists from phase + group + battery filters.
@@ -676,6 +738,10 @@ class MqttPublisher:
                 points.update(self._command_handler.virtual_points)
             short_id = self._device_info.short_id
             entities = self._entities
+        elif gw_id == self._gateway_id and self._default_suppressed:
+            # The default gateway with "Publish to Home Assistant" off (#96):
+            # dropped by choice, so no "unregistered gateway" warning.
+            return
         else:
             # A sample from a gateway with no registered device. This used to
             # fall through to the branch above, which published it under the
@@ -838,6 +904,10 @@ class MqttPublisher:
                             if self._has_discoverable() and not self._state.discovery_published:
                                 await self._publish_discovery(client)
                                 await self._publish_availability(client, online=True)
+                        if self._offline_on_stop:
+                            # Publishing switched off (#96): HA shows the
+                            # entities unavailable, not frozen at a last value.
+                            await self._publish_availability(client, online=False)
                     finally:
                         if listener_task:
                             listener_task.cancel()
@@ -867,13 +937,23 @@ class MqttPublisher:
         self._task = asyncio.create_task(self._run_loop())
         logger.info("MQTT publisher started")
 
-    async def stop(self) -> None:
+    async def stop(self, offline: bool = False) -> None:
+        """Stop the connection loop.
+
+        ``offline`` first lets the loop publish "offline" availability for
+        every bound device (bounded wait), instead of cancelling it mid-flight.
+        """
+        self._offline_on_stop = offline
         self._stop_event.set()
         if self._task:
+            if offline and not self._task.done():
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(asyncio.shield(self._task), timeout=3.0)
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
         self._state.connected = False
+        self._offline_on_stop = False
         logger.info("MQTT publisher stopped")
 
     @classmethod

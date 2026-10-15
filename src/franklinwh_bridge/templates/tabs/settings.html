@@ -472,6 +472,56 @@
     </p>
   </div>
 
+  <!-- Publish to Home Assistant: the global MQTT switch + one per gateway (#96) -->
+  <div x-show="$store.app.settingsSection === 'home-assistant'" class="card mb-4" data-testid="publish-to-ha">
+    <div class="flex items-center justify-between mb-1">
+      <div class="card-label !mb-0">Publish to Home Assistant</div>
+      <span class="text-[10px] uppercase tracking-wide text-slate-500">takes effect now</span>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">
+      Which gateways' entities reach Home Assistant through MQTT discovery. Off removes that
+      gateway's entities from Home Assistant; on publishes them again.
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div class="flex items-center justify-between rounded border border-white/[0.06] px-3 py-2">
+        <span class="text-sm truncate">
+          <span class="text-slate-200">MQTT publishing</span>
+          <span class="text-[9px] uppercase tracking-wide text-slate-500 ml-1">all gateways</span>
+        </span>
+        <button type="button" @click="toggleMqttEnabled()" :disabled="publishBusy"
+                data-testid="mqtt-enabled-toggle"
+                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
+                :class="mqttConfig.enabled !== false ? 'bg-emerald-500' : 'bg-slate-600'"
+                :title="mqttConfig.enabled !== false
+                  ? 'On — click to stop publishing (entities show unavailable; Unpublish removes them)'
+                  : 'Off — click to start publishing'">
+          <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                :class="mqttConfig.enabled !== false ? 'translate-x-4' : 'translate-x-1'"></span>
+        </button>
+      </div>
+      <template x-for="g in gwList" :key="g.id">
+        <div class="flex items-center justify-between rounded border border-white/[0.06] px-3 py-2">
+          <span class="text-sm truncate">
+            <span class="text-slate-200" x-text="g.name || g.id"></span>
+            <span x-show="g.mock" class="text-[9px] uppercase tracking-wide text-slate-500 ml-1">demo</span>
+            <span x-show="!g.enabled" class="text-[9px] uppercase tracking-wide text-slate-500 ml-1">disabled</span>
+          </span>
+          <button type="button" @click="togglePublishToHa(g)" :disabled="publishBusy"
+                  :data-testid="'publish-toggle-' + g.id"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
+                  :class="g.publish_to_ha ? 'bg-emerald-500' : 'bg-slate-600'"
+                  :title="g.publish_to_ha ? 'Published — click to remove from Home Assistant' : 'Not published — click to publish'">
+            <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                  :class="g.publish_to_ha ? 'translate-x-4' : 'translate-x-1'"></span>
+          </button>
+        </div>
+      </template>
+    </div>
+    <p x-show="mqttConfig.enabled === false" x-cloak class="text-[10px] text-amber-400 mt-2">
+      MQTT publishing is off, so nothing reaches Home Assistant whatever the gateway switches say.
+    </p>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
     <!-- MQTT Broker Configuration -->
@@ -492,8 +542,8 @@
       <div x-show="!mqttEditing" class="space-y-2 text-sm">
         <div class="flex justify-between">
           <span class="text-slate-500">Connection</span>
-          <span class="font-medium" :class="mqtt.connected ? 'text-emerald-400' : 'text-red-400'"
-                x-text="mqtt.connected ? 'Connected' : 'Disconnected'"></span>
+          <span class="font-medium" :class="mqtt.connected ? 'text-emerald-400' : (mqttConfig.enabled === false ? 'text-slate-500' : 'text-red-400')"
+                x-text="mqtt.connected ? 'Connected' : (mqttConfig.enabled === false ? 'Disabled' : 'Disconnected')"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Broker Host</span>

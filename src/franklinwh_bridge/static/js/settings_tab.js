@@ -12,6 +12,7 @@ function settingsTab() {
     mqttSaving: false,
     confirmRepublish: false,
     confirmUnpublish: false,
+    publishBusy: false,
     poller: {},
     gateway: {},
     gwTesting: false,
@@ -122,6 +123,12 @@ function settingsTab() {
       setInterval(() => {
         if (Alpine.store('app').activeTab === 'settings') {
           this.loadAll();
+          // The Publish to Home Assistant list: pick up gateways added since
+          // (the setup wizard's demo, typically) and the MQTT switch.
+          if (Alpine.store('app').settingsSection === 'home-assistant' && !this.publishBusy) {
+            this.loadGateways();
+            this.loadMqttConfig();
+          }
           // Refresh HA connection status/entity counts, but not while editing
           // (would clobber the in-progress form).
           if (this.haEditId === null) this.loadHaInstances();
@@ -833,6 +840,46 @@ function settingsTab() {
     async loadGateways() {
       const data = await fetchJSON('api/gateways');
       if (data && data.gateways) this.gwList = data.gateways;
+    },
+
+    // ── Publish to Home Assistant (#96) — both apply live ──
+    async togglePublishToHa(g) {
+      const next = !g.publish_to_ha;
+      this.publishBusy = true;
+      try {
+        const data = await fetchJSON(`api/gateways/${encodeURIComponent(g.id)}`, {
+          method: 'PATCH', body: JSON.stringify({ publish_to_ha: next }),
+        });
+        if (data && !data.error) {
+          g.publish_to_ha = next ? 1 : 0;
+          Alpine.store('app').toast(
+            `${g.name || g.id}: ${next ? 'published to' : 'removed from'} Home Assistant`, 'info');
+          await this.loadAll();
+        } else {
+          Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.publishBusy = false;
+      }
+    },
+
+    async toggleMqttEnabled() {
+      const next = this.mqttConfig.enabled === false;
+      this.publishBusy = true;
+      try {
+        const data = await fetchJSON('api/mqtt/config', {
+          method: 'PATCH', body: JSON.stringify({ enabled: next }),
+        });
+        if (data && !data.error) {
+          this.mqttConfig.enabled = next;
+          Alpine.store('app').toast(`MQTT publishing ${next ? 'started' : 'stopped'}`, 'info');
+          await this.loadAll();
+        } else {
+          Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
+        }
+      } finally {
+        this.publishBusy = false;
+      }
     },
 
     async addGateway() {

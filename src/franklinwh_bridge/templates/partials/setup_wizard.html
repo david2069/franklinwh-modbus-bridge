@@ -350,6 +350,25 @@
                 Fine — the dashboard, scheduler and battery control work without it.
                 You can connect Home Assistant later in Settings → Home Assistant.
               </p>
+              <template x-if="useHa">
+                <div class="space-y-2">
+                  <template x-for="gw in setupGateways" :key="gw.gateway_id">
+                    <div class="text-xs space-y-1" data-testid="publish-question">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span>Publish <span class="font-semibold" x-text="gw.name"></span>'s entities to Home Assistant?</span>
+                        <button type="button" @click="setPublish(gw, true)" :disabled="busy"
+                                class="btn btn-sm" :class="gw.publish_to_ha ? 'btn-primary' : 'btn-secondary'">Yes</button>
+                        <button type="button" @click="setPublish(gw, false)" :disabled="busy"
+                                class="btn btn-sm" :class="gw.publish_to_ha ? 'btn-secondary' : 'btn-primary'">No</button>
+                      </div>
+                      <p class="text-slate-400" x-text="(gw.publish_to_ha
+                          ? 'Its sensors and controls appear in Home Assistant through MQTT discovery.'
+                          : (gw.mock ? 'A demo stays out of Home Assistant unless you say so.' : 'Nothing of it is sent to Home Assistant.'))
+                          + ' You can change this later in Settings → Home Assistant.'"></p>
+                    </div>
+                  </template>
+                </div>
+              </template>
               <template x-for="item in checklist" :key="item.id">
                 <div class="flex items-start gap-2 text-xs">
                   <span class="shrink-0 w-4 text-center"
