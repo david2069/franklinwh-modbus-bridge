@@ -42,6 +42,12 @@ export MODBUS_POLL_INTERVAL="$(bashio::config 'poll_interval')"
 # LOG_LEVEL as well keeps uvicorn and the app in step.
 export LOG_LEVEL="$(bashio::config 'log_level')"
 
+# Home Assistant naming for a new install, without the wizard. Unset: nothing
+# is published until it is chosen in the bridge's setup (Home Assistant naming).
+if bashio::config.has_value 'mqtt_namespace'; then
+  export MQTT_NAMESPACE="$(bashio::config 'mqtt_namespace')"
+fi
+
 BRIDGE_VERSION="$(python3 -c 'import franklinwh_bridge as b; print(b.__version__)' 2>/dev/null || echo unknown)"
 bashio::log.info "Starting FranklinWH Modbus Bridge v${BRIDGE_VERSION} (ingress on :8099)"
 if bashio::services.available "mqtt"; then

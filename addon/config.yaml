@@ -58,3 +58,8 @@ schema:
   gateway_unit_id: int(1,247)
   poll_interval: int(5,300)
   log_level: list(DEBUG|INFO|WARNING|ERROR|CRITICAL)
+  # Home Assistant naming (MQTT namespace) for a NEW install, chosen without
+  # the setup wizard: fwh_mb (recommended) or franklinwh (only to keep a
+  # previous install's entities). Ignored once the install has a namespace.
+  # See docs/home-assistant-naming.md.
+  mqtt_namespace: str?

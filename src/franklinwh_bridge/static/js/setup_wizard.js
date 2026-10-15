@@ -41,6 +41,8 @@
     Alpine.store('setup', {
       state: null,          // pending | done_real | done_demo | skipped
       hasRealGateway: false,
+      // A fresh install publishes nothing to HA until its naming is chosen.
+      haNamingPending: false,
       async load() {
         try {
           const resp = await fetch('api/setup/state');
@@ -48,9 +50,14 @@
           const d = await resp.json();
           this.state = d.state;
           this.hasRealGateway = !!d.has_real_gateway;
+          this.haNamingPending = !!d.ha_naming_pending;
         } catch (_) { /* the wizard is optional; never block the UI on it */ }
       },
       open() { window.dispatchEvent(new CustomEvent('open-setup-wizard')); },
+      // Straight to the "Home Assistant naming" step (banner, Settings).
+      openNaming() {
+        window.dispatchEvent(new CustomEvent('open-setup-wizard', { detail: { step: 'ha-naming' } }));
+      },
     });
   });
 
@@ -103,13 +110,20 @@
       gatewayPublish: [],        // checklist `gateways`: [{gateway_id, name, mock, publish_to_ha}]
       namespace: null,           // checklist `namespace`: GET /api/mqtt/namespace body
 
+      // Home Assistant naming step (GET /api/setup/ha-naming)
+      naming: null,
+      namingChoice: 'fwh_mb',    // a preset value, or 'custom'
+      namingCustom: '',
+      namingAck: false,
+      namingPreviewSeq: 0,
+
       // Accounts step
       accounts: null,            // GET /api/setup/accounts body
       pw: { current: '', next: '', confirm: '' },
       pwDone: false,
 
       async init() {
-        window.addEventListener('open-setup-wizard', () => this.start());
+        window.addEventListener('open-setup-wizard', (ev) => this.start(ev && ev.detail));
         await Alpine.store('setup').load();
         if (Alpine.store('setup').state !== 'pending') return;
         // Admins only, and never on top of the legal notice.
@@ -140,9 +154,10 @@
         } catch (_) { return true; }
       },
 
-      start() {
+      start(detail) {
         this.reset();
         this.open = true;
+        if (detail && detail.step === 'ha-naming') this.enterHaNaming({ direct: true });
       },
 
       reset() {
@@ -152,6 +167,7 @@
           probeRow: null, picks: [], connected: [], reading: null,
           demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [], gatewayPublish: [], namespace: null,
           accounts: null, pw: { current: '', next: '', confirm: '' }, pwDone: false,
+          naming: null, namingChoice: 'fwh_mb', namingCustom: '', namingAck: false,
         });
       },
 
@@ -372,7 +388,7 @@
         } finally {
           this.busy = false;
         }
-        if (!this.accounts || !this.accounts.applies) { await this.enterChecklist(); return; }
+        if (!this.accounts || !this.accounts.applies) { await this.enterHaNaming(); return; }
         this.go('accounts');
       },
 
@@ -402,6 +418,95 @@
         } finally {
           this.busy = false;
         }
+      },
+
+      // ── Home Assistant naming (chosen once, before anything is published) ──
+      // A fresh install publishes nothing to Home Assistant until this is
+      // answered. Skipped when the user doesn't use HA, or when the naming is
+      // already set (published) — the checklist then just shows it.
+      async enterHaNaming(opts = {}) {
+        this.error = '';
+        this.busy = true;
+        let d = null;
+        try {
+          d = await api('ha-naming?detect=true');
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.busy = false;
+        }
+        if (!d || (!opts.direct && (!d.use_ha || !d.can_choose))) { await this.enterChecklist(); return; }
+        this.naming = d;
+        // Preselect: a previous install's namespace if one was found, else
+        // what is stored (fwh_mb on a fresh install).
+        const found = d.previous_install && d.previous_install.found ? d.previous_install.prefix : null;
+        this.selectNaming(found || d.current, { preview: false });
+        if (found && found !== d.current) await this.loadNamingPreview();
+        this.namingAck = false;
+        this.go('ha-naming');
+      },
+
+      selectNaming(value, opts = {}) {
+        const presets = (this.naming?.choices || []).map(c => c.value);
+        if (presets.includes(value)) {
+          this.namingChoice = value;
+        } else {
+          this.namingChoice = 'custom';
+          this.namingCustom = value || '';
+        }
+        if (opts.preview !== false) this.loadNamingPreview();
+      },
+
+      get namingTarget() {
+        return this.namingChoice === 'custom' ? (this.namingCustom || '').trim() : this.namingChoice;
+      },
+
+      // Mirrors publish/namespace.py validate_namespace; the server decides.
+      get namingProblem() {
+        const n = this.naming;
+        if (!n) return '';
+        const v = this.namingTarget;
+        if (!v) return this.namingChoice === 'custom' ? 'Enter a name: fwh_ plus 2–8 lowercase letters or digits' : '';
+        const reserved = (n.reserved || []).find(r => r.value === v);
+        if (reserved) return `'${v}' is reserved for ${reserved.label}`;
+        if ((n.choices || []).some(c => c.value === v)) return '';
+        if (!new RegExp(n.custom_pattern).test(v)) return 'Use fwh_ plus 2–8 lowercase letters or digits';
+        return '';
+      },
+
+      get namingPreview() { return this.naming?.preview?.gateways || []; },
+
+      async loadNamingPreview() {
+        if (!this.naming || this.namingProblem) return;
+        const seq = ++this.namingPreviewSeq;
+        try {
+          const d = await api(`ha-naming?prefix=${encodeURIComponent(this.namingTarget)}`);
+          if (seq !== this.namingPreviewSeq || !this.naming) return;
+          this.naming.preview = d.preview;
+        } catch (_) { /* keep the last preview */ }
+      },
+
+      async chooseNaming() {
+        if (!this.namingAck || this.namingProblem || !this.namingTarget) return;
+        this.busy = true;
+        this.error = '';
+        try {
+          await api('ha-naming', {
+            method: 'POST', body: { topic_prefix: this.namingTarget, acknowledged: true },
+          });
+          await Alpine.store('setup').load();
+          await this.enterChecklist();
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.busy = false;
+        }
+      },
+
+      async notUsingHa() {
+        await this.setUseHa(false);
+        await Alpine.store('setup').load();
+        if (!this.error) this.go('checklist');
       },
 
       // ── Step 6: Home Assistant checklist ──────────────────────
@@ -441,28 +546,6 @@
         this.checklist = d.items || [];
         this.gatewayPublish = d.gateways || [];
         this.namespace = d.namespace || null;
-      },
-
-      // Before anything is published the namespace changes freely (#87); after,
-      // the wizard only shows it and Settings has the confirmed change.
-      async setNamespace(value) {
-        if (!this.namespace || this.namespace.published || value === this.namespace.topic_prefix) return;
-        this.busy = true;
-        this.error = '';
-        try {
-          const resp = await fetch('api/mqtt/namespace', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ topic_prefix: value }),
-          });
-          const data = await resp.json().catch(() => null);
-          if (!resp.ok) throw new Error((data && typeof data.detail === 'string') ? data.detail : `Request failed (${resp.status})`);
-          this.applyChecklist(await api('checklist'));
-        } catch (e) {
-          this.error = e.message;
-        } finally {
-          this.busy = false;
-        }
       },
 
       // The gateways this run of the wizard set up — the ones it asks about

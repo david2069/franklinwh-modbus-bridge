@@ -43,7 +43,16 @@ from franklinwh_bridge.config.environment import (
 )
 from franklinwh_bridge.config.supervisor import LOCAL_HA_ID
 from franklinwh_bridge.publish.entities import DEFAULT_TOPIC_PREFIX
-from franklinwh_bridge.publish.namespace import namespace_info
+from franklinwh_bridge.publish.namespace import (
+    NAMESPACE_POLICY,
+    NamespaceError,
+    choose_namespace,
+    detect_previous_install,
+    is_pending,
+    namespace_info,
+    preview_namespace,
+    validate_namespace,
+)
 from franklinwh_bridge.store.db import (
     gateway_is_unconfigured,
     get_app_config,
@@ -95,11 +104,15 @@ async def setup_status(db: aiosqlite.Connection) -> dict[str, Any]:
     has_real = any(not g.get("mock") and not gateway_is_unconfigured(g) for g in gateways)
     has_mock = any(g.get("mock") for g in gateways)
     state = "done_real" if stored == "pending" and has_real else stored
+    env = detect_environment()
     return {
         "state": state,
         "has_real_gateway": has_real,
         "has_mock": has_mock,
-        "environment": detect_environment(),
+        "environment": env,
+        # Home Assistant publishing waits for the naming choice (banner). Not
+        # nagged about on an install that said it doesn't use HA.
+        "ha_naming_pending": await is_pending(db) and await _use_ha(db, env),
     }
 
 
@@ -607,7 +620,9 @@ async def get_checklist(request: Request):
         "id": "mqtt_broker",
         "status": "ok" if connected else "fail",
         "detail": (
-            "Connected" if connected
+            "Connected — publishing waits for the Home Assistant naming choice"
+            if connected and getattr(publisher, "held", False)
+            else "Connected" if connected
             else "Waiting for an MQTT broker" if broker.get("waiting_for_broker")
             else "Not connected"
         ),
@@ -674,6 +689,88 @@ async def get_checklist(request: Request):
     # published (#87); after that the wizard points to Settings.
     return {"environment": env, "use_ha": True, "ask_use_ha": env != "ha_addon", "items": items,
             "gateways": publishing, "namespace": await namespace_info(db, publisher)}
+
+
+# ── Home Assistant naming (the MQTT namespace, chosen once) ───────────────────
+
+
+class HaNamingChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topic_prefix: str = Field(..., min_length=1, max_length=32)
+    #: "I understand this is permanent" — required.
+    acknowledged: bool = False
+
+
+@router.get("/ha-naming", dependencies=[Depends(_REQUIRE_ADMIN)])
+async def get_ha_naming(request: Request, prefix: str | None = None, detect: bool = False):
+    """The wizard's "Home Assistant naming" step: status, choices and a preview.
+
+    ``prefix`` previews a candidate (default: the one stored). ``detect`` also
+    looks on the MQTT broker — read-only — for this bridge's entities from a
+    previous install, and preselects their namespace if found.
+    """
+    db = request.app.state.db
+    publisher = getattr(request.app.state, "mqtt_publisher", None)
+    env = detect_environment()
+    info = await namespace_info(db, publisher)
+    candidate = (prefix or info["topic_prefix"] or "").strip()
+    problem = validate_namespace(candidate)
+    # An unconfigured default row (no address) is never published: not shown.
+    gateways = [g for g in await get_gateways(db) if not gateway_is_unconfigured(g)]
+    preview = [] if problem else preview_namespace(candidate, gateways, info["discovery_prefix"])
+
+    previous: dict[str, Any] | None = None
+    if detect:
+        if publisher is None:
+            previous = {"checked": False, "found": False, "error": "MQTT is not configured"}
+        elif not publisher.state.connected:
+            previous = {"checked": False, "found": False,
+                        "error": "The MQTT broker isn't connected, so it couldn't be checked"}
+        else:
+            previous = await detect_previous_install(db, publisher)
+
+    p = NAMESPACE_POLICY
+    return {
+        "environment": env,
+        "use_ha": await _use_ha(db, env),
+        "ask_use_ha": env != "ha_addon",
+        "pending": info["pending"],
+        "published": info["published"],
+        # The wizard offers the choice while it can be made freely.
+        "can_choose": info["pending"] or not info["published"],
+        "current": info["topic_prefix"],
+        "recommended": info["recommended"],
+        "legacy": info["legacy"],
+        "choices": info["presets"],
+        "custom_pattern": p.custom_pattern,
+        "reserved": [{"value": k, "label": v} for k, v in p.reserved.items()],
+        "discovery_prefix": info["discovery_prefix"],
+        "chosen": info["chosen"],
+        "env_var": info["env_var"],
+        "docs_url": info["docs_url"],
+        "preview": {"prefix": candidate, "error": problem, "gateways": preview},
+        "previous_install": previous,
+    }
+
+
+@router.post("/ha-naming")
+async def post_ha_naming(body: HaNamingChoice, request: Request, user: dict = _ADMIN_USER):
+    """Choose the Home Assistant naming. Needs ``acknowledged``.
+
+    On a fresh install this is what starts publishing to Home Assistant. Once
+    an install has published, 409: changing it is Settings → Change namespace….
+    """
+    try:
+        result = await choose_namespace(
+            request.app.state.db,
+            getattr(request.app.state, "mqtt_publisher", None),
+            body.topic_prefix,
+            acknowledged=body.acknowledged,
+            actor=(user or {}).get("username", ""),
+        )
+    except NamespaceError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return {**result, "naming": await get_ha_naming(request)}
 
 
 # ── accounts ──────────────────────────────────────────────────────────────────

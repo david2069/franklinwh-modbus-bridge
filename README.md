@@ -171,6 +171,7 @@ Configuration is loaded with the following precedence (highest wins):
 | `MQTT_PORT` | `1883` | MQTT broker port |
 | `MQTT_USERNAME` | *(none)* | Broker username |
 | `MQTT_PASSWORD` | *(none)* | Broker password |
+| `MQTT_NAMESPACE` | *(none)* | Home Assistant naming for a **new** install, chosen without the UI (`fwh_mb`, `franklinwh` or `fwh_<2–8 chars>`). Without it a new install publishes nothing until the naming is chosen in the setup wizard. Ignored once set. See [docs/home-assistant-naming.md](docs/home-assistant-naming.md) |
 
 #### Application
 
@@ -231,8 +232,13 @@ Available MQTT config fields: `host`, `port`, `username`, `password`,
 `retain_discovery`, `topic_prefix`, `discovery_prefix`.
 
 `topic_prefix` is the bridge's MQTT namespace (topics, unique_ids, device
-identifiers). New installs start on `fwh_mb`; existing installs keep
-`franklinwh`. PATCH refuses to change it, because a change re-creates every
+identifiers), its "Home Assistant naming". A new install publishes nothing
+until it is chosen: the setup wizard's Home Assistant naming step
+(`GET`/`POST /api/setup/ha-naming`, `{"topic_prefix": "fwh_mb",
+"acknowledged": true}`), or `MQTT_NAMESPACE`. Existing installs keep
+`franklinwh`. Why it's permanent, and every combination of aGates,
+integrations, brokers and Home Assistants:
+[docs/home-assistant-naming.md](docs/home-assistant-naming.md). PATCH refuses to change it, because a change re-creates every
 Home Assistant entity. Use `POST /api/mqtt/namespace` (`{"topic_prefix":
 "fwh_mb", "confirm": true}`, admin only) or Settings → Home Assistant → MQTT
 Broker → Change namespace…. It removes only the old discovery configs this

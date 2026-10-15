@@ -103,11 +103,16 @@ async def _add_gateway(db, gw_id="default", host="", serial=None, mock=0):
     await db.commit()
 
 
-async def test_fresh_install_gets_fwh_mb_and_records_it(db):
-    choice = await ns.choose_initial_namespace(db)
-    assert choice["prefix"] == "fwh_mb" and choice["reason"] == "new_install"
+async def test_fresh_install_preselects_fwh_mb_but_leaves_the_choice_pending(db):
+    """A fresh install chooses nothing by itself: the user does (the wizard)."""
+    choice = await ns.choose_initial_namespace(db, env_value="")
+    assert choice == {"prefix": "fwh_mb", "reason": "pending", "pending": True}
     assert (await get_mqtt_config(db))["topic_prefix"] == "fwh_mb"
-    assert json.loads(await get_app_config(db, ns.CHOSEN_KEY))["prefix"] == "fwh_mb"
+    assert not await get_app_config(db, ns.CHOSEN_KEY)
+    assert await ns.is_pending(db)
+    # Still pending at the next start — even once a gateway is configured.
+    await _add_gateway(db, host="192.0.2.10")
+    assert (await ns.choose_initial_namespace(db, env_value=""))["pending"] is True
 
 
 async def test_unconfigured_default_gateway_row_is_still_fresh(db):

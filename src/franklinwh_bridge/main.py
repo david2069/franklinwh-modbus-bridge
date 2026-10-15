@@ -232,7 +232,7 @@ async def lifespan(app: FastAPI):
     # MQTT namespace and client id, decided once per install (#87, #118). Before
     # the default gateway is created from the environment: a gateway on file
     # here means an existing install, which keeps its namespace.
-    await choose_initial_namespace(db)
+    namespace_choice = await choose_initial_namespace(db)
     await ensure_client_id(db)
 
     # Ensure the default gateway exists in the DB. With no host configured it is
@@ -324,6 +324,10 @@ async def lifespan(app: FastAPI):
     )
     app.state.mqtt_publisher = mqtt_publisher
     mqtt_publisher.on_published = lambda: mark_published(db)
+    if namespace_choice.get("pending"):
+        # A fresh install: nothing reaches HA until the user chooses the naming
+        # (setup wizard, or MQTT_NAMESPACE). See docs/home-assistant-naming.md.
+        mqtt_publisher.hold()
 
     await mqtt_publisher.sync_groups(db)
 

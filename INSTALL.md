@@ -89,6 +89,16 @@ Click the button above, or add the repository by hand:
 - **Data persists** in the add-on's own storage, so upgrades keep your
   schedules, history and settings.
 
+### Home Assistant naming
+
+The setup wizard asks for the bridge's **Home Assistant naming** (the MQTT
+namespace) before anything is published: `fwh_mb` for a new install, or the
+name an earlier install used, to keep its entities. It is permanent in
+practice. The add-on option `mqtt_namespace` sets it without the wizard. See
+[docs/home-assistant-naming.md](docs/home-assistant-naming.md), including what
+an uninstall keeps (Home Assistant keeps the entities; the add-on's own data
+is deleted).
+
 ### Multiple Home Assistant instances
 
 Separate from the add-on's own HA: the bridge can read entities from **several**
@@ -119,6 +129,15 @@ password under **Settings → Admin → Users** straight after signing in. (With
 
 MQTT is configured by hand here (**Settings → MQTT**): there is no Supervisor to
 ask.
+
+**Home Assistant naming.** A new install publishes nothing to Home Assistant
+until you choose its naming (the MQTT namespace), in the setup wizard or with
+`MQTT_NAMESPACE=fwh_mb` in `.env` if you never open the UI. Treat the choice as
+permanent: it becomes part of every entity's unique id. If you are reinstalling,
+choose the name the earlier install used to keep its entities. See
+[docs/home-assistant-naming.md](docs/home-assistant-naming.md) for several
+aGates, several integrations, a shared broker, two Home Assistants and
+removing or reinstalling.
 
 ---
 
