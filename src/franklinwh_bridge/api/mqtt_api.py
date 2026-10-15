@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from franklinwh_bridge.config.environment import detect_environment
+from franklinwh_bridge.config.mqtt_broker import ENV_VARS, env_values, resolve_broker
+from franklinwh_bridge.config.supervisor import discover_mqtt
 from franklinwh_bridge.store.db import get_mqtt_config, set_mqtt_config
 
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
@@ -49,9 +51,18 @@ def _redact_config(config: dict) -> dict:
 
 @router.get("/config")
 async def get_config(request: Request):
+    """The stored config, plus where each broker field in use comes from (#103).
+
+    ``sources`` maps host/port/username/password to ``environment`` /
+    ``settings`` / ``supervisor`` / ``default``; ``env_vars`` names the variable
+    for each field the environment sets, so the form can say why it's locked.
+    """
     db: aiosqlite.Connection = request.app.state.db
-    config = await get_mqtt_config(db)
-    return _redact_config(config)
+    config = _redact_config(await get_mqtt_config(db))
+    env = env_values()
+    config["sources"] = getattr(request.app.state, "mqtt_sources", None) or {}
+    config["env_vars"] = {f: ENV_VARS[f] for f in env}
+    return config
 
 
 @router.patch("/config")
@@ -68,7 +79,15 @@ async def update_config(body: MqttConfigUpdate, request: Request):
             f"Changing {', '.join(changed)} re-creates every Home Assistant entity; "
             "it is not supported yet (#87)",
         )
-    config = await set_mqtt_config(db, updates)
+    # A field the environment sets can't be changed here: the variable wins at
+    # every start, so a saved value would look accepted and never be used.
+    env = env_values()
+    locked = [f for f in ENV_VARS if f in updates and f in env and updates[f] != env[f]]
+    if locked:
+        names = ", ".join(ENV_VARS[f] for f in locked)
+        raise HTTPException(
+            409, f"Set by {names} in the bridge's environment; change it there and restart")
+    config = await set_mqtt_config(db, {k: v for k, v in updates.items() if k not in env})
     if "enabled" in updates:
         # Every time, not only on a change: start/stop are idempotent, and this
         # also brings a publisher that drifted from the stored value back.
@@ -129,12 +148,18 @@ async def reconnect(request: Request):
     if publisher is None:
         raise HTTPException(503, "MQTT publisher not configured")
     await publisher.stop()
+    # Apply what is saved now, not what was read at startup: "Save & Reconnect"
+    # used to reconnect to the old broker until the next restart (#103).
+    stored = await get_mqtt_config(request.app.state.db)
+    resolved, sources = await resolve_broker(stored, lambda: discover_mqtt(quiet=True))
+    publisher.set_broker(resolved)
+    request.app.state.mqtt_sources = sources
     # A disabled publisher stays stopped: reconnecting must not override
     # "Enabled" off (#96).
-    if not (await get_mqtt_config(request.app.state.db)).get("enabled", True):
+    if not stored.get("enabled", True):
         return {"status": "disabled"}
     await publisher.start()
-    return {"status": "reconnecting"}
+    return {"status": "reconnecting", "host": resolved["host"], "port": resolved["port"]}
 
 
 @router.post("/publish")

@@ -693,25 +693,41 @@
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Host</label>
           <input type="text" x-model="mqttEdit.host"
+                 :readonly="!!mqttEnvVar('host')" :class="mqttEnvVar('host') && 'opacity-60 cursor-not-allowed'"
                  class="form-control !py-1 !text-xs w-full font-mono"
                  placeholder="localhost">
+          <p x-show="mqttEnvVar('host')" class="text-[10px] text-slate-500 mt-0.5">
+            Set by <span class="font-mono" x-text="mqttEnvVar('host')"></span> in the bridge's environment; change it there and restart.
+          </p>
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Port</label>
-          <input type="number" x-model="mqttEdit.port" min="1" max="65535"
+          <input type="number" x-model="mqttEdit.port"
+                 :readonly="!!mqttEnvVar('port')" :class="mqttEnvVar('port') && 'opacity-60 cursor-not-allowed'" min="1" max="65535"
                  class="form-control !py-1 !text-xs w-28 font-mono">
+          <p x-show="mqttEnvVar('port')" class="text-[10px] text-slate-500 mt-0.5">
+            Set by <span class="font-mono" x-text="mqttEnvVar('port')"></span> in the bridge's environment; change it there and restart.
+          </p>
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Username</label>
           <input type="text" x-model="mqttEdit.username"
+                 :readonly="!!mqttEnvVar('username')" :class="mqttEnvVar('username') && 'opacity-60 cursor-not-allowed'"
                  class="form-control !py-1 !text-xs w-full font-mono"
                  placeholder="(anonymous)">
+          <p x-show="mqttEnvVar('username')" class="text-[10px] text-slate-500 mt-0.5">
+            Set by <span class="font-mono" x-text="mqttEnvVar('username')"></span> in the bridge's environment; change it there and restart.
+          </p>
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Password</label>
           <input type="password" x-model="mqttEdit.password"
+                 :readonly="!!mqttEnvVar('password')" :class="mqttEnvVar('password') && 'opacity-60 cursor-not-allowed'"
                  class="form-control !py-1 !text-xs w-full font-mono"
                  placeholder="(unchanged)">
+          <p x-show="mqttEnvVar('password')" class="text-[10px] text-slate-500 mt-0.5">
+            Set by <span class="font-mono" x-text="mqttEnvVar('password')"></span> in the bridge's environment; change it there and restart.
+          </p>
         </div>
         <div>
           <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">TLS Mode</label>

@@ -989,6 +989,18 @@ class MqttPublisher:
         if was_running:
             await self.start()
 
+    def set_broker(self, config: dict) -> None:
+        """Point at a broker without starting or stopping anything (#103).
+
+        For a caller that stops and starts the loop itself, as
+        ``/api/mqtt/reconnect`` does; ``reconfigure`` restarts on its own.
+        """
+        self._host = config.get("host", self._host)
+        self._port = config.get("port", self._port)
+        self._username = config.get("username", self._username)
+        self._password = config.get("password", self._password)
+        self._state.discovery_published = False
+
     def request_discovery_republish(self) -> None:
         """Flag discovery for re-publish on the next connection cycle."""
         self._state.discovery_published = False

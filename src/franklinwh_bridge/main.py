@@ -41,6 +41,7 @@ from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
 from franklinwh_bridge.config.clock import check_and_record
 from franklinwh_bridge.config.manager import AppConfig
+from franklinwh_bridge.config.mqtt_broker import resolve_broker
 from franklinwh_bridge.config.supervisor import (
     MQTT_WATCH_INTERVAL_S,
     apply_timezone,
@@ -275,40 +276,28 @@ async def lifespan(app: FastAPI):
     app.state.log_buffer = log_buffer
 
     # ── MQTT Publisher ────────────────────────────────────────
-    mqtt_config = await get_mqtt_config(db)
-    env_mqtt = config.settings.mqtt
-    mqtt_config["host"] = env_mqtt.host
-    mqtt_config["port"] = env_mqtt.port
-    if env_mqtt.username:
-        mqtt_config["username"] = env_mqtt.username
-    if env_mqtt.password:
-        mqtt_config["password"] = env_mqtt.password
-
-    # Running as an HA add-on, the Supervisor already knows the broker — ask it
-    # rather than making the user retype what Mosquitto was set up with. Only
-    # fills in what hasn't been set explicitly: a typed host always wins, and
-    # outside an add-on this is inert.
+    # Broker settings: environment, then Settings, then (as an add-on) the
+    # Supervisor's Mosquitto, then localhost — see config/mqtt_broker.py (#103).
     #
     # As an add-on with no broker yet (Mosquitto not installed), wait for one
     # rather than retry localhost forever: the watcher below connects as soon
     # as the Supervisor reports an MQTT service, with no restart.
+    mqtt_config, mqtt_sources = await resolve_broker(await get_mqtt_config(db), discover_mqtt)
+    app.state.mqtt_sources = mqtt_sources
     mqtt_broker: dict[str, Any] = {"source": "configured", "waiting_for_broker": False}
-    if mqtt_config.get("host") in (None, "", "localhost"):
-        discovered = await discover_mqtt()
-        if discovered:
-            mqtt_config.update({k: v for k, v in discovered.items() if v is not None})
-            mqtt_broker["source"] = "supervisor"
-            logger.info(
-                "MQTT broker discovered via Supervisor: %s:%s",
-                discovered["host"], discovered["port"],
-            )
-        elif supervisor_token():
-            mqtt_broker = {"source": "none", "waiting_for_broker": True}
-            logger.warning(
-                "No MQTT broker yet — install the Mosquitto broker add-on and the "
-                "bridge will connect to it automatically. Until then nothing is "
-                "published to Home Assistant."
-            )
+    if mqtt_sources["host"] == "supervisor":
+        mqtt_broker["source"] = "supervisor"
+        logger.info(
+            "MQTT broker discovered via Supervisor: %s:%s",
+            mqtt_config["host"], mqtt_config["port"],
+        )
+    elif mqtt_sources["host"] == "default" and supervisor_token():
+        mqtt_broker = {"source": "none", "waiting_for_broker": True}
+        logger.warning(
+            "No MQTT broker yet — install the Mosquitto broker add-on and the "
+            "bridge will connect to it automatically. Until then nothing is "
+            "published to Home Assistant."
+        )
     app.state.mqtt_broker = mqtt_broker
 
     mqtt_publisher = MqttPublisher.from_db_config(
@@ -334,6 +323,11 @@ async def lifespan(app: FastAPI):
             if (await get_mqtt_config(db)).get("enabled", True):
                 await mqtt_publisher.start()
             app.state.mqtt_broker = {"source": "supervisor", "waiting_for_broker": False}
+            app.state.mqtt_sources = {
+                **getattr(app.state, "mqtt_sources", {}),
+                **{f: "supervisor" for f in ("host", "port", "username", "password")
+                   if found.get(f) is not None},
+            }
             logger.info(
                 "MQTT broker appeared via Supervisor (%s:%s) — connected",
                 found["host"], found["port"],

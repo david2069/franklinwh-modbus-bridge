@@ -1845,11 +1845,21 @@ function settingsTab() {
       return 'bg-slate-700/50 text-slate-400';
     },
 
+    // Which MQTT_* variable sets a broker field, or '' (#103). Such a field wins
+    // at every start, so the form shows it read-only instead of a value that
+    // would be saved and never used.
+    mqttEnvVar(field) {
+      return (this.mqttConfig.env_vars || {})[field] || '';
+    },
+
     startMqttEdit() {
+      // Start from the broker in use (environment / Supervisor / saved), not
+      // only the saved row: that showed "localhost" while connected elsewhere.
+      const inUse = (this.mqtt && this.mqtt.broker) || {};
       this.mqttEdit = {
-        host: this.mqttConfig.host || 'localhost',
-        port: this.mqttConfig.port || 1883,
-        username: this.mqttConfig.username || '',
+        host: inUse.host || this.mqttConfig.host || 'localhost',
+        port: inUse.port || this.mqttConfig.port || 1883,
+        username: inUse.username || this.mqttConfig.username || '',
         password: '',
         tls_mode: this.mqttConfig.tls_mode || 'off',
         topic_prefix: this.mqttConfig.topic_prefix || 'franklinwh',
@@ -1904,6 +1914,10 @@ function settingsTab() {
         if (this.mqttEdit.password) {
           payload.password = this.mqttEdit.password;
         }
+        // Fields the environment sets aren't ours to save (#103).
+        for (const f of ['host', 'port', 'username', 'password']) {
+          if (this.mqttEnvVar(f)) delete payload[f];
+        }
         const data = await fetchJSON('api/mqtt/config', {
           method: 'PATCH',
           body: JSON.stringify(payload),
@@ -1918,7 +1932,7 @@ function settingsTab() {
           await this.loadAll();
         } else {
           Alpine.store('app').toast(
-            'Save failed: ' + (data?.error || 'unknown'),
+            'Save failed: ' + (data?.detail || data?.error || 'unknown'),
             'error',
           );
         }
