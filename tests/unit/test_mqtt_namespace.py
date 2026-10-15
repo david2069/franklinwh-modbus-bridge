@@ -1,4 +1,4 @@
-"""The stored MQTT namespace is used everywhere (#90), and can't be changed yet (#87).
+"""The stored MQTT namespace is used everywhere (#90); PATCH can't change it (#87).
 
 Topic Prefix and Discovery Prefix were saved and loaded but ignored: every topic,
 unique_id and device identifier was hard-coded ``franklinwh`` / ``homeassistant``.
@@ -118,12 +118,12 @@ async def client(tmp_path, monkeypatch):
 
 
 async def test_patch_refuses_a_namespace_change(client):
-    for body in ({"topic_prefix": "fwh_mb"}, {"discovery_prefix": "other"}):
+    for body in ({"topic_prefix": "fwh_home"}, {"discovery_prefix": "other"}):
         resp = await client.patch("/api/mqtt/config", json=body)
         assert resp.status_code == 409, body
         assert "#87" in resp.json()["detail"]
     cfg = (await client.get("/api/mqtt/config")).json()
-    assert (cfg["topic_prefix"], cfg["discovery_prefix"]) == ("franklinwh", "homeassistant")
+    assert (cfg["topic_prefix"], cfg["discovery_prefix"]) == ("fwh_mb", "homeassistant")
 
 
 async def test_patch_accepts_the_current_namespace(client):
@@ -132,7 +132,7 @@ async def test_patch_accepts_the_current_namespace(client):
         "/api/mqtt/config",
         json={
             "host": "broker.local",
-            "topic_prefix": "franklinwh",
+            "topic_prefix": "fwh_mb",
             "discovery_prefix": "homeassistant",
         },
     )

@@ -8,12 +8,14 @@ import socket
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.api.auth import get_current_user
 from franklinwh_bridge.config.environment import detect_environment
 from franklinwh_bridge.config.mqtt_broker import ENV_VARS, env_values, resolve_broker
 from franklinwh_bridge.config.supervisor import discover_mqtt
+from franklinwh_bridge.publish.namespace import NamespaceError, change_namespace, namespace_info
 from franklinwh_bridge.store.db import get_mqtt_config, set_mqtt_config
 
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
@@ -34,11 +36,21 @@ class MqttConfigUpdate(BaseModel):
     discovery_prefix: str | None = Field(default=None, pattern="^[A-Za-z0-9_-]{1,64}$")
 
 
+class NamespaceChange(BaseModel):
+    topic_prefix: str = Field(min_length=1, max_length=32)
+    #: Required once anything has been published: the change re-creates every
+    #: Home Assistant entity.
+    confirm: bool = False
+
+
 #: Fields that name the MQTT namespace. Changing one re-creates every entity in
-#: Home Assistant and nothing yet removes the old ones, so a change is refused
-#: until the confirmed change flow exists (#87). Re-sending the current value is
+#: Home Assistant, so PATCH refuses it: the topic prefix changes through
+#: POST /api/mqtt/namespace, which removes this bridge's old entities first
+#: (#87); the discovery prefix stays fixed. Re-sending the current value is
 #: fine — the Settings form always sends both.
 _NAMESPACE_FIELDS = ("topic_prefix", "discovery_prefix")
+
+_CURRENT_USER = Depends(get_current_user)  # hoisted: Depends() in a default trips B008
 
 
 def _redact_config(config: dict) -> dict:
@@ -74,10 +86,16 @@ async def update_config(body: MqttConfigUpdate, request: Request):
     current = await get_mqtt_config(db)
     changed = [f for f in _NAMESPACE_FIELDS if f in updates and updates[f] != current.get(f)]
     if changed:
+        how = (
+            "change the topic prefix with POST /api/mqtt/namespace (Settings → Home "
+            "Assistant → MQTT Broker → Change namespace…)"
+            if changed == ["topic_prefix"]
+            else "the discovery prefix can't be changed"
+        )
         raise HTTPException(
             409,
-            f"Changing {', '.join(changed)} re-creates every Home Assistant entity; "
-            "it is not supported yet (#87)",
+            f"Changing {', '.join(changed)} re-creates every Home Assistant entity, "
+            f"so it isn't changed here: {how} (#87)",
         )
     # A field the environment sets can't be changed here: the variable wins at
     # every start, so a saved value would look accepted and never be used.
@@ -113,6 +131,37 @@ async def _apply_enabled(request: Request, enabled: bool) -> None:
         await publisher.start()
         return
     await publisher.stop(offline=publisher.state.connected)
+
+
+@router.get("/namespace")
+async def get_namespace(request: Request):
+    """The namespace in use, the choices, and whether a change needs confirming."""
+    return await namespace_info(
+        request.app.state.db, getattr(request.app.state, "mqtt_publisher", None),
+    )
+
+
+@router.post("/namespace")
+async def post_namespace(
+    body: NamespaceChange, request: Request, user: dict | None = _CURRENT_USER,
+):
+    """Change this bridge's MQTT namespace (#87). Admin-only (router gate).
+
+    Before anything is published it simply switches. After, ``confirm`` is
+    required: the old namespace's retained discovery configs that THIS bridge
+    wrote are removed (another producer's are left), then everything is
+    republished under the new one. The answer carries the counts.
+    """
+    publisher = getattr(request.app.state, "mqtt_publisher", None)
+    if publisher is None:
+        raise HTTPException(503, "MQTT publisher not configured")
+    try:
+        return await change_namespace(
+            request.app.state.db, publisher, body.topic_prefix,
+            confirm=body.confirm, actor=(user or {}).get("username", ""),
+        )
+    except NamespaceError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
 
 
 @router.get("/status")

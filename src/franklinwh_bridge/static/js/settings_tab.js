@@ -12,6 +12,14 @@ function settingsTab() {
     mqttSaving: false,
     confirmRepublish: false,
     confirmUnpublish: false,
+    // Change MQTT namespace dialog (#87)
+    nsDialog: false,
+    nsInfo: null,
+    nsChoice: 'fwh_mb',
+    nsCustom: '',
+    nsBusy: false,
+    nsError: '',
+    nsResult: null,
     publishBusy: false,
     poller: {},
     gateway: {},
@@ -2054,6 +2062,64 @@ function settingsTab() {
         }
       } finally {
         this.mqttSaving = false;
+      }
+    },
+
+    // ── MQTT namespace (#87) ───────────────────────────────────
+    async openNamespaceDialog() {
+      this.nsError = '';
+      this.nsResult = null;
+      this.nsCustom = '';
+      this.nsInfo = null;
+      this.nsDialog = true;
+      // fetchJSON answers an error as {ok: false, error}; it doesn't throw.
+      const info = await fetchJSON('api/mqtt/namespace');
+      if (!info || info.error) {
+        this.nsError = "Couldn't load the namespace: " + (info?.error || 'unknown');
+        return;
+      }
+      this.nsInfo = info;
+      const presets = (info.presets || []).map(p => p.value);
+      const now = info.topic_prefix;
+      // Preselect the recommended one, unless it is already in use.
+      this.nsChoice = now === info.recommended
+        ? (presets.find(p => p !== now) || 'custom') : info.recommended;
+    },
+
+    get nsTarget() {
+      return this.nsChoice === 'custom' ? (this.nsCustom || '') : this.nsChoice;
+    },
+
+    // Mirrors publish/namespace.py validate_namespace; the server decides.
+    get nsProblem() {
+      const info = this.nsInfo;
+      if (!info) return '';
+      const v = this.nsTarget;
+      if (!v) return this.nsChoice === 'custom' ? 'Enter a namespace' : '';
+      if ((info.reserved || []).includes(v)) return `'${v}' is reserved for another FranklinWH integration`;
+      if ((info.presets || []).some(p => p.value === v)) return '';
+      if (!new RegExp(info.custom_pattern).test(v)) return 'Use fwh_ plus 2–8 lowercase letters or digits';
+      return '';
+    },
+
+    async changeNamespace() {
+      this.nsBusy = true;
+      this.nsError = '';
+      try {
+        const data = await fetchJSON('api/mqtt/namespace', {
+          method: 'POST',
+          body: JSON.stringify({ topic_prefix: this.nsTarget, confirm: true }),
+        }, 30000);
+        if (!data || data.error) {
+          this.nsError = 'Not changed: ' + (data?.error || 'unknown');
+          return;
+        }
+        this.nsResult = data;
+        Alpine.store('app').toast(`MQTT namespace is now ${data.topic_prefix}`, 'info');
+        await this.loadMqttConfig();
+        await this.loadAll();
+      } finally {
+        this.nsBusy = false;
       }
     },
 

@@ -353,9 +353,9 @@ async def test_checklist_counts_only_current_gateways_entities(fresh_client, mon
             if command["type"] == "config_entries/get":
                 return [{"state": "loaded"}]
             return (
-                [{"platform": "mqtt", "unique_id": f"franklinwh_A0091_x{i}"} for i in range(3)]
-                + [{"platform": "mqtt", "unique_id": f"franklinwh_demo_y{i}"} for i in range(5)]
-                + [{"platform": "sonos", "unique_id": "franklinwh_A0091_not_mqtt"}]
+                [{"platform": "mqtt", "unique_id": f"fwh_mb_A0091_x{i}"} for i in range(3)]
+                + [{"platform": "mqtt", "unique_id": f"fwh_mb_demo_y{i}"} for i in range(5)]
+                + [{"platform": "sonos", "unique_id": "fwh_mb_A0091_not_mqtt"}]
             )
 
     monkeypatch.setattr(setup_api, "_ha_instance", lambda request: FakeHa())

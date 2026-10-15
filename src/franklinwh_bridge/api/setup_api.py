@@ -43,6 +43,7 @@ from franklinwh_bridge.config.environment import (
 )
 from franklinwh_bridge.config.supervisor import LOCAL_HA_ID
 from franklinwh_bridge.publish.entities import DEFAULT_TOPIC_PREFIX
+from franklinwh_bridge.publish.namespace import namespace_info
 from franklinwh_bridge.store.db import (
     gateway_is_unconfigured,
     get_app_config,
@@ -669,8 +670,10 @@ async def get_checklist(request: Request):
         entities.update(status="skipped", count=0,
                         detail="No gateway is published to Home Assistant")
     items.extend([integration, entities])
+    # The namespace HA will see, offered freely only until something is
+    # published (#87); after that the wizard points to Settings.
     return {"environment": env, "use_ha": True, "ask_use_ha": env != "ha_addon", "items": items,
-            "gateways": publishing}
+            "gateways": publishing, "namespace": await namespace_info(db, publisher)}
 
 
 # ── accounts ──────────────────────────────────────────────────────────────────

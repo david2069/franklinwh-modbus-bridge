@@ -65,6 +65,11 @@ from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.gateway.solar_forecast import SolarForecastService
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
+from franklinwh_bridge.publish.namespace import (
+    choose_initial_namespace,
+    ensure_client_id,
+    mark_published,
+)
 from franklinwh_bridge.security import seed_admin, session_secret_key
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store import point_history
@@ -218,6 +223,12 @@ async def lifespan(app: FastAPI):
     await log_startup_event(db, "disclaimer", disclaimer.SHORT)
     await seed_admin(db)  # first-run admin (no lockout); logs a generated pw once
 
+    # MQTT namespace and client id, decided once per install (#87, #118). Before
+    # the default gateway is created from the environment: a gateway on file
+    # here means an existing install, which keeps its namespace.
+    await choose_initial_namespace(db)
+    await ensure_client_id(db)
+
     # Ensure the default gateway exists in the DB. With no host configured it is
     # created UNCONFIGURED (empty host): the registry won't start it, so there
     # is no phantom gateway polling a made-up address.
@@ -306,6 +317,7 @@ async def lifespan(app: FastAPI):
         mqtt_config, gateway_id=gateway_id,
     )
     app.state.mqtt_publisher = mqtt_publisher
+    mqtt_publisher.on_published = lambda: mark_published(db)
 
     await mqtt_publisher.sync_groups(db)
 

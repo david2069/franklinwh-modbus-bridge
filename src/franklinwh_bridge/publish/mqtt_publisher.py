@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,11 @@ from franklinwh_bridge.publish.entities import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Dropped connections within this many seconds that suggest another client is
+#: using our client id (#118): the broker closes the older of the two.
+_FLAP_WINDOW_S = 120.0
+_FLAP_COUNT = 3
 
 #: Seconds a gateway may publish before registration without being warned about
 #: (samples routinely arrive just before start → sync registers it).
@@ -251,6 +257,9 @@ class MqttPublisher:
     _default_suppressed: bool = False
     #: Set by ``stop(offline=True)``: the run loop says "offline" on its way out.
     _offline_on_stop: bool = False
+    #: Awaited after discovery is first published on a connection (main.py
+    #: records it, #87). A class attribute for the same reason as above.
+    on_published: Callable[[], Awaitable[None]] | None = None
 
     def __init__(
         self,
@@ -642,6 +651,13 @@ class MqttPublisher:
                 total_published,
                 1 + len(self._devices) if self._device_info else len(self._devices),
             )
+            if self.on_published is not None:
+                # Recorded so a later namespace change knows it needs the
+                # confirmed flow (#87). Never allowed to break publishing.
+                try:
+                    await self.on_published()
+                except Exception as exc:
+                    logger.debug("on_published hook failed: %s", exc)
         self._state.discovery_published = True
 
     async def _publish_device_discovery(
@@ -915,9 +931,12 @@ class MqttPublisher:
                                 await listener_task
 
             except aiomqtt.MqttError as exc:
+                was_connected = self._state.connected
                 self._state.connected = False
                 self._state.last_error = str(exc)
                 logger.error("MQTT error: %s", exc)
+                if was_connected:
+                    self._note_dropped()
             except Exception as exc:
                 self._state.connected = False
                 self._state.last_error = str(exc)
@@ -929,6 +948,24 @@ class MqttPublisher:
                 logger.info("MQTT reconnect in %.0fs", delay)
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
+
+    def _note_dropped(self) -> None:
+        """Warn when established connections keep being dropped (#118).
+
+        A broker keeps one connection per client id; a second client with the
+        same id knocks the first off, which reconnects and knocks the second
+        off, in a loop. Said once per burst, not on every drop.
+        """
+        now = time.monotonic()
+        drops = [t for t in getattr(self, "_drops", []) if now - t < _FLAP_WINDOW_S]
+        drops.append(now)
+        self._drops = drops
+        if len(drops) == _FLAP_COUNT:
+            logger.warning(
+                "MQTT connection dropped %d times in %.0fs — another client may be "
+                "using client id %s on this broker (#118)",
+                len(drops), _FLAP_WINDOW_S, self._client_id,
+            )
 
     async def start(self) -> None:
         if self._task and not self._task.done():
@@ -1000,6 +1037,103 @@ class MqttPublisher:
         self._username = config.get("username", self._username)
         self._password = config.get("password", self._password)
         self._state.discovery_published = False
+
+    @property
+    def is_running(self) -> bool:
+        """True while the connection loop runs (connected or retrying)."""
+        return bool(self._task and not self._task.done())
+
+    def bound_short_ids(self) -> set[str]:
+        """Short ids of every device bound now (default + registered)."""
+        sids = {self._device_info.short_id} if self._device_info else set()
+        sids |= {d.device_info.short_id for d in self._devices.values() if d.device_info}
+        return sids
+
+    def switch_namespace(self, topic_prefix: str) -> None:
+        """Use a new namespace (#87) — topics, unique_ids, device identifiers
+        and the command subscription. Call while stopped; the next connection
+        subscribes and republishes discovery under it.
+
+        State already queued for the old namespace is dropped, so nothing is
+        written there after the switch.
+        """
+        old = self._topic_prefix
+        self._topic_prefix = topic_prefix
+        kept: list[MqttMessage] = []
+        while not self._queue.empty():
+            msg = self._queue.get_nowait()
+            if not msg.topic.startswith(f"{old}/"):
+                kept.append(msg)
+        for msg in kept:
+            self._queue.put_nowait(msg)
+        self._state.discovery_published = False
+        for dev in self._devices.values():
+            dev.discovery_published = False
+
+    async def tombstone_own_discovery(
+        self, old_prefix: str, short_ids: set[str], window_s: float = 2.0,
+    ) -> dict[str, int]:
+        """Remove this bridge's retained discovery configs under ``old_prefix``.
+
+        Reads what is retained on every discovery topic this bridge publishes or
+        could have published (full registry + promoted points, per device) and
+        sends an empty retained payload ONLY where the config is ours
+        (``namespace.is_ours``). Another producer that shares the namespace —
+        FWHAI under ``franklinwh`` — keeps its entities. Availability and state
+        topics are not touched.
+
+        Raises if the broker can't be reached; then nothing has been removed.
+        """
+        from franklinwh_bridge.publish.namespace import is_ours
+
+        topics: list[str] = []
+        for sid in sorted(short_ids):
+            for entity in [*BRIDGE_ENTITIES, *self._promoted_entities]:
+                topic = entity.discovery_topic(sid, old_prefix, self._discovery_prefix)
+                if topic not in topics:
+                    topics.append(topic)
+        wanted = set(topics)
+        retained: dict[str, bytes | str] = {}
+        removed = 0
+        # A client id of its own: reusing ours would knock the main connection
+        # off the broker (#118).
+        async with aiomqtt.Client(
+            hostname=self._host,
+            port=self._port,
+            username=self._username,
+            password=self._password,
+            identifier=f"{self._client_id}_ns",
+            timeout=10,
+        ) as client:
+            for i in range(0, len(topics), 100):
+                await client.subscribe([(t, 0) for t in topics[i:i + 100]])
+
+            async def _collect() -> None:
+                async for message in client.messages:
+                    topic = str(message.topic)
+                    # Retained only: a live publish during the window is
+                    # someone else at work, not what is stored.
+                    if topic in wanted and getattr(message, "retain", False) and message.payload:
+                        retained[topic] = message.payload
+
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(_collect(), timeout=window_s)
+            for topic, payload in retained.items():
+                if is_ours(payload):
+                    await client.publish(topic, b"", retain=True)
+                    removed += 1
+        counts = {
+            "removed_ours": removed,
+            "left_foreign": len(retained) - removed,
+            "not_found": len(topics) - len(retained),
+        }
+        logger.info(
+            "Namespace %s: %d of this bridge's discovery configs removed, %d of "
+            "other producers left, %d topics empty (%d devices)",
+            old_prefix, counts["removed_ours"], counts["left_foreign"],
+            counts["not_found"], len(short_ids),
+        )
+        return counts
 
     def request_discovery_republish(self) -> None:
         """Flag discovery for re-publish on the next connection cycle."""
