@@ -224,7 +224,7 @@ async def test_settings_defaults_persist_and_clear(db):
         "pv_azimuth": 0.0,
     }
     assert not svc.settings.configured
-    await svc.update({"pv_latitude": -33.87, "pv_longitude": 151.21, "pv_azimuth": -90})
+    await svc.update({"pv_latitude": 12.34, "pv_longitude": 56.78, "pv_azimuth": -90})
     again = SolarForecastService(db)
     await again.load()
     assert again.settings.configured
@@ -256,7 +256,7 @@ async def test_cache_900s_keyed_on_site_and_array(db, monkeypatch):
     monkeypatch.setattr(sf.time, "time", lambda: clock[0])
     f = _Fetcher()
     svc = SolarForecastService(db, fetcher=f)
-    await svc.update({"pv_latitude": -33.87, "pv_longitude": 151.21})
+    await svc.update({"pv_latitude": 12.34, "pv_longitude": 56.78})
     await svc.forecast()
     await svc.forecast()
     assert len(f.calls) == 1
@@ -289,7 +289,7 @@ async def test_failure_returns_stub_then_stale_cache_never_raises(db, monkeypatc
     f = _Fetcher()
     f.fail = httpx.ConnectTimeout("timed out")
     svc = SolarForecastService(db, fetcher=f)
-    await svc.update({"pv_latitude": -33.87, "pv_longitude": 151.21})
+    await svc.update({"pv_latitude": 12.34, "pv_longitude": 56.78})
     fc = await svc.forecast()
     assert fc["error"] == "timed out" and fc["days"] == []
     assert "stale" not in fc
@@ -308,7 +308,7 @@ async def test_failure_returns_stub_then_stale_cache_never_raises(db, monkeypatc
 async def test_as_points_reads_cache_only(db, monkeypatch):
     f = _Fetcher()
     svc = SolarForecastService(db, fetcher=f)
-    await svc.update({"pv_latitude": -33.87, "pv_longitude": 151.21})
+    await svc.update({"pv_latitude": 12.34, "pv_longitude": 56.78})
     assert all(v is None for v in svc.as_points().values())  # nothing fetched yet
     await svc.forecast()
     pts = svc.as_points(_epoch_at_site("2026-10-15T12:30"))
@@ -333,13 +333,13 @@ async def test_real_fetcher_sends_open_meteo_params(monkeypatch):
         "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
     )
-    raw = await sf.fetch_open_meteo(PvSettings(-33.87, 151.21, 6.6, 22, -90))
+    raw = await sf.fetch_open_meteo(PvSettings(12.34, 56.78, 6.6, 22, -90))
     assert raw["utc_offset_seconds"] == SYD
     q = dict(seen["url"].params)
     assert str(seen["url"]).startswith(sf.OPEN_METEO)
     assert q == {
-        "latitude": "-33.87",
-        "longitude": "151.21",
+        "latitude": "12.34",
+        "longitude": "56.78",
         "timezone": "auto",
         "forecast_days": "2",
         "current": "temperature_2m,weather_code",
@@ -357,7 +357,7 @@ async def test_real_fetcher_http_error_becomes_stub(db, monkeypatch):
         lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(503)), **kw),
     )
     svc = SolarForecastService(db)
-    await svc.update({"pv_latitude": -33.87, "pv_longitude": 151.21})
+    await svc.update({"pv_latitude": 12.34, "pv_longitude": 56.78})
     fc = await svc.forecast()
     assert "503" in fc["error"]
 
@@ -397,7 +397,7 @@ async def test_route_settings_round_trip_and_forecast(client):
     assert "0 = south" in r.json()["azimuth_help"]
 
     r = await client.put(
-        "/api/solar/settings", json={"pv_latitude": -33.87, "pv_longitude": 151.21, "pv_kwp": 6.6}
+        "/api/solar/settings", json={"pv_latitude": 12.34, "pv_longitude": 56.78, "pv_kwp": 6.6}
     )
     assert r.status_code == 200, r.text
     assert r.json()["configured"] is True
@@ -406,7 +406,7 @@ async def test_route_settings_round_trip_and_forecast(client):
 
     body = (await client.get("/api/solar/forecast")).json()
     assert body["configured"] is True
-    assert body["pv"] == {"kwp": 6.6, "tilt": 20.0, "azimuth": 0.0, "lat": -33.87, "lon": 151.21}
+    assert body["pv"] == {"kwp": 6.6, "tilt": 20.0, "azimuth": 0.0, "lat": 12.34, "lon": 56.78}
     assert len(body["days"]) == 2 and len(body["hourly"]) == 48
     assert "solar_forecast.remaining_kwh" in body["sensors"]
     assert "solar_forecast.day_pct" in body["sensors"]
@@ -447,7 +447,7 @@ async def test_route_from_ha_uses_get_config(client):
     class _Inst:
         async def ws_call(self, cmd):
             assert cmd == {"type": "get_config"}
-            return {"latitude": -33.87, "longitude": 151.21, "elevation": 30}
+            return {"latitude": 12.34, "longitude": 56.78, "elevation": 30}
 
     class _Reg:
         def status(self):
@@ -463,14 +463,14 @@ async def test_route_from_ha_uses_get_config(client):
         assert s["ha_instances"] == [{"id": "ha1", "name": "Home"}]
         r = await client.post("/api/solar/location/from-ha")
         assert r.status_code == 200, r.text
-        assert r.json()["values"]["pv_latitude"] == -33.87
+        assert r.json()["values"]["pv_latitude"] == 12.34
         assert r.json()["configured"] is True
     finally:
         client.app.state.ha_registry = real
 
 
 async def test_condition_sensors_reach_api_sensors(client):
-    await client.put("/api/solar/settings", json={"pv_latitude": -33.87, "pv_longitude": 151.21})
+    await client.put("/api/solar/settings", json={"pv_latitude": 12.34, "pv_longitude": 56.78})
     await client.get("/api/solar/forecast")  # warms the cache
     r = await client.get("/api/sensors")
     if r.status_code != 200:  # automations module gate off in this env

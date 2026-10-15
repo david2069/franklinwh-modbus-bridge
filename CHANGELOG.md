@@ -193,6 +193,10 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **No real location as an example.** The Location & Solar latitude and
+  longitude fields showed a real place as their placeholder; they now say
+  "latitude" / "longitude". The tests use an obviously made-up point.
+
 - **Spot price interval, and HA conditions you can tell apart** (#110).
   - Wholesale spot price: "settled 18:25" at 18:22 read as a future time.
     AEMO's settlement time is the end of the 5-minute interval, so it now
