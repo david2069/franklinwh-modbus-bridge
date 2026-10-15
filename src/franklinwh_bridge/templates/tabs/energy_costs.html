@@ -83,7 +83,8 @@
                 <span x-show="s.has_export_bonus" class="text-emerald-400" title="Export reward">◆</span>
                 <span x-show="s.has_export_charge" class="text-cyan-400" title="Export charge">◆</span>
                 <span x-show="s.has_tou" class="text-slate-400" title="TOU plan">◆</span>
-                <span x-show="!s.has_peak_demand && !s.has_export_bonus && !s.has_export_charge && !s.has_tou" class="text-slate-600">no tariff</span>
+                <span x-show="s.dynamic" class="text-emerald-300" title="Dynamic (live) energy price">live price</span>
+                <span x-show="!s.has_peak_demand && !s.has_export_bonus && !s.has_export_charge && !s.has_tou && !s.dynamic" class="text-slate-600">no tariff</span>
               </span>
             </div>
           </template>
@@ -102,6 +103,19 @@
       <!-- period progress -->
       <div class="h-1.5 rounded-full bg-slate-700/60 overflow-hidden my-3">
         <div class="h-full bg-cyan-500/70 transition-all" :style="`width: ${periodPct}%`"></div>
+      </div>
+
+      <!-- How this period's energy is priced (#89 part B) -->
+      <div x-show="isDynamic || unpricedKwh > 0" class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-3 text-xs">
+        <template x-if="isDynamic">
+          <span class="flex flex-wrap items-baseline gap-x-3">
+            <span class="text-emerald-300" x-text="pricing.label || 'Wholesale (live)'"></span>
+            <span class="text-slate-400">buy <span class="font-mono text-slate-100" x-text="cents(pricing.buy_rate)"></span></span>
+            <span class="text-slate-400">sell <span class="font-mono text-slate-100" x-text="cents(pricing.sell_rate)"></span></span>
+          </span>
+        </template>
+        <span x-show="unpricedKwh > 0" class="text-amber-300"
+              x-text="`${unpricedKwh.toFixed(2)} kWh unpriced this period (no rate in force)`"></span>
       </div>
 
       <div class="grid grid-cols-1 gap-3" :class="hasFixed ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'">
@@ -351,7 +365,9 @@
                           </td>
                         </tr>
                   <tr class="border-b border-white/[0.04]">
-                    <td class="py-2 pr-3 text-slate-300"><span x-text="fmtDate(p.period_start)"></span> – <span x-text="fmtDate(p.period_end)"></span></td>
+                    <td class="py-2 pr-3 text-slate-300"><span x-text="fmtDate(p.period_start)"></span> – <span x-text="fmtDate(p.period_end)"></span>
+                      <div x-show="p.pricing_kind && p.pricing_kind !== 'static'" class="text-[10px] text-emerald-300" x-text="p.pricing_label || 'Wholesale (live)'"></div>
+                      <div x-show="periodUnpriced(p) > 0" class="text-[10px] text-amber-300" x-text="`${periodUnpriced(p).toFixed(2)} kWh unpriced`"></div></td>
                     <td class="hidden lg:table-cell py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.demand_peak_kw||0).toFixed(2)"></td>
                     <td class="hidden sm:table-cell py-2 pr-3 text-right font-mono text-amber-300" x-text="dollars(p.demand_charge)"></td>
                     <td class="hidden xl:table-cell py-2 pr-3 text-right font-mono text-slate-300" x-text="Number(p.reward_kwh||0).toFixed(1)"></td>

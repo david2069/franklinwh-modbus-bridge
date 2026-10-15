@@ -348,6 +348,13 @@ function settingsTab() {
           // The server replaces `pricing` wholesale, so whatever the form omits
           // is gone.
           ...(svc.pricing || {}),
+          // Static | Dynamic (live) (#89 part B). The provider block is kept
+          // even while Static, so toggling back and forth loses nothing.
+          kind: (svc.pricing && svc.pricing.kind) === 'dynamic' ? 'dynamic' : 'static',
+          dynamic: {
+            source: 'nem', region: 'NSW1', buy_entity: '', feedin_entity: '',
+            ...((svc.pricing && svc.pricing.dynamic) || {}),
+          },
           billing_cycle_day: (svc.pricing && svc.pricing.billing_cycle_day) || 1,
           demand_rate: (svc.pricing && svc.pricing.demand_rate) || 0,
           demand_interval_min: (svc.pricing && svc.pricing.demand_interval_min) || 30,
@@ -388,7 +395,54 @@ function settingsTab() {
         : 'fixed';
       this.seasonIdx = 0;
       this.rateProblems = [];
+      this.dynLive = null;
       this.serviceEditId = svc.id;
+      if (this.isDynamicPricing) this.loadDynamicPreview();
+    },
+
+    // ── Dynamic (live) pricing (#89 part B) ───────────────────
+    // The provider + live price come from GET api/tariff/dynamic (a preview of
+    // the unsaved choice); its HA options are part A's (/api/tariff/spot).
+    dynRegions: ['NSW1', 'QLD1', 'SA1', 'TAS1', 'VIC1'],
+    dynHaOptions: [],
+    dynLive: null,
+    dynLoading: false,
+    dynNote: '',
+    get isDynamicPricing() { return this.serviceEdit?.pricing?.kind === 'dynamic'; },
+    setPricingKind(kind) {
+      const pr = this.serviceEdit?.pricing;
+      if (!pr) return;
+      pr.kind = kind;
+      this.rateProblems = [];
+      if (kind === 'dynamic') this.loadDynamicPreview();
+      else this.checkRates();
+    },
+    dynamicChanged() { this.loadDynamicPreview(); },
+    async loadDynamicPreview() {
+      const d = this.serviceEdit?.pricing?.dynamic;
+      if (!d) return;
+      const q = new URLSearchParams({ source: d.source || 'nem' });
+      if (d.source === 'ha') {
+        if (d.buy_entity) q.set('buy_entity', d.buy_entity);
+        if (d.feedin_entity) q.set('feedin_entity', d.feedin_entity);
+      } else {
+        q.set('region', d.region || 'NSW1');
+      }
+      this.checkRates();
+      this.dynLoading = true;
+      try {
+        // HA with no buy entity chosen yet has nothing to preview (the
+        // validator says so); the plain GET still supplies the entity options.
+        const preview = d.source !== 'ha' || !!d.buy_entity;
+        const data = await fetchJSON(preview ? `api/tariff/dynamic?${q}` : 'api/tariff/dynamic');
+        if (!data || data.ok === false) { this.dynLive = null; return; }
+        this.dynLive = preview ? (data.live || null) : null;
+        if (Array.isArray(data.regions)) this.dynRegions = data.regions;
+        if (Array.isArray(data.ha_options)) this.dynHaOptions = data.ha_options;
+        if (data.note) this.dynNote = data.note;
+      } finally {
+        this.dynLoading = false;
+      }
     },
 
     // ── Fixed / standing charges ──────────────────────────────
@@ -1274,6 +1328,7 @@ function settingsTab() {
     // four-season TOU plan and nothing would notice. Deriving it means the
     // label cannot disagree with the configuration.
     get derivedPlanType() {
+      if (this.isDynamicPricing) return 'dynamic';
       const ss = this.seasons;
       const dr = this.serviceEdit?.pricing?.default_rate;
       const drTiered = Array.isArray(dr?.buy) || Array.isArray(dr?.sell);
@@ -1292,6 +1347,7 @@ function settingsTab() {
         unknown: 'No rates configured', fixed: 'Flat rate',
         tiered: 'Tiered (by kWh used)', tou: 'Time of use',
         hybrid: 'Hybrid — time of use with tiers',
+        dynamic: 'Dynamic — live price',
       }[this.derivedPlanType];
     },
     get season() { return this.seasons[this.seasonIdx] || null; },
@@ -1422,6 +1478,9 @@ function settingsTab() {
         body: JSON.stringify({
           seasons: this.seasons,
           default_rate: this.serviceEdit?.pricing?.default_rate || null,
+          // A dynamic plan is validated on its provider, not on rates.
+          kind: this.isDynamicPricing ? 'dynamic' : 'static',
+          dynamic: this.isDynamicPricing ? this.serviceEdit.pricing.dynamic : null,
         }),
       });
       this.rateProblems = (data && data.problems) || [];
@@ -1441,7 +1500,7 @@ function settingsTab() {
         { id: 'fixed', label: 'Standing charges',
           on: () => (pricing.fixed_charges || []).length > 0 },
         { id: 'import', label: 'Energy rates',
-          on: () => (pricing.seasons || []).length > 0 },
+          on: () => (pricing.seasons || []).length > 0 || pricing.kind === 'dynamic' },
       ];
     },
 

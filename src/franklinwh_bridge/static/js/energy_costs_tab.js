@@ -127,7 +127,20 @@ function energyCostsTab() {
     get hasFixed() { return Number(this.val('fixed.daily_charge') || 0) > 0; },
 
     get anyConfig() {
-      return !!(this.demandCfg || this.bonusCfg || this.chargeCfg) || this.hasFixed;
+      return !!(this.demandCfg || this.bonusCfg || this.chargeCfg) || this.hasFixed
+        || this.isDynamic;
+    },
+
+    // ── dynamic (live) pricing, #89 part B ─────────────────
+    get pricing() { return this.overview?.pricing || {}; },
+    get isDynamic() { return this.pricing.kind === 'dynamic'; },
+    /** Import + export the plan had no rate for this period (kWh). */
+    get unpricedKwh() {
+      return Number(this.pricing.unpriced_import_kwh || 0)
+        + Number(this.pricing.unpriced_export_kwh || 0);
+    },
+    periodUnpriced(p) {
+      return Number(p.unpriced_import_kwh || 0) + Number(p.unpriced_export_kwh || 0);
     },
 
     /** Net cost this period so far: charges + standing charges − export credit.

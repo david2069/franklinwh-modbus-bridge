@@ -27,7 +27,7 @@ from datetime import datetime
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.api.scheduler_api import _gateway_points
@@ -80,6 +80,7 @@ async def tariff_overview(request: Request, gateway: str = "default"):
                 "has_peak_demand": bool(s.get("has_peak_demand")),
                 "has_export_bonus": bool(s.get("has_export_bonus")),
                 "has_export_charge": bool(pricing.get("export_charge")),
+                "dynamic": pricing.get("kind") == "dynamic",
                 "billing_cycle_day": pricing.get("billing_cycle_day"),
             }
         )
@@ -116,8 +117,21 @@ async def tariff_overview(request: Request, gateway: str = "default"):
             }
         )
 
+    # ── How this period's energy is priced (#89 part B) ──
+    dyn = billing.dynamic_config() if billing and hasattr(billing, "dynamic_config") else None
+    pricing = {
+        "kind": "dynamic" if dyn is not None else "static",
+        "dynamic": dyn,
+        "label": points.get("tariff_pricing_label") if dyn is not None else "",
+        "buy_rate": points.get("tariff_dynamic_buy") if dyn is not None else None,
+        "sell_rate": points.get("tariff_dynamic_sell") if dyn is not None else None,
+        "unpriced_import_kwh": points.get("energy_unpriced_import_kwh"),
+        "unpriced_export_kwh": points.get("energy_unpriced_export_kwh"),
+    }
+
     return {
         "gateway": gateway,
+        "pricing": pricing,
         "config": {
             "demand": demand_cfg,
             "bonus": bonus_cfg,
@@ -135,6 +149,8 @@ _HISTORY_COLS = (
     "period_start", "period_end", "demand_peak_kw", "demand_charge",
     "reward_kwh", "reward_credit", "charge_kwh", "charge_net_kwh",
     "charge_cost", "fixed_charges", "net_total",
+    # Appended (migration 59, #89): how the energy was priced, and what wasn't.
+    "pricing_kind", "pricing_label", "unpriced_import_kwh", "unpriced_export_kwh",
 )
 
 
@@ -221,6 +237,14 @@ class PlanChange(BaseModel):
     plan_type: str | None = None
     pricing: str | dict | None = None
     note: str = ""
+
+    @field_validator("pricing")
+    @classmethod
+    def _pricing_kind(cls, v: str | dict | None) -> str | dict | None:
+        """A dynamic plan's provider is validated like a service's (#89)."""
+        from franklinwh_bridge.gateway.dynamic_pricing import normalise_pricing
+
+        return normalise_pricing(v) if isinstance(v, dict) else v
 
 
 class PlanStartCorrection(BaseModel):

@@ -600,6 +600,11 @@ async def lifespan(app: FastAPI):
     billing = BillingStore(db)
     await billing.load()
     app.state.billing = billing
+    # A dynamic plan (#89 part B) is priced from the NEM cache / HA entities:
+    # the pricing service needs to know the plan's source (it keeps that
+    # region warm and makes tariff.* follow the plan).
+    nem_pricing.set_plan_source(billing.dynamic_config)
+    nem_pricing.wake()
 
     # ── Fixed / standing charges accrual (fixed.* sensors) ────
     # Built before the tracker: the billing-period snapshot folds these into
@@ -610,7 +615,8 @@ async def lifespan(app: FastAPI):
 
     # ── Demand-charge + battery-bonus calculator ──────────────
     demand_tracker = DemandTracker(
-        db, billing, gateway_id="default", fixed_charges=fixed_charges
+        db, billing, gateway_id="default", fixed_charges=fixed_charges,
+        live_prices=nem_pricing.dynamic_prices,
     )
     await demand_tracker.load()
     sample_bus.subscribe(demand_tracker.on_sample)

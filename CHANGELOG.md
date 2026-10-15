@@ -15,6 +15,29 @@ lands, not backfilled later.
 
 ### Added
 
+- **Dynamic (live) tariffs in billing** (#89, part B).
+  - A service's plan can be Static or **Dynamic (live)** (Settings → Energy &
+    Automation → service → Energy rates). Dynamic prices energy at the AEMO
+    NEM spot for a chosen region (sell = buy = spot) or at Home Assistant
+    buy / feed-in price entities (feed-in falls back to buy). The editor shows
+    the live price. Stored in the service's `pricing` JSON as
+    `kind: "dynamic"` + `dynamic: {source: "nem", region} | {source: "ha",
+    buy_entity, feedin_entity}`, the Local Bridge's shape; the static rates
+    stay on file.
+  - Accrual: each poll's grid import / export counter delta is priced at the
+    live rate. No live price (or a NEM price over 10 min old) → that energy is
+    recorded as unpriced kWh, never priced at an old or zero rate. A slice
+    over 1 h is not priced. Demand, export bonus, export charge and standing
+    charges still apply on top.
+  - `tariff.buy_rate` / `tariff.sell_rate` show the live $/kWh, and
+    `tariff.spot_price` / `tariff.feed_in_price` follow the plan's source,
+    while the plan is dynamic. Static plans are unchanged.
+  - Billing history (migration 59) records how each period was priced
+    (`static`, `dynamic` or `mixed`, with a label such as "Wholesale (live) ·
+    AEMO NEM NSW1") and its unpriced kWh; the Energy Costs tab shows both.
+  - `GET /api/tariff/dynamic` (the active plan's live price, or a preview for
+    the editor); `POST /api/tariff/validate-rates` validates a dynamic
+    provider. Writes stay admin-only.
 - **Wholesale spot price from AEMO NEM, as automation sensors** (#89, part A).
   - Settings → Gateways → "Wholesale spot price": pick a NEM region (NSW1,
     QLD1, SA1, TAS1, VIC1; Off by default, and Off fetches nothing). It shows

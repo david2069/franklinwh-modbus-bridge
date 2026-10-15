@@ -133,6 +133,17 @@ def _rate_now(points: Points, now: datetime) -> dict:
     """Resolved season/wave/prices for this instant (pure, cheap)."""
     from franklinwh_bridge.gateway.rate_model import resolve
 
+    # A dynamic plan (#89 part B) is priced at the live rate, not the static
+    # seasons: same shape, so buy_rate/sell_rate/import_billable read it as-is.
+    if points.get("tariff_pricing_kind") == "dynamic":
+        from franklinwh_bridge.gateway.dynamic_pricing import as_rate
+
+        return as_rate({
+            "buy": points.get("tariff_dynamic_buy"),
+            "sell": points.get("tariff_dynamic_sell"),
+            "label": points.get("tariff_pricing_label"),
+        })
+
     # Tiered rates price against cumulative consumption this period, so the
     # resolver needs it — without it every tiered plan would read as tier 1.
     return resolve(

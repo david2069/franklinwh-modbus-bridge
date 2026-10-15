@@ -21,10 +21,12 @@ Price precedence (same as the Local Bridge): NEM first (buy = sell = spot),
 then a configured HA price entity overwrites its own side ("HA wins"). An HA
 value in ``$``/AUD per kWh is scaled x100; anything else is taken as c/kWh.
 
-Part B of #89 (a ``pricing.kind: "dynamic"`` tariff in billing accrual) reuses
-:class:`NemSpotClient` and :func:`resolve_prices`; this module deliberately
-does not touch ``tariff.buy_rate`` / ``tariff.sell_rate``, which here are the
-static rate model's $/kWh.
+Part B of #89 (a ``pricing.kind: "dynamic"`` tariff, ``dynamic_pricing.py``)
+reuses :class:`NemSpotClient` and :func:`resolve_prices`. While the active plan
+is dynamic, :meth:`NemPricingService.as_points` makes ``tariff.spot_price`` /
+``tariff.feed_in_price`` follow the PLAN's source (it overrides the settings
+above) and adds the live $/kWh that ``tariff.buy_rate`` / ``tariff.sell_rate``
+and the billing accrual read. A static plan leaves both exactly as before.
 """
 
 from __future__ import annotations
@@ -255,6 +257,61 @@ class NemPricingService:
         self._entity_state = entity_state or (lambda _sid: None)
         self.settings = PricingSettings()
         self._wake = asyncio.Event()
+        #: The active plan's ``pricing.dynamic`` (None = static plan). Set by
+        #: main.py to ``BillingStore.dynamic_config`` (#89 part B).
+        self._plan_dynamic: Callable[[], dict | None] = lambda: None
+
+    def set_plan_source(self, fn: Callable[[], dict | None]) -> None:
+        self._plan_dynamic = fn
+
+    def wake(self) -> None:
+        """Refetch now, e.g. after a plan switched to a NEM region."""
+        self._wake.set()
+
+    def plan_dynamic(self) -> dict | None:
+        try:
+            return self._plan_dynamic()
+        except Exception:  # pragma: no cover - defensive
+            return None
+
+    def wanted_region(self) -> str:
+        """The region the loop keeps warm: the settings' one, else the dynamic
+        plan's (one AEMO response caches every region, so one is enough)."""
+        if self.settings.nem_region:
+            return self.settings.nem_region
+        dyn = self.plan_dynamic() or {}
+        return (dyn.get("region") or "") if dyn.get("source") == "nem" else ""
+
+    def dynamic_prices(self, dyn: dict | None, *, max_age_s: float | None = None) -> dict:
+        """Live buy/sell for a dynamic-plan provider (cache only, no network).
+        Default max age is the billing one: an older NEM price prices nothing."""
+        from franklinwh_bridge.gateway.dynamic_pricing import BILLING_MAX_AGE_S, live_prices
+
+        dyn = dyn or {}
+        age = BILLING_MAX_AGE_S if max_age_s is None else max_age_s
+        spot = (
+            self.client.cached(dyn.get("region"), max_age_s=age)
+            if dyn.get("source") == "nem"
+            else None
+        )
+        return live_prices(dyn, spot, self._entity_state)
+
+    async def preview_prices(self, dyn: dict) -> dict:
+        """Like :meth:`dynamic_prices`, but a NEM region is fetched if cold
+        (the tariff editor shows a region's price before it is saved, even
+        with the settings' region off). ``stale`` marks an old fallback."""
+        from franklinwh_bridge.gateway.dynamic_pricing import live_prices
+
+        spot = None
+        if (dyn or {}).get("source") == "nem":
+            spot = await self.client.spot_price(dyn.get("region"))
+        got = live_prices(dyn, spot, self._entity_state)
+        return {**got, "stale": bool((spot or {}).get("stale"))}
+
+    def plan_prices(self) -> dict | None:
+        """The active dynamic plan's live price, or None for a static plan."""
+        dyn = self.plan_dynamic()
+        return None if dyn is None else self.dynamic_prices(dyn)
 
     async def load(self) -> None:
         try:
@@ -311,17 +368,34 @@ class NemPricingService:
         region = self.settings.nem_region
         spot = self.client.cached(region, max_age_s=SENSOR_MAX_AGE_S) if region else None
         act = self.active(spot)
-        return {
+        out: dict[str, Any] = {
             POINT_KEYS["tariff.spot_price"]: act["buy_c_kwh"],
             POINT_KEYS["tariff.feed_in_price"]: act["sell_c_kwh"],
         }
+        dyn = self.plan_dynamic()
+        if dyn is not None:
+            # The active dynamic tariff wins over the settings (the Local
+            # Bridge's precedence). Spot/feed-in keep part A's sensor max age;
+            # the $/kWh rate is the one billing uses, so the sensor shows the
+            # rate the accrual is actually charging.
+            live = self.dynamic_prices(dyn, max_age_s=SENSOR_MAX_AGE_S)
+            bill = self.dynamic_prices(dyn)
+            out.update({
+                POINT_KEYS["tariff.spot_price"]: live["buy_c_kwh"],
+                POINT_KEYS["tariff.feed_in_price"]: live["sell_c_kwh"],
+                "tariff_dynamic_buy": bill["buy"],
+                "tariff_dynamic_sell": bill["sell"],
+                "tariff_pricing_label": bill["label"],
+            })
+        return out
 
     async def run(self) -> None:
         """Keep the cache warm while a region is set. Cancel the task to stop."""
         while True:
-            if self.settings.nem_region:
+            region = self.wanted_region()
+            if region:
                 try:
-                    await self.client.spot_price(self.settings.nem_region)
+                    await self.client.spot_price(region)
                 except Exception as exc:  # pragma: no cover - spot_price never raises
                     logger.debug("AEMO NEM refresh failed: %s", exc)
             with contextlib.suppress(TimeoutError):
