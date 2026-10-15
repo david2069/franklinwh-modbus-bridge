@@ -7,6 +7,57 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.4 — 2026-10-15
+
+### Home Assistant
+- **Its own Home Assistant device: "FranklinWH Modbus <short serial>".** It is
+  no longer merged with FWHAI's or the Local Bridge's device for the same aGate.
+  After updating, delete the old empty device if one is left.
+- **Choose the MQTT namespace.** New installs use `fwh_mb`, which keeps this
+  bridge's device and entities apart from other FranklinWH integrations on the
+  same Home Assistant (FWHAI, the Local Bridge). Existing installs keep
+  `franklinwh` until you change it in **Settings → Home Assistant → MQTT
+  Broker → Change namespace…**, which removes only the entries this bridge
+  published.
+- **Each install has its own MQTT client id**, so two integrations on one
+  broker no longer knock each other's connection off.
+- **Publishing to Home Assistant is opt-in per gateway** and switches on or off
+  at once. A demo gateway is not published unless you choose to.
+- **Dashboard card:** copy-paste YAML of exactly the entities this bridge
+  publishes, with ids read from Home Assistant.
+- The setup wizard's Home Assistant step can be skipped, explains the two links,
+  and the "HA Entities" tab is now called **Home Assistant**.
+
+### Energy and automations
+- **Solar forecast** from Open-Meteo (free, no key) with a Dashboard card and
+  `weather.*` / `solar_forecast.*` automation sensors.
+- **Wholesale spot price** from AEMO NEM (Australia), or your retailer's price
+  from Home Assistant (e.g. Amber), as automation sensors.
+- **Dynamic (live) tariffs** in billing, priced from the spot or Home Assistant
+  price as energy is used.
+
+### Battery control and safety
+- Scheduled dispatches are **verified** on the aGate, retried, re-asserted and
+  reported if they don't take effect.
+- **Command replies report what the command actually did**; an unknown command
+  is refused.
+- **Only admins can change settings.** New `api` role for REST-only access,
+  with account expiry, sign-in activity and a lockout after repeated failed
+  logins.
+
+### Support and diagnostics
+- **Support info for a GitHub issue** (Settings → Admin): a redacted summary of
+  your setup to preview, copy and paste into the new GitHub issue form.
+- SunSpec Explorer names the extension registers identified so far (marked
+  unconfirmed). Link-health and extra register recording for diagnostics.
+
+### Fixes
+- Times are shown in the bridge's timezone, labelled.
+- The Solar Forecast card is readable in Light mode.
+- MQTT broker settings saved in Settings are used; **Save & Reconnect** applies them.
+- Top bar indicators stay visible on medium windows; dropdowns are styled; the
+  chart modal opens full-screen on a phone.
+
 ## 0.2.3 — 2026-10-08
 
 ### Setup wizard

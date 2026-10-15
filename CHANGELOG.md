@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-10-15
+
+### Changed
+
+- **One Home Assistant device per integration** (owner decision; docs/ha-device-identity.md).
+  The bridge's device is now named `FranklinWH Modbus <short serial>` with
+  identifier `<prefix>_modbus_<SERIAL>`, so Home Assistant never merges it with
+  FWHAI's or the Local Bridge's device for the same aGate (#120). Entities
+  keep their unique_ids and move to the new device; delete the empty old one.
+
 ### Added
 
 - **Support info for a GitHub issue.** A redacted summary of this install to

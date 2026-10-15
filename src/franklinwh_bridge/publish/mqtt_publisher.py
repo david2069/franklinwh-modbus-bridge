@@ -31,6 +31,13 @@ from franklinwh_bridge.publish.entities import (
 
 logger = logging.getLogger(__name__)
 
+#: This integration's name in the shared HA device convention
+#: (docs/ha-device-identity.md): device "FranklinWH Modbus <short serial>",
+#: identifier "<prefix>_modbus_<SERIAL>". The integration part is what keeps it
+#: from ever matching FWHAI's or the Local Bridge's device for the same aGate.
+INTEGRATION_LABEL = "Modbus"
+INTEGRATION_ID = "modbus"
+
 #: Dropped connections within this many seconds that suggest another client is
 #: using our client id (#118): the broker closes the older of the two.
 _FLAP_WINDOW_S = 120.0
@@ -155,7 +162,12 @@ class DeviceInfo:
     def ha_device_block(
         self, app_version: str = "", prefix: str = DEFAULT_TOPIC_PREFIX,
     ) -> dict:
-        name = self.name or f"FranklinWH {self.short_id}"
+        # One HA device per INTEGRATION (owner decision 2026-10-15): "FranklinWH
+        # Modbus <short serial>", next to "FranklinWH Direct …" (Local Bridge)
+        # and "FranklinWH Cloud …". Same aGate, different integrations, so
+        # different devices — never one merged device. See
+        # docs/ha-device-identity.md.
+        name = f"FranklinWH {INTEGRATION_LABEL} {self.short_id}"
 
         # Name this bridge explicitly as the producer.
         #
@@ -181,9 +193,9 @@ class DeviceInfo:
         # Device identifier mirrors short_id's namespacing so duplicate serials
         # don't merge into one HA device.
         if self.gateway_id and self.gateway_id != "default":
-            identifier = _slug(f"{prefix}_{self.gateway_id}_{self.serial}")
+            identifier = _slug(f"{prefix}_{INTEGRATION_ID}_{self.gateway_id}_{self.serial}")
         else:
-            identifier = f"{prefix}_{self.serial}"
+            identifier = f"{prefix}_{INTEGRATION_ID}_{self.serial}"
         block: dict = {
             "identifiers": [identifier],
             "name": name,
