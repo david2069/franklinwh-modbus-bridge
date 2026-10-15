@@ -564,6 +564,12 @@
               <span>Unpublish</span>
             </template>
           </button>
+          <button x-show="$store.app.canSee('ha_entities')"
+                  @click="$store.app.setTab('ha_entities'); window.dispatchEvent(new CustomEvent('ha:dashboard-card'))"
+                  class="btn btn-sm btn-secondary"
+                  title="Copy-paste YAML for a Home Assistant dashboard card (HA Entities tab)">
+            Dashboard card
+          </button>
         </div>
       </div>
 
