@@ -34,12 +34,13 @@ def publisher():
     pub._devices = {}
     pub._command_handler = None
     pub._device_info = DeviceInfo(serial="10060006A02F00000001", gateway_id="default")
+    pub._topic_prefix = "franklinwh"
     pub._entities = [
         SimpleNamespace(
             stat_key="soc",
             slug="battery_soc",
-            state_topic=lambda sid: f"franklinwh/{sid}/battery/battery_soc",
-            unique_id=lambda sid: f"franklinwh_{sid}_battery_soc",
+            state_topic=lambda sid, prefix="franklinwh": f"{prefix}/{sid}/battery/battery_soc",
+            unique_id=lambda sid, prefix="franklinwh": f"{prefix}_{sid}_battery_soc",
             format_value=lambda v: str(v),
         )
     ]

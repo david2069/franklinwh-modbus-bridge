@@ -42,6 +42,7 @@ from franklinwh_bridge.config.environment import (
     lan_subnet_for,
 )
 from franklinwh_bridge.config.supervisor import LOCAL_HA_ID
+from franklinwh_bridge.publish.entities import DEFAULT_TOPIC_PREFIX
 from franklinwh_bridge.store.db import (
     gateway_is_unconfigured,
     get_app_config,
@@ -561,15 +562,16 @@ async def get_checklist(request: Request):
             logger.debug("MQTT config entry check failed: %s", exc)
         try:
             reg = await inst.ws_call({"type": "config/entity_registry/list"})
+            ns = publisher.topic_prefix if publisher is not None else DEFAULT_TOPIC_PREFIX
             ours = [
                 str(e.get("unique_id") or "") for e in reg or []
                 if e.get("platform") == "mqtt"
-                and str(e.get("unique_id") or "").startswith("franklinwh_")
+                and str(e.get("unique_id") or "").startswith(f"{ns}_")
             ]
             # Only gateways that exist now: HA keeps the entities of a removed
             # gateway (or an uninstalled add-on) in its registry, and counting
             # them made "bridge entities in HA" pass with nothing current.
-            prefixes = tuple(f"franklinwh_{sid}_" for sid in _current_short_ids(request))
+            prefixes = tuple(f"{ns}_{sid}_" for sid in _current_short_ids(request))
             n = sum(1 for u in ours if prefixes and u.startswith(prefixes))
             stale = len(ours) - n
             detail = f"{n} entities" if n else "None yet"

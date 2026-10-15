@@ -27,8 +27,16 @@ class MqttConfigUpdate(BaseModel):
     client_id: str | None = None
     qos: int | None = Field(default=None, ge=0, le=2)
     retain_discovery: bool | None = None
-    topic_prefix: str | None = None
-    discovery_prefix: str | None = None
+    # MQTT-topic and HA-unique_id safe: no "/", "+", "#" or spaces.
+    topic_prefix: str | None = Field(default=None, pattern="^[a-z][a-z0-9_]{1,31}$")
+    discovery_prefix: str | None = Field(default=None, pattern="^[A-Za-z0-9_-]{1,64}$")
+
+
+#: Fields that name the MQTT namespace. Changing one re-creates every entity in
+#: Home Assistant and nothing yet removes the old ones, so a change is refused
+#: until the confirmed change flow exists (#87). Re-sending the current value is
+#: fine — the Settings form always sends both.
+_NAMESPACE_FIELDS = ("topic_prefix", "discovery_prefix")
 
 
 def _redact_config(config: dict) -> dict:
@@ -52,6 +60,14 @@ async def update_config(body: MqttConfigUpdate, request: Request):
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    current = await get_mqtt_config(db)
+    changed = [f for f in _NAMESPACE_FIELDS if f in updates and updates[f] != current.get(f)]
+    if changed:
+        raise HTTPException(
+            409,
+            f"Changing {', '.join(changed)} re-creates every Home Assistant entity; "
+            "it is not supported yet (#87)",
+        )
     config = await set_mqtt_config(db, updates)
     return _redact_config(config)
 
@@ -170,10 +186,12 @@ async def get_topics(request: Request):
                 "stat_key": entity.stat_key,
                 "value_scale": entity.value_scale,
                 "value_precision": entity.value_precision,
-                "state_topic": entity.state_topic(short_id),
-                "discovery_topic": entity.discovery_topic(short_id),
+                "state_topic": entity.state_topic(short_id, publisher.topic_prefix),
+                "discovery_topic": entity.discovery_topic(
+                    short_id, publisher.topic_prefix, publisher.discovery_prefix,
+                ),
             }
-            cmd = entity.command_topic(short_id)
+            cmd = entity.command_topic(short_id, publisher.topic_prefix)
             if cmd:
                 entry["command_topic"] = cmd
             out.append(entry)
