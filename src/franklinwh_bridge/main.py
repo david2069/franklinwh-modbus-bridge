@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from franklinwh_bridge import __version__, disclaimer
 from franklinwh_bridge.api.admin import router as admin_router
-from franklinwh_bridge.api.auth import require_auth
+from franklinwh_bridge.api.auth import require_admin_for_writes, require_auth
 from franklinwh_bridge.api.auth import router as auth_router
 from franklinwh_bridge.api.disclaimer_api import router as disclaimer_router
 from franklinwh_bridge.api.energy_api import router as energy_router
@@ -1066,7 +1066,12 @@ app.include_router(auth_router)
 # Authenticated routers — require a logged-in user (401 otherwise). Under HA
 # ingress the Supervisor already authed, so require_auth returns a synthetic
 # admin. Feature routers ALSO carry their module's enabled gate.
-_AUTH = [Depends(require_auth)]
+#
+# Writes on these routers also need the admin role (#102): before, any signed-in
+# viewer could reconfigure the bridge. A write route with its own role or
+# capability gate (the per-gateway command needs `control`) keeps that gate.
+_ADMIN_WRITES = Depends(require_admin_for_writes)
+_AUTH = [Depends(require_auth), _ADMIN_WRITES]
 app.include_router(admin_router, dependencies=_AUTH)
 app.include_router(mqtt_router, dependencies=_AUTH)
 app.include_router(groups_router, dependencies=_AUTH)
@@ -1081,14 +1086,19 @@ app.include_router(solar_router, dependencies=_AUTH)
 app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(
-    schedules_router, dependencies=[require_module("automations"), Depends(require_auth)]
+    schedules_router,
+    dependencies=[require_module("automations"), Depends(require_auth), _ADMIN_WRITES],
 )
 app.include_router(
-    scheduler_router, dependencies=[require_module("automations"), Depends(require_auth)]
+    scheduler_router,
+    dependencies=[require_module("automations"), Depends(require_auth), _ADMIN_WRITES],
 )
-app.include_router(ha_router, dependencies=[require_module("ha_entities"), Depends(require_auth)])
 app.include_router(
-    tariff_router, dependencies=[require_module("energy_costs"), Depends(require_auth)]
+    ha_router, dependencies=[require_module("ha_entities"), Depends(require_auth), _ADMIN_WRITES],
+)
+app.include_router(
+    tariff_router,
+    dependencies=[require_module("energy_costs"), Depends(require_auth), _ADMIN_WRITES],
 )
 
 # UI router (serves GET / and POST /api/command). GET / redirects to /login when

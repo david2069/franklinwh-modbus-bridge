@@ -154,6 +154,21 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Writes need the admin role** (#102). Most feature routers checked only for
+  a session, so a signed-in **viewer** (and any other role) could reconfigure
+  gateways, MQTT and modules, stop gateways, edit and run schedules, and
+  restore backups. 61 write routes were open.
+  - `require_admin_for_writes` is now on every feature router. Reads stay open
+    to any signed-in role. A write route with its own role/capability gate
+    keeps it, so `user` and `api` can still use the per-gateway command
+    (`control`).
+  - Open to any session: login, logout, own password, the disclaimer, and
+    connection-outage reports.
+  - A regression test walks every route and fails on a new write route without
+    a gate.
+  - Unchanged: non-admins never see the admin UI (`/` sends them to `/user`),
+    and HA ingress users are admin.
+
 - **Command replies report what this call did** (#97). `POST /api/command`
   and `POST /api/gateways/{id}/command` answered from the command handler's
   leftover state. An unknown slug or action therefore came back
