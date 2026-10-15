@@ -15,6 +15,37 @@ lands, not backfilled later.
 
 ### Added
 
+- **Support info for a GitHub issue.** A redacted summary of this install to
+  paste into a bug report, aligned with the Local Bridge's support bundle.
+  - `GET /api/support/info` (admin only) returns the bundle as JSON (`info`)
+    and as ready-to-paste Markdown (`markdown`): bridge version, git commit
+    when known, environment, Python/OS/arch, library versions, DB schema,
+    install date, uptime, UTC offset and whether the timezone was confirmed;
+    per gateway (as "gateway 1", "gateway 2", …) model, firmware, device type,
+    wiring, battery ports, home-load register, poll interval, health, last
+    poll age, poller counts and a 24 h link-stats summary; MQTT (enabled,
+    connected, where the broker settings come from, namespace, entity count);
+    HA instance counts; modules, schedules, point history, solar forecast
+    (configured + array, never the location), NEM region, dynamic tariff,
+    users by role; and the last 24 h of warnings/errors by source with the
+    last 20 messages.
+  - Never included: serials (full or short id), IPs, host names and ports of
+    the aGate or broker, MAC addresses, location, usernames, emails, HA URLs
+    and tokens, passwords, MQTT credentials and client id, gateway/site/device
+    names, session ids. Structured fields come from an allowlist; log and
+    error text goes through a new scrubber (`support/scrub.py`) that replaces
+    every identifying value on file, then anything that looks like an IP, URL,
+    host, MAC, email, serial, token, coordinate or home-directory path.
+  - The install date is recorded once on first run (`app_config.install_date`);
+    an older install gets the date its database was created.
+  - Settings → Admin → **Support info for a GitHub issue**: Generate → preview
+    → Copy (clipboard, else select + copy, else "Press Ctrl/Cmd+C") /
+    Download .md / Open a new issue on GitHub. A "Support info" link next to
+    "Issues" in the sidebar footer leads there (admins).
+  - GitHub issue forms: `bug_report.yml` (with a Support info box and
+    personal-details / not-FranklinWH-support checks), `feature_request.yml`,
+    and `config.yml` with a "Not FranklinWH support" contact link.
+
 - **Choose and change the MQTT namespace** (#87, part B). The namespace
   (`mqtt_config.topic_prefix`) prefixes every topic, unique_id and HA device
   identifier. Its own namespace keeps this bridge apart from FWHAI and the

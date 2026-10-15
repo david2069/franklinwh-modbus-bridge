@@ -151,6 +151,40 @@
     </div>
   </div>
 
+  <!-- Support info for a GitHub issue (admin only): GET /api/support/info.
+       Generated on request and shown for review; nothing is sent anywhere. -->
+  <div id="support-info" class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak data-testid="support-info-card">
+    <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+      <div class="card-label !mb-0">Support info for a GitHub issue</div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-primary" data-testid="support-generate"
+                @click="loadSupportInfo()" :disabled="support.loading"
+                x-text="support.loading ? 'Generating…' : (support.md ? 'Regenerate' : 'Generate')"></button>
+        <button type="button" class="btn btn-sm btn-secondary" data-testid="support-copy"
+                @click="copySupportInfo()" :disabled="!support.md">Copy</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-testid="support-download"
+                @click="downloadSupportInfo()" :disabled="!support.md">Download .md</button>
+        <a :href="SUPPORT_ISSUE_URL" target="_blank" rel="noopener noreferrer"
+           class="btn btn-sm btn-secondary" data-testid="support-new-issue">Open a new issue on GitHub</a>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">
+      A <span class="text-slate-300 font-medium">redacted</span> summary of this Bridge — versions, gateway models and firmware, health, MQTT and feature settings, and recent warnings — to paste into the issue form's <em>Support info</em> box.
+      Serials, IP addresses, host names, MAC addresses, location, usernames, Home Assistant URLs and tokens, passwords and device names are removed.
+      <span class="text-amber-300">Review it before posting: log messages are scrubbed by pattern, and you are responsible for what you post.</span>
+      Report problems with this app on GitHub, not to FranklinWH support.
+    </p>
+    <div x-show="support.error" class="mb-2 rounded border border-amber-500/40 bg-amber-500/[0.06] p-2 text-[11px] text-amber-200"
+         x-text="support.error"></div>
+    <textarea x-ref="supportMd" readonly x-show="support.md" :value="support.md" spellcheck="false"
+              data-testid="support-preview" aria-label="Support info preview"
+              class="form-control font-mono !text-[11px] w-full h-80 resize-y"></textarea>
+    <div class="flex items-center gap-2 mt-1" x-show="support.md || support.copyMsg">
+      <span class="text-[11px] text-slate-400" data-testid="support-copy-msg" x-text="support.copyMsg"></span>
+      <span class="text-[10px] text-slate-500 ml-auto" x-show="support.at" x-text="support.at ? 'generated ' + fmt.at(support.at / 1000) : ''"></span>
+    </div>
+  </div>
+
   <!-- Gateways Management -->
   <div x-show="$store.app.settingsSection === 'gateways'" class="card mb-4">
     <div class="flex items-center justify-between mb-3">

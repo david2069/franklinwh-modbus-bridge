@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Not FranklinWH support
+    url: https://github.com/david2069/franklinwh-modbus-bridge#readme
+    about: >-
+      This is unofficial software, not affiliated with or endorsed by FranklinWH.
+      Please don't contact FranklinWH support about it — report problems here instead.
+      For your FranklinWH system itself (hardware, warranty, the official app),
+      contact FranklinWH or your installer.

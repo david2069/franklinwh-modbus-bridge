@@ -72,6 +72,9 @@ function settingsTab() {
     newUser: { username: '', password: '', role: 'user', expires: '' },
     newUserPwShown: false,
     showAddUser: false,
+    // Support info for a GitHub issue (admin): GET api/support/info
+    support: { md: '', loading: false, error: '', copyMsg: '', at: null },
+    SUPPORT_ISSUE_URL: 'https://github.com/david2069/franklinwh-modbus-bridge/issues/new?template=bug_report.yml',
     // Sign-in activity (admin): GET api/auth/events
     authEvents: [],
     authEventsFilter: { username: '', event: '', limit: 200 },
@@ -767,6 +770,59 @@ function settingsTab() {
       this.patchUser(u, { expires_at: exp }, `${u.username} expires ${bridgeTime.dayMon(exp * 1000)}`);
     },
     // ── Sign-in activity (admin) ──────────────────────────────
+    /** Generate the redacted support summary. Shown, never sent anywhere:
+     *  the user reviews it, then copies or downloads it themselves. */
+    async loadSupportInfo() {
+      const sp = this.support;
+      sp.loading = true; sp.error = ''; sp.copyMsg = '';
+      try {
+        const data = await fetchJSON('api/support/info');
+        sp.md = data.markdown || '';
+        sp.at = Date.now();
+      } catch (e) {
+        sp.error = 'Could not generate support info: ' + (e.message || e);
+      } finally {
+        sp.loading = false;
+      }
+    },
+    /** Same fallbacks as the HA dashboard card: navigator.clipboard needs a
+     *  secure context, which HA ingress over plain http is not. */
+    async copySupportInfo() {
+      const sp = this.support;
+      if (!sp.md) return;
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(sp.md);
+          sp.copyMsg = 'Copied.';
+          return;
+        } catch (_) { /* fall through */ }
+      }
+      let ok = false;
+      const ta = this.$refs.supportMd;
+      if (ta) {
+        ta.focus();
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      }
+      sp.copyMsg = ok ? 'Copied.' : 'Press Ctrl/Cmd+C to copy the selected text.';
+    },
+    downloadSupportInfo() {
+      const sp = this.support;
+      if (!sp.md) return;
+      try {
+        const url = URL.createObjectURL(new Blob([sp.md], { type: 'text/markdown' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'support-info.md';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        sp.copyMsg = 'Download failed: ' + (e.message || e);
+      }
+    },
+
     async loadAuthEvents() {
       const f = this.authEventsFilter;
       const q = new URLSearchParams({ limit: String(f.limit || 200) });

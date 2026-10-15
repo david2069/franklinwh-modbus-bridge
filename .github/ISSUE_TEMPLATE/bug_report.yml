@@ -1,0 +1,85 @@
+name: Bug report
+description: Something in the Modbus Bridge doesn't work as it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. This is **unofficial software** — not affiliated with or
+        supported by FranklinWH. Please don't contact FranklinWH support about it.
+
+        **Don't post personal details** — IP addresses, serial numbers, your location,
+        names, emails, tokens or passwords. The Bridge's *Support info* is already
+        redacted; check anything else you paste.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you saw. Screenshots help (crop out anything personal).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See …
+  - type: input
+    id: when
+    attributes:
+      label: When did it happen? (with your timezone)
+      description: So it can be matched to the log times, which are in UTC.
+      placeholder: "2026-10-15 17:45 AEDT (UTC+11)"
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: How do you run the Bridge?
+      options:
+        - Docker
+        - Home Assistant add-on
+        - Other (say below)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Bridge version
+      description: Shown at the bottom of the sidebar, and at the top of the Support info.
+      placeholder: "0.2.3"
+    validations:
+      required: true
+  - type: textarea
+    id: support-info
+    attributes:
+      label: Support info
+      description: |
+        In the Bridge: **Settings → Admin → Support info for a GitHub issue → Generate → Copy**,
+        then paste it here. It is redacted (no serials, IPs, host names, location, usernames,
+        URLs or tokens), but **review it first** — you are responsible for what you post.
+      placeholder: "### Support info — FranklinWH Modbus Bridge (redacted) …"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: |
+        The relevant lines from the Logs tab, or `docker compose logs` / the add-on log.
+        Remove IP addresses, serials and names first. No need for backticks.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed personal details (IPs, serials, location) from everything I pasted.
+          required: true
+        - label: This is about the Modbus Bridge, NOT FranklinWH support.
+          required: true

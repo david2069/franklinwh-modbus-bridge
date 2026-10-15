@@ -37,6 +37,7 @@ from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.setup_api import router as setup_router
 from franklinwh_bridge.api.solar_api import router as solar_router
+from franklinwh_bridge.api.support_api import router as support_router
 from franklinwh_bridge.api.tariff_api import router as tariff_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
@@ -96,6 +97,7 @@ from franklinwh_bridge.store.metrics import (
     record_sample,
 )
 from franklinwh_bridge.store.stats import OperationalStats
+from franklinwh_bridge.support.bundle import ensure_install_date
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +224,10 @@ async def lifespan(app: FastAPI):
     # visible in the Logs tab rather than only on the console at boot.
     await log_startup_event(db, "disclaimer", disclaimer.SHORT)
     await seed_admin(db)  # first-run admin (no lockout); logs a generated pw once
+    try:  # first-run date for the support bundle — set once, never overwritten
+        await ensure_install_date(db)
+    except Exception:  # noqa: BLE001 — must never block startup
+        logger.debug("install date not recorded", exc_info=True)
 
     # MQTT namespace and client id, decided once per install (#87, #118). Before
     # the default gateway is created from the environment: a gateway on file
@@ -1114,6 +1120,7 @@ app.include_router(nem_router, dependencies=_AUTH)
 # must stay reachable for any signed-in role so the modal can render.
 app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
+app.include_router(support_router)  # admin-only via its own require_role dep
 app.include_router(
     schedules_router,
     dependencies=[require_module("automations"), Depends(require_auth), _ADMIN_WRITES],
