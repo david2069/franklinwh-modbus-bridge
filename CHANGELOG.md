@@ -15,6 +15,23 @@ lands, not backfilled later.
 
 ### Added
 
+- **Weather + solar forecast from Open-Meteo** (#88), matching the Local Bridge.
+  - Free, no key. Off until a latitude and longitude are set in Settings →
+    Site & Gateways → "Location & Solar" (or read from a configured Home
+    Assistant). PV array: kWp (5.0), tilt (20°), azimuth (0°; Open-Meteo
+    convention 0 = S, -90 = E, 90 = W, ±180 = N).
+  - Hourly kW = GTI/1000 × kWp × 0.85. Cached 15 min, 15 s timeout. A failed
+    fetch returns the previous forecast marked `stale`, or an `error` stub.
+  - Automation sensors, same names as the Local Bridge: `weather.temp_c`,
+    `weather.condition`, `weather.code`, `solar_forecast.today_kwh`,
+    `.today_peak_kw`, `.tomorrow_kwh`, `.remaining_kwh` (site local time),
+    `.day_pct` and `.vs_expected_pct` (actual vs forecast). Missing data is
+    None, so a condition on it fails closed.
+  - REST: `GET /api/solar/forecast?force=`, `GET`/`PUT /api/solar/settings`,
+    `POST /api/solar/location/from-ha`. No migration (stored in `app_config`).
+  - Dashboard "Solar Forecast" card: weather, today/tomorrow kWh and peak,
+    hourly bars with a NOW marker, actual vs forecast. Times in the bridge's zone.
+
 - **Truthful dispatch: verify, retry, re-assert, notify** (#58, Phase 1 of
   docs/dispatch-reliability-design.md).
   - A battery command counts as active only if the library accepted it AND

@@ -1760,6 +1760,54 @@
       </template>
     </div>
 
+    <!-- Location & Solar (Open-Meteo weather + PV forecast, #88) -->
+    <div x-show="$store.app.settingsSection === 'gateways'" class="card">
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
+        <div class="card-label !mb-0">Location &amp; Solar</div>
+        <span class="text-[10px] uppercase tracking-wide text-slate-500">weather.* · solar_forecast.* sensors</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">
+        Powers the Solar Forecast card and the weather / solar-forecast automation sensors
+        (Open-Meteo, free, no key). Leave latitude or longitude empty to switch it off.
+        The aGate does not report its location over Modbus, so enter it here.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Latitude</span>
+          <input type="number" step="0.0001" min="-90" max="90" placeholder="-33.8688"
+                 x-model="solarEdit.pv_latitude" :disabled="!$store.app.isAdmin"
+                 class="form-control !py-1 !text-sm"></label>
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Longitude</span>
+          <input type="number" step="0.0001" min="-180" max="180" placeholder="151.2093"
+                 x-model="solarEdit.pv_longitude" :disabled="!$store.app.isAdmin"
+                 class="form-control !py-1 !text-sm"></label>
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Array size (kWp)</span>
+          <input type="number" step="0.1" min="0.1" max="1000"
+                 x-model="solarEdit.pv_kwp" :disabled="!$store.app.isAdmin"
+                 class="form-control !py-1 !text-sm"></label>
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Tilt (° from flat)</span>
+          <input type="number" step="1" min="0" max="90"
+                 x-model="solarEdit.pv_tilt" :disabled="!$store.app.isAdmin"
+                 class="form-control !py-1 !text-sm"></label>
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Azimuth (°)</span>
+          <input type="number" step="1" min="-180" max="180"
+                 x-model="solarEdit.pv_azimuth" :disabled="!$store.app.isAdmin"
+                 class="form-control !py-1 !text-sm"></label>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-2" x-text="solarAzimuthHelp"></p>
+      <div class="flex items-center justify-between gap-2 flex-wrap mt-3">
+        <span class="text-xs" :class="solarConfigured ? 'text-emerald-400' : 'text-slate-500'"
+              x-text="solarConfigured ? 'Forecast on' : 'Forecast off — no location set'"></span>
+        <div class="flex items-center gap-1.5" x-show="$store.app.isAdmin">
+          <button type="button" x-show="solarHaInstances.length" @click="useHaLocation()"
+                  class="btn btn-sm btn-secondary" :disabled="solarSaving"
+                  :title="'Read the home location from ' + (solarHaInstances[0] ? solarHaInstances[0].name : 'Home Assistant')">
+            Use Home Assistant's location</button>
+          <button type="button" @click="saveSolar()" class="btn btn-sm btn-primary" :disabled="solarSaving"
+                  x-text="solarSaving ? 'Saving…' : 'Save'"></button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modbus Poller -->
     <div x-show="$store.app.settingsSection === 'gateways'" class="card">
       <div class="card-label mb-3">Modbus Poller</div>

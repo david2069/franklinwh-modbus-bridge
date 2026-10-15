@@ -531,6 +531,128 @@
       </div>
     </div>
 
+    <!-- Solar Forecast (Open-Meteo weather + PV forecast, #88) -->
+    <div class="card lg:col-span-2" x-show="cardVisible.solarForecast" x-data="solarForecastCard()"
+         draggable="true" :style="`order:${cardOrder.indexOf('solarForecast')}`"
+         @dragstart="dragStart('solarForecast')" @dragover.prevent="dragOver($event,'solarForecast')" @dragend="dragEnd()">
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="card-label !mb-0">Solar Forecast</div>
+          <span x-show="configured && current.temp_c != null" x-cloak
+                class="text-[11px] px-2 py-0.5 rounded bg-slate-700/60 text-slate-300"
+                x-text="num(current.temp_c, 1) + '°C · ' + (current.condition || '')"></span>
+          <span x-show="data && data.stale" x-cloak class="text-[10px] text-amber-400"
+                title="The last fetch failed; showing the previous forecast">stale</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] text-slate-500">Open-Meteo</span>
+          <button type="button" @click="load(true)" class="btn btn-sm btn-secondary" :disabled="loading"
+                  x-text="loading ? '…' : 'Refresh'"></button>
+        </div>
+      </div>
+
+      <div x-show="error" x-cloak class="text-xs text-red-400 mb-2" x-text="'Could not load the forecast: ' + error"></div>
+
+      <div x-show="data && !configured" x-cloak class="text-xs text-slate-400 p-4 text-center">
+        <span x-text="(data && data.reason) || 'Solar forecast not configured.'"></span>
+        <div class="mt-2" x-show="$store.app.isAdmin">
+          <button type="button" class="btn btn-sm btn-secondary"
+                  @click="$store.app.setSettingsSection('gateways')">Open Settings</button>
+        </div>
+      </div>
+
+      <template x-if="configured">
+        <div class="space-y-3">
+          <div x-show="data.error && !(data.hourly || []).length" class="text-xs text-amber-400"
+               x-text="'Forecast unavailable: ' + data.error"></div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Today -->
+            <div class="rounded-lg p-3 bg-slate-800/60 border border-amber-500/30">
+              <div class="text-[10px] uppercase tracking-wide text-amber-400"
+                   x-text="'Today · ' + dayLabel(today, '')"></div>
+              <div class="mt-1">
+                <span class="text-xl font-semibold text-slate-100 font-mono" x-text="today ? num(today.total_kwh, 1) : '–'"></span>
+                <span class="text-xs text-slate-400">kWh</span>
+              </div>
+              <div class="text-xs text-slate-500" x-show="today">
+                Peak <span class="font-mono" x-text="num(today && today.peak_kw, 2)"></span> kW
+                @ <span class="font-mono" x-text="peakAt(today)"></span>
+              </div>
+              <div class="text-xs text-slate-500" x-show="sensors['solar_forecast.remaining_kwh'] != null">
+                Remaining <span class="font-mono" x-text="num(sensors['solar_forecast.remaining_kwh'], 1)"></span> kWh
+              </div>
+              <div class="mt-2 pt-2 border-t border-slate-700" x-show="today && actualKwh != null">
+                <div class="flex items-baseline justify-between text-[11px]">
+                  <span class="text-slate-400">Actual so far</span>
+                  <span>
+                    <span class="font-semibold font-mono text-slate-100" x-text="num(actualKwh, 1)"></span>
+                    <span class="text-slate-500"> kWh · </span>
+                    <span class="text-slate-400" x-text="(dayPct != null ? Math.round(dayPct) : '–') + '% of forecast'"></span>
+                  </span>
+                </div>
+                <div class="mt-1 h-1.5 rounded-full overflow-hidden bg-slate-700">
+                  <div class="h-full rounded-full bg-amber-400" :style="'width:' + Math.min(100, dayPct || 0) + '%'"></div>
+                </div>
+                <div class="text-[10px] mt-0.5" x-show="vsExpected"
+                     :class="vsExpected && vsExpected.ahead ? 'text-emerald-400' : 'text-amber-400'"
+                     x-text="vsExpected ? ('vs forecast to now: ' + vsExpected.label) : ''"></div>
+              </div>
+            </div>
+            <!-- Tomorrow -->
+            <div class="rounded-lg p-3 bg-slate-800/60 border border-sky-500/30">
+              <div class="text-[10px] uppercase tracking-wide text-sky-400"
+                   x-text="'Tomorrow · ' + dayLabel(tomorrow, '')"></div>
+              <div class="mt-1">
+                <span class="text-xl font-semibold text-slate-100 font-mono" x-text="tomorrow ? num(tomorrow.total_kwh, 1) : '–'"></span>
+                <span class="text-xs text-slate-400">kWh</span>
+              </div>
+              <div class="text-xs text-slate-500" x-show="tomorrow">
+                Peak <span class="font-mono" x-text="num(tomorrow && tomorrow.peak_kw, 2)"></span> kW
+                @ <span class="font-mono" x-text="peakAt(tomorrow)"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hourly kW bars, NOW marker -->
+          <div x-show="bars.length">
+            <div class="relative" style="height:90px">
+              <div class="absolute inset-0 flex flex-col justify-between pointer-events-none" aria-hidden="true">
+                <div class="border-t border-slate-700/70"></div>
+                <div class="border-t border-slate-700/40"></div>
+                <div class="border-t border-slate-700/70"></div>
+              </div>
+              <div class="flex items-end gap-px h-full relative">
+                <template x-for="(bar, i) in bars" :key="i">
+                  <div class="flex-1 relative h-full" style="min-width:1px">
+                    <div class="absolute bottom-0 left-0 right-0 rounded-t"
+                         :class="bar.isToday ? 'bg-amber-400' : 'bg-sky-400'"
+                         :title="bar.hm + ' · ' + num(bar.kw, 2) + ' kW'"
+                         :style="'height:' + bar.h + '%;opacity:' + (bar.isNow ? '1' : '.75')"></div>
+                    <div x-show="bar.isNow" class="absolute inset-y-0 left-0 border-l-2 border-rose-400"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="flex gap-px leading-none mt-0.5">
+              <template x-for="(bar, i) in bars" :key="'t' + i">
+                <div class="flex-1 text-center text-[8px] text-slate-500 whitespace-nowrap overflow-visible"
+                     style="min-width:1px" x-text="bar.tick"></div>
+              </template>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+              <span>← Today</span><span class="text-rose-400">now</span><span>Tomorrow →</span>
+            </div>
+          </div>
+
+          <div class="text-[10px] text-slate-500 text-center">
+            Times in <span x-text="fmt.tz()"></span><span x-show="generatedAt"> · fetched <span x-text="generatedAt"></span></span>
+            <span x-show="data.pv"> · <span x-text="data.pv ? (num(data.pv.kwp, 1) + ' kWp, tilt ' + num(data.pv.tilt, 0) + '°, azimuth ' + num(data.pv.azimuth, 0) + '°') : ''"></span></span>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- Battery -->
     <div class="card" x-show="cardVisible.battery"
          draggable="true" :style="`order:${cardOrder.indexOf('battery')}`"
