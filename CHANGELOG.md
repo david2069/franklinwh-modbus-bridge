@@ -115,6 +115,17 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Command replies report what this call did** (#97). `POST /api/command`
+  and `POST /api/gateways/{id}/command` answered from the command handler's
+  leftover state. An unknown slug or action therefore came back
+  `ok: true, result: "Sent"`, or with an earlier command's text.
+  - An unknown slug now gets **400**, listing the known slugs.
+  - An unknown `battery_command` action (e.g. "Force Fly") returns `ok: false`.
+  - Staging slugs (power, power %, duration, target SoC) return `ok: true`
+    with "Staged …", meaning stored, not sent. Changing the power of an active
+    dispatch also includes the re-send's result.
+  - `CommandHandler.handle_command` returns `{ok, result}` for the call.
+
 - **Setup wizard's Home Assistant step, and tab naming** (#94).
   - It asks "Will you use this bridge with Home Assistant?". Answering No
     (stored as `setup_use_ha`; `POST /api/setup/use-ha`) shows every HA item as

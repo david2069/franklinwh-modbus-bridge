@@ -120,3 +120,12 @@ async def test_an_anonymous_caller_is_still_401_not_403(client):
                              json={"slug": "battery_command", "value": "Stop"})
 
     assert resp.status_code == 401
+
+
+async def test_unknown_slug_is_refused_on_both_routes(client):
+    """#97: an unknown slug used to come back 200 ok:true "Sent"."""
+    await _login_as(client, "user")
+    for path in ("/api/command", "/api/gateways/default/command"):
+        resp = await client.post(path, json={"slug": "__nonexistent_probe__", "value": "0"})
+        assert resp.status_code == 400, (path, resp.status_code)
+        assert "Unknown command" in resp.json()["detail"]

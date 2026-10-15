@@ -102,3 +102,55 @@ async def test_reserve_write_success(db):
     h = _handler(db, ctrl)
     await h.handle_command("tou_reserve_pct", "55")
     assert h.state.last_success is True
+
+
+# --- #97: handle_command returns THIS call's outcome ---------------------------
+
+
+async def test_unknown_slug_is_not_reported_as_success(db):
+    h = _handler(db, MagicMock())
+    out = await h.handle_command("__nonexistent_probe__", "0")
+    assert out == {"ok": False, "result": "Unknown command: __nonexistent_probe__"}
+
+
+async def test_unknown_battery_action_fails(db):
+    h = _handler(db, MagicMock())
+    out = await h.handle_command("battery_command", "Force Fly")
+    assert out["ok"] is False
+    assert "Unknown battery command" in out["result"]
+
+
+async def test_staging_says_staged_not_sent(db):
+    h = _handler(db, MagicMock())
+    assert await h.handle_command("battery_command_power", "2000") == {
+        "ok": True, "result": "Staged power 2000 W"}
+    assert await h.handle_command("battery_command_duration", "600") == {
+        "ok": True, "result": "Staged duration 600 s"}
+    assert await h.handle_command("battery_command_target_soc", "0") == {
+        "ok": True, "result": "Staged target SoC off"}
+
+
+async def test_bad_number_fails_with_its_own_error(db):
+    h = _handler(db, MagicMock())
+    out = await h.handle_command("battery_command_power", "lots")
+    assert out["ok"] is False and out["result"].startswith("Error:")
+
+
+async def test_result_is_this_calls_not_the_previous_ones(db):
+    """A failure must not leak into the next call's reply, nor a success into a failure's."""
+    ctrl = MagicMock()
+    ctrl.set_native_mode = MagicMock(return_value=(False, "Hardware ignored write"))
+    h = _handler(db, ctrl)
+    failed = await h.handle_command("operating_mode", "Time of Use")
+    assert failed["ok"] is False
+
+    staged = await h.handle_command("battery_command_duration", "60")
+    assert staged == {"ok": True, "result": "Staged duration 60 s"}
+
+    unknown = await h.handle_command("nope", "1")
+    assert unknown["ok"] is False and "nope" in unknown["result"]
+
+    ctrl.set_native_mode.return_value = (True, "Mode set")
+    ok = await h.handle_command("operating_mode", "Self-Consumption")
+    assert ok["ok"] is True
+    assert "Hardware ignored" not in ok["result"]
