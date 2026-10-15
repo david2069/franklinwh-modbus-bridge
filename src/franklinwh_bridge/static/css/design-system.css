@@ -748,3 +748,75 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   color: var(--text-muted); font-size: 12px; text-align: center;
   padding: 28px 0; margin: 0;
 }
+
+/* ── Solar Forecast card (#116) ──────────────────────────── */
+/* The card used to hard-code dark Tailwind slates (bg-slate-800/60 panels,
+   bg-slate-700 tracks), which the light theme's slate overrides don't cover:
+   in Light the day panels rendered as solid grey boxes. Everything here rides
+   the theme tokens; the accent inks darken in Light so they stay legible on
+   white rather than reusing the dark theme's pale amber/sky. */
+:root {
+  --sf-today:        #f59e0b; /* amber-500: bars, progress, border */
+  --sf-today-hi:     #fcd34d; /* amber-300: bar gradient top */
+  --sf-today-ink:    #fbbf24; /* amber-400: header text */
+  --sf-tomorrow:     #0ea5e9; /* sky-500 */
+  --sf-tomorrow-hi:  #7dd3fc; /* sky-300 */
+  --sf-tomorrow-ink: #38bdf8; /* sky-400 */
+  --sf-now:          #fb7185; /* rose-400 */
+  --sf-charge:       #34d399; /* emerald-400 */
+  --sf-discharge:    #f59e0b; /* amber-500 */
+  --sf-ahead:        #34d399;
+  --sf-behind:       #f59e0b;
+}
+[data-theme="light"] {
+  --sf-today-ink:    #b45309; /* amber-700 */
+  --sf-tomorrow-ink: #0369a1; /* sky-700 */
+  --sf-now:          #e11d48; /* rose-600 */
+  --sf-charge:       #059669; /* emerald-600 */
+  --sf-discharge:    #d97706; /* amber-600 */
+  --sf-ahead:        #047857; /* emerald-700 */
+  --sf-behind:       #b45309; /* amber-700 */
+}
+.sf-panel {
+  border-radius: var(--radius-md);
+  padding: .75rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.sf-panel.today {
+  border-color: color-mix(in srgb, var(--sf-today) 45%, transparent);
+  background: color-mix(in srgb, var(--sf-today) 7%, var(--surface-0));
+}
+.sf-panel.tomorrow {
+  border-color: color-mix(in srgb, var(--sf-tomorrow) 45%, transparent);
+  background: color-mix(in srgb, var(--sf-tomorrow) 7%, var(--surface-0));
+}
+.sf-day   { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.sf-day.today    { color: var(--sf-today-ink); }
+.sf-day.tomorrow { color: var(--sf-tomorrow-ink); }
+.sf-big   { font-size: 1.5rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.sf-strong { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.sf-sec   { color: var(--text-secondary); }
+.sf-muted { color: var(--text-muted); }
+.sf-faint { color: var(--text-faint); }
+.sf-rule  { border-top: 1px solid var(--border); }
+.sf-track { height: 6px; border-radius: 99px; overflow: hidden; background: var(--surface-2); }
+.sf-fill  { height: 100%; border-radius: 99px; background: var(--sf-today); }
+.sf-ahead  { color: var(--sf-ahead); }
+.sf-behind { color: var(--sf-behind); }
+.sf-grid  { border-top: 1px solid var(--border); }
+.sf-bar   { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 2px 2px 0 0; }
+.sf-bar.today    { background: linear-gradient(to top, var(--sf-today), var(--sf-today-hi)); }
+.sf-bar.tomorrow { background: linear-gradient(to top, var(--sf-tomorrow), var(--sf-tomorrow-hi)); }
+.sf-bar.now      { box-shadow: 0 0 0 1px var(--sf-now); }
+.sf-nowline { position: absolute; top: 0; bottom: 0; left: 0; border-left: 2px solid var(--sf-now); }
+.sf-now-ink { color: var(--sf-now); }
+.sf-band  { min-width: 1px; border-radius: 1px; }
+.sf-band.charge    { background: var(--sf-charge); }
+.sf-band.discharge { background: var(--sf-discharge); }
+.sf-band.idle      { background: var(--surface-2); }
+.sf-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.sf-swatch.charge    { background: var(--sf-charge); }
+.sf-swatch.discharge { background: var(--sf-discharge); }
+.sf-swatch.idle      { background: var(--surface-2); }

@@ -15,6 +15,13 @@ lands, not backfilled later.
 
 ### Added
 
+- **`GET /api/energy/battery-hours`** (#116): per-hour battery charge and
+  discharge kWh for a local day (default today), integrated from the sampled
+  `battery_w` and split by sign, so an hour that charged and then discharged
+  reports both. Each hour has a `state` (`charge` / `discharge` / `idle`, idle
+  under 50 Wh) or `null` when it has no samples (the rest of today, an outage).
+  An estimate from sampled power, not a meter. Read-only.
+
 - **Dynamic (live) tariffs in billing** (#89, part B).
   - A service's plan can be Static or **Dynamic (live)** (Settings → Energy &
     Automation → service → Energy rates). Dynamic prices energy at the AEMO
@@ -182,6 +189,16 @@ lands, not backfilled later.
 
 ### Changed
 
+- **Solar Forecast card aligned with the Local Bridge's** (#116). Tinted day
+  panels (amber border today, blue tomorrow) headed "THU, 15 OCT", a big kWh
+  figure and "Peak X kW @ HH:MM"; actual-so-far kWh and % with a progress bar
+  and "vs forecast to now"; where today's solar went ("→home →batt →grid kWh
+  est.", the Energy Flow card's reconstructed arcs) and the battery SoC; a
+  battery charging / discharging / idle band under the hourly bars with a
+  legend; gradient bars with the current hour emphasised and a NOW line; and a
+  footer saying what the bars and times mean. Times stay in the bridge's zone,
+  labelled, with 24-hour ticks.
+
 - **An open-ended dispatch's log line names the aGate revert timer** (#72):
   `[no time limit; aGate revert timer 7200s, not enforced by the aGate (PICS
   Issue 4)]`. It used to say only `[no time limit]`.
@@ -192,6 +209,13 @@ lands, not backfilled later.
   `docker-compose.dev.yml` restores hot-reload for development.
 
 ### Fixed
+
+- **Solar Forecast card unreadable in Light mode** (#116). The card hard-coded
+  dark slates; the Light theme overrides some of them but not the panels'
+  `bg-slate-800/60` or the weather chip's `bg-slate-700/60`, so the day panels
+  rendered as dark grey boxes with unreadable text. It now uses the theme
+  tokens (new `.sf-*` rules in `design-system.css`) and reads in both Light
+  and Dark.
 
 - **No real location as an example.** The Location & Solar latitude and
   longitude fields showed a real place as their placeholder; they now say

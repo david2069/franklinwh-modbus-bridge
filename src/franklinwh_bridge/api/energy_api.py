@@ -16,12 +16,19 @@ from __future__ import annotations
 
 import datetime as dt
 import time
+from typing import Literal
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from franklinwh_bridge.api.scheduler_api import _gateway_points
-from franklinwh_bridge.gateway.energy_flow import integrate, node_totals
+from franklinwh_bridge.gateway.energy_flow import (
+    BATTERY_IDLE_KWH,
+    battery_by_hour,
+    integrate,
+    node_totals,
+)
 from franklinwh_bridge.gateway.scheduler_sensors import _ENERGY_SOURCES, snapshot
 from franklinwh_bridge.store.metrics import query_metrics_daterange
 
@@ -116,6 +123,73 @@ async def energy_flow(
             "residual_kwh": flows["residual_kwh"],
         },
     }
+
+
+class BatteryHour(BaseModel):
+    """One hour of battery activity, integrated from sampled ``battery_w``."""
+
+    start: float = Field(description="Epoch seconds, inclusive")
+    end: float = Field(description="Epoch seconds, exclusive")
+    charge_kwh: float
+    discharge_kwh: float
+    covered_s: float = Field(description="Seconds of the hour that had samples")
+    state: Literal["charge", "discharge", "idle"] | None = Field(
+        description="Dominant direction; null = no samples (future hour or outage)"
+    )
+
+
+class BatteryHoursResponse(BaseModel):
+    day: str
+    start: float
+    end: float
+    gateway_id: str
+    idle_kwh: float = Field(description="Below this per hour an hour counts as idle")
+    basis: str
+    hours: list[BatteryHour]
+
+
+@router.get("/battery-hours", response_model=BatteryHoursResponse)
+async def battery_hours(
+    request: Request,
+    day: str | None = None,
+    gateway: str = "default",
+) -> BatteryHoursResponse:
+    """Per-hour battery charge/discharge for a local day (default today).
+
+    Feeds the Solar Forecast card's charging/discharging band. Integrated from
+    the sampled ``battery_w`` series (sign-split, so a mixed hour reports both
+    directions) — an estimate from sampled power, not a meter reading.
+    Hours after now carry ``state: null``.
+    """
+    db: aiosqlite.Connection = request.app.state.db
+    span_start, span_end, label = _day_bounds(day)
+
+    # Wall-clock hours of the local day. Stepping in epoch seconds gives a
+    # 23- or 25-hour day across a DST change, which is what actually elapsed.
+    edges: list[float] = []
+    t = span_start
+    while t < span_end:
+        edges.append(t)
+        t += 3600
+    edges.append(span_end)
+
+    query_end = min(span_end, time.time())
+    rows: list[dict] = []
+    if query_end > span_start:
+        bucket = max(_MIN_BUCKET_S, int((query_end - span_start) / _TARGET_BUCKETS))
+        rows = await query_metrics_daterange(
+            db, span_start, query_end, bucket, gateway_id=gateway
+        )
+
+    return BatteryHoursResponse(
+        day=label,
+        start=span_start,
+        end=span_end,
+        gateway_id=gateway,
+        idle_kwh=BATTERY_IDLE_KWH,
+        basis="integrated from sampled battery power; estimate, not a meter",
+        hours=[BatteryHour(**h) for h in battery_by_hour(rows, edges)],
+    )
 
 
 @router.get("/totals")

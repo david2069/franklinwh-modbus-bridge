@@ -185,3 +185,86 @@ def node_totals(flows: dict[str, float]) -> dict[str, float]:
         "battery_charge": round(g("solar_to_battery") + g("grid_to_battery"), 3),
         "battery_discharge": round(g("battery_to_home") + g("battery_to_grid"), 3),
     }
+
+
+# Below this an hour is "idle" rather than charging/discharging: 50 Wh, i.e. a
+# 50 W average — the same deadband the library applies to battery_state, so
+# the band and the topbar agree about a battery that is only trickling.
+BATTERY_IDLE_KWH = 0.05
+
+
+def battery_by_hour(
+    samples: Iterable[dict],
+    edges: list[float],
+    *,
+    max_gap_s: float | None = None,
+    idle_kwh: float = BATTERY_IDLE_KWH,
+) -> list[dict[str, Any]]:
+    """What the battery did in each interval ``[edges[i], edges[i+1])``.
+
+    Unlike the arcs above this is **not** a reconstruction: it integrates the
+    one measured scalar, ``battery_w`` (positive = discharge), split by sign,
+    so an hour that charged for 40 minutes and discharged for 20 reports both
+    rather than a misleading net. It is still an integral of sampled power,
+    not a meter — the aGate has no per-hour battery counter.
+
+    Each sample is held until the next (left Riemann sum), capped by the same
+    gap rule as :func:`integrate`, and a hold that crosses an edge is split
+    across the intervals it spans. An interval with no covered time reports
+    ``state: None`` (no data — e.g. the future, or an outage), never "idle".
+    """
+    rows = [s for s in samples if s.get("ts") is not None]
+    rows.sort(key=lambda s: s["ts"])
+    n = max(0, len(edges) - 1)
+    charge = [0.0] * n
+    discharge = [0.0] * n
+    covered = [0.0] * n
+
+    if max_gap_s is None:
+        steps = [rows[i + 1]["ts"] - rows[i]["ts"] for i in range(len(rows) - 1)]
+        max_gap_s = _gap_cap([d for d in steps if d > 0])
+
+    j = 0  # first interval that can still receive a hold (rows are sorted)
+    for i, row in enumerate(rows[:-1]):
+        dt = rows[i + 1]["ts"] - row["ts"]
+        if dt <= 0:
+            continue
+        t0 = float(row["ts"])
+        t1 = t0 + min(dt, max_gap_s)
+        try:
+            watts: float | None = float(row.get("battery_w"))
+        except (TypeError, ValueError):
+            watts = None
+        while j < n and edges[j + 1] <= t0:
+            j += 1
+        k = j
+        while k < n and edges[k] < t1:
+            lo, hi = max(t0, edges[k]), min(t1, edges[k + 1])
+            if hi > lo:
+                covered[k] += hi - lo
+                if watts is not None:
+                    wh = abs(watts) * (hi - lo) / 3600.0
+                    if watts > 0:
+                        discharge[k] += wh
+                    elif watts < 0:
+                        charge[k] += wh
+            k += 1
+
+    out: list[dict[str, Any]] = []
+    for k in range(n):
+        c, d = charge[k] / 1000.0, discharge[k] / 1000.0
+        if covered[k] <= 0:
+            state = None
+        elif max(c, d) < idle_kwh:
+            state = "idle"
+        else:
+            state = "charge" if c >= d else "discharge"
+        out.append({
+            "start": edges[k],
+            "end": edges[k + 1],
+            "charge_kwh": round(c, 3),
+            "discharge_kwh": round(d, 3),
+            "covered_s": round(covered[k], 1),
+            "state": state,
+        })
+    return out
