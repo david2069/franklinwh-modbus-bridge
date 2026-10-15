@@ -217,6 +217,16 @@ lands, not backfilled later.
   tokens (new `.sf-*` rules in `design-system.css`) and reads in both Light
   and Dark.
 
+- **The HA dashboard card lists only the entities this bridge publishes.**
+  With "Include diagnostics" on, it also listed every other entity whose
+  unique_id started with our prefix. On a Home Assistant that also runs FWHAI,
+  whose defaults use the same device identifier and unique_id prefix (so HA
+  merges both onto one device), that gave 155 entities, most of them FWHAI's.
+  The card now takes exactly what this bridge currently publishes over MQTT and
+  looks those ids up in HA's registry. The modal says "N of M published
+  entities found". Entities whose unique_id both bridges use can't be told
+  apart until each bridge has its own prefix (#87).
+
 - **No real location as an example.** The Location & Solar latitude and
   longitude fields showed a real place as their placeholder; they now say
   "latitude" / "longitude". The tests use an obviously made-up point.

@@ -55,7 +55,7 @@
             </template>
           </select>
           <span class="text-slate-500" x-show="dash.count && !dash.loading"
-                x-text="dash.count + ' entities' + (dash.source ? ' · from ' + dash.source : '')"></span>
+                x-text="dash.count + ' of ' + dash.published + ' published entities found' + (dash.source ? ' in ' + dash.source : '')"></span>
         </div>
         <div x-show="dash.error" class="mb-3 rounded border border-amber-500/40 bg-amber-500/[0.06] p-2 text-[11px] text-amber-200"
              x-text="dash.error"></div>

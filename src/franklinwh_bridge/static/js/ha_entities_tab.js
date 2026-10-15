@@ -19,7 +19,7 @@ function haEntitiesTab() {
     loading: false,
     dash: {
       open: false, layout: 'grouped', diagnostics: false, instance: '',
-      yaml: '', count: 0, source: '', error: '', loading: false, copyMsg: '',
+      yaml: '', count: 0, published: 0, source: '', error: '', loading: false, copyMsg: '',
     },
 
     /** Topic presets — each is a synonym set, because the same concept is named
@@ -155,6 +155,7 @@ function haEntitiesTab() {
         if (data && data.yaml) {
           d.yaml = data.yaml;
           d.count = data.entity_count || 0;
+          d.published = data.published_count || 0;
           d.source = data.instance ? data.instance.name : '';
         } else {
           d.error = (data && data.error) || 'No YAML returned.';

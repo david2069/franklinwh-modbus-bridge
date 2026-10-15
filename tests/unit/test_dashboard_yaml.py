@@ -142,14 +142,16 @@ async def test_grouped_layout_order_and_foreign_excluded():
     assert "custom:" not in out["yaml"]
 
 
-async def test_diagnostics_toggle_includes_diag_and_unknown_slugs():
+async def test_diagnostics_toggle_includes_only_our_diagnostics():
     out = await build_dashboard(_FakeInst(*_registries()), _publisher(), include_diagnostics=True)
     doc = yaml.safe_load(out["yaml"])
     last = doc["cards"][-1]
     assert last["title"] == "Modbus Bridge — Diagnostics"
     diag = [r["entity"] for r in last["entities"]]
-    # Known diagnostics in BRIDGE_ENTITIES order, unknown slug after them.
-    assert diag == ["sensor.inverter_state", "sensor.operating_mode", "sensor.unknown_thing"]
+    # Known diagnostics in BRIDGE_ENTITIES order. A slug this bridge doesn't
+    # publish is another producer's entity on the merged device: left out.
+    assert diag == ["sensor.inverter_state", "sensor.operating_mode"]
+    assert "sensor.unknown_thing" not in out["yaml"]
 
 
 async def test_single_layout():
@@ -283,7 +285,7 @@ async def test_route_returns_yaml(client):
         f"/api/ha/dashboard-yaml?instance={client.inst_id}&layout=single&diagnostics=true"
     )
     assert r.status_code == 200
-    assert r.json()["entity_count"] == 9
+    assert r.json()["entity_count"] == 8
     assert r.json()["yaml"].startswith("type: entities")
 
 
@@ -313,3 +315,39 @@ def test_route_is_behind_auth_like_the_rest_of_the_ha_router():
     assert require_auth in calls
     sibling = next(r for r in app.routes if getattr(r, "path", "") == "/api/ha/entities")
     assert {d.call for d in sibling.dependant.dependencies} == calls
+
+
+async def test_foreign_entities_on_the_merged_device_are_left_out():
+    """Owner's live case (2026-10-15): FWHAI announces the SAME device identifier,
+    so HA merges both producers onto one device, and its franklinwh_<sid>_<slug>
+    rows pass the device and prefix checks. Only slugs we publish may appear."""
+    devices, entities = _registries()
+    p = f"franklinwh_{SID}_"
+    entities += [
+        _ent("sensor.fhp_home_load_2", p + "home_load"),
+        _ent("sensor.fhp_grid_power", p + "grid_power"),
+        _ent("sensor.fhp_tariff", p + "tariff_period"),
+    ]
+    out = await build_dashboard(_FakeInst(devices, entities), _publisher(),
+                                layout="single", include_diagnostics=True)
+    for eid in ("sensor.fhp_home_load_2", "sensor.fhp_grid_power", "sensor.fhp_tariff",
+                "sensor.unknown_thing"):
+        assert eid not in out["yaml"], eid
+
+
+async def test_only_entities_this_publisher_currently_publishes():
+    """A slug the bridge knows but isn't publishing (phase/port/group filtered)
+    is not listed, even if HA still has an old registry row for it."""
+    pub = _publisher()
+    pub._entities = [e for e in pub._entities if e.slug != "inverter_state"]
+    out = await build_dashboard(_FakeInst(*_registries()), pub,
+                                layout="single", include_diagnostics=True)
+    assert "sensor.inverter_state" not in out["yaml"]
+    assert "sensor.state_of_charge" in out["yaml"]
+
+
+async def test_reports_published_vs_found():
+    pub = _publisher()
+    out = await build_dashboard(_FakeInst(*_registries()), pub, include_diagnostics=True)
+    assert out["published_count"] == len(pub.entities)
+    assert out["entity_count"] <= out["published_count"]
