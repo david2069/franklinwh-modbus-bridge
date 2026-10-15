@@ -161,6 +161,44 @@ def require_role(*roles: str):
     return _dep
 
 
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_OWN_GATE: dict[int, bool] = {}
+
+
+def _declares_own_gate(route: Any) -> bool:
+    """Whether a route names its own role or capability dependency."""
+    key = id(route)
+    if key not in _OWN_GATE:
+        found = False
+        stack = list(getattr(getattr(route, "dependant", None), "dependencies", []))
+        while stack and not found:
+            dep = stack.pop()
+            name = getattr(dep.call, "__qualname__", "")
+            found = name.startswith(("require_role.", "require_capability."))
+            stack.extend(dep.dependencies)
+        _OWN_GATE[key] = found
+    return _OWN_GATE[key]
+
+
+async def require_admin_for_writes(request: Request, user: dict = Depends(require_auth)) -> None:
+    """Router dependency: a write needs the admin role unless the route says otherwise.
+
+    Most feature routers asked only for a session, so a viewer could
+    reconfigure gateways, MQTT and modules, stop gateways and run schedules
+    (#102). Reads stay open to any signed-in role. A write route that declares
+    its own ``require_role`` / ``require_capability`` (e.g. the per-gateway
+    command, gated on ``control``) keeps that gate instead. Depending on
+    ``require_auth`` here reuses the router's own call within the request.
+    """
+    if request.method in _READ_METHODS:
+        return
+    route = request.scope.get("route")
+    if route is not None and _declares_own_gate(route):
+        return
+    if user.get("role") != "admin":
+        raise HTTPException(403, "admin role required")
+
+
 def require_capability(capability: str):
     """Dependency factory: require a capability from ``ROLE_CAPABILITIES``.
 
