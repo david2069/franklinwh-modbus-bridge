@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-10-15
+
 ### Added
 
 - **Support info for a GitHub issue.** A redacted summary of this install to
