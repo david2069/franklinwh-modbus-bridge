@@ -92,6 +92,7 @@ _ADMIN_WRITES = [
     ("post", "/api/gateways/default/stop", None),
     ("post", "/api/schedules/nope/execute", None),
     ("put", "/api/automation/constants", {}),
+    ("put", "/api/tariff/spot/settings", {"nem_region": "NSW1"}),
 ]
 
 
@@ -109,7 +110,7 @@ async def test_non_admins_are_refused_admin_writes(client, role):
 @pytest.mark.parametrize("role", ["viewer", "user", "api"])
 async def test_non_admins_can_still_read(client, role):
     await _login_as(client, role)
-    for path in ("/api/gateways", "/api/mqtt/config", "/api/modules"):
+    for path in ("/api/gateways", "/api/mqtt/config", "/api/modules", "/api/tariff/spot"):
         assert (await client.get(path)).status_code == 200, (role, path)
 
 

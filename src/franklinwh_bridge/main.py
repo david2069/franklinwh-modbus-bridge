@@ -31,6 +31,7 @@ from franklinwh_bridge.api.health import router as health_router
 from franklinwh_bridge.api.modules_api import require_module
 from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
+from franklinwh_bridge.api.nem_api import router as nem_router
 from franklinwh_bridge.api.point_history_api import router as point_history_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
@@ -49,6 +50,7 @@ from franklinwh_bridge.config.supervisor import (
     ensure_local_ha_instance,
     supervisor_token,
 )
+from franklinwh_bridge.gateway.aemo_nem import NemPricingService
 from franklinwh_bridge.gateway.aggregator import SiteAggregator
 from franklinwh_bridge.gateway.billing import BillingStore
 from franklinwh_bridge.gateway.connectivity import ConnectivityMonitor
@@ -586,6 +588,14 @@ async def lifespan(app: FastAPI):
     app.state.solar_forecast = solar_forecast
     solar_forecast_task = asyncio.create_task(solar_forecast.run())
 
+    # ── Wholesale spot price (AEMO NEM, #89 part A) + HA price entities ──
+    # Off until a region is set (the loop fetches nothing). Same pattern as the
+    # forecast: the loop warms the cache, the sync points merge only reads it.
+    nem_pricing = NemPricingService(db, entity_state=ha_registry.entity_state)
+    await nem_pricing.load()
+    app.state.nem_pricing = nem_pricing
+    nem_pricing_task = asyncio.create_task(nem_pricing.run())
+
     # ── Utility-service billing/tariff windows (demand.*/bonus.* sensors) ──
     billing = BillingStore(db)
     await billing.load()
@@ -632,6 +642,7 @@ async def lifespan(app: FastAPI):
             **demand_tracker.as_points(),
             **fixed_charges.as_points(),
             **solar_forecast.as_points(),
+            **nem_pricing.as_points(),
         }
 
     # ── Connectivity monitor — outage detection + (later) catch-up ────
@@ -970,6 +981,9 @@ async def lifespan(app: FastAPI):
     solar_forecast_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await solar_forecast_task
+    nem_pricing_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await nem_pricing_task
     if mqtt_broker_watch is not None and not mqtt_broker_watch.done():
         mqtt_broker_watch.cancel()
 
@@ -1075,6 +1089,9 @@ app.include_router(modules_router, dependencies=_AUTH)
 app.include_router(energy_router, dependencies=_AUTH)
 app.include_router(point_history_router, dependencies=_AUTH)
 app.include_router(solar_router, dependencies=_AUTH)
+# Not behind the energy_costs module: the region feeds condition sensors and is
+# set on the Settings page whether or not the Energy Costs tab is on.
+app.include_router(nem_router, dependencies=_AUTH)
 # No _AUTH here: the router's own deps already require a user, and the GET
 # must stay reachable for any signed-in role so the modal can render.
 app.include_router(disclaimer_router)

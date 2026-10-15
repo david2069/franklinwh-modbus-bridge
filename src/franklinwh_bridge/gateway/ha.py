@@ -334,6 +334,13 @@ class HaInstance:
             if eid in self.exposed
         }
 
+    def exposed_state(self, entity_id: str) -> dict | None:
+        """Raw ``{state, attributes}`` of one EXPOSED entity, else None. Cache
+        only: callers that need the unit (price entities, #89) read it here."""
+        if entity_id not in self.exposed:
+            return None
+        return self._states.get(entity_id)
+
     def catalog(self) -> list[dict]:
         """Sensor metadata for each EXPOSED entity (for /api/sensors dropdowns)."""
         out = []
@@ -448,6 +455,14 @@ class HaRegistry:
         for inst in self._instances.values():
             merged.update(inst.values())
         return merged
+
+    def entity_state(self, sensor_id: str) -> dict | None:
+        """``ha:<inst>:<entity_id>`` -> that exposed entity's raw state, or None."""
+        parts = sensor_id.split(":", 2) if isinstance(sensor_id, str) else []
+        if len(parts) != 3 or parts[0] != "ha":
+            return None
+        inst = self._instances.get(parts[1])
+        return inst.exposed_state(parts[2]) if inst else None
 
     def catalog(self) -> list[dict]:
         out: list[dict] = []
