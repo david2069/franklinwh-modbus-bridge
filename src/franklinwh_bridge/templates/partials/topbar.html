@@ -10,11 +10,9 @@
     </button>
 
     <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider truncate"
-        x-text="$store.app.activeTab === 'dashboard' ? 'Dashboard' :
-                $store.app.activeTab === 'explorer' ? 'SunSpec Explorer' :
-                $store.app.activeTab === 'logs' ? 'Logs' :
-                $store.app.activeTab === 'sequencer' ? 'Sequencer' :
-                'Settings'">
+        x-text="({ dashboard: 'Dashboard', explorer: 'SunSpec Explorer', logs: 'Logs',
+                   sequencer: 'Sequencer', schedule: 'Schedule', ha_entities: 'Home Assistant',
+                   energy_costs: 'Energy Costs', settings: 'Settings' })[$store.app.activeTab] || ''">
     </h1>
   </div>
 

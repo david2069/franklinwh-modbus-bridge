@@ -115,6 +115,20 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Setup wizard's Home Assistant step, and tab naming** (#94).
+  - It asks "Will you use this bridge with Home Assistant?". Answering No
+    (stored as `setup_use_ha`; `POST /api/setup/use-ha`) shows every HA item as
+    skipped (–), not failed, and says HA can be connected later. Before, a
+    standalone install always finished setup on two red ✗.
+  - Each link says what it is for: the MQTT broker carries entities *into* HA;
+    the HA connection lets the bridge *read* HA.
+  - The two HA-side checks say why they show "?": "Can't check — no Home
+    Assistant connected to the bridge".
+  - The "HA Entities" tab is now called **Home Assistant**, to match the other
+    repos. The tab id is unchanged.
+  - The top bar title read "Settings" on the Schedule, HA and Energy Costs
+    tabs; every tab now has its own title.
+
 - **MQTT Topic Prefix / Discovery Prefix settings now apply** (#90, part 1 of
   #87). They were stored but ignored, because every topic, unique_id and device
   identifier was hard-coded `franklinwh` / `homeassistant`.

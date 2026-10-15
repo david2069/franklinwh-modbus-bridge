@@ -21,6 +21,12 @@
     ha_mqtt_integration: "Home Assistant's MQTT integration set up",
     ha_entities: 'Bridge entities in Home Assistant',
   };
+  // What each link is for — the two are separate and each is optional (#94).
+  const CHECKLIST_PURPOSE = {
+    mqtt_broker: "Carries this bridge's entities into Home Assistant.",
+    ha_connection: 'Lets the bridge read Home Assistant: its entities as schedule '
+      + 'conditions, notifications, actions, and the two checks below.',
+  };
   const SOURCE_LABELS = {
     supervisor: 'Home Assistant host network',
     browser_address: 'the address you opened this page with',
@@ -93,6 +99,7 @@
 
       checklist: [],
       environment: '',
+      useHa: true,
 
       // Accounts step
       accounts: null,            // GET /api/setup/accounts body
@@ -406,6 +413,22 @@
         try {
           const d = await api('checklist');
           this.environment = d.environment;
+          this.useHa = d.use_ha !== false;
+          this.checklist = d.items || [];
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.busy = false;
+        }
+      },
+
+      async setUseHa(value) {
+        this.busy = true;
+        this.error = '';
+        try {
+          const d = await api('use-ha', { method: 'POST', body: { use_ha: value } });
+          this.environment = d.environment;
+          this.useHa = d.use_ha !== false;
           this.checklist = d.items || [];
         } catch (e) {
           this.error = e.message;
@@ -415,6 +438,7 @@
       },
 
       checkLabel(id) { return CHECKLIST_LABELS[id] || id; },
+      checkPurpose(id) { return CHECKLIST_PURPOSE[id] || ''; },
     };
   };
 })();

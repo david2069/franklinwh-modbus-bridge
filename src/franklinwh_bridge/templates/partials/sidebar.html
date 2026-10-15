@@ -107,9 +107,9 @@
       <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Schedule</span>
     </button>
 
-    <!-- HA Entities -->
+    <!-- Home Assistant (tab id stays ha_entities) -->
     <button x-show="$store.app.canSee('ha_entities')" @click="$store.app.setTab('ha_entities')"
-            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'HA Entities'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Home Assistant'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full"
             :class="[
@@ -119,7 +119,7 @@
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path d="M3 9.5L12 3l9 6.5"/><path d="M5 10v10h14V10"/><rect x="9" y="13" width="6" height="7"/>
       </svg>
-      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>HA Entities</span>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Home Assistant</span>
     </button>
 
     <!-- Energy Costs -->
