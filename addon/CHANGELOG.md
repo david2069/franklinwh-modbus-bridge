@@ -7,6 +7,19 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.5 — 2026-10-16
+
+### Fixes
+- **Several aGates: each one now appears as its own Home Assistant device.**
+  Extra gateways connected after start-up were never published, so only the
+  first aGate showed in Home Assistant.
+- **Every device is named "FranklinWH Modbus <short serial>"**, including extra
+  gateways.
+- **Large solar arrays (over 15 kW) now show their real output.** Readings above
+  15 kW were replaced with an old value.
+- **No more night-time "Rejected corrupted pv_total" warnings.** A small negative
+  standby reading is shown as 0 W.
+
 ## 0.2.4 — 2026-10-15
 
 ### Home Assistant

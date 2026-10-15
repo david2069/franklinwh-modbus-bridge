@@ -374,20 +374,51 @@ def test_sanitize_uses_previous_good_value(poller):
     assert points2["total_solar"] == 3200
 
 
-def test_sanitize_rejects_above_max_sane_power(poller):
-    """Values above MAX_SANE_POWER_W (15000) are rejected even if not 0xFFFF."""
+def test_sanitize_keeps_large_array_readings(poller):
+    """#122: a 33 kW (DC) site's real midday solar must pass — the old 15 kW
+    cap replaced it with a stale value every poll."""
     points = {
-        "total_solar": 20000,
-        "pv_total": 20000,
-        "pv_proximal": 20000,
+        "total_solar": 21500,
+        "pv_total": 21500,
+        "pv_proximal": 21500,
         "pv_remote1": 0,
         "pv_remote2": 0,
         "home_load_ext": 500,
     }
     poller._sanitize_extension_values(points)
-    assert points["total_solar"] == 0  # no previous good value
-    assert points["pv_proximal"] == 0
+    assert points["total_solar"] == 21500
+    assert points["pv_total"] == 21500
+    assert points["pv_proximal"] == 21500
+
+
+def test_sanitize_rejects_absurd_power(poller):
+    """Only physically absurd values (e.g. three summed 0xFFFF) are rejected."""
+    points = {"total_solar": 196605, "pv_total": 0, "pv_proximal": 0,
+              "pv_remote1": 0, "pv_remote2": 0, "home_load_ext": 500}
+    poller._sanitize_extension_values(points)
+    assert points["total_solar"] == 0
+
+
+def test_sanitize_night_small_negatives_are_zero_without_warning(poller, caplog):
+    """#122 user's log at 05:41: pv_total=65531 / 65530 (-5 / -6 W as int16)."""
+    caplog.set_level("WARNING")
+    points = {"total_solar": 65531, "pv_total": 65531, "pv_proximal": 65530,
+              "pv_remote1": 0, "pv_remote2": 0, "home_load_ext": 500}
+    poller._sanitize_extension_values(points)
     assert points["pv_total"] == 0
+    assert points["pv_proximal"] == 0
+    assert points["total_solar"] == 0
+    assert "Rejected corrupted" not in caplog.text
+
+
+def test_sanitize_sentinel_still_uses_previous(poller):
+    good = {"total_solar": 3000, "pv_total": 3000, "pv_proximal": 3000,
+            "pv_remote1": 0, "pv_remote2": 0, "home_load_ext": 500}
+    poller._sanitize_extension_values(good)
+    bad = {"total_solar": 65535, "pv_total": 65535, "pv_proximal": 65535,
+           "pv_remote1": 0, "pv_remote2": 0, "home_load_ext": 500}
+    poller._sanitize_extension_values(bad)
+    assert bad["pv_total"] == 3000
 
 
 def test_sanitize_passes_normal_values(poller):

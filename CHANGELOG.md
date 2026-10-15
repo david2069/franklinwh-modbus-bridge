@@ -13,6 +13,28 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-10-16
+
+### Fixed
+
+- **Several gateways: every gateway gets its own Home Assistant device** (#128).
+  Extra gateways were registered with MQTT once at startup, before a real aGate
+  had been read, and never again. A user with three gateways saw one device,
+  and the other gateways' readings were dropped. The bridge now re-checks every
+  15 s and registers each gateway as soon as its serial is known, and re-binds
+  it after a reconnect or restart.
+- **Device names use the short serial for every gateway:**
+  `FranklinWH Modbus <last 8 of serial>`. Extra gateways were named by their
+  gateway id (e.g. `…shed_gw`). A demo/mock gateway is named
+  `FranklinWH Modbus <id> (mock)`.
+- **Large solar arrays: real readings were thrown away above 15 kW** (#122). A
+  33 kW (DC) site had its midday solar replaced by a stale value every poll.
+  The fixed 15 kW limit is gone; only physically absurd values (e.g. three
+  summed 0xFFFF registers) are rejected.
+- **No more night-time "Rejected corrupted pv_total=65531" warnings** (#122).
+  Small negative PV readings (an inverter's standby draw, sent as unsigned
+  16-bit, e.g. 65531 = −5 W) are decoded and shown as 0 W.
+
 ## [0.2.4] — 2026-10-15
 
 ### Changed
