@@ -335,29 +335,45 @@
           <template x-if="step === 'checklist'">
             <div class="space-y-2">
               <p class="font-semibold">Home Assistant</p>
+              <p x-show="environment === 'ha_addon'" class="text-xs text-slate-400">
+                Running inside Home Assistant: the connection is set up automatically,
+                and so is the MQTT broker once the Mosquitto app is installed.
+              </p>
+              <div x-show="environment !== 'ha_addon'" class="flex flex-wrap items-center gap-2 text-xs">
+                <span>Will you use this bridge with Home Assistant?</span>
+                <button type="button" @click="setUseHa(true)" :disabled="busy"
+                        class="btn btn-sm" :class="useHa ? 'btn-primary' : 'btn-secondary'">Yes</button>
+                <button type="button" @click="setUseHa(false)" :disabled="busy"
+                        class="btn btn-sm" :class="useHa ? 'btn-secondary' : 'btn-primary'">No</button>
+              </div>
+              <p x-show="!useHa" class="text-xs text-slate-400">
+                Fine — the dashboard, scheduler and battery control work without it.
+                You can connect Home Assistant later in Settings → Home Assistant.
+              </p>
               <template x-for="item in checklist" :key="item.id">
                 <div class="flex items-start gap-2 text-xs">
                   <span class="shrink-0 w-4 text-center"
                         :class="item.status === 'ok' ? 'text-emerald-400' : item.status === 'fail' ? 'text-red-400' : 'text-slate-500'"
-                        x-text="item.status === 'ok' ? '✓' : item.status === 'fail' ? '✗' : '?'"></span>
+                        x-text="item.status === 'ok' ? '✓' : item.status === 'fail' ? '✗' : item.status === 'skipped' ? '–' : '?'"></span>
                   <div class="flex-1 min-w-0">
                     <p x-text="checkLabel(item.id)"></p>
+                    <p x-show="useHa && checkPurpose(item.id)" class="text-slate-400" x-text="checkPurpose(item.id)"></p>
                     <p class="text-slate-500" x-text="item.detail"></p>
-                    <template x-if="item.status !== 'ok' && item.id === 'mqtt_broker'">
+                    <template x-if="!['ok', 'skipped'].includes(item.status) && item.id === 'mqtt_broker'">
                       <p class="text-slate-400" x-text="environment === 'ha_addon'
                           ? 'Install the Mosquitto broker app in Home Assistant (Settings → Apps).'
                           : 'Set the broker in Settings → Home Assistant → MQTT Broker.'"></p>
                     </template>
-                    <template x-if="item.status !== 'ok' && item.id === 'ha_mqtt_integration'">
+                    <template x-if="!['ok', 'skipped'].includes(item.status) && item.id === 'ha_mqtt_integration'">
                       <p class="text-slate-400">In Home Assistant: Settings → Devices &amp; services → Discovered → MQTT → Configure.</p>
                     </template>
-                    <template x-if="item.status !== 'ok' && item.id === 'ha_connection' && environment !== 'ha_addon'">
+                    <template x-if="!['ok', 'skipped'].includes(item.status) && item.id === 'ha_connection' && environment !== 'ha_addon'">
                       <p class="text-slate-400">Add your Home Assistant in Settings → Home Assistant.</p>
                     </template>
                   </div>
                 </div>
               </template>
-              <button type="button" @click="loadChecklist()" :disabled="busy"
+              <button type="button" x-show="useHa" @click="loadChecklist()" :disabled="busy"
                       class="btn btn-sm btn-secondary disabled:opacity-50">Check again</button>
             </div>
           </template>

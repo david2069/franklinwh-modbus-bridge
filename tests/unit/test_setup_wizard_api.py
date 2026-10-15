@@ -323,6 +323,7 @@ async def test_setup_writes_are_admin_only(fresh_client):
         ("post", "/api/setup/connect", {"host": "192.0.2.1", "name": "x"}),
         ("post", "/api/setup/demo", {}),
         ("get", "/api/setup/checklist", None),
+        ("post", "/api/setup/use-ha", {"use_ha": False}),
     ]:
         kwargs = {"json": payload} if payload is not None else {}
         resp = await getattr(client, method)(path, **kwargs)
@@ -368,3 +369,40 @@ async def test_checklist_counts_only_current_gateways_entities(fresh_client, mon
     monkeypatch.setattr(setup_api, "_current_short_ids", lambda request: set())
     items = {i["id"]: i for i in (await fresh_client.get("/api/setup/checklist")).json()["items"]}
     assert items["ha_entities"]["status"] == "fail" and items["ha_entities"]["count"] == 0
+
+
+async def test_checklist_says_why_it_cannot_check_without_ha(fresh_client):
+    """Without a Home Assistant connection the two HA-side items can't be read (#94)."""
+    body = (await fresh_client.get("/api/setup/checklist")).json()
+    assert body["use_ha"] is True
+    items = {i["id"]: i for i in body["items"]}
+    for item_id in ("ha_mqtt_integration", "ha_entities"):
+        assert items[item_id]["status"] == "unknown"
+        assert "no Home Assistant connected" in items[item_id]["detail"]
+
+
+async def test_not_using_ha_skips_the_checklist_and_persists(fresh_client):
+    """A standalone install isn't shown failures for HA it doesn't use (#94)."""
+    body = (await fresh_client.post("/api/setup/use-ha", json={"use_ha": False})).json()
+    assert body["use_ha"] is False
+    assert [i["status"] for i in body["items"]] == ["skipped"] * 4
+
+    again = (await fresh_client.get("/api/setup/checklist")).json()
+    assert again["use_ha"] is False
+    assert all(i["status"] == "skipped" for i in again["items"])
+
+    back = (await fresh_client.post("/api/setup/use-ha", json={"use_ha": True})).json()
+    assert back["use_ha"] is True
+    assert "skipped" not in {i["status"] for i in back["items"]}
+    assert (await fresh_client.post("/api/setup/use-ha", json={"use_ha": "x"})).status_code == 422
+
+
+async def test_addon_is_not_asked_and_cannot_opt_out(fresh_client, monkeypatch):
+    """Inside Home Assistant there is nothing to opt out of (#94)."""
+    from franklinwh_bridge.api import setup_api
+
+    monkeypatch.setattr(setup_api, "detect_environment", lambda: "ha_addon")
+    body = (await fresh_client.get("/api/setup/checklist")).json()
+    assert (body["use_ha"], body["ask_use_ha"]) == (True, False)
+    assert (await fresh_client.post("/api/setup/use-ha", json={"use_ha": False})).status_code == 409
+    assert "skipped" not in {i["status"] for i in body["items"]}

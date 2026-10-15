@@ -933,8 +933,8 @@
               <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addHaAction()" x-show="haControllable.length">+ add action</button>
             </div>
             <template x-if="!haControllable.length">
-              <div class="text-[11px] text-slate-500">No controllable HA entities exposed. Expose switches / selects / lights in
-                <button type="button" class="text-cyan-400 hover:underline" @click="$store.app.setTab('ha_entities')">HA Entities</button>.</div>
+              <div class="text-[11px] text-slate-500">No controllable HA entities exposed. Expose switches / selects / lights on the
+                <button type="button" class="text-cyan-400 hover:underline" @click="$store.app.setTab('ha_entities')">Home Assistant</button> tab.</div>
             </template>
             <template x-for="(a, ai) in form.ha_actions" :key="ai">
               <div class="rounded border border-white/[0.04] p-1.5 space-y-1">
