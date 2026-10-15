@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest something the Modbus Bridge should do.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or goal, before any particular solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like the Bridge to do?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried or considered instead?
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: This is about the Modbus Bridge, NOT FranklinWH support.
+          required: true

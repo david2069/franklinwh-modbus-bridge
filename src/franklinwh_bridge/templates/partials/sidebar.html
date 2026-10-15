@@ -176,6 +176,12 @@
          target="_blank" rel="noopener noreferrer"
          class="hover:text-amber-400 transition"
          title="Report a bug or request a feature here — NOT to FranklinWH support">Issues</a>
+      <!-- "Report an issue" route: the redacted summary the issue form asks for. -->
+      <span x-show="$store.app.isAdmin" class="opacity-40">&middot;</span>
+      <a x-show="$store.app.isAdmin" href="?tab=settings&amp;section=admin" data-testid="sidebar-support-info"
+         @click.prevent="$store.app.setTab('settings', { section: 'admin' }); setTimeout(() => document.getElementById('support-info')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)"
+         class="hover:text-amber-400 transition"
+         title="Report an issue: generate a redacted summary of this Bridge to paste into it">Support info</a>
     </div>
     <div x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms
          class="text-[9px] text-slate-600 text-center leading-tight mb-1.5"
