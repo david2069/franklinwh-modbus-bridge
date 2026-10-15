@@ -684,8 +684,8 @@
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Discovery Published</span>
-          <span class="font-medium" :class="mqtt.discovery_published ? 'text-emerald-400' : 'text-slate-500'"
-                x-text="mqtt.discovery_published ? 'Yes' : 'No'"></span>
+          <span class="font-medium" :class="mqtt.discovery_paused ? 'text-amber-400' : (mqtt.discovery_published ? 'text-emerald-400' : 'text-slate-500')"
+                x-text="mqtt.discovery_paused ? 'Unpublished — Republish to restore' : (mqtt.discovery_published ? 'Yes' : 'No')"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Entity Count</span>

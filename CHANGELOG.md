@@ -13,6 +13,27 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Power History dropped every sample above 15 kW** (#122). A second 15 kW
+  limit in the history recorder (`store/metrics.py`) rejected the whole row
+  whenever solar, grid or battery power exceeded 15 kW. 0.2.5 had removed only
+  the poller's copy.
+  - **Root cause of both limits:** commit 2caf8a7 (2026-05-28) fixed real 0xFFFF
+    corruption (three summed "no value" registers reading as 196,605 W), but
+    also capped all power at 15 kW. It assumed nothing residential exceeds that
+    ("3× aGate stacking"), which conflates the battery system with the
+    customer's own PV array, and was never checked against a real site. It was
+    duplicated in two places. Effect on a 33 kW (DC) site: wrong (stale) solar
+    in Home Assistant, and gaps in Power History at high output.
+  - Both guards now reject only physically absurd values (> 150 kW, the summed
+    sentinel), not real readings.
+- **Unpublish undid itself within about a second** (#131). The run loop
+  republished discovery straight away. Unpublish now pauses publishing until
+  **Republish** (persisted across restarts), and removes every gateway's
+  entities, not only the primary's. Settings shows "Unpublished — Republish to
+  restore".
+
 ## [0.2.5] — 2026-10-16
 
 ### Fixed

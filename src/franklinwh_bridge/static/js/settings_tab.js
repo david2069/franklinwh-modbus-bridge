@@ -2202,7 +2202,7 @@ function settingsTab() {
         if (data && !data.error) {
           const count = data.topics_cleared ?? 0;
           Alpine.store('app').toast(
-            `Discovery unpublished — ${count} topics tombstoned`,
+            `Removed from Home Assistant (${count} entries). Stays removed until you press Republish.`,
             'info',
           );
           await this.loadAll();

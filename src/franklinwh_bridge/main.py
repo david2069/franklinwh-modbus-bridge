@@ -78,6 +78,7 @@ from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
     UNCONFIGURED_DESCRIPTION,
+    get_app_config,
     get_gateway,
     get_gateways,
     get_mqtt_config,
@@ -323,6 +324,10 @@ async def lifespan(app: FastAPI):
         mqtt_config, gateway_id=gateway_id,
     )
     app.state.mqtt_publisher = mqtt_publisher
+    # Unpublish stays in force across restarts until Republish (#131).
+    if (await get_app_config(db, "mqtt_discovery_paused", "0")) == "1":
+        mqtt_publisher.set_discovery_paused(True)
+        logger.info("MQTT discovery is unpublished (paused) — Republish to restore entities")
     mqtt_publisher.on_published = lambda: mark_published(db)
 
     await mqtt_publisher.sync_groups(db)
