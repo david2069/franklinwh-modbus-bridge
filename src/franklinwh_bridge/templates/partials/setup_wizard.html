@@ -331,6 +331,158 @@
             </div>
           </template>
 
+          <!-- 5b. Home Assistant naming (MQTT namespace) — chosen once, before
+               anything is published. See docs/home-assistant-naming.md. -->
+          <template x-if="step === 'ha-naming' && naming">
+            <div class="space-y-3" data-testid="ha-naming-step">
+              <p class="font-semibold">Home Assistant naming</p>
+              <p class="text-xs text-slate-400">
+                Choose the name this bridge publishes under in Home Assistant.
+                <span class="font-medium text-slate-300">Nothing is sent to Home Assistant until you choose.</span>
+              </p>
+              <div x-show="naming.ask_use_ha" class="flex flex-wrap items-center gap-2 text-xs">
+                <span>Will you use this bridge with Home Assistant?</span>
+                <button type="button" class="btn btn-sm btn-primary" aria-pressed="true">Yes</button>
+                <button type="button" @click="notUsingHa()" :disabled="busy"
+                        class="btn btn-sm btn-secondary">No — skip this</button>
+              </div>
+
+              <!-- A previous install of this bridge on the broker (read-only check) -->
+              <template x-if="naming.previous_install && naming.previous_install.found">
+                <div class="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 text-xs text-emerald-300"
+                     data-testid="naming-previous">
+                  Found entities from a previous install of this bridge under
+                  '<span class="font-mono font-semibold" x-text="naming.previous_install.prefix"></span>' —
+                  choose it to keep your existing Home Assistant entities and their history.
+                </div>
+              </template>
+              <template x-if="naming.previous_install && naming.previous_install.checked
+                              && !naming.previous_install.found
+                              && Object.keys(naming.previous_install.foreign || {}).length">
+                <p class="text-xs text-amber-300">
+                  Another FranklinWH integration already publishes under
+                  <span class="font-mono" x-text="Object.keys(naming.previous_install.foreign).join(', ')"></span>
+                  on this broker. Don't choose that name: the two would share entities and commands.
+                </p>
+              </template>
+              <p x-show="naming.previous_install && !naming.previous_install.checked && naming.previous_install.error"
+                 class="text-[11px] text-slate-500"
+                 x-text="'Couldn\'t look for a previous install: ' + (naming.previous_install?.error || '')"></p>
+
+              <!-- The choice -->
+              <div class="space-y-1.5 text-xs" data-testid="naming-choices">
+                <template x-for="c in naming.choices" :key="c.value">
+                  <label class="flex items-start gap-2 cursor-pointer">
+                    <input type="radio" name="naming-choice" class="mt-0.5" :value="c.value"
+                           :checked="namingChoice === c.value" @change="selectNaming(c.value)">
+                    <span>
+                      <span class="font-mono font-semibold" x-text="c.value"></span>
+                      <span class="text-slate-400" x-text="c.value === naming.recommended
+                        ? '— recommended for new installs. Keeps this bridge apart from other FranklinWH integrations.'
+                        : '— only to restore a previous install\'s entities that used it. Shared with other FranklinWH integrations, so their devices can merge (#120).'"></span>
+                    </span>
+                  </label>
+                </template>
+                <label class="flex flex-wrap items-center gap-2 cursor-pointer">
+                  <input type="radio" name="naming-choice" :checked="namingChoice === 'custom'"
+                         @change="namingChoice = 'custom'; loadNamingPreview()">
+                  <span>Custom</span>
+                  <input type="text" x-model.trim="namingCustom" placeholder="fwh_home"
+                         @focus="namingChoice = 'custom'" @input.debounce.400ms="loadNamingPreview()"
+                         class="form-control !py-0.5 !text-xs w-32 font-mono" aria-label="Custom name">
+                </label>
+                <p x-show="namingChoice === 'custom'" class="text-[11px] text-slate-500">
+                  fwh_ plus 2–8 lowercase letters or digits. Reserved for other integrations:
+                  <span class="font-mono" x-text="(naming.reserved || []).map(r => r.value).join(', ')"></span>.
+                </p>
+                <p x-show="namingProblem" class="text-[11px] text-red-400" x-text="namingProblem"></p>
+              </div>
+
+              <!-- Live preview, built by the same code that publishes -->
+              <div class="rounded border p-2 space-y-2 text-xs" style="border-color: var(--border);"
+                   data-testid="naming-preview">
+                <p class="font-medium">What Home Assistant will get</p>
+                <template x-for="gw in namingPreview" :key="gw.gateway_id">
+                  <div class="space-y-1">
+                    <p>
+                      Device <span class="font-semibold" x-text="gw.device_name"></span>
+                                            <span class="text-slate-500" x-show="!gw.publish_to_ha">— not published unless you say Yes on the next step</span>
+                    </p>
+                    <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+                      <dt class="text-slate-500">Device identifier</dt>
+                      <dd class="font-mono break-all" x-text="gw.device_identifier"></dd>
+                      <dt class="text-slate-500">MQTT topics</dt>
+                      <dd class="font-mono break-all" x-text="gw.topic_root + '…'"></dd>
+                    </dl>
+                    <template x-for="e in gw.entities" :key="e.slug">
+                      <div class="text-[11px] pl-2 border-l" style="border-color: var(--border);">
+                        <span class="text-slate-400" x-text="e.name"></span>:
+                        unique id <span class="font-mono break-all" x-text="e.unique_id"></span>,
+                        likely entity id <span class="font-mono break-all" x-text="e.entity_id"></span>
+                      </div>
+                    </template>
+                    <p x-show="!gw.serial_known" class="text-[11px] text-slate-500">
+                      The serial, and with it the device name, is read from the aGate when it connects.
+                    </p>
+                  </div>
+                </template>
+                <p x-show="!namingPreview.length && !namingProblem" class="text-slate-400">
+                  No gateway yet. Each aGate you add becomes its own device,
+                  <span class="font-mono">FranklinWH Modbus &lt;last 8 of serial&gt;</span>.
+                </p>
+                <p class="text-[10px] text-slate-500">
+                  Home Assistant makes the entity id from the device and entity names, and you can rename it there.
+                  The unique id is what this naming fixes.
+                </p>
+              </div>
+
+              <!-- Permanence -->
+              <div class="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs space-y-1"
+                   data-testid="naming-permanent">
+                <p class="font-semibold text-amber-300">Treat this as permanent</p>
+                <p class="text-slate-300">
+                  This name becomes part of every entity's unique id, every MQTT topic and the device
+                  identifier in Home Assistant. Home Assistant uses those to keep each entity and its history.
+                  Changing it later creates new entities and a new device. History does not carry over
+                  automatically, and whether it can be carried over is not established, so assume it can't.
+                  Dashboards and automations would need updating.
+                </p>
+              </div>
+
+              <!-- Examples; the rest is in the doc -->
+              <div class="text-xs space-y-1" data-testid="naming-examples">
+                <p class="font-medium">Examples</p>
+                <ul style="list-style: disc;" class="pl-5 space-y-1 text-slate-400">
+                  <li><span class="text-slate-300">Several aGates on this bridge:</span> one device each, all under
+                    one name, each named by its short serial: <span class="font-mono">FranklinWH Modbus 0000ABCD</span>,
+                    <span class="font-mono">FranklinWH Modbus 0000EF01</span>. An added aGate's ids and topics use its
+                    gateway id, e.g. <span class="font-mono">fwh_mb_agate_ef01_…</span>.</li>
+                  <li><span class="text-slate-300">The same aGate in several integrations:</span> separate devices
+                    and names: this bridge <span class="font-mono">fwh_mb</span>, Direct Connect
+                    <span class="font-mono">fwh_dc</span> (proposed), FWHAI <span class="font-mono">fwhai</span>.
+                    Never choose another integration's name.</li>
+                  <li><span class="text-slate-300">A shared MQTT broker:</span> each install has its own client id
+                    and its own topic root, so several bridges and integrations can share one broker.</li>
+                  <li><span class="text-slate-300">Two Home Assistants:</span> on the same broker both see the same
+                    devices; on another broker the second sees nothing unless the brokers are bridged.</li>
+                  <li><span class="text-slate-300">Remove and reinstall:</span> choose the same name again to get the
+                    same entities back. This step looks for them on the broker.</li>
+                </ul>
+                <a :href="naming.docs_url" target="_blank" rel="noopener noreferrer"
+                   class="text-cyan-400 underline">Learn more: every combination, and removing or reinstalling</a>
+                <p class="text-[11px] text-slate-500">
+                  Without this page (Docker, add-on): set
+                  <span class="font-mono" x-text="naming.env_var + '=fwh_mb'"></span> and restart.
+                </p>
+              </div>
+
+              <label class="flex items-start gap-2 text-xs cursor-pointer">
+                <input type="checkbox" class="mt-0.5" x-model="namingAck" data-testid="naming-ack">
+                <span class="font-medium">I understand this is permanent</span>
+              </label>
+            </div>
+          </template>
+
           <!-- 6. Home Assistant checklist -->
           <template x-if="step === 'checklist'">
             <div class="space-y-2">
@@ -367,30 +519,20 @@
                           + ' You can change this later in Settings → Home Assistant.'"></p>
                     </div>
                   </template>
-                  <!-- MQTT namespace (#87): free to choose until something is published -->
+                  <!-- The naming, chosen in its own step; shown here only -->
                   <template x-if="namespace">
                     <div class="text-xs space-y-1" data-testid="namespace-choice">
                       <div class="flex flex-wrap items-center gap-2">
-                        <span>Namespace in Home Assistant:</span>
-                        <template x-if="!namespace.published">
-                          <span class="flex flex-wrap gap-2">
-                            <template x-for="p in namespace.presets" :key="p.value">
-                              <button type="button" @click="setNamespace(p.value)" :disabled="busy"
-                                      class="btn btn-sm font-mono"
-                                      :class="namespace.topic_prefix === p.value ? 'btn-primary' : 'btn-secondary'"
-                                      :title="p.label" x-text="p.value"></button>
-                            </template>
-                          </span>
-                        </template>
-                        <span x-show="namespace.published" class="font-mono font-semibold" x-text="namespace.topic_prefix"></span>
+                        <span>Home Assistant naming:</span>
+                        <span x-show="!namespace.pending" class="font-mono font-semibold" x-text="namespace.topic_prefix"></span>
+                        <span x-show="namespace.pending" class="text-amber-300">not chosen yet — nothing is published</span>
+                        <button type="button" x-show="namespace.pending || !namespace.published"
+                                @click="enterHaNaming({ direct: true })" :disabled="busy"
+                                class="btn btn-sm btn-secondary"
+                                x-text="namespace.pending ? 'Choose…' : 'Change…'"></button>
                       </div>
-                      <p class="text-slate-400">
-                        <span class="font-mono">fwh_mb</span> separates this bridge's entities from other
-                        FranklinWH integrations on the same Home Assistant;
-                        <span class="font-mono">franklinwh</span> is the shared legacy namespace.
-                      </p>
                       <p x-show="namespace.published" class="text-slate-500">
-                        Already published, so changing it re-creates the entities: Settings → Home Assistant →
+                        Changing it re-creates the entities: Settings → Home Assistant →
                         MQTT Broker → Change namespace….
                       </p>
                     </div>
@@ -464,10 +606,18 @@
             </button>
             <button type="button" x-show="step === 'timezone'" @click="enterAccounts()"
                     class="btn btn-sm btn-secondary">Skip for now</button>
-            <button type="button" x-show="step === 'accounts' && accounts?.you?.weak_password" @click="enterChecklist()"
+            <button type="button" x-show="step === 'accounts' && accounts?.you?.weak_password" @click="enterHaNaming()"
                     class="btn btn-sm btn-secondary">Not now</button>
-            <button type="button" x-show="step === 'accounts' && !accounts?.you?.weak_password" @click="enterChecklist()"
+            <button type="button" x-show="step === 'accounts' && !accounts?.you?.weak_password" @click="enterHaNaming()"
                     class="btn btn-sm btn-primary">Next</button>
+            <button type="button" x-show="step === 'ha-naming'" @click="enterChecklist()" :disabled="busy"
+                    title="Nothing is published to Home Assistant until a naming is chosen"
+                    class="btn btn-sm btn-secondary">Decide later</button>
+            <button type="button" x-show="step === 'ha-naming'" @click="chooseNaming()"
+                    :disabled="busy || !namingAck || !!namingProblem || !namingTarget"
+                    data-testid="naming-confirm"
+                    class="btn btn-sm btn-primary disabled:opacity-50"
+                    x-text="busy ? 'Saving…' : `Use ${namingTarget || '…'}`"></button>
             <button type="button" x-show="step === 'timezone'" @click="confirmTimezone()" :disabled="busy"
                     class="btn btn-sm btn-primary disabled:opacity-50">That's right</button>
             <button type="button" x-show="step === 'checklist'" @click="close()"

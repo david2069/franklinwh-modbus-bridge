@@ -33,7 +33,14 @@ tracking and battery control.
      statistics, so try it on a test Home Assistant if you want to keep your
      Energy dashboard clean.
    - **I'll set it up myself.** Add gateways under **Settings → Gateways**.
-4. The wizard ends with a **Home Assistant checklist**. The step people most
+4. **Home Assistant naming.** Choose the name the bridge publishes under in
+   Home Assistant: `fwh_mb` for a new install, or the name an earlier install
+   used, to keep its entities. **Treat it as permanent**: it becomes part of
+   every entity's unique id, and changing it later creates new entities.
+   Nothing is published to Home Assistant until you choose. See
+   [Home Assistant naming](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/docs/home-assistant-naming.md)
+   for several aGates, several integrations, a shared broker, and reinstalling.
+5. The wizard ends with a **Home Assistant checklist**. The step people most
    often miss: in Home Assistant, go to **Settings → Devices & services →
    Discovered → MQTT → Configure**. Until that's done, no entities appear.
 
@@ -51,6 +58,7 @@ ground.
 | `gateway_unit_id` | Modbus unit id, normally `1`. |
 | `poll_interval` | Seconds between reads. `10` is a sensible default. |
 | `log_level` | `INFO` normally; `DEBUG` when diagnosing a problem. |
+| `mqtt_namespace` | The Home Assistant naming for a **new** install, if you'd rather not choose it in the wizard: `fwh_mb` (recommended) or `franklinwh` (only to keep an earlier install's entities). Ignored once the install has a name. Permanent: see [Home Assistant naming](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/docs/home-assistant-naming.md). |
 
 ## What sets itself up
 
@@ -72,7 +80,8 @@ storage, so updates don't lose it.
 |---|---|
 | The wizard finds no aGate | Modbus TCP is enabled on the aGate; the aGate is on the same network as Home Assistant. Try *Enter address* with its IP. |
 | *Unknown device listening on TCP port 502* where the aGate should be | The aGate may be rebooting, or another Modbus client may be busy with it. Try again in a minute. |
-| No entities in Home Assistant | The wizard's checklist: broker connected, and Home Assistant's MQTT integration configured (**Discovered → MQTT → Configure**). |
+| No entities in Home Assistant | The naming is chosen (no *waiting for you to choose a naming* banner). The wizard's checklist: broker connected, and Home Assistant's MQTT integration configured (**Discovered → MQTT → Configure**). |
+| Uninstalling | Uninstalling deletes the add-on's data. Home Assistant keeps the entities. To remove them too, first switch each gateway off under **Settings → Home Assistant → Publish to Home Assistant**. To get them back after a reinstall, choose the same naming. |
 | *Install Mosquitto* banner | Install and start the **Mosquitto broker** app. The bridge connects within about 30 seconds. |
 
 The **Log** tab shows the bridge's log; set `log_level: DEBUG` for more detail.

@@ -279,6 +279,10 @@ class MqttPublisher:
     #: Awaited after discovery is first published on a connection (main.py
     #: records it, #87). A class attribute for the same reason as above.
     on_published: Callable[[], Awaitable[None]] | None = None
+    #: A fresh install's naming is not chosen yet: connect, but publish nothing
+    #: (no discovery, state, availability) and obey no command topic. Set by
+    #: main.py from ``namespace.choose_initial_namespace``; cleared by the choice.
+    _held: bool = False
 
     def __init__(
         self,
@@ -322,6 +326,34 @@ class MqttPublisher:
     @property
     def state(self) -> MqttState:
         return self._state
+
+    @property
+    def held(self) -> bool:
+        """True while publishing waits for the naming choice."""
+        return self._held
+
+    def hold(self) -> None:
+        """Publish nothing until :meth:`release` — see ``_held``."""
+        self._held = True
+        self._drop_queued()
+
+    def release(self) -> None:
+        """The naming is chosen: publish (discovery first) on the connection.
+
+        The hold is publisher-wide, so it covers every device however it was
+        bound — the default gateway, the startup sync, or the 15 s reconcile
+        (#128). Anything queued meanwhile (e.g. tombstones from a re-bind) is
+        dropped: nothing was published yet, so there is nothing to remove.
+        """
+        self._drop_queued()
+        self._held = False
+        self._state.discovery_published = False
+        for dev in self._devices.values():
+            dev.discovery_published = False
+
+    def _drop_queued(self) -> None:
+        while not self._queue.empty():
+            self._queue.get_nowait()
 
     @property
     def entities(self) -> list[EntityDef]:
@@ -755,6 +787,8 @@ class MqttPublisher:
         uses that device's entity list and short_id. Otherwise falls back
         to the default single-device (backward compatible).
         """
+        if self._held:
+            return  # nothing reaches HA before the naming is chosen
         gw_id = getattr(sample, "gateway_id", "default")
         dev = self._devices.get(gw_id)
 
@@ -821,7 +855,7 @@ class MqttPublisher:
 
     async def publish_command_state(self) -> None:
         """Immediately publish command handler virtual points (no poll wait)."""
-        if not self._device_info or not self._command_handler:
+        if self._held or not self._device_info or not self._command_handler:
             return
         points = self._command_handler.virtual_points
         short_id = self._device_info.short_id
@@ -902,6 +936,22 @@ class MqttPublisher:
                     self._state.last_error = None
                     attempt = 0
                     logger.info("MQTT connected to %s:%d", self._host, self._port)
+
+                    if self._held:
+                        # A fresh install's naming isn't chosen: stay connected
+                        # (the wizard can look for a previous install) but say
+                        # nothing — no availability, discovery, state or
+                        # command subscription — until it is.
+                        logger.info(
+                            "Home Assistant publishing is held until the naming is chosen"
+                        )
+                        while self._held and not self._stop_event.is_set():
+                            self._drop_queued()
+                            with contextlib.suppress(TimeoutError):
+                                await asyncio.wait_for(self._stop_event.wait(), timeout=0.5)
+                        if self._stop_event.is_set():
+                            continue
+                        logger.info("Naming chosen — publishing to Home Assistant")
 
                     await self._publish_availability(client, online=True)
                     if self._has_discoverable() and not self._state.discovery_published:
@@ -1089,6 +1139,56 @@ class MqttPublisher:
         for dev in self._devices.values():
             dev.discovery_published = False
 
+    def _side_client(self, timeout: float = 10) -> aiomqtt.Client:
+        """A short-lived connection for reading retained topics.
+
+        A client id of its own: reusing ours would knock the main connection
+        off the broker (#118).
+        """
+        return aiomqtt.Client(
+            hostname=self._host,
+            port=self._port,
+            username=self._username,
+            password=self._password,
+            identifier=f"{self._client_id}_ns",
+            timeout=timeout,
+        )
+
+    @staticmethod
+    async def _collect_retained(
+        client: aiomqtt.Client, topics: list[str], window_s: float,
+    ) -> dict[str, bytes | str]:
+        """Subscribe to exactly ``topics`` and gather their retained payloads."""
+        wanted = set(topics)
+        retained: dict[str, bytes | str] = {}
+        for i in range(0, len(topics), 100):
+            await client.subscribe([(t, 0) for t in topics[i:i + 100]])
+
+        async def _collect() -> None:
+            async for message in client.messages:
+                topic = str(message.topic)
+                # Retained only: a live publish during the window is someone
+                # else at work, not what is stored.
+                if topic in wanted and getattr(message, "retain", False) and message.payload:
+                    retained[topic] = message.payload
+
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(_collect(), timeout=window_s)
+        return retained
+
+    async def probe_retained(
+        self, topics: list[str], window_s: float = 1.5,
+    ) -> dict[str, bytes | str]:
+        """Read-only: the retained payloads on ``topics`` (absent = none).
+
+        Used to find a previous install's entities before the naming is
+        chosen. Publishes nothing. Raises if the broker can't be reached.
+        """
+        if not topics:
+            return {}
+        async with self._side_client(timeout=5) as client:
+            return await self._collect_retained(client, topics, window_s)
+
     async def tombstone_own_discovery(
         self, old_prefix: str, short_ids: set[str], window_s: float = 2.0,
     ) -> dict[str, int]:
@@ -1111,32 +1211,9 @@ class MqttPublisher:
                 topic = entity.discovery_topic(sid, old_prefix, self._discovery_prefix)
                 if topic not in topics:
                     topics.append(topic)
-        wanted = set(topics)
-        retained: dict[str, bytes | str] = {}
         removed = 0
-        # A client id of its own: reusing ours would knock the main connection
-        # off the broker (#118).
-        async with aiomqtt.Client(
-            hostname=self._host,
-            port=self._port,
-            username=self._username,
-            password=self._password,
-            identifier=f"{self._client_id}_ns",
-            timeout=10,
-        ) as client:
-            for i in range(0, len(topics), 100):
-                await client.subscribe([(t, 0) for t in topics[i:i + 100]])
-
-            async def _collect() -> None:
-                async for message in client.messages:
-                    topic = str(message.topic)
-                    # Retained only: a live publish during the window is
-                    # someone else at work, not what is stored.
-                    if topic in wanted and getattr(message, "retain", False) and message.payload:
-                        retained[topic] = message.payload
-
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(_collect(), timeout=window_s)
+        async with self._side_client() as client:
+            retained = await self._collect_retained(client, topics, window_s)
             for topic, payload in retained.items():
                 if is_ours(payload):
                     await client.publish(topic, b"", retain=True)

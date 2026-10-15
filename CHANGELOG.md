@@ -13,6 +13,30 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **A new install chooses its Home Assistant naming before anything is
+  published** (owner requirement 2026-10-15). Until the MQTT namespace is
+  chosen, the bridge connects to the broker but publishes no discovery, state
+  or availability and obeys no command topic, and a banner says so. The setup
+  wizard has a new **Home Assistant naming** step: the choices (`fwh_mb`
+  recommended, `franklinwh` only to restore an earlier install, or a custom
+  `fwh_…`), a live preview of the device name, identifier, unique ids and
+  topics for your gateways, a permanence warning that must be acknowledged,
+  and short examples. When a broker is connected it looks (read-only) for this
+  bridge's entities from a previous install and preselects their name. Headless:
+  `MQTT_NAMESPACE` (add-on option `mqtt_namespace`). REST:
+  `GET`/`POST /api/setup/ha-naming` (admin). Existing installs are unaffected:
+  they keep their namespace and publish immediately.
+
+### Added
+
+- **docs/home-assistant-naming.md**: what the name is and why it is permanent,
+  every combination (several aGates, several integrations, own or shared
+  brokers, two Home Assistants, two sites, add-on and Docker together),
+  shared-broker rules, remove and reinstall, and changing it later. Linked
+  from the wizard, Settings, the add-on docs, INSTALL and the README.
+
 ## [0.2.5] — 2026-10-16
 
 ### Fixed

@@ -18,10 +18,20 @@ device.
 | Cloud integrations | `FranklinWH Cloud <short serial>` | `<prefix>_cloud_<FULL_SERIAL>` |
 
 - `<short serial>` is the last 8 characters of the aGate serial, e.g. `24170091`.
+- Modbus Bridge (0.2.5, #128): the name uses the short serial for **every**
+  gateway. The first gateway's unique ids and topics also use the short serial
+  (`<prefix>_0000ABCD_…`); an **added** gateway's use its gateway id
+  (`<prefix>_agate_ef01_…`), and its identifier is
+  `<prefix>_modbus_<gateway id>_<serial>` (lowercased). A mock is named
+  `FranklinWH Modbus <id> (mock)`.
 - The integration word is in **both** the name and the identifier. The name
   is what the user sees, and the identifier is what stops HA merging devices.
 - `sw_version` names the producer and its version (e.g. `Modbus Bridge v0.2.4`),
   so a device's origin is always visible on its HA page.
+
+How a user chooses the namespace, and what each combination of aGates,
+integrations, brokers and Home Assistants looks like:
+[home-assistant-naming.md](home-assistant-naming.md).
 
 ## Why
 

@@ -665,11 +665,22 @@
           <span class="text-slate-500">Topic Prefix</span>
           <span class="flex items-center gap-2">
             <span class="font-mono text-slate-300" x-text="mqttConfig.topic_prefix ?? '--'"></span>
-            <button type="button" x-show="$store.app.isAdmin" @click="openNamespaceDialog()"
+            <button type="button" x-show="$store.app.isAdmin && !$store.setup?.haNamingPending" @click="openNamespaceDialog()"
                     data-testid="change-namespace"
                     class="btn btn-sm btn-secondary !py-0.5 !text-[11px]">Change namespace…</button>
+            <button type="button" x-show="$store.app.isAdmin && $store.setup?.haNamingPending" @click="$store.setup.openNaming()"
+                    data-testid="choose-naming"
+                    class="btn btn-sm btn-primary !py-0.5 !text-[11px]">Choose naming…</button>
           </span>
         </div>
+        <p x-show="$store.setup?.haNamingPending" class="text-[11px] text-amber-300">
+          Not chosen yet: nothing is published to Home Assistant until it is.
+        </p>
+        <p class="text-[10px] text-slate-500">
+          The topic prefix is this bridge's Home Assistant naming — treat it as permanent.
+          <a href="https://github.com/david2069/franklinwh-modbus-bridge/blob/main/docs/home-assistant-naming.md"
+             target="_blank" rel="noopener noreferrer" class="text-cyan-400 underline">How naming works</a>
+        </p>
         <div class="flex justify-between">
           <span class="text-slate-500">Client ID</span>
           <span class="font-mono text-slate-400" x-text="mqttConfig.client_id ?? '--'"></span>

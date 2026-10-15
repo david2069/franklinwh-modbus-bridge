@@ -89,6 +89,7 @@ _ADMIN_WRITES = [
     ("patch", "/api/gateways/default", {"description": "x"}),
     ("patch", "/api/mqtt/config", {"host": "elsewhere.example"}),
     ("post", "/api/mqtt/namespace", {"topic_prefix": "fwh_zz", "confirm": True}),
+    ("post", "/api/setup/ha-naming", {"topic_prefix": "fwh_zz", "acknowledged": True}),
     ("patch", "/api/modules/energy_costs", {"enabled": True}),
     ("post", "/api/gateways/default/stop", None),
     ("post", "/api/schedules/nope/execute", None),

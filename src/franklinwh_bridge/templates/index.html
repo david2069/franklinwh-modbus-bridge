@@ -82,6 +82,20 @@
         </span>
       </div>
 
+      <!-- ── Home Assistant naming not chosen (fresh install) ──
+           Nothing is published to HA until it is, so say so rather than let
+           an empty HA look like a fault. -->
+      <div x-show="$store.setup && $store.setup.haNamingPending" x-cloak data-testid="naming-banner"
+           class="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 border-b text-xs bg-amber-500/15 border-amber-500/40 text-amber-100">
+        <span class="font-medium">Home Assistant publishing is waiting for you to choose a naming</span>
+        <span class="opacity-80">Nothing is sent to Home Assistant until then.</span>
+        <span class="ml-auto flex items-center gap-2">
+          <button x-show="$store.app.isAdmin" @click="$store.setup.openNaming()"
+                  class="px-2 py-0.5 rounded border border-current/40 hover:bg-white/10">Choose naming</button>
+          <span x-show="!$store.app.isAdmin" class="opacity-80">An admin needs to choose it.</span>
+        </span>
+      </div>
+
       <!-- Connection details. The banner has to stay one line on a phone, but
            "can't reach the bridge" has several distinct causes that need
            different fixes — the device being offline, a VPN down, or the

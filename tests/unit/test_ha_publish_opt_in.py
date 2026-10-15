@@ -197,6 +197,9 @@ async def client(tmp_path, monkeypatch):
     # Nothing listens here: the app's own publisher never reaches a broker.
     monkeypatch.setenv("MQTT_HOST", "127.0.0.1")
     monkeypatch.setenv("MQTT_PORT", "1")
+    # A fresh install holds publishing until its naming is chosen; these tests
+    # are about the publish switches, so the naming is chosen up front.
+    monkeypatch.setenv("MQTT_NAMESPACE", "fwh_mb")
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
     transport = ASGITransport(app=app, raise_app_exceptions=False)

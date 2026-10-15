@@ -178,6 +178,8 @@ async def get_status(request: Request):
         "last_publish_ts": state.last_publish_ts,
         "last_error": state.last_error,
         "discovery_published": state.discovery_published,
+        # A fresh install's naming isn't chosen: connected, publishing nothing.
+        "publishing_held": bool(getattr(publisher, "held", False)),
         "entity_count": len(publisher.entities),
         # The broker actually in use. As an add-on it comes from the Supervisor
         # and is never written to the stored config, so /config alone showed
