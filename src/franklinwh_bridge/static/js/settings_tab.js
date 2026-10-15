@@ -89,6 +89,11 @@ function settingsTab() {
     solarAzimuthHelp: '',
     solarHaInstances: [],
     solarSaving: false,
+    // Wholesale spot price (AEMO NEM, #89) + optional HA price entities
+    nemEdit: { nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '' },
+    nemRegions: ['NSW1', 'QLD1', 'SA1', 'TAS1', 'VIC1'],
+    nemSpot: null,       // GET api/tariff/spot body
+    nemSaving: false,
     // Gateway management
     gwList: [],
     gwBusy: false,
@@ -126,6 +131,7 @@ function settingsTab() {
       await this.loadHaInstances();
       await this.loadConstants();
       await this.loadSolar();
+      await this.loadNem();
       await this.loadModules();
       if (Alpine.store('app').isAdmin) { await this.loadUsers(); await this.loadAuthEvents(); }
       setInterval(() => {
@@ -140,6 +146,9 @@ function settingsTab() {
           // Refresh HA connection status/entity counts, but not while editing
           // (would clobber the in-progress form).
           if (this.haEditId === null) this.loadHaInstances();
+          if (Alpine.store('app').settingsSection === 'gateways' && this.nemEdit.nem_region) {
+            this.loadNemSpot();
+          }
         }
       }, 15000);
     },
@@ -886,6 +895,51 @@ function settingsTab() {
         this.solarSaving = false;
       }
     },
+
+    // ── Wholesale spot price (AEMO NEM) ──────────────────────────
+    _applyNem(data) {
+      const v = (data && data.values) || {};
+      this.nemEdit = {
+        nem_region: v.nem_region || '',
+        tariff_price_entity: v.tariff_price_entity || '',
+        tariff_feedin_entity: v.tariff_feedin_entity || '',
+      };
+      if (data && data.regions && data.regions.length) this.nemRegions = data.regions;
+    },
+    async loadNem() {
+      try {
+        this._applyNem(await fetchJSON('api/tariff/spot/settings'));
+      } catch (e) { /* card shows Off; the save path reports errors */ }
+      await this.loadNemSpot();
+    },
+    async loadNemSpot() {
+      try {
+        this.nemSpot = await fetchJSON('api/tariff/spot');
+      } catch (e) { this.nemSpot = null; }
+    },
+    async saveNem(patch) {
+      this.nemSaving = true;
+      try {
+        this._applyNem(await fetchJSON('api/tariff/spot/settings', {
+          method: 'PUT', body: JSON.stringify(patch),
+        }));
+        Alpine.store('app').toast('Spot price settings saved', 'info');
+      } catch (err) {
+        Alpine.store('app').toast('Save failed: ' + err.message, 'error');
+        await this.loadNem();
+        return;
+      } finally {
+        this.nemSaving = false;
+      }
+      await this.loadNemSpot();
+    },
+    /** "14:35 AEDT" for an AEMO settlement epoch (s), in the bridge's zone. */
+    nemSettlement(spot) {
+      if (!spot || spot.settlement_ts == null) return (spot && spot.settlement) || '';
+      const ms = spot.settlement_ts * 1000;
+      return bridgeTime.time(ms) + ' ' + bridgeTime.label(ms);
+    },
+    nemPrice(c) { return c == null ? '—' : Number(c).toFixed(2) + ' c/kWh'; },
 
     async testHa() {
       this.haTesting = true;

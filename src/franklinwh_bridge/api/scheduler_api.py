@@ -56,6 +56,9 @@ def _gateway_points(request: Request, gateway: str) -> dict:
     solar = getattr(request.app.state, "solar_forecast", None)
     if solar is not None:
         pts = {**pts, **solar.as_points()}
+    nem = getattr(request.app.state, "nem_pricing", None)
+    if nem is not None:
+        pts = {**pts, **nem.as_points()}
     return pts
 
 

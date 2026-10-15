@@ -748,6 +748,19 @@ SENSORS: list[SensorDef] = [
         lambda p, n: _rate_now(p, n)["sell"],
     ),
 
+    # ── Live wholesale price (AEMO NEM / HA price entity, #89) ─
+    # c/kWh, unlike buy_rate/sell_rate above ($/kWh from the static rate
+    # model) — same names and units as the Local Bridge. NEM gives sell = buy
+    # = spot; a configured HA price entity overrides its side. None when off.
+    SensorDef(
+        "tariff.spot_price", "Wholesale spot price (AEMO NEM or HA entity, c/kWh)", "c/kWh",
+        "number", lambda p, _n: _num(p, "tariff_spot_price"),
+    ),
+    SensorDef(
+        "tariff.feed_in_price", "Dynamic feed-in price (AEMO NEM or HA entity, c/kWh)",
+        "c/kWh", "number", lambda p, _n: _num(p, "tariff_feed_in_price"),
+    ),
+
     # ── Grid connection (network's grant, not a plan term) ─
     SensorDef(
         "service.pto_status", "Permission To Operate (network approval)", None, "enum",

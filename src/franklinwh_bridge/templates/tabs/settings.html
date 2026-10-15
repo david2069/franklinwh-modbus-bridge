@@ -1945,6 +1945,85 @@
       </div>
     </div>
 
+    <!-- Wholesale spot price (AEMO NEM, #89) + optional HA price entities -->
+    <div x-show="$store.app.settingsSection === 'gateways'" class="card" data-testid="nem-card">
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
+        <div class="card-label !mb-0">Wholesale spot price</div>
+        <span class="text-[10px] uppercase tracking-wide text-slate-500">tariff.spot_price · tariff.feed_in_price sensors</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">
+        Australia only: the AEMO National Electricity Market 5-minute wholesale spot price
+        (RRP) for your region, free and with no key. This is the wholesale market price,
+        not your retail tariff. It feeds the <span class="font-mono">tariff.spot_price</span>
+        (buy) and <span class="font-mono">tariff.feed_in_price</span> (sell, same as buy for
+        NEM) automation sensors in c/kWh. Off fetches nothing.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Wholesale region (AEMO NEM)</span>
+          <select x-model="nemEdit.nem_region" data-testid="nem-region"
+                  @change="saveNem({ nem_region: nemEdit.nem_region })"
+                  :disabled="!$store.app.isAdmin || nemSaving" class="form-control !py-1 !text-sm">
+            <option value="">Off</option>
+            <template x-for="rg in nemRegions" :key="rg">
+              <option :value="rg" x-text="rg" :selected="rg === nemEdit.nem_region"></option>
+            </template>
+          </select></label>
+        <template x-if="(nemSpot && nemSpot.ha_options && nemSpot.ha_options.length) || nemEdit.tariff_price_entity">
+          <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Buy price from HA entity (optional)</span>
+            <select x-model="nemEdit.tariff_price_entity"
+                    @change="saveNem({ tariff_price_entity: nemEdit.tariff_price_entity })"
+                    :disabled="!$store.app.isAdmin || nemSaving" class="form-control !py-1 !text-sm">
+              <option value="">None</option>
+              <template x-for="o in (nemSpot && nemSpot.ha_options) || []" :key="o.id">
+                <option :value="o.id" :selected="o.id === nemEdit.tariff_price_entity"
+                        x-text="o.label + (o.unit ? ' (' + o.unit + ')' : '')"></option>
+              </template>
+            </select></label>
+        </template>
+        <template x-if="(nemSpot && nemSpot.ha_options && nemSpot.ha_options.length) || nemEdit.tariff_feedin_entity">
+          <label class="flex flex-col gap-1"><span class="text-xs text-slate-500">Feed-in price from HA entity (optional)</span>
+            <select x-model="nemEdit.tariff_feedin_entity"
+                    @change="saveNem({ tariff_feedin_entity: nemEdit.tariff_feedin_entity })"
+                    :disabled="!$store.app.isAdmin || nemSaving" class="form-control !py-1 !text-sm">
+              <option value="">None</option>
+              <template x-for="o in (nemSpot && nemSpot.ha_options) || []" :key="o.id">
+                <option :value="o.id" :selected="o.id === nemEdit.tariff_feedin_entity"
+                        x-text="o.label + (o.unit ? ' (' + o.unit + ')' : '')"></option>
+              </template>
+            </select></label>
+        </template>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-2"
+         x-show="(nemSpot && nemSpot.ha_options && nemSpot.ha_options.length) || nemEdit.tariff_price_entity || nemEdit.tariff_feedin_entity">
+        An HA price entity, when set, wins over NEM for its side. A value in $/kWh is
+        converted to c/kWh; anything else is read as c/kWh.
+      </p>
+      <div class="flex items-center gap-2 flex-wrap mt-3 text-xs" data-testid="nem-status">
+        <template x-if="!nemEdit.nem_region">
+          <span class="text-slate-500">Spot price off — no region set</span>
+        </template>
+        <template x-if="nemEdit.nem_region && nemSpot && nemSpot.spot">
+          <span>
+            <span class="text-slate-500" x-text="nemSpot.spot.region + ' spot now'"></span>
+            <span class="font-semibold font-mono"
+                  :class="nemSpot.spot.price_c_kwh < 0 ? 'text-emerald-400' : 'text-slate-200'"
+                  x-text="nemPrice(nemSpot.spot.price_c_kwh)"></span>
+            <span class="text-slate-500" x-text="'· ' + nemSpot.spot.rrp_mwh + ' $/MWh · settled ' + nemSettlement(nemSpot.spot)"
+                  :title="'AEMO SETTLEMENTDATE (NEM time, AEST): ' + nemSpot.spot.settlement"></span>
+            <span x-show="nemSpot.spot.stale" class="text-amber-400"
+                  title="The last fetch from AEMO failed; this is the last good price">· stale</span>
+          </span>
+        </template>
+        <template x-if="nemEdit.nem_region && !(nemSpot && nemSpot.spot)">
+          <span class="text-slate-500">No spot price from AEMO yet</span>
+        </template>
+        <template x-if="nemSpot && nemSpot.active && nemSpot.active.source === 'ha-entity'">
+          <span class="text-slate-500"
+                x-text="'· active: HA entity, buy ' + nemPrice(nemSpot.active.buy_c_kwh) + ', sell ' + nemPrice(nemSpot.active.sell_c_kwh)"></span>
+        </template>
+      </div>
+    </div>
+
     <!-- Modbus Poller -->
     <div x-show="$store.app.settingsSection === 'gateways'" class="card">
       <div class="card-label mb-3">Modbus Poller</div>

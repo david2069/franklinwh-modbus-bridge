@@ -15,6 +15,22 @@ lands, not backfilled later.
 
 ### Added
 
+- **Wholesale spot price from AEMO NEM, as automation sensors** (#89, part A).
+  - Settings → Gateways → "Wholesale spot price": pick a NEM region (NSW1,
+    QLD1, SA1, TAS1, VIC1; Off by default, and Off fetches nothing). It shows
+    the live 5-minute spot price in c/kWh, its settlement time in the bridge's
+    zone, and a stale marker when AEMO stopped answering. Australia only.
+  - New condition sensors `tariff.spot_price` (buy) and `tariff.feed_in_price`
+    (sell) in c/kWh, the Local Bridge's names and units. NEM gives sell = buy =
+    spot. An optional Home Assistant price entity per side overrides NEM ("HA
+    wins"); a `$`/AUD value is scaled to cents. No data, or a price over 30 min
+    old, reads None, so conditions fail closed.
+  - `GET /api/tariff/spot?region=` (the Local Bridge's route) and `GET/PUT
+    /api/tariff/spot/settings` (admin writes). Source: AEMO's public
+    `ELEC_NEM_SUMMARY`, no key; cached 240 s, 12 s timeout, never raises.
+  - `tariff.buy_rate` / `tariff.sell_rate` are unchanged ($/kWh from the static
+    rate model). A dynamic tariff kind in billing is part B.
+
 - **Publishing to Home Assistant is opt-in per gateway, and switchable live** (#96).
   - The setup wizard's Home Assistant step asks "Publish *<gateway>*'s entities
     to Home Assistant?" for the gateway it just set up (`POST
