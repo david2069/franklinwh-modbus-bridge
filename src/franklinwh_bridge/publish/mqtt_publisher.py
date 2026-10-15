@@ -167,7 +167,14 @@ class DeviceInfo:
         # and "FranklinWH Cloud …". Same aGate, different integrations, so
         # different devices — never one merged device. See
         # docs/ha-device-identity.md.
-        name = f"FranklinWH {INTEGRATION_LABEL} {self.short_id}"
+        # The suffix is the aGate's short serial for EVERY gateway — not the
+        # gateway id, which extra gateways use as their topic id (#128). A mock
+        # has no real serial; it keeps its id and a visible "(mock)" so nobody
+        # wires an automation to synthetic data.
+        if self.firmware == "MOCK" or "(mock)" in (self.manufacturer or ""):
+            name = f"FranklinWH {INTEGRATION_LABEL} {self.short_id} (mock)"
+        else:
+            name = f"FranklinWH {INTEGRATION_LABEL} {self._serial_tail}"
 
         # Name this bridge explicitly as the producer.
         #

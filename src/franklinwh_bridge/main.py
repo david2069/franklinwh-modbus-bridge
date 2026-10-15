@@ -869,7 +869,19 @@ async def lifespan(app: FastAPI):
             wanted = bool(row.get("publish_to_ha", 1)) and bool(row.get("enabled", 1))
             registered = mqtt_publisher.get_device(gw_id) is not None
 
+            if wanted and registered and inst and inst.device_info:
+                # A gateway restart or reconnect replaces its instance: the
+                # registration must follow it, or the device keeps the old
+                # command handler and device info (#128). Re-bind without a
+                # tombstone — same entities, nothing for HA to remove.
+                dev = mqtt_publisher.get_device(gw_id)
+                if (dev.command_handler is not inst.command_handler
+                        or dev.device_info is not inst.device_info):
+                    await mqtt_publisher.unregister_device(gw_id, tombstone=False)
+                    registered = False
+
             if wanted and inst and inst.device_info and not registered:
+                logger.info("MQTT device registered for gateway %s", gw_id)
                 mqtt_publisher.register_device(
                     gw_id,
                     inst.device_info,
@@ -886,6 +898,42 @@ async def lifespan(app: FastAPI):
             await mqtt_publisher.unregister_device(gw_id, tombstone=True)
 
     app.state.sync_mqtt_devices = sync_mqtt_devices
+
+    def _mqtt_devices_out_of_sync(rows: dict[str, dict]) -> bool:
+        """Any opted-in extra gateway whose device info is known but whose MQTT
+        registration is missing or bound to a replaced instance."""
+        for gw_id, row in rows.items():
+            if gw_id == gateway_id:
+                continue
+            if not (row.get("publish_to_ha", 1) and row.get("enabled", 1)):
+                continue
+            inst = registry.get(gw_id)
+            if not (inst and inst.device_info):
+                continue
+            dev = mqtt_publisher.get_device(gw_id)
+            if dev is None or dev.device_info is not inst.device_info:
+                return True
+        return False
+
+    async def _reconcile_mqtt_devices() -> None:
+        """Register extra gateways as soon as their device info is known (#128).
+
+        sync_mqtt_devices() ran once at startup, before a real aGate had been
+        read, and never again — so with three gateways only the primary reached
+        Home Assistant and the others' samples were dropped. This re-checks
+        every 15 s (cheap: no I/O unless something changed) and covers late
+        connects, reconnects and restarts.
+        """
+        while True:
+            await asyncio.sleep(15)
+            try:
+                rows = {g["id"]: g for g in await get_gateways(db)}
+                if _mqtt_devices_out_of_sync(rows):
+                    await sync_mqtt_devices()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("MQTT device reconcile failed: %s", exc)
 
     async def _start_gateways() -> None:
         """Bring up gateways, then ALWAYS start the health checker + schedule
@@ -935,6 +983,7 @@ async def lifespan(app: FastAPI):
             logger.warning("Metrics snapshot (startup) failed: %s", exc)
 
     asyncio.create_task(_start_gateways())
+    mqtt_device_reconcile = asyncio.create_task(_reconcile_mqtt_devices())
 
     # ── Health Components ─────────────────────────────────────
     register_component(
@@ -1010,6 +1059,8 @@ async def lifespan(app: FastAPI):
         await nem_pricing_task
     if mqtt_broker_watch is not None and not mqtt_broker_watch.done():
         mqtt_broker_watch.cancel()
+    if not mqtt_device_reconcile.done():
+        mqtt_device_reconcile.cancel()
 
     # 2. Stop all gateways (releases commands, stops pollers, disconnects)
     await registry.stop_all()

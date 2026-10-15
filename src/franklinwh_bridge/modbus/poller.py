@@ -35,11 +35,18 @@ _EXTENSION_POWER_KEYS = {
     "home_load_ext_quantized",
 }
 
-# Absolute ceiling for any single power metric (W).  Any value above this
-# is treated as register corruption and replaced with the previous good
-# reading (or 0 if no previous).  15 kW covers even the largest residential
-# FranklinWH installations with 3× aGate stacking.
-MAX_SANE_POWER_W = 15_000
+# Corruption backstop for a power metric (W). It was 15 kW, which threw away
+# every real reading on larger arrays: a 33 kW (DC) site had its midday solar
+# replaced by a stale value every poll (#122). Only physically absurd values
+# (e.g. the library summing three 0xFFFF registers to 196,605) are rejected now.
+MAX_SANE_POWER_W = 150_000
+
+# The aGate reports small negative power on 15502-15506 (an inverter's night
+# standby draw) as uint16: -5 W arrives as 65531 (#122). Raw values in this
+# band are decoded as int16 and, being power that can't be negative here,
+# clamped to 0 — silently; they are normal, not corruption. Real readings are
+# never this high (64,536 W+ on one register).
+_SMALL_NEGATIVE_MIN = 65536 - 1000  # raw 64536..65534 == -1000..-2 W as int16
 
 # Read every poll cycle (10s default) — live telemetry
 POLL_METHODS = [
@@ -419,6 +426,17 @@ class ModbusPoller:
         3. Caches last-known-good values for fallback.
         """
         corrupted = False
+
+        # Small negatives first: decode, clamp to 0, no warning (#122).
+        for key in _EXTENSION_POWER_KEYS:
+            val = points.get(key)
+            if (
+                isinstance(val, (int, float))
+                and _SMALL_NEGATIVE_MIN <= val < _MODBUS_UINT16_NAN
+            ):
+                logger.debug("%s raw %s = %d W (int16), clamped to 0", key, val, val - 65536)
+                points[key] = 0
+                corrupted = True  # recompute total_solar from the clean parts
 
         for key in _EXTENSION_POWER_KEYS:
             val = points.get(key)
