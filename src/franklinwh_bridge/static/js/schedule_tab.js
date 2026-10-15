@@ -105,6 +105,20 @@ function scheduleTab() {
       return s ? s.label : id;
     },
 
+    // Button text for a selected sensor (#110). The button is narrow, and a
+    // plain end-truncation left two HA entities from one integration reading
+    // alike ("HA Live: Amber Express - H…"); their names differ at the END, so
+    // a long label keeps its tail. The full label and id are in the tooltip.
+    sensorButtonLabel(id) {
+      const label = this.sensorLabel(id);
+      return label.length > 30 ? '…' + label.slice(-29) : label;
+    },
+    sensorTitle(id) {
+      if (!id) return '';
+      const label = this.sensorLabel(id);
+      return label === id ? id : `${label}\n${id}`;
+    },
+
     // Groups filtered by a query (matches label, id, or group name); drops empties.
     // Powers the type-to-filter condition picker (FWHAI-style).
     filterGroups(q) {
@@ -1244,6 +1258,16 @@ function scheduleTab() {
     condPassed(c) { const t = this.traceByCid[c._cid]; return !!t && t.result === true; },
     condTested(c) { return this.traceByCid[c._cid] !== undefined; },
     condLive(c) { const t = this.traceByCid[c._cid]; return t ? t.live_value : undefined; },
+    /** The live value as shown: rounded, with the sensor's unit (#110). Raw HA
+     *  prices are $/kWh while tariff.* prices are c/kWh, so the unit matters. */
+    condLiveText(c) {
+      const v = this.condLive(c);
+      if (v === undefined || v === null) return '—';
+      const unit = this.sensorMeta(c.sensor).unit;
+      const shown = typeof v === 'number' && !Number.isInteger(v)
+        ? String(Number(v.toPrecision(4))) : String(v);
+      return unit ? `${shown} ${unit}` : shown;
+    },
     /** Word, not just a colour — "fails"/"passes" is unambiguous where a red
      *  outline alone reads as an error rather than a test result. A missing
      *  live value is its own case: the condition couldn't be evaluated. */
