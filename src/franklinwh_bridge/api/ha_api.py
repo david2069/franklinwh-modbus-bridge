@@ -11,12 +11,15 @@ instance set takes effect without a restart.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from franklinwh_bridge.config.supervisor import is_supervisor_instance
+from franklinwh_bridge.config.supervisor import LOCAL_HA_ID, is_supervisor_instance
 from franklinwh_bridge.gateway.ha import HaInstance
+from franklinwh_bridge.publish.dashboard_yaml import DashboardError, build_dashboard
 from franklinwh_bridge.store.db import (
     create_ha_instance,
     delete_ha_instance,
@@ -254,3 +257,61 @@ async def expose_entity(body: HaExposeBody, request: Request):
         raise HTTPException(status_code=503, detail="multi-HA not running")
     await reg.set_exposed(body.instance_id, body.entity_id, body.exposed)
     return {"instance_id": body.instance_id, "entity_id": body.entity_id, "exposed": body.exposed}
+
+
+async def _dashboard_instance(request: Request, instance: str | None) -> HaInstance:
+    """The HA instance to read the registry from: the one asked for, else the
+    default (if connected), else the add-on's own, else the first connected."""
+    reg = _registry(request)
+    if reg is None:
+        raise HTTPException(status_code=503, detail="multi-HA not running")
+    if instance:
+        inst = reg.get(instance)
+        if inst is None:
+            raise HTTPException(status_code=404, detail="HA instance not found (or disabled)")
+        return inst
+    status = reg.status()
+    connected = [s["id"] for s in status if s.get("connected")]
+    rows = await get_ha_instances(request.app.state.db)
+    defaults = [r["id"] for r in rows if r.get("is_default")]
+    for iid in [*defaults, LOCAL_HA_ID, *connected]:
+        if iid in connected:
+            return reg.get(iid)
+    if not status:
+        raise HTTPException(
+            status_code=409,
+            detail="No Home Assistant instance is configured — add one in "
+                   "Settings → Home Assistant.",
+        )
+    raise HTTPException(
+        status_code=409,
+        detail="No Home Assistant instance is connected, so its entity registry "
+               "can't be read.",
+    )
+
+
+@router.get("/dashboard-yaml")
+async def dashboard_yaml(
+    request: Request,
+    instance: str | None = None,
+    layout: Literal["grouped", "single"] = "grouped",
+    diagnostics: bool = False,
+):
+    """Copy-paste HA dashboard card YAML for this bridge's entities (#86).
+
+    Entity ids come only from the chosen HA instance's device + entity
+    registries — never predicted. Returns ``{yaml, entity_count, devices,
+    instance, layout}``; 409/503 with a ``detail`` (and no YAML) when the
+    registry can't be read or holds none of our entities.
+    """
+    publisher = getattr(request.app.state, "mqtt_publisher", None)
+    if publisher is None:
+        raise HTTPException(status_code=503, detail="MQTT publisher not running")
+    inst = await _dashboard_instance(request, instance)
+    try:
+        out = await build_dashboard(
+            inst, publisher, layout=layout, include_diagnostics=diagnostics,
+        )
+    except DashboardError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    return {**out, "instance": {"id": inst.id, "name": inst.name}}

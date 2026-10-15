@@ -17,6 +17,10 @@ function haEntitiesTab() {
     instance: '',
     exposedOnly: false,
     loading: false,
+    dash: {
+      open: false, layout: 'grouped', diagnostics: false, instance: '',
+      yaml: '', count: 0, source: '', error: '', loading: false, copyMsg: '',
+    },
 
     /** Topic presets — each is a synonym set, because the same concept is named
      *  differently by every integration (pv / solar / enphase / envoy all mean
@@ -63,6 +67,8 @@ function haEntitiesTab() {
       window.addEventListener('tab:changed', (ev) => {
         if (ev.detail && ev.detail.tab === 'ha_entities') this.reload();
       });
+      // Settings → MQTT has a shortcut that lands here with the card open.
+      window.addEventListener('ha:dashboard-card', () => this.openDashboard());
     },
 
     async loadInstances() {
@@ -127,6 +133,57 @@ function haEntitiesTab() {
       } else {
         Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
       }
+    },
+
+    // ── Dashboard card YAML (#86) ──────────────────────────────
+    async openDashboard() {
+      this.dash.open = true;
+      await this.loadDashboard();
+    },
+
+    async loadDashboard() {
+      const d = this.dash;
+      d.loading = true;
+      d.error = '';
+      d.copyMsg = '';
+      d.yaml = '';
+      d.count = 0;
+      try {
+        const p = new URLSearchParams({ layout: d.layout, diagnostics: d.diagnostics ? 'true' : 'false' });
+        if (d.instance) p.set('instance', d.instance);
+        const data = await fetchJSON(`api/ha/dashboard-yaml?${p.toString()}`);
+        if (data && data.yaml) {
+          d.yaml = data.yaml;
+          d.count = data.entity_count || 0;
+          d.source = data.instance ? data.instance.name : '';
+        } else {
+          d.error = (data && data.error) || 'No YAML returned.';
+        }
+      } finally {
+        d.loading = false;
+      }
+    },
+
+    /** navigator.clipboard only exists in a secure context, and HA ingress is
+     *  often plain http — so fall back to execCommand on the readonly textarea,
+     *  and failing that leave the text selected for Ctrl/Cmd+C. */
+    async copyDashboard() {
+      const d = this.dash;
+      const ta = this.$refs.dashYaml;
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(d.yaml);
+          d.copyMsg = 'Copied.';
+          return;
+        } catch (_) { /* fall through */ }
+      }
+      let ok = false;
+      if (ta) {
+        ta.focus();
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      }
+      d.copyMsg = ok ? 'Copied.' : 'Press Ctrl/Cmd+C to copy the selected text.';
     },
 
     prevPage() {

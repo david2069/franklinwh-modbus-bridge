@@ -7,10 +7,69 @@
       <p class="hidden sm:block text-xs text-slate-500">Browse Home Assistant entities and choose which to expose as
         <span class="font-mono text-slate-400">ha:&lt;instance&gt;:&lt;entity&gt;</span> Automation conditions.</p>
     </div>
-    <button @click="reload()" class="btn btn-sm btn-secondary" :disabled="loading">
-      <span x-text="loading ? 'Loading…' : 'Refresh'"></span>
-    </button>
+    <div class="flex items-center gap-2">
+      <button x-show="instances.length > 0" @click="openDashboard()" class="btn btn-sm btn-secondary"
+              title="YAML for a Home Assistant dashboard card listing this bridge's entities">
+        Dashboard card
+      </button>
+      <button @click="reload()" class="btn btn-sm btn-secondary" :disabled="loading">
+        <span x-text="loading ? 'Loading…' : 'Refresh'"></span>
+      </button>
+    </div>
   </div>
+
+  <!-- Dashboard card YAML (#86): ids come from HA's own registries, never guessed. -->
+  <template x-teleport="body">
+    <div x-show="dash.open" x-cloak
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+         @keydown.escape.window="dash.open = false">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="dash.open = false"></div>
+      <div class="relative bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl w-full max-w-2xl p-5 flex flex-col max-h-[90vh]">
+        <div class="flex items-center justify-between mb-1">
+          <div class="text-sm font-semibold text-slate-200">Home Assistant dashboard card</div>
+          <button @click="dash.open = false" class="text-slate-500 hover:text-slate-300 text-lg leading-none" aria-label="Close">&times;</button>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">
+          Entity ids are read from Home Assistant's registry, so renamed entities and
+          <span class="font-mono">_2</span> suffixes come out right. In HA: edit a dashboard →
+          Add card → Manual, then paste.
+        </p>
+        <div class="flex flex-wrap items-center gap-3 mb-3 text-xs">
+          <div class="inline-flex rounded border border-white/10 overflow-hidden">
+            <button type="button" @click="dash.layout = 'grouped'; loadDashboard()"
+                    class="px-2.5 py-1"
+                    :class="dash.layout === 'grouped' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">Grouped</button>
+            <button type="button" @click="dash.layout = 'single'; loadDashboard()"
+                    class="px-2.5 py-1 border-l border-white/10"
+                    :class="dash.layout === 'single' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">Single</button>
+          </div>
+          <label class="flex items-center gap-1.5 text-slate-400 cursor-pointer whitespace-nowrap">
+            <input type="checkbox" x-model="dash.diagnostics" @change="loadDashboard()" class="accent-emerald-500">
+            Include diagnostics
+          </label>
+          <select x-show="instances.length > 1" x-model="dash.instance" @change="loadDashboard()"
+                  class="form-control !py-1 !text-xs w-auto" aria-label="Home Assistant instance">
+            <option value="">Default instance</option>
+            <template x-for="i in instances" :key="i.id">
+              <option :value="i.id" x-text="i.name"></option>
+            </template>
+          </select>
+          <span class="text-slate-500" x-show="dash.count && !dash.loading"
+                x-text="dash.count + ' entities' + (dash.source ? ' · from ' + dash.source : '')"></span>
+        </div>
+        <div x-show="dash.error" class="mb-3 rounded border border-amber-500/40 bg-amber-500/[0.06] p-2 text-[11px] text-amber-200"
+             x-text="dash.error"></div>
+        <textarea x-ref="dashYaml" readonly x-show="!dash.error" :value="dash.yaml" spellcheck="false"
+                  class="form-control font-mono !text-[11px] flex-1 min-h-[16rem] resize-none"
+                  :placeholder="dash.loading ? 'Reading Home Assistant registry…' : ''"></textarea>
+        <div class="flex items-center justify-end gap-2 mt-3">
+          <span class="text-[11px] text-slate-400 mr-auto" x-text="dash.copyMsg"></span>
+          <button @click="dash.open = false" class="btn btn-sm btn-secondary">Close</button>
+          <button @click="copyDashboard()" class="btn btn-sm btn-primary" :disabled="!dash.yaml || dash.loading">Copy</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <!-- No instances state -->
   <template x-if="instances.length === 0">

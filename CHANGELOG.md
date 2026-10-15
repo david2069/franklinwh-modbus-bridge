@@ -32,6 +32,22 @@ lands, not backfilled later.
   - Dashboard "Solar Forecast" card: weather, today/tomorrow kWh and peak,
     hourly bars with a NOW marker, actual vs forecast. Times in the bridge's zone.
 
+- **Home Assistant dashboard card YAML** (#86). `GET /api/ha/dashboard-yaml`
+  (`instance`, `layout=grouped|single`, `diagnostics`) and a "Dashboard card"
+  button on the HA Entities tab (shortcut in Settings → MQTT) give copy-paste
+  YAML of plain core `entities` cards, the same shape as FWHAI's.
+  - Entity ids come only from HA's device and entity registries, so renamed
+    and `_2` ids are right. A row counts as ours only if its device carries an
+    identifier this bridge publishes and its unique_id starts with the current
+    `<topic_prefix>_<short_id>_`; another producer's identical
+    `franklinwh_…` unique_ids are left out. Disabled entities are dropped.
+  - Groups: Power & Energy, Battery, Controls, Status, then Diagnostics only
+    when asked for. With several gateways, card titles name the device.
+  - If HA isn't connected or its registry can't be read, the route returns an
+    error and no YAML; it never guesses ids.
+  - Copy works over plain-http ingress: it falls back from
+    `navigator.clipboard` to `execCommand('copy')`, then to "Press Ctrl/Cmd+C".
+
 - **Truthful dispatch: verify, retry, re-assert, notify** (#58, Phase 1 of
   docs/dispatch-reliability-design.md).
   - A battery command counts as active only if the library accepted it AND
