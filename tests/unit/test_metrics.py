@@ -266,12 +266,12 @@ async def test_record_sample_rejects_0xffff_home(db):
     assert count == 0
 
 
-async def test_record_sample_rejects_extreme_power(db):
-    """Power values exceeding the 15kW sanity limit are rejected."""
+async def test_record_sample_rejects_absurd_power(db):
+    """Only physically absurd values (summed 0xFFFF sentinels) are rejected."""
     points = {
-        "battery_power_w": 20000,  # > 15000 limit
+        "battery_power_w": 0,
         "grid_power_w": 0,
-        "total_solar": 0,
+        "total_solar": 196605,
         "home_load_ext": 350,
         "soc": 50,
     }
@@ -279,6 +279,21 @@ async def test_record_sample_rejects_extreme_power(db):
     async with db.execute("SELECT COUNT(*) FROM metrics") as cur:
         count = (await cur.fetchone())[0]
     assert count == 0
+
+
+async def test_record_sample_keeps_large_array_samples(db):
+    """#122: a 33 kW (DC) site's high-output samples must be recorded — the old
+    15 kW limit dropped them from Power History entirely."""
+    points = {
+        "battery_power_w": -5000,
+        "grid_power_w": -16000,
+        "total_solar": 21500,
+        "home_load_ext": 500,
+        "soc": 80,
+    }
+    assert await record_sample(db, points)
+    async with db.execute("SELECT solar_w, grid_w FROM metrics") as cur:
+        assert tuple(await cur.fetchone()) == (21500, -16000)
 
 
 async def test_record_sample_accepts_normal_values(db):
