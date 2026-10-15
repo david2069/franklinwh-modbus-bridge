@@ -93,6 +93,14 @@ OPERATING_MODES = {
 }
 
 
+#: Every slug handle_command acts on. Anything else is refused, not ignored (#97).
+COMMAND_SLUGS = frozenset({
+    "battery_command", "battery_command_power", "battery_command_power_pct",
+    "battery_command_duration", "battery_command_target_soc",
+    "operating_mode", "self_reserve_pct", "tou_reserve_pct",
+})
+
+
 @dataclass
 class CommandState:
     active: bool = False
@@ -285,40 +293,64 @@ class CommandHandler:
         except Exception as exc:
             logger.warning("Failed to write control log: %s", exc)
 
-    async def handle_command(self, slug: str, payload: str, requester: str = "manual") -> None:
-        """Apply one command. ``requester`` (e.g. ``schedule:<entry id>``) is
-        recorded on the dispatch_outcomes row of a battery command."""
+    async def handle_command(
+        self, slug: str, payload: str, requester: str = "manual",
+    ) -> dict[str, Any]:
+        """Apply one command and return what THIS call did: ``{ok, result}``.
+
+        ``requester`` (e.g. ``schedule:<entry id>``) is recorded on the
+        dispatch_outcomes row of a battery command.
+
+        The REST routes used to answer from ``state`` instead, which an unknown
+        slug or action never touched — so it came back ``ok: true`` with an
+        earlier command's text (#97). A staging slug (power, duration, target
+        SoC) only stores a value; its result says "Staged", not that anything
+        was sent to the aGate.
+        """
         payload = payload.strip()
         self._requester = requester or "manual"
         logger.info("Command received: %s = %s (by %s)", slug, payload, self._requester)
 
+        if slug not in COMMAND_SLUGS:
+            logger.warning("Unknown command slug: %s", slug)
+            return {"ok": False, "result": f"Unknown command: {slug}"}
+
         # Optimistic default; handlers that can fail flip this to False.
         self._state.last_success = True
+        staged = ""
+        resent = False  # a power change re-sends an ACTIVE dispatch
         try:
             if slug == "battery_command":
                 await self._handle_battery_command(payload)
             elif slug == "battery_command_power":
                 self._command_power_w = max(0, min(int(float(payload)), self.max_power_w))
                 self._command_power_pct = 0  # watts takes precedence, clear pct
+                staged = f"Staged power {self._command_power_w} W"
                 if self._on_state_changed:
                     await self._on_state_changed()
                 if self._state.active:
+                    resent = True
                     await self._handle_battery_command(self._state.action)
             elif slug == "battery_command_power_pct":
                 self._command_power_pct = max(0, min(int(float(payload)), 100))
                 self._command_power_w = 0  # pct takes precedence, clear watts
+                staged = f"Staged power {self._command_power_pct}%"
                 if self._on_state_changed:
                     await self._on_state_changed()
                 if self._state.active:
+                    resent = True
                     await self._handle_battery_command(self._state.action)
             elif slug == "battery_command_duration":
                 self._command_duration_s = max(0, min(int(float(payload)), 7200))
                 self._state.watchdog_s = self._command_duration_s
+                staged = f"Staged duration {self._command_duration_s} s"
                 if self._on_state_changed:
                     await self._on_state_changed()
             elif slug == "battery_command_target_soc":
                 previous = self._target_soc
                 self._target_soc = max(0, min(int(float(payload)), 100))
+                staged = (f"Staged target SoC {self._target_soc}%" if self._target_soc
+                          else "Staged target SoC off")
                 # A target SoC ends a dispatch, so a change belongs in the
                 # control log (only a change: the UI may resend the same value).
                 if self._target_soc != previous:
@@ -336,12 +368,20 @@ class CommandHandler:
                 await self._handle_reserve("self", int(float(payload)))
             elif slug == "tou_reserve_pct":
                 await self._handle_reserve("tou", int(float(payload)))
-            else:
-                logger.warning("Unknown command slug: %s", slug)
         except Exception as exc:
             self._state.last_result = f"Error: {exc}"
             self._state.last_success = False
             logger.error("Command %s failed: %s", slug, exc)
+            return {"ok": False, "result": self._state.last_result}
+        # Every dispatching path (battery command, mode, reserve) sets
+        # last_result during this call. A staging slug sets it only when it
+        # re-sent an active dispatch; otherwise its own text is the result.
+        if staged and not resent:
+            return {"ok": True, "result": staged}
+        if staged:
+            return {"ok": self._state.last_success,
+                    "result": f"{staged}; {self._state.last_result}"}
+        return {"ok": self._state.last_success, "result": self._state.last_result}
 
     async def _handle_battery_command(self, action: str) -> None:
         from franklinwh_modbus.types import BatteryCommand
@@ -377,6 +417,8 @@ class CommandHandler:
                 watts = -watts
         else:
             logger.warning("Unknown battery command: %s", action)
+            self._state.last_result = f"Unknown battery command: {action}"
+            self._state.last_success = False
             return
 
         display_action = f"Force {base}"  # canonical, prefixed label

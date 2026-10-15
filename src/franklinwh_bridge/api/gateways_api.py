@@ -21,7 +21,7 @@ from franklinwh_bridge.config import clock
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
-from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
+from franklinwh_bridge.publish.command_handler import COMMAND_SLUGS, DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store.db import (
@@ -1117,6 +1117,13 @@ async def get_gateway_points(gw_id: str, request: Request):
     }
 
 
+def require_known_slug(slug: str) -> None:
+    """Refuse a command slug nothing handles, rather than report it sent (#97)."""
+    if slug not in COMMAND_SLUGS:
+        raise HTTPException(
+            400, f"Unknown command '{slug}'. Known: {', '.join(sorted(COMMAND_SLUGS))}")
+
+
 class GatewayCommandRequest(BaseModel):
     slug: str
     # Half these commands carry a number (watts, seconds, percent) and half
@@ -1146,6 +1153,7 @@ async def send_gateway_command(
     _user: dict = Depends(_REQUIRE_CONTROL),
 ):
     """Dispatch a control command to a specific gateway."""
+    require_known_slug(body.slug)
     registry = _registry(request)
     inst = registry.get(gw_id)
     if inst is None:
@@ -1160,13 +1168,12 @@ async def send_gateway_command(
             "result": "Command handler not available",
         }
 
-    await inst.command_handler.handle_command(
+    outcome = await inst.command_handler.handle_command(
         body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
+    # This call's outcome, never the handler's leftover state (#97).
     return {
-        "ok": inst.command_handler.state.last_success,
-        "slug": body.slug,
-        "gateway_id": gw_id,
-        "result": inst.command_handler.state.last_result or "Sent",
+        "ok": outcome["ok"], "slug": body.slug, "gateway_id": gw_id,
+        "result": outcome["result"],
     }
 
 

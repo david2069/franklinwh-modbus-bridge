@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from franklinwh_bridge import disclaimer
 from franklinwh_bridge.api.auth import get_current_user, require_auth, require_capability
 from franklinwh_bridge.api.disclaimer_api import _client_ip
+from franklinwh_bridge.api.gateways_api import require_known_slug
 
 # Hoisted so it is built once at import rather than per-request: ruff's B008
 # allows Depends() itself in a default, but not a factory call nested in it.
@@ -156,6 +157,7 @@ async def send_command(
     Defaults to the "default" gateway. Use POST /api/gateways/{gw_id}/command
     for gateway-specific commands (added in MG-3).
     """
+    require_known_slug(body.slug)
     # Resolve command handler from registry (or legacy fallback)
     registry = getattr(request.app.state, "registry", None)
     command_handler = None
@@ -172,13 +174,10 @@ async def send_command(
         )
         return {"ok": False, "slug": body.slug, "result": "Command handler not available"}
 
-    await command_handler.handle_command(
+    outcome = await command_handler.handle_command(
         body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
-    return {
-        "ok": command_handler.state.last_success,
-        "slug": body.slug,
-        "result": command_handler.state.last_result or "Sent",
-    }
+    # This call's outcome, never the handler's leftover state (#97).
+    return {"ok": outcome["ok"], "slug": body.slug, "result": outcome["result"]}
 
 
 # ── Browser-side connection outages ───────────────────────────────────────────
