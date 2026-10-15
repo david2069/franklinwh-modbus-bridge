@@ -518,7 +518,11 @@ def _current_short_ids(request: Request) -> set[str]:
     return ids
 
 
-async def _use_ha(db: aiosqlite.Connection) -> bool:
+async def _use_ha(db: aiosqlite.Connection, env: str) -> bool:
+    # As an HA add-on the bridge runs inside Home Assistant: the Supervisor sets
+    # up both links itself, so there is nothing to opt out of.
+    if env == "ha_addon":
+        return True
     return (await get_app_config(db, SETUP_USE_HA_KEY, "1")) != "0"
 
 
@@ -529,7 +533,12 @@ class UseHaUpdate(BaseModel):
 
 @router.post("/use-ha", dependencies=[Depends(_REQUIRE_ADMIN)])
 async def post_use_ha(body: UseHaUpdate, request: Request):
-    """Record whether this install is used with Home Assistant (#94)."""
+    """Record whether this install is used with Home Assistant (#94).
+
+    Not asked as an add-on, which always runs inside Home Assistant.
+    """
+    if detect_environment() == "ha_addon":
+        raise HTTPException(409, "Running as a Home Assistant add-on: always used with HA")
     await set_app_config(request.app.state.db, SETUP_USE_HA_KEY, "1" if body.use_ha else "0")
     return await get_checklist(request)
 
@@ -543,11 +552,11 @@ async def get_checklist(request: Request):
     """
     env = detect_environment()
     items: list[dict[str, Any]] = []
-    if not await _use_ha(request.app.state.db):
+    if not await _use_ha(request.app.state.db, env):
         for item_id in ("mqtt_broker", "ha_connection", "ha_mqtt_integration", "ha_entities"):
             items.append({"id": item_id, "status": "skipped",
                           "detail": "Not using Home Assistant"})
-        return {"environment": env, "use_ha": False, "items": items}
+        return {"environment": env, "use_ha": False, "ask_use_ha": True, "items": items}
 
     broker = getattr(request.app.state, "mqtt_broker", None) or {}
     publisher = getattr(request.app.state, "mqtt_publisher", None)
@@ -615,7 +624,7 @@ async def get_checklist(request: Request):
         except Exception as exc:
             logger.debug("Entity registry check failed: %s", exc)
     items.extend([integration, entities])
-    return {"environment": env, "use_ha": True, "items": items}
+    return {"environment": env, "use_ha": True, "ask_use_ha": env != "ha_addon", "items": items}
 
 
 # ── accounts ──────────────────────────────────────────────────────────────────

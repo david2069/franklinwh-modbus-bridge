@@ -395,3 +395,14 @@ async def test_not_using_ha_skips_the_checklist_and_persists(fresh_client):
     assert back["use_ha"] is True
     assert "skipped" not in {i["status"] for i in back["items"]}
     assert (await fresh_client.post("/api/setup/use-ha", json={"use_ha": "x"})).status_code == 422
+
+
+async def test_addon_is_not_asked_and_cannot_opt_out(fresh_client, monkeypatch):
+    """Inside Home Assistant there is nothing to opt out of (#94)."""
+    from franklinwh_bridge.api import setup_api
+
+    monkeypatch.setattr(setup_api, "detect_environment", lambda: "ha_addon")
+    body = (await fresh_client.get("/api/setup/checklist")).json()
+    assert (body["use_ha"], body["ask_use_ha"]) == (True, False)
+    assert (await fresh_client.post("/api/setup/use-ha", json={"use_ha": False})).status_code == 409
+    assert "skipped" not in {i["status"] for i in body["items"]}

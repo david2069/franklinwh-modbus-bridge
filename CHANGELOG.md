@@ -119,7 +119,8 @@ lands, not backfilled later.
   - It asks "Will you use this bridge with Home Assistant?". Answering No
     (stored as `setup_use_ha`; `POST /api/setup/use-ha`) shows every HA item as
     skipped (–), not failed, and says HA can be connected later. Before, a
-    standalone install always finished setup on two red ✗.
+    standalone install always finished setup on two red ✗. The HA add-on is
+    not asked, because it runs inside HA and the Supervisor sets up both links.
   - Each link says what it is for: the MQTT broker carries entities *into* HA;
     the HA connection lets the bridge *read* HA.
   - The two HA-side checks say why they show "?": "Can't check — no Home

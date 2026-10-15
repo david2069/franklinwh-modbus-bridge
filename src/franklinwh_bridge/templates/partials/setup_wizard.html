@@ -335,7 +335,11 @@
           <template x-if="step === 'checklist'">
             <div class="space-y-2">
               <p class="font-semibold">Home Assistant</p>
-              <div class="flex flex-wrap items-center gap-2 text-xs">
+              <p x-show="environment === 'ha_addon'" class="text-xs text-slate-400">
+                Running inside Home Assistant: the connection is set up automatically,
+                and so is the MQTT broker once the Mosquitto app is installed.
+              </p>
+              <div x-show="environment !== 'ha_addon'" class="flex flex-wrap items-center gap-2 text-xs">
                 <span>Will you use this bridge with Home Assistant?</span>
                 <button type="button" @click="setUseHa(true)" :disabled="busy"
                         class="btn btn-sm" :class="useHa ? 'btn-primary' : 'btn-secondary'">Yes</button>
