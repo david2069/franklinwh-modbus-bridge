@@ -86,7 +86,7 @@ When a new version is released, HA offers **Update** on the add-on's page. Use *
 2. **Settings → Apps → FranklinWH Modbus Bridge → Uninstall**.
 3. Optional: remove the repository (**⋮ → Repositories**).
 
-The bridge's retained state topics (`fwh_mb/<gateway>/…`) stay on the broker after this. They do no harm; to remove them, use an MQTT client such as MQTT Explorer. See [Fixing, moving and removing entities](home-assistant-entities.md).
+The bridge's retained state topics (`fwh_mb/<gateway>/…`) stay on the broker after this (#182). Remove them with an MQTT client such as MQTT Explorer. See [Fixing, moving and removing entities](home-assistant-entities.md).
 
 ## Optional: direct port 8099
 

@@ -51,7 +51,7 @@ ground.
 | `gateway_port` | Modbus TCP port, normally `502`. |
 | `gateway_unit_id` | Modbus unit id, normally `1`. |
 | `poll_interval` | Seconds between reads. `10` is a sensible default. |
-| `log_level` | `INFO` normally. `DEBUG` has no effect yet (known issue). |
+| `log_level` | `INFO` normally. `DEBUG` has no effect yet (known issue #181). |
 
 ## What sets itself up
 

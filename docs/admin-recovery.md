@@ -74,7 +74,7 @@ working, enabled admin:
 ## Podman
 
 Use `podman exec` in place of `docker exec`. The tool doesn't recognise a
-Podman container (it looks for `/.dockerenv`), so it reports `In container: NO`
+Podman container (it looks for `/.dockerenv`, #179), so it reports `In container: NO`
 and `reset-admin-password` refuses. Check that `Database` is `/data/bridge.db`,
 then add `--allow-host`:
 

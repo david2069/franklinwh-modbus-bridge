@@ -181,7 +181,7 @@ Configuration is loaded with the following precedence (highest wins):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_ENV` | `dev` | Environment: `ha_addon`, `docker`, or `dev` |
-| `LOG_LEVEL` | `INFO` | Logging level. **Not read yet** (known issue); use `logging.level` in `config.yaml`. |
+| `LOG_LEVEL` | `INFO` | Logging level. **Not read yet** (known issue #181); use `logging.level` in `config.yaml`. |
 | `DATA_DIR` | `./data` (dev), `/data` (Docker, add-on) | Data directory (DB, backups). **Not read yet**: the location follows `APP_ENV`. |
 
 #### Login and security

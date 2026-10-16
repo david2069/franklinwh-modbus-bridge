@@ -74,7 +74,7 @@ Click the button above, or add the repository by hand:
    | `gateway_port` | Modbus TCP port, normally `502`. |
    | `gateway_unit_id` | Modbus unit id, normally `1`. |
    | `poll_interval` | Seconds between polls. `10` is a sensible default. |
-   | `log_level` | `INFO`. `DEBUG` has no effect yet (known issue). |
+   | `log_level` | `INFO`. `DEBUG` has no effect yet (known issue #181). |
 
 5. **Start**, turn on **Show in sidebar** (off for a new add-on), then open
    **Modbus Bridge** from the sidebar. On a fresh install, after the
@@ -125,7 +125,7 @@ file starts, or your own broker. Not `localhost`, which inside the container is
 the bridge itself. The UI can't override `MQTT_HOST` once it's in the
 environment.
 
-The compose file also starts a separate, empty Home Assistant on port 18125.
+The compose file also starts a separate, empty Home Assistant on port 18125 (#180).
 If you have your own HA, start just the bridge and broker:
 `docker compose up -d --build app`.
 
@@ -207,8 +207,8 @@ Home Assistant**), so its HA device and entities are removed. Then:
   delete the folder and, if you like, the images.
 - **Python:** stop it and delete the folder (`./data` goes with it).
 
-Retained state topics (`fwh_mb/<gateway>/…`) stay on the broker; remove them
-with an MQTT client if you want a clean broker.
+Retained state topics (`fwh_mb/<gateway>/…`) stay on the broker (#182); remove them
+with an MQTT client.
 
 ---
 
