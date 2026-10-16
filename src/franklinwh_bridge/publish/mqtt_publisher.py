@@ -499,6 +499,13 @@ class MqttPublisher:
         self._disabled_slugs = new_disabled
         self._promoted_entities = new_promoted
         self._rebuild_entity_lists()
+        # Groups are bridge-wide: every registered gateway follows them too.
+        # They used to keep the set copied at registration, so switching a
+        # group off left a second aGate's entities (its controls) in HA (#204).
+        for dev in self._devices.values():
+            if dev.disabled_slugs != new_disabled:
+                dev.disabled_slugs = set(new_disabled)
+                dev.rebuild_entities()
         if removed_promoted:
             self._removed_entities = self._removed_entities + removed_promoted
         logger.info(
@@ -844,14 +851,27 @@ class MqttPublisher:
     def _backoff_delay(self, attempt: int) -> float:
         return min(5.0 * (2 ** attempt), 60.0)
 
+    def _enabled_control_slugs(self) -> set[str]:
+        """Control slugs whose publishing group is on (bridge-wide setting)."""
+        return {
+            e.slug for e in BRIDGE_ENTITIES
+            if e.is_control and e.slug not in self._disabled_slugs
+        }
+
     def _command_targets(self) -> dict[str, CommandHandler]:
         """Device short_id -> the command handler its control topics drive.
 
         Every commandable device, not only the default gateway: additional
         gateways (a second aGate, a mock) got control entities in HA that were
         never subscribed, so their controls silently did nothing.
+
+        Empty while the Control group is off: the entities leave HA, and the
+        command topics must stop working too, or anyone who can publish to
+        the broker can still command the battery (#204).
         """
         targets: dict[str, CommandHandler] = {}
+        if not self._enabled_control_slugs():
+            return targets
         if self._device_info and self._command_handler:
             targets[self._device_info.short_id] = self._command_handler
         for dev in self._devices.values():
@@ -871,6 +891,11 @@ class MqttPublisher:
         if not (len(parts) >= 5 and parts[2] == "control" and parts[-1] == "set"):
             return
         if parts[0] != self._topic_prefix:
+            return
+        if parts[3] not in self._enabled_control_slugs():
+            # A message already in flight when the group went off, or a slug
+            # whose group is off while another control group is on (#204).
+            logger.warning("Command refused, its publishing group is off: %s", message.topic)
             return
         handler = self._command_targets().get(parts[1])
         if handler is None:
@@ -917,8 +942,16 @@ class MqttPublisher:
                     try:
                         while not self._stop_event.is_set():
                             # Subscribe each commandable device as it appears
-                            # (gateways register after we connect).
-                            for sid in self._command_targets().keys() - subscribed:
+                            # (gateways register after we connect), and drop
+                            # any that stops being one: unregistered, or the
+                            # Control group switched off (#204).
+                            targets = self._command_targets().keys()
+                            for sid in subscribed - targets:
+                                cmd_topic = f"{self._topic_prefix}/{sid}/control/+/set"
+                                await client.unsubscribe(cmd_topic)
+                                subscribed.discard(sid)
+                                logger.info("Unsubscribed from command topics: %s", cmd_topic)
+                            for sid in targets - subscribed:
                                 cmd_topic = f"{self._topic_prefix}/{sid}/control/+/set"
                                 await client.subscribe(cmd_topic)
                                 subscribed.add(sid)

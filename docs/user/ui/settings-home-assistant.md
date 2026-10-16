@@ -190,7 +190,9 @@ The built-in groups (marked *(default)*):
 
 !!! tip
     Switching off the **Control** group removes the writable entities (mode, reserves,
-    battery commands) from Home Assistant, so nobody can command the battery from there.
+    battery commands) from Home Assistant, and the bridge stops accepting commands on its
+    MQTT command topics, so nobody can command the battery through Home Assistant or MQTT.
+    The web UI and REST API still can.
 
 ## Entities
 

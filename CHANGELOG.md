@@ -13,6 +13,19 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **MQTT commands while the Control group is off (#204, S1).** Switching
+  Control off removed the control entities from Home Assistant, but the bridge
+  stayed subscribed to `<prefix>/<id>/control/+/set` and obeyed any message
+  there, so anything that could publish to the broker could still command the
+  battery. It now unsubscribes while Control is off, refuses a command whose
+  group is off, and subscribes again when Control is switched back on.
+- **Publishing groups and a second gateway (#204).** A registered gateway kept
+  the group settings it had when it registered, so switching a group off left
+  that gateway's entities in Home Assistant. Every gateway now follows the
+  groups.
+
 ## [0.2.10] — 2026-10-17
 
 Packaging: the Docker install (milestone R1b). Found by an end-to-end test of
