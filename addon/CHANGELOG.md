@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.7 — 2026-10-16
+
+### Security
+- **Only Home Assistant's own sidebar panel (ingress) is trusted without a
+  login.** Before, any other add-on on your Home Assistant, and anyone on your
+  network once port 8099 was published, could use the bridge as an admin,
+  including battery control, with no password. Update now.
+- If you published port 8099, it now asks for a bridge login. Use the admin
+  password from the add-on's first-start log, or create a user in **Settings →
+  Admin** from the sidebar panel.
+
 ## 0.2.6 — 2026-10-16
 
 ### Fixes

@@ -13,6 +13,24 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-10-16
+
+Security hotfix. Nothing else is in this release.
+
+### Security
+
+- **Add-on: only Home Assistant ingress is trusted without a login**
+  (GHSA-hhm2-xvvc-f6ww). In add-on mode every request to port 8099 was
+  treated as the ingress admin, so any other add-on on the Supervisor network,
+  and anyone once port 8099 was published, had the full admin API with no
+  credentials, battery control included. A request now counts as ingress only
+  when it comes from the Supervisor's ingress proxy (`172.30.32.2`) with the
+  `X-Ingress-Path` header; everything else logs in with a bridge account.
+  `addon/run.sh` no longer trusts forwarded headers (`--no-proxy-headers`), so
+  no client can rewrite its address, and sets `ALLOW_INSECURE_AUTH=1` so a
+  published port 8099 can log in over plain HTTP, as in Docker
+  (`api/auth.py`, `tests/unit/test_addon_ingress_trust.py`).
+
 ## [0.2.6] — 2026-10-16
 
 ### Added
