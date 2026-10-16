@@ -5,7 +5,7 @@ function controlsTab() {
   return {
     command: 'Not Active',
     powerW: 0,
-    powerPct: 0,
+    powerMaxW: 0,
     duration: 0,
     targetSoc: 0,
     operatingMode: '',
@@ -34,9 +34,9 @@ function controlsTab() {
       if (pts.battery_command_power_w != null) {
         this.powerW = pts.battery_command_power_w;
       }
-      if (pts.battery_command_power_pct != null) {
-        this.powerPct = pts.battery_command_power_pct;
-      }
+      // Trusted battery ratings (#133): null until calibrated or confirmed.
+      this.powerMaxW = Math.max(pts.battery_rating_charge_w || 0,
+                                pts.battery_rating_discharge_w || 0);
       if (pts.battery_command_duration_s != null) {
         this.duration = pts.battery_command_duration_s;
       }

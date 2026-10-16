@@ -22,6 +22,7 @@ from franklinwh_bridge.publish.mqtt_publisher import (
     build_discovery_payload,
 )
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def mock_controller():
 
 @pytest.fixture
 def handler(mock_controller, db):
-    return CommandHandler(mock_controller, db)
+    return CommandHandler(mock_controller, db, rating=calibrated_rating())
 
 
 @pytest.fixture
@@ -105,7 +106,7 @@ def test_set_asymmetric_limits(handler):
 
 async def test_charge_clamps_to_max_charge(handler):
     """Charge power is clamped to max_charge_w."""
-    handler.set_power_limits(3000, 5000)
+    handler.rating = calibrated_rating(charge_w=3000, discharge_w=5000)
     handler._command_power_w = 4000  # over charge limit
     await handler._handle_battery_command("Charge")
     # Verify the controller was called with clamped value
@@ -116,7 +117,7 @@ async def test_charge_clamps_to_max_charge(handler):
 
 async def test_discharge_clamps_to_max_discharge(handler):
     """Discharge power is clamped to max_discharge_w."""
-    handler.set_power_limits(5000, 2500)
+    handler.rating = calibrated_rating(charge_w=5000, discharge_w=2500)
     handler._command_power_w = 4000  # over discharge limit
     await handler._handle_battery_command("Discharge")
     args = handler._controller.send_command.call_args
@@ -126,7 +127,7 @@ async def test_discharge_clamps_to_max_discharge(handler):
 
 async def test_charge_under_limit_not_clamped(handler):
     """Power under the limit is not clamped."""
-    handler.set_power_limits(6000, 6000)
+    handler.rating = calibrated_rating(charge_w=6000, discharge_w=6000)
     handler._command_power_w = 4000  # under limit
     await handler._handle_battery_command("Charge")
     args = handler._controller.send_command.call_args
@@ -136,7 +137,7 @@ async def test_charge_under_limit_not_clamped(handler):
 
 async def test_percentage_uses_directional_max(handler):
     """Percentage mode uses the directional max rate."""
-    handler.set_power_limits(6000, 4000)
+    handler.rating = calibrated_rating(charge_w=6000, discharge_w=4000)
     handler._command_power_pct = 50
     handler._command_power_w = 0
     await handler._handle_battery_command("Charge")
@@ -153,7 +154,7 @@ async def test_percentage_uses_directional_max(handler):
 
 async def test_default_power_uses_directional_max(handler):
     """When no explicit power is set, default to directional max."""
-    handler.set_power_limits(6000, 4000)
+    handler.rating = calibrated_rating(charge_w=6000, discharge_w=4000)
     handler._command_power_w = 0
     handler._command_power_pct = 0
     await handler._handle_battery_command("Charge")
@@ -207,8 +208,7 @@ def test_read_soc_from_cached_points(mock_controller, db):
     pts = {"soc": 72.5}
     h = CommandHandler(
         mock_controller, db,
-        points_getter=lambda: pts,
-    )
+        points_getter=lambda: pts, rating=calibrated_rating())
     assert h._read_soc() == 72.5
 
 
@@ -221,8 +221,7 @@ def test_read_soc_returns_none_when_missing(mock_controller, db):
     """_read_soc returns None when soc key is missing from points."""
     h = CommandHandler(
         mock_controller, db,
-        points_getter=lambda: {"grid_power_w": 1000},
-    )
+        points_getter=lambda: {"grid_power_w": 1000}, rating=calibrated_rating())
     assert h._read_soc() is None
 
 
@@ -233,8 +232,7 @@ def test_read_soc_handles_exception(mock_controller, db):
 
     h = CommandHandler(
         mock_controller, db,
-        points_getter=bad_getter,
-    )
+        points_getter=bad_getter, rating=calibrated_rating())
     assert h._read_soc() is None
 
 
@@ -247,8 +245,7 @@ async def test_init_with_custom_limits(mock_controller, db):
     """CommandHandler accepts initial power limits."""
     h = CommandHandler(
         mock_controller, db,
-        max_charge_w=7500, max_discharge_w=5500,
-    )
+        max_charge_w=7500, max_discharge_w=5500, rating=calibrated_rating())
     assert h.max_charge_w == 7500
     assert h.max_discharge_w == 5500
     assert h.power_limits["source"] == "hardware"

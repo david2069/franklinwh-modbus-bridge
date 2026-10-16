@@ -23,28 +23,20 @@
       <div class="card">
         <div class="card-label mb-3">Command Power (W)</div>
         <div class="flex items-center gap-3">
-          <input type="range" min="0" max="5000" step="100" x-model="powerW"
+          <input type="range" min="0" :max="powerMaxW || 0" step="100" x-model="powerW"
+                 :disabled="!powerMaxW"
                  class="flex-1 accent-cyan-500 h-2 rounded-lg cursor-pointer"
                  @change="sendCommand('battery_command_power', powerW)">
-          <input type="number" x-model="powerW" min="0" max="5000" step="100"
+          <input type="number" x-model="powerW" min="0" :max="powerMaxW || 0" step="100"
+                 :disabled="!powerMaxW"
                  class="form-control w-24 text-center"
                  @change="sendCommand('battery_command_power', powerW)">
           <span class="text-xs text-slate-500">W</span>
         </div>
-      </div>
-
-      <!-- Command Power (%) -->
-      <div class="card">
-        <div class="card-label mb-3">Command Power (%)</div>
-        <div class="flex items-center gap-3">
-          <input type="range" min="0" max="100" step="5" x-model="powerPct"
-                 class="flex-1 accent-cyan-500 h-2 rounded-lg cursor-pointer"
-                 @change="sendCommand('battery_command_power_pct', powerPct)">
-          <input type="number" x-model="powerPct" min="0" max="100" step="5"
-                 class="form-control w-20 text-center"
-                 @change="sendCommand('battery_command_power_pct', powerPct)">
-          <span class="text-xs text-slate-500">%</span>
-        </div>
+        <p x-show="!powerMaxW" class="text-[11px] text-amber-400 mt-2">
+          Battery power rating not confirmed, so force charge and discharge are unavailable.
+          Calibrate it in Settings → Site &amp; Gateways → Battery power rating.
+        </p>
       </div>
 
       <!-- Command Duration -->

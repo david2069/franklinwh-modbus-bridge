@@ -9,6 +9,7 @@ import pytest
 
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.store.db import init_db, load_control_state
+from tests.conftest import calibrated_rating
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ async def _log(db):
 
 
 async def test_log_and_state_are_recorded_against_the_handlers_gateway(db):
-    h = CommandHandler(_controller(), db, gateway_id="garage")
+    h = CommandHandler(_controller(), db, gateway_id="garage", rating=calibrated_rating())
     await h.handle_command("battery_command_target_soc", "40")
     await h._handle_battery_command("Force Discharge")
 
@@ -50,7 +51,7 @@ async def test_log_and_state_are_recorded_against_the_handlers_gateway(db):
 
 
 async def test_unchanged_target_soc_is_not_logged_again(db):
-    h = CommandHandler(_controller(), db)
+    h = CommandHandler(_controller(), db, rating=calibrated_rating())
     await h.handle_command("battery_command_target_soc", "0")  # same as initial
     await h.handle_command("battery_command_target_soc", "55")
     await h.handle_command("battery_command_target_soc", "55")
@@ -59,12 +60,12 @@ async def test_unchanged_target_soc_is_not_logged_again(db):
 
 
 async def test_no_time_limit_is_reported_as_a_zero_limit_not_expiry(db):
-    h = CommandHandler(_controller(), db)
+    h = CommandHandler(_controller(), db, rating=calibrated_rating())
     await h._handle_battery_command("Force Discharge")
     vp = h.virtual_points
     assert vp["sw_watchdog_limit_s"] == 0 and vp["sw_watchdog_remain_s"] == 0
 
-    h2 = CommandHandler(_controller(), db, gateway_id="other")
+    h2 = CommandHandler(_controller(), db, gateway_id="other", rating=calibrated_rating())
     await h2.handle_command("battery_command_duration", "600")
     await h2._handle_battery_command("Force Charge")
     vp = h2.virtual_points

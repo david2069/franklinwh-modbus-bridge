@@ -34,6 +34,7 @@ import pytest
 from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
+from tests.conftest import calibrated_rating
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -199,8 +200,7 @@ async def test_shared_lock_prevents_poll_command_overlap(
         modbus_lock=shared_lock,
     )
     handler = CommandHandler(
-        slow_controller, db, modbus_lock=shared_lock,
-    )
+        slow_controller, db, modbus_lock=shared_lock, rating=calibrated_rating())
 
     # Connect first (outside contention)
     await poller._connect()
@@ -247,6 +247,7 @@ async def test_without_shared_lock_allows_overlap(
     handler = CommandHandler(
         slow_controller, db,
         modbus_lock=asyncio.Lock(),  # different lock
+        rating=calibrated_rating(),
     )
 
     await poller._connect()
@@ -283,8 +284,7 @@ async def test_command_waits_for_poll_to_finish(
         modbus_lock=shared_lock,
     )
     handler = CommandHandler(
-        slow_controller, db, modbus_lock=shared_lock,
-    )
+        slow_controller, db, modbus_lock=shared_lock, rating=calibrated_rating())
 
     await poller._connect()
 
@@ -332,8 +332,7 @@ async def test_multiple_commands_serialized(
 ):
     """Multiple concurrent commands are serialized by the lock."""
     handler = CommandHandler(
-        slow_controller, db, modbus_lock=shared_lock,
-    )
+        slow_controller, db, modbus_lock=shared_lock, rating=calibrated_rating())
 
     # Fire 3 mode changes concurrently
     await asyncio.gather(
@@ -366,8 +365,7 @@ async def test_battery_release_no_deadlock(
     complete without hanging.
     """
     handler = CommandHandler(
-        slow_controller, db, modbus_lock=shared_lock,
-    )
+        slow_controller, db, modbus_lock=shared_lock, rating=calibrated_rating())
 
     # First send a charge command
     await handler.handle_command("battery_command", "Charge")
@@ -407,8 +405,7 @@ async def test_watchdog_release_no_deadlock(
     monkeypatch.setattr(ch_mod, "SOC_CHECK_INTERVAL_S", 0.2)
 
     handler = CommandHandler(
-        slow_controller, db, modbus_lock=shared_lock,
-    )
+        slow_controller, db, modbus_lock=shared_lock, rating=calibrated_rating())
 
     # Send a command with 1-second duration (so watchdog triggers quickly)
     handler._command_duration_s = 1
@@ -446,8 +443,7 @@ async def test_concurrent_poll_and_release_no_deadlock(
         modbus_lock=shared_lock,
     )
     handler = CommandHandler(
-        slow_controller, db, modbus_lock=shared_lock,
-    )
+        slow_controller, db, modbus_lock=shared_lock, rating=calibrated_rating())
 
     await poller._connect()
 
@@ -494,6 +490,6 @@ async def test_command_handler_works_without_explicit_lock(
     slow_controller, db,
 ):
     """Command handler creates its own lock if none is provided."""
-    handler = CommandHandler(slow_controller, db)
+    handler = CommandHandler(slow_controller, db, rating=calibrated_rating())
     await handler.handle_command("operating_mode", "Self-Consumption")
     assert "OK" in handler.state.last_result or handler.state.last_result == "OK"

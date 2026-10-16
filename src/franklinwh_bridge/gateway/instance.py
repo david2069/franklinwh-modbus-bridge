@@ -17,6 +17,7 @@ from typing import Any
 import aiosqlite
 
 from franklinwh_bridge.gateway import link_stats
+from franklinwh_bridge.gateway.battery_rating import BatteryRating
 from franklinwh_bridge.modbus.catalog import (
     capture_catalog,
     extract_catalog_from_controller,
@@ -152,12 +153,15 @@ class GatewayInstance:
         # Fan-in: forward per-gateway samples to the global bus
         self.sample_bus.subscribe(self._forward_to_global)
 
+        rating = BatteryRating(self.gateway_id)
+        await rating.load(self._db)
         self.command_handler = CommandHandler(
             self.controller,
             self._db,
             points_getter=self._get_cached_points,
             modbus_lock=self.modbus_lock,
             gateway_id=self.gateway_id,
+            rating=rating,
         )
         # Lets the handler notice a dispatch it did not send (another tool).
         self.sample_bus.subscribe(self.command_handler.observe_sample)
@@ -209,12 +213,15 @@ class GatewayInstance:
             self.sample_bus, self.gateway_id, self.config.poll_interval,
             ac_type=ac_type, controller=self.controller,
         )
+        rating = BatteryRating(self.gateway_id, mock=True)
+        await rating.load(self._db)
         self.command_handler = CommandHandler(
             self.controller,
             self._db,
             points_getter=self._get_cached_points,
             modbus_lock=self.modbus_lock,
             gateway_id=self.gateway_id,
+            rating=rating,
         )
         # Fan-in to the global bus so the Site aggregator picks up the mock.
         self.sample_bus.subscribe(self._forward_to_global)

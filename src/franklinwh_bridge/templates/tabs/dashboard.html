@@ -848,25 +848,16 @@
           <div class="flex gap-1 mt-1">
             <button class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition font-medium"
                     @click="setMaxCharge()"
-                    :title="'Set to max charge: ' + ($store.app.points.max_charge_rate_w ?? 5000) + 'W'">
+                    :disabled="!$store.app.points.battery_rating_charge_w"
+                    :title="$store.app.points.battery_rating_charge_w ? 'Set to max charge: ' + $store.app.points.battery_rating_charge_w + 'W' : 'Battery charge rating not confirmed: calibrate in Settings'">
               Max Charge
             </button>
             <button class="text-[10px] px-2 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 hover:bg-orange-500/25 transition font-medium"
                     @click="setMaxDischarge()"
-                    :title="'Set to max discharge: ' + ($store.app.points.max_discharge_rate_w ?? 5000) + 'W'">
+                    :disabled="!$store.app.points.battery_rating_discharge_w"
+                    :title="$store.app.points.battery_rating_discharge_w ? 'Set to max discharge: ' + $store.app.points.battery_rating_discharge_w + 'W' : 'Battery discharge rating not confirmed: calibrate in Settings'">
               Max Discharge
             </button>
-          </div>
-        </div>
-        <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Power (%)</label>
-          <div class="flex items-center gap-1">
-            <input type="range" min="0" max="100" step="5" x-model="powerPct"
-                   class="flex-1 accent-cyan-500 h-1.5 cursor-pointer" style="min-width:0"
-                   @change="sendCommand('battery_command_power_pct', powerPct)">
-            <input type="number" x-model="powerPct" min="0" max="100" step="5"
-                   class="form-control !py-1 !text-xs w-14 text-center"
-                   @change="sendCommand('battery_command_power_pct', powerPct)">
           </div>
         </div>
         <div>

@@ -14,6 +14,7 @@ import pytest
 
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 
 @pytest.fixture
@@ -35,7 +36,7 @@ def mock_controller():
 
 @pytest.fixture
 def handler(mock_controller, db):
-    return CommandHandler(mock_controller, db, max_charge_w=5000, max_discharge_w=5000)
+    return CommandHandler(mock_controller, db, max_charge_w=5000, max_discharge_w=5000, rating=calibrated_rating())
 
 
 async def _control_events(db) -> list[tuple[str, str]]:
@@ -144,14 +145,14 @@ class _OldCtrl:
 
 def test_fast_release_passes_zero_handshake():
     ctrl = _RecordingCtrl()
-    h = CommandHandler(ctrl, MagicMock())
+    h = CommandHandler(ctrl, MagicMock(), rating=calibrated_rating())
     h._full_release(fast=True)
     assert ctrl.calls == [0]  # shutdown path skips the ramp-down
 
 
 def test_default_release_keeps_handshake():
     ctrl = _RecordingCtrl()
-    h = CommandHandler(ctrl, MagicMock())
+    h = CommandHandler(ctrl, MagicMock(), rating=calibrated_rating())
     h._full_release(fast=False)
     assert ctrl.calls == [1.0]  # in-session release keeps the clean ramp-down
 
@@ -159,6 +160,6 @@ def test_default_release_keeps_handshake():
 def test_fast_release_back_compat_with_old_library():
     """A library without handshake_wait_s must not error on a fast release."""
     ctrl = _OldCtrl()
-    h = CommandHandler(ctrl, MagicMock())
+    h = CommandHandler(ctrl, MagicMock(), rating=calibrated_rating())
     h._full_release(fast=True)  # must not raise
     assert ctrl.calls == ["no-arg"]

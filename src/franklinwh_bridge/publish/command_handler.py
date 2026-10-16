@@ -41,6 +41,7 @@ from typing import Any
 import aiosqlite
 
 from franklinwh_bridge.gateway import link_stats
+from franklinwh_bridge.gateway.battery_rating import BatteryRating
 from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store.db import log_control_event, save_control_state
 
@@ -84,6 +85,14 @@ DEFAULT_WATCHDOG_S = 0  # 0 = no time limit (run until explicitly released)
 OPEN_ENDED_RVRT_S = 7200
 DEFAULT_MAX_POWER_W = 5000
 SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
+#: Overshoot guard (#133): after this long, a battery running above the request
+#: by more than the margin means the rating it was sized against is wrong.
+OVERSHOOT_CHECK_AFTER_S = 20
+OVERSHOOT_FACTOR = 1.25
+OVERSHOOT_SLACK_W = 500
+#: Requester prefix allowed to stage a power percentage: schedules written
+#: before % was removed. Anything else is told to use watts.
+LEGACY_PCT_REQUESTER = "schedule:"
 
 OPERATING_MODES = {
     "Emergency Backup": 1,
@@ -147,8 +156,11 @@ class CommandHandler:
         points_getter: Callable[[], dict[str, Any]] | None = None,
         modbus_lock: asyncio.Lock | None = None,
         gateway_id: str = "default",
+        rating: BatteryRating | None = None,
     ) -> None:
         self._controller = controller
+        #: Evidence-backed battery power rating; force commands need it trusted.
+        self.rating = rating or BatteryRating(gateway_id)
         self._db = db
         # Which gateway this handler commands. The control log and the persisted
         # command state are per gateway; without it every gateway's dispatches
@@ -241,7 +253,6 @@ class CommandHandler:
         return {
             "battery_command_state": self._state.action if self._state.active else "Not Active",
             "battery_command_power_w": self._command_power_w,
-            "battery_command_power_pct": self._command_power_pct,
             "battery_command_duration_s": self._command_duration_s,
             "battery_command_target_soc": self._target_soc,
             # 0 = no time limit (the command runs until released or the target
@@ -251,7 +262,15 @@ class CommandHandler:
             "sw_watchdog_remain_s": remain,
             "command_elapsed_s": elapsed,
             "last_command_result": self._state.last_result or "None",
+            # Trusted battery ratings (#133): None until calibrated or confirmed,
+            # so the UI can size its controls and say why force is unavailable.
+            "battery_rating_charge_w": self._trusted_w("charge"),
+            "battery_rating_discharge_w": self._trusted_w("discharge"),
         }
+
+    def _trusted_w(self, direction: str) -> int | None:
+        d = self.rating.decision(direction)
+        return d.rating_w if d.trusted else None
 
     async def _read_hw_state(self) -> dict | None:
         try:
@@ -332,6 +351,12 @@ class CommandHandler:
                     resent = True
                     await self._handle_battery_command(self._state.action)
             elif slug == "battery_command_power_pct":
+                # Our "%" was a share of an assumed rating, not of the battery
+                # (#133). Only a schedule saved before it was removed may still
+                # stage one; it is sized against the trusted rating at dispatch.
+                if not self._requester.startswith(LEGACY_PCT_REQUESTER):
+                    return {"ok": False, "result": (
+                        "Power % has been removed: set Command Power in watts")}
                 self._command_power_pct = max(0, min(int(float(payload)), 100))
                 self._command_power_w = 0  # pct takes precedence, clear watts
                 staged = f"Staged power {self._command_power_pct}%"
@@ -403,11 +428,21 @@ class CommandHandler:
         if base == "Standby":
             watts = 0
         elif base in ("Charge", "Discharge"):
-            # Pick directional limit
-            max_w = (
-                self._max_charge_w if base == "Charge"
-                else self._max_discharge_w
-            )
+            decision = self.rating.decision("charge" if base == "Charge" else "discharge")
+            if not decision.trusted:
+                self._state.last_result = f"Refused Force {base}: {decision.reason}"
+                self._state.last_success = False
+                logger.warning("Gateway %s: %s", self._gateway_id, self._state.last_result)
+                await self._log_event(
+                    "command_refused", detail=self._state.last_result, by=self._requester)
+                return
+            max_w = int(decision.rating_w)
+            # The library turns watts into WSetPct against its own rating: give
+            # it the trusted one, so 100 % means this battery's real full power.
+            if base == "Charge":
+                self._controller.RATED_MAX_CHARGE_W = max_w
+            else:
+                self._controller.RATED_MAX_DISCHARGE_W = max_w
             if self._command_power_pct > 0:
                 # Percentage mode: convert to watts using directional max
                 watts = int(max_w * self._command_power_pct / 100)
@@ -564,6 +599,10 @@ class CommandHandler:
         we sent, and logs the start, end, or a change made underneath ours.
         """
         pts = getattr(sample, "points", None) or {}
+        try:
+            await self.rating.observe(pts, getattr(sample, "ts", None))
+        except Exception:
+            logger.exception("Battery rating update failed")
         ena, pct = pts.get("wset_enabled"), pts.get("wset_pct")
         ts = float(getattr(sample, "ts", 0) or 0)
         if ena is None or ts - self._last_change_ts < self.EXTERNAL_SETTLE_S:
@@ -933,6 +972,9 @@ class CommandHandler:
                             await self._release_command(reason="watchdog_expired")
                             return
 
+                    if await self._overshoot_guard():
+                        return
+
                     # Check target SoC
                     target = self._target_soc
                     if target > 0:
@@ -965,6 +1007,39 @@ class CommandHandler:
                 await asyncio.sleep(SOC_CHECK_INTERVAL_S)
         except asyncio.CancelledError:
             pass
+
+    async def _overshoot_guard(self) -> bool:
+        """Release a force command whose battery runs well above the request (#133).
+
+        A rating that is too low makes the aGate apply a larger share of its
+        real power than asked for. Returns True when it released the command.
+        """
+        st = self._state
+        if not st.active or st.power_w <= 0:
+            return False
+        if time.time() - st.started_at < OVERSHOOT_CHECK_AFTER_S:
+            return False
+        is_charge = st.action in ("Charge", "Force Charge")
+        if not is_charge and st.action not in ("Discharge", "Force Discharge"):
+            return False
+        try:
+            bw = float((self._points_getter() if self._points_getter else {})
+                       .get("battery_power_w"))
+        except (TypeError, ValueError):
+            return False
+        actual = -bw if is_charge else bw  # telemetry: + discharge, - charge
+        if actual <= st.power_w * OVERSHOOT_FACTOR + OVERSHOOT_SLACK_W:
+            return False
+        direction = "charge" if is_charge else "discharge"
+        reason = (f"battery ran at {actual:.0f} W for a {st.power_w} W force {direction}: "
+                  f"the power rating it was sized against is wrong")
+        await self.rating.contradict(direction, reason)
+        await self._release_command(reason="overshoot")
+        self._state.last_result = f"Released: {reason}. Recalibrate before the next command"
+        self._state.last_success = False
+        if self._on_state_changed:
+            await self._on_state_changed()
+        return True
 
     async def stop(self) -> None:
         """Graceful shutdown: release active commands and log the event."""
