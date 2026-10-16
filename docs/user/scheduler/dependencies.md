@@ -89,14 +89,17 @@ The scheduler does not use MQTT. MQTT is only how the bridge's own entities reac
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Control log: *Refused Force Charge/Discharge: … rating unknown / not confirmed* | The battery rating is not trusted in that direction | Calibrate the rating. Until then the Activity Log may show the entry as *ok* followed by *expired* on the next tick; the control log has the refusal. |
+| Activity Log: *failed — dispatch failed: Refused Force Charge: …*, retrying | The battery rating is not trusted in that direction | Calibrate the rating. The entry retries every 60 s while its window is open; the control log has *command_refused*. |
 | Control log: *Released: battery ran at … W for a … W force …* | The overshoot guard fired and the rating is now contradicted | Recalibrate. |
 | Activity Log: *deferred — target under manual control* | A manual force command is active and the conflict policy is defer/wait | Release the manual command, or set the entry to **override**. |
 | Activity Log: *skipped — gateway held by …* | A higher-priority (or older) entry holds the gateway | Change priorities, or narrow one of the windows. |
-| Reserve or mode "ok" but nothing changed | The aGate acknowledges extension-register writes but ignores them | Use force commands; see [Actions](actions.md#reserve-and-operating-mode). |
+| Reserve or mode "ok" but nothing changed | The scheduler does not check one-shot results; the aGate acknowledges extension-register writes but ignores them | Check **Logs**. Use force commands; see [Actions](actions.md#non-battery-actions-reserve-and-operating-mode). |
 | *not_effective* after 90 s | Setpoint accepted, battery not moving (another limit, the gateway's own logic, or a full/empty battery) | Check SoC, reserve and the aGate; the bridge re-sends once. |
-| Force runs at less than full power with Power empty | A power staged earlier (Controls tab, HA *Command Power*) carries over | Set Power on the entry. |
-| Force stops early with *expired* | Target SoC reached, a time limit (maybe carried over from a manual command), an external release or the overshoot guard | Check **Logs** for the release reason. |
+| Force runs at less power than you set | Power above the gateway's Model 702 nameplate is cut to it, then to the trusted rating | Check the gateway's ratings in **Settings → Site & Gateways**. |
+| Force stops early with *expired* | Target SoC reached, a time limit (API `params`), an external release or the overshoot guard | Check **Logs** for the release reason. |
+| Force keeps running after its window | Another battery entry on the same target was active at the window end (often an *Always* entry), a `hold`, or the gateway left a Site/Service target while running | See [Exit and release](exit-and-conflicts.md#how-a-run-ends) and [Targets](targets.md#how-a-fan-out-works). Release from the top bar. |
+| *deferred* although nobody sent a manual command | Another entry on a different target (Site vs Gateway) is running, or a Run now command is | See [Priorities → different targets](priorities.md#entries-on-different-targets). |
+| HA action "ok" for an Always HA-only entry, but only once | An Always entry fires once per bridge run | Use a repeating trigger; see [Triggers → Always](triggers.md#always-evaluate). |
 | HA action *failed — no HA configured* or *not found* | No HA instance, or it was removed | Add it on the Home Assistant tab. |
 | No failure notification arrived | The entry has no Notify action | Add a Notify action to the entry. |
 
@@ -113,5 +116,8 @@ The scheduler does not use MQTT. MQTT is only how the bridge's own entities reac
 | Duration (min) 0 on a force entry | it fires and releases about a minute later | Set a duration. |
 | Always entry already ran once | nothing new in the log after its exit or Stop | Restart the bridge, or use a cron trigger instead (see [Triggers](triggers.md#always-evaluate)). |
 | Wrong clock | the time in the top bar, `time.tz_ok` = 0, *Next fire* at the wrong hour | Confirm or change the timezone. |
-| Gateway not running | no rows at all for that target; the gateway is offline in Settings | Start or fix the gateway. Site/Service targets only include running gateways. |
+| Gateway not running | no rows at all for that target; the gateway is offline in Settings | Start or fix the gateway. Site/Service targets only include polling gateways. |
+| Service target matches nothing | no rows at all; the entry's service id is a gateway id or `default` | Edit the entry and pick the service in the list. |
+| Higher priority but does not take over | the other entry was already running | Priority does not interrupt a run; see [Priorities](priorities.md#entries-on-the-same-target). |
+| A Mode or Reserve entry blocks a force entry | the one-shot entry holds the gateway for its whole window | Give it a fire-based trigger with no duration. |
 | Window was during an outage | *missed* row | Choose *late-fire even if window passed* if you want it to run late. |

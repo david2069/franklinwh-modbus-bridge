@@ -3,7 +3,7 @@
 Each recipe lists the fields to set, shows the finished form and explains how it behaves. The screenshots come from a demo (mock) gateway; on your bridge pick your own gateway as the target.
 
 !!! tip "Before you start"
-    - Force commands need a **trusted battery rating** on the gateway. See [Actions](actions.md#power).
+    - Force commands need a **trusted battery rating** on the gateway. See [Actions](actions.md#power-and-sizing).
     - Set the three [constants](conditions.md#notes-on-some-sensors) first: the recipes compare against them with **Lookup**.
     - New entries run as soon as you save them. Untick **Enabled** while you try things out, and use **Test Verification**.
 
@@ -85,7 +85,7 @@ How it behaves:
 
 - Each hour the entry is active for 59 minutes. If a thunderstorm is current and SoC is below 95 %, it charges until 95 %.
 - `weather.code` and `weather.condition` describe the **current** weather, refreshed every 15 minutes.
-- To hold the charge afterwards, add a second entry with **Force Standby** and the same weather gate. Raising the reserve with *Self Reserve %* is often ignored by the aGate (see [Actions](actions.md#reserve-and-operating-mode)).
+- To hold the charge afterwards, add a second entry with **Force Standby** and the same weather gate. Raising the reserve with *Self Reserve %* is often ignored by the aGate (see [Actions](actions.md#non-battery-actions-reserve-and-operating-mode)).
 
 ## 5. Peak-demand window: shave imports using the Demand-Charge Min SoC
 
@@ -110,7 +110,8 @@ Needs: a utility service with **peak demand** and its window at **Settings → E
 How it behaves:
 
 - The hold-for of one minute ignores short load spikes.
-- Priority 20 beats the evening discharge (10), so during the demand window this entry wins the gateway.
+- Priority 20 beats the evening discharge (10) when both are waiting for the gateway. If the evening entry is already running, it keeps the gateway: priority does not interrupt a run (see [Priorities](priorities.md#entries-on-the-same-target)).
+- With both recipes on one gateway, read the [window-end warning](exit-and-conflicts.md#how-a-run-ends): when this entry's half-hour window ends while the evening entry is active but gated, the discharge is not released.
 - `grid.power_w` is positive when importing. Once the battery discharges, grid import drops, but the run continues: the gate is not re-checked while running. It ends at the exit, at the end of the half-hour window, or when the next half hour re-checks the gate.
 - Without a configured service, *In Peak-Demand Window* reads 0, so the gate fails and the entry does nothing.
 

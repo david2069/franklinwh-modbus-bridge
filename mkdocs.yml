@@ -103,10 +103,15 @@ nav:
     - "Guide: utility, meter & tariff setup": user/ui/guide-utility-tariffs.md
   - Scheduler:
     - user/scheduler/index.md
+    - Concepts: user/scheduler/concepts.md
     - Triggers: user/scheduler/triggers.md
     - Conditions: user/scheduler/conditions.md
     - Actions: user/scheduler/actions.md
-    - Exit, release and conflicts: user/scheduler/exit-and-conflicts.md
+    - Targets: user/scheduler/targets.md
+    - Exit and release: user/scheduler/exit-and-conflicts.md
+    - Priorities and conflicts: user/scheduler/priorities.md
+    - Outcomes and audit: user/scheduler/outcomes.md
+    - Restarts and the clock: user/scheduler/restarts-and-clock.md
     - Dependencies and troubleshooting: user/scheduler/dependencies.md
     - Examples: user/scheduler/examples.md
   - Home Assistant:
@@ -120,6 +125,7 @@ nav:
     - "Data out: MQTT to Home Assistant": dev/mqtt.md
     - "Data in: HA entities over WebSocket": dev/ha-websocket.md
     - "Use case: Scheduler integration": dev/scheduler-integration.md
+    - Scheduler test plan: dev/scheduler-test-plan.md
   - Policies:
     - Install lifecycle: install-lifecycle.md
     - Issue policy: issue-policy.md
