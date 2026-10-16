@@ -13,6 +13,51 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-10-16
+
+S1 hotfix: battery control (#133, #134). Same day as 0.2.7, as an S1 hotfix.
+
+### Fixed
+
+- **Force charge/discharge could run far above the requested power on sites
+  with several aPowers** (#133). The aGate is commanded with a percentage
+  (`WSetPct`) of the battery's rating. That rating came from Model 702, or was
+  assumed to be 5000 W when unread (#134). A 5 kW request on a 20 kW site went
+  out as 100 %. Force commands are now sized only against a **trusted** rating
+  and are refused until there is one:
+  - **calibrated:** the peak recorded while the owner runs a TOU battery
+    dispatch in the official app;
+  - **Model 702 confirmed:** the battery has been seen at 80–115 % of it. On
+    first start this is seeded from recorded history, so a site that already
+    discharges at full power is confirmed at once.
+
+  If the battery is later seen well above the rating, or a running command
+  overshoots it, the command is released and the rating must be recalibrated
+  (`gateway/battery_rating.py`, migration 60).
+- **Power sliders** were capped at a hard-coded 5000 W. They and the Max
+  buttons now follow the trusted rating, and the limits endpoints return
+  `null` instead of an assumed 5000 W.
+- **Clean-up removes a stale entity's retained state topic** together with its
+  discovery config.
+
+### Removed
+
+- **Command Power %** (UI, HA entity, REST, schedule form and
+  `params.power_pct`). It was a percentage of an assumed rating, not of the
+  battery. Existing % schedule entries still run, sized against the trusted
+  rating, until edited. The HA entity is removed by the start-up clean-up.
+
+### Added
+
+- **Battery power rating** in Settings → gateway edit: status per direction, and
+  **Calibrate** (start, then run the dispatch in the app, then Finish). API:
+  `GET /api/gateways/{id}/battery-rating`,
+  `POST /api/gateways/{id}/battery-rating/calibration`.
+
+### Changed
+
+- The add-on's Home Assistant sidebar entry reads **Modbus Bridge** (#144).
+
 ## [0.2.7] — 2026-10-16
 
 Security hotfix. Nothing else is in this release.
