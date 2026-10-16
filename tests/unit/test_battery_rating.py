@@ -298,3 +298,39 @@ async def test_rating_and_calibration_routes(ctrl, db, clock):
 
         r = await c.post(base + "/calibration", json={"action": "start"})
         assert r.status_code == 422
+
+
+
+# ── 0.2.9 hotfix ─────────────────────────────────────────────────────────
+
+
+async def test_refused_command_replaces_an_earlier_ok_result(ctrl, db):
+    """A refusal must not leave the previous dispatch's ok for the scheduler to read
+    (0.2.8 regression: a refused schedule was audited "ok — dispatched")."""
+    h = CommandHandler(ctrl, db, rating=calibrated_rating())
+    await h.handle_command("battery_command", "Force Discharge")
+    assert h.last_dispatch.ok is True
+    await h.handle_command("battery_command", "Release")
+    h.rating = BatteryRating("default")  # rating no longer trusted
+    res = await h.handle_command("battery_command", "Force Discharge", requester="schedule:e1")
+    assert res["ok"] is False
+    assert h.last_dispatch.ok is False and "Refused Force Discharge" in h.last_dispatch.reason
+
+
+async def test_unknown_action_replaces_an_earlier_ok_result(ctrl, db):
+    h = CommandHandler(ctrl, db, rating=calibrated_rating())
+    await h.handle_command("battery_command", "Force Discharge")
+    await h.handle_command("battery_command", "Sideways")
+    assert h.last_dispatch.ok is False and "Unknown" in h.last_dispatch.reason
+
+
+async def test_scheduled_empty_power_is_full_trusted_rating_not_a_manual_leftover(ctrl, db):
+    from franklinwh_bridge.gateway.scheduler import action_to_commands
+
+    h = CommandHandler(ctrl, db, rating=calibrated_rating(discharge_w=5000))
+    await h.handle_command("battery_command_power", "800")       # manual leftover
+    await h.handle_command("battery_command_duration", "300")    # manual leftover
+    for slug, value in action_to_commands("force_discharge", {}):
+        await h.handle_command(slug, value, requester="schedule:e1")
+    assert ctrl.send_command.call_args[0][0].power_watts == -5000
+    assert h.state.watchdog_s == 0

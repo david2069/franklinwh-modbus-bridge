@@ -395,6 +395,8 @@ class CommandHandler:
         except Exception as exc:
             self._state.last_result = f"Error: {exc}"
             self._state.last_success = False
+            if slug == "battery_command":
+                self._record_not_sent(payload, self._state.last_result)
             logger.error("Command %s failed: %s", slug, exc)
             return {"ok": False, "result": self._state.last_result}
         # Every dispatching path (battery command, mode, reserve) sets
@@ -431,6 +433,7 @@ class CommandHandler:
             if not decision.trusted:
                 self._state.last_result = f"Refused Force {base}: {decision.reason}"
                 self._state.last_success = False
+                self._record_not_sent(f"Force {base}", self._state.last_result)
                 logger.warning("Gateway %s: %s", self._gateway_id, self._state.last_result)
                 await self._log_event(
                     "command_refused", detail=self._state.last_result, by=self._requester)
@@ -453,6 +456,7 @@ class CommandHandler:
             logger.warning("Unknown battery command: %s", action)
             self._state.last_result = f"Unknown battery command: {action}"
             self._state.last_success = False
+            self._record_not_sent(action, self._state.last_result)
             return
 
         display_action = f"Force {base}"  # canonical, prefixed label
@@ -1006,6 +1010,16 @@ class CommandHandler:
                 await asyncio.sleep(SOC_CHECK_INTERVAL_S)
         except asyncio.CancelledError:
             pass
+
+    def _record_not_sent(self, action: str, reason: str, requested_w: int = 0) -> None:
+        """A battery command that was NOT sent must not leave an earlier "ok" behind.
+
+        Callers (the scheduler) judge a dispatch by ``last_dispatch``. A refusal
+        that returned without replacing it let the previous command's ok stand,
+        so a refused schedule was audited "ok — dispatched" (0.2.8 regression).
+        """
+        self._last_dispatch = DispatchResult(
+            ok=False, reason=reason, action=action, requested_w=requested_w, ts=time.time())
 
     async def _overshoot_guard(self) -> bool:
         """Release a force command whose battery runs well above the request (#133).

@@ -312,16 +312,19 @@ def action_to_commands(action: str, params: dict) -> list[tuple[str, str]]:
     """
     p = params or {}
     pre: list[tuple[str, str]] = []
-    if "duration_s" in p:
-        pre.append(("battery_command_duration", str(int(p["duration_s"]))))
-    if "target_soc" in p:
-        pre.append(("battery_command_target_soc", str(int(p["target_soc"]))))
+    # A force entry always states its own duration, target SoC and power: 0 when
+    # the entry leaves one empty (no time limit / no target / full trusted
+    # rating). The command handler is shared with manual control, so anything
+    # not staged here leaked from the last manual command into the schedule.
+    if action in ("force_charge", "force_discharge", "force_standby"):
+        pre.append(("battery_command_duration", str(int(p.get("duration_s") or 0))))
+        pre.append(("battery_command_target_soc", str(int(p.get("target_soc") or 0))))
 
     if action in ("force_charge", "force_discharge"):
         if p.get("power_pct"):
             pre.append(("battery_command_power_pct", str(int(p["power_pct"]))))
-        elif p.get("power_w"):
-            pre.append(("battery_command_power", str(int(p["power_w"]))))
+        else:
+            pre.append(("battery_command_power", str(int(p.get("power_w") or 0))))
         label = _DISPLAY[action]
         return [*pre, ("battery_command", label)]
     if action == "force_standby":

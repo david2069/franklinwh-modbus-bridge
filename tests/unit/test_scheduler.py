@@ -162,12 +162,25 @@ async def test_dated_entry_fires_only_on_its_own_date_across_restarts():
 
 def test_force_charge_sets_power_then_command():
     cmds = action_to_commands("force_charge", {"power_w": 1500})
-    assert cmds == [("battery_command_power", "1500"), ("battery_command", "Force Charge")]
+    assert cmds == [("battery_command_duration", "0"), ("battery_command_target_soc", "0"),
+                    ("battery_command_power", "1500"), ("battery_command", "Force Charge")]
 
 
 def test_force_discharge_pct():
     cmds = action_to_commands("force_discharge", {"power_pct": 50})
-    assert cmds == [("battery_command_power_pct", "50"), ("battery_command", "Force Discharge")]
+    assert cmds == [("battery_command_duration", "0"), ("battery_command_target_soc", "0"),
+                    ("battery_command_power_pct", "50"), ("battery_command", "Force Discharge")]
+
+
+def test_force_entry_states_every_setting_so_manual_values_cannot_leak():
+    """An entry with empty power/duration/target stages 0 for each: full trusted
+    rating, no time limit, no target. Before, the last manual values were used."""
+    cmds = action_to_commands("force_discharge", {})
+    assert cmds == [("battery_command_duration", "0"), ("battery_command_target_soc", "0"),
+                    ("battery_command_power", "0"), ("battery_command", "Force Discharge")]
+    cmds = action_to_commands("force_standby", {"duration_s": 600})
+    assert cmds == [("battery_command_duration", "600"), ("battery_command_target_soc", "0"),
+                    ("battery_command", "Force Standby")]
 
 
 def test_reserve_and_mode_actions():
