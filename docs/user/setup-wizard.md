@@ -21,7 +21,7 @@ On a fresh install the bridge opens **Set up the bridge**. You can also open it 
 === "Search my network"
 
     The wizard proposes the subnet Home Assistant (or the host) is on. Add another,
-    e.g. `192.168.0.0/24`, if the aGate is on a different network or reached over a VPN.
+    e.g. `192.0.2.0/24`, if the aGate is on a different network or reached over a VPN.
     A found aGate shows its model, serial and firmware.
 
     ![Search my network](../images/wizard/wizard-search.png)

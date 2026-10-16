@@ -33,7 +33,7 @@ Home Assistant 2026.10 and later:
 
     | Option | Meaning |
     |---|---|
-    | `gateway_host` | aGate IP, e.g. `192.168.1.50`. Leave it empty to find the aGate with the setup wizard. |
+    | `gateway_host` | aGate IP, e.g. `192.0.2.50`. Leave it empty to find the aGate with the setup wizard. |
     | `gateway_port` | Modbus TCP port, normally `502`. |
     | `gateway_unit_id` | Modbus unit id, normally `1`. |
     | `poll_interval` | Seconds between polls. `10` is a good default. |
