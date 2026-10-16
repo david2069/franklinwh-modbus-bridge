@@ -50,9 +50,15 @@ else
   bashio::log.warning "No MQTT broker yet — install the Mosquitto broker app and the bridge connects to it automatically (or set a broker in Settings → MQTT)"
 fi
 
+# Only HA ingress is trusted without a login, and api/auth.py recognises it by
+# the socket peer (the Supervisor's proxy, 172.30.32.2). So no client may
+# rewrite its own address: forwarded headers are ignored (GHSA-hhm2-xvvc-f6ww).
+# Everything else, including a published port 8099, logs in with a bridge
+# account; over plain HTTP that needs ALLOW_INSECURE_AUTH, as in Docker.
+export ALLOW_INSECURE_AUTH="1"
+
 exec uvicorn franklinwh_bridge.main:app \
   --host 0.0.0.0 \
   --port 8099 \
   --workers 1 \
-  --proxy-headers \
-  --forwarded-allow-ips '*'
+  --no-proxy-headers

@@ -8,14 +8,18 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from starlette.requests import Request
 
-from franklinwh_bridge.api.auth import get_current_user
+from franklinwh_bridge.api.auth import SUPERVISOR_INGRESS_IP, get_current_user
 from franklinwh_bridge.main import app
 
 
 def _ingress_request(headers: dict) -> Request:
     scope = {
         "type": "http", "method": "GET", "path": "/", "query_string": b"",
-        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        "headers": [
+            (k.lower().encode(), v.encode())
+            for k, v in {"X-Ingress-Path": "/api/hassio_ingress/t", **headers}.items()
+        ],
+        "client": (SUPERVISOR_INGRESS_IP, 40000),
         "app": SimpleNamespace(state=SimpleNamespace(config=SimpleNamespace(environment="ha_addon"))),
     }
     return Request(scope)

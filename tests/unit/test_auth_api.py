@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.sessions import SessionMiddleware
 
-from franklinwh_bridge.api.auth import require_auth, require_role
+from franklinwh_bridge.api.auth import SUPERVISOR_INGRESS_IP, require_auth, require_role
 from franklinwh_bridge.api.auth import router as auth_router
 from franklinwh_bridge.security import hash_password
 from franklinwh_bridge.store.db import create_user, init_db, update_user
@@ -94,10 +94,13 @@ async def test_ingress_bypass_returns_admin(tmp_path):
     db = await init_db(tmp_path / "ing.db")
     try:
         app = _build_app(db, environment="ha_addon")
-        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        transport = ASGITransport(
+            app=app, client=(SUPERVISOR_INGRESS_IP, 40000), raise_app_exceptions=False
+        )
+        ingress = {"X-Ingress-Path": "/api/hassio_ingress/t"}
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             # no login, but ingress → synthetic admin, protected succeeds
-            assert (await ac.get("/protected")).status_code == 200
-            assert (await ac.get("/admin-only")).status_code == 200
+            assert (await ac.get("/protected", headers=ingress)).status_code == 200
+            assert (await ac.get("/admin-only", headers=ingress)).status_code == 200
     finally:
         await db.close()

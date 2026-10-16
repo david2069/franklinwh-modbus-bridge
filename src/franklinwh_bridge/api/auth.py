@@ -47,9 +47,25 @@ def _ingress_user(request: Request) -> dict:
     return {**_INGRESS_ADMIN, "username": name[:80]} if name else _INGRESS_ADMIN
 
 
+#: The Supervisor's ingress proxy. Every ingress request reaches the add-on from
+#: this address (HA add-on docs). Nothing else on the Supervisor network, nor a
+#: client on a published port 8099, may be taken for it (GHSA-hhm2-xvvc-f6ww).
+SUPERVISOR_INGRESS_IP = "172.30.32.2"
+
+
 def _is_ingress(request: Request) -> bool:
+    """True only for a request proxied by HA ingress, which HA has authenticated.
+
+    Needs all three: add-on mode, the TCP peer is the Supervisor's ingress proxy,
+    and the proxy's ``X-Ingress-Path`` header. The peer must be the real socket
+    address: addon/run.sh runs uvicorn with ``--no-proxy-headers`` so no client
+    can rewrite it with ``X-Forwarded-For``.
+    """
     config = getattr(request.app.state, "config", None)
-    return bool(config and str(getattr(config, "environment", "")) == "ha_addon")
+    if not (config and str(getattr(config, "environment", "")) == "ha_addon"):
+        return False
+    peer = request.client.host if request.client else None
+    return peer == SUPERVISOR_INGRESS_IP and bool(request.headers.get("x-ingress-path"))
 
 
 def _is_secure(request: Request) -> bool:

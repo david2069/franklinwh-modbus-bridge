@@ -5,6 +5,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+
+from franklinwh_bridge.api.auth import SUPERVISOR_INGRESS_IP
 from starlette.middleware.sessions import SessionMiddleware
 
 from franklinwh_bridge.api.auth import router as auth_router
@@ -65,8 +67,10 @@ async def test_accounts_is_admin_only(env):
 
 async def test_accounts_does_not_apply_under_ingress(env):
     env.app.state.config = SimpleNamespace(environment="ha_addon")
-    d = (await env.new_client().get("/api/setup/accounts")).json()
-    assert d == {"applies": False, "you": None, "accounts": []}
+    transport = ASGITransport(app=env.app, client=(SUPERVISOR_INGRESS_IP, 40000))
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.get("/api/setup/accounts", headers={"X-Ingress-Path": "/api/hassio_ingress/t"})
+    assert r.json() == {"applies": False, "you": None, "accounts": []}
 
 
 async def test_change_own_password_ends_other_logins_keeps_this_one(env):
