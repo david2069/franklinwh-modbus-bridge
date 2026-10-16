@@ -490,8 +490,6 @@ class CommandHandler:
 
         self._state.watchdog_s = self._command_duration_s
         cmd = BatteryCommand(power_watts=watts)
-        # Pass duration to library only when > 0 (0 = no library timer)
-        lib_duration = self._state.watchdog_s if self._state.watchdog_s > 0 else None
 
         # Acquire Modbus lock for the entire send + revert-timer write
         # to prevent interleaving with poller reads.
@@ -506,9 +504,13 @@ class CommandHandler:
             # discharge.
             if rated_attr is not None:
                 setattr(self._controller, rated_attr, max_w)
+            # No duration_s, so no library timer (#242): franklinwh-modbus runs
+            # it on a threading.Timer that calls reset_control_state() without
+            # this gateway's Modbus lock (interleaving with a poll) and releases
+            # the command a second time, unaudited. The software watchdog
+            # releases it, under the lock and in the Activity Log.
             success, msg = await asyncio.to_thread(
                 self._io, "write", self._controller.send_command, cmd,
-                duration_s=lib_duration,
             )
 
             # Write WSetRvrtTms to keep the aGate in VPP (remote-control) mode.
