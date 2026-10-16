@@ -181,7 +181,7 @@ Configuration is loaded with the following precedence (highest wins):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_ENV` | `dev` | Environment: `ha_addon`, `docker`, or `dev` |
-| `LOG_LEVEL` | `INFO` | Logging level. **Not read yet** (known issue #181); use `logging.level` in `config.yaml`. |
+| `LOG_LEVEL` | `INFO` | Logging level. Overrides `logging.level` in `config.yaml`. |
 | `DATA_DIR` | `./data` (dev), `/data` (Docker, add-on) | Data directory (DB, backups). **Not read yet**: the location follows `APP_ENV`. |
 
 #### Login and security
@@ -193,7 +193,7 @@ you are locked out.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ADMIN_USERNAME` | `admin` | First admin, created on first start |
-| `ADMIN_PASSWORD` | *(generated, logged once)*; `admin` in the shipped compose | First admin's password. **Change it.** |
+| `ADMIN_PASSWORD` | *(generated, logged once)* | First admin's password. Empty counts as unset. |
 | `ALLOW_INSECURE_AUTH` | *(off)*; `1` in the shipped compose | Allow login over plain HTTP. Does not bypass login. |
 | `SESSION_COOKIE_SECURE` | *(off)* | Send the login cookie only over HTTPS (set behind TLS) |
 | `SECURITY_SECRET_KEY` | *(generated, `DATA_DIR/.session_secret`)* | Login cookie signing key. Changing it ends every login. |

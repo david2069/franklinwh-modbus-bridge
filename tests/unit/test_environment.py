@@ -63,3 +63,14 @@ def test_data_dir_ha_addon():
         "franklinwh_bridge.config.environment.detect_environment", return_value="ha_addon"
     ):
         assert str(get_data_dir()) == "/data"
+
+
+def test_podman_container_detected(monkeypatch):
+    """Podman writes /run/.containerenv, not /.dockerenv (#179)."""
+    from franklinwh_bridge.config import environment
+
+    monkeypatch.setattr(environment, "_CONTAINER_MARKERS", ("/nonexistent", __file__))
+    with patch.dict(os.environ, {}, clear=True):
+        assert environment.in_container()
+        assert detect_environment() == "docker"
+        assert str(get_data_dir()) == "/data"

@@ -17,9 +17,6 @@ services:
     env_file:
       - path: .env
         required: false
-    command: >-
-      uvicorn franklinwh_bridge.main:app
-      --host 0.0.0.0 --port 8099 --workers 1
     environment:
       - APP_ENV=${APP_ENV:-docker}
       - DATA_DIR=/data
@@ -30,14 +27,18 @@ services:
       # dependable on Docker Desktop for macOS — it silently reverted to the
       # image's UTC on 2026-09-12 and a daily 18:00 export ran 10h out (04:00
       # local). TZ is authoritative and survives that, so set it explicitly.
-      - TZ=${TZ:-Australia/Sydney}
+      # No default: a preset zone silently ran other users' schedules on the
+      # wrong clock (#176), so compose refuses to start until .env sets it.
+      - TZ=${TZ:?Set TZ in .env to your timezone, e.g. TZ=Europe/London}
       # ── Auth (multi-user) ─────────────────────────────────────
       # LAN/localhost dev over plain HTTP: allow login without TLS. Put this
       # Bridge behind TLS (Caddy/Tailscale) and drop ALLOW_INSECURE_AUTH +
       # set SESSION_COOKIE_SECURE=1 for real deployments.
       - ALLOW_INSECURE_AUTH=${ALLOW_INSECURE_AUTH:-1}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      # Unset or empty: the first admin gets a generated password, printed
+      # once in the log (#177).
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # ── MQTT broker ───────────────────────────────────────────
       - MQTT_HOST=${MQTT_HOST:-mosquitto}
       - MQTT_PORT=${MQTT_PORT:-1883}
@@ -75,7 +76,10 @@ services:
     networks:
       - fwh-bridge
 
+  # A throwaway Home Assistant for testing discovery. Not part of an install:
+  # it starts only with `docker compose --profile ha up -d` (#180).
   homeassistant:
+    profiles: ["ha"]
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: fwhbridge-homeassistant
     restart: unless-stopped

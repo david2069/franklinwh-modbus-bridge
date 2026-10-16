@@ -8,6 +8,15 @@ from typing import Literal
 
 Environment = Literal["ha_addon", "docker", "dev"]
 
+# Files a container runtime puts at the root: Docker writes /.dockerenv,
+# Podman writes /run/.containerenv.
+_CONTAINER_MARKERS = ("/.dockerenv", "/run/.containerenv")
+
+
+def in_container() -> bool:
+    """True inside a Docker or Podman container."""
+    return any(Path(p).exists() for p in _CONTAINER_MARKERS)
+
 
 def detect_environment() -> Environment:
     """Detect runtime environment from env vars, filesystem markers, and cgroup info."""
@@ -23,14 +32,14 @@ def detect_environment() -> Environment:
     if any(Path(p).exists() for p in ha_paths):
         return "ha_addon"
 
-    if Path("/.dockerenv").exists():
+    if in_container():
         return "docker"
 
     try:
         cgroup = Path("/proc/1/cgroup")
         if cgroup.exists():
             content = cgroup.read_text().lower()
-            if any(x in content for x in ("docker", "containerd", "kubepods")):
+            if any(x in content for x in ("docker", "containerd", "kubepods", "libpod")):
                 return "docker"
     except Exception:
         pass

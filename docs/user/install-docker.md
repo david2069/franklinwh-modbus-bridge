@@ -22,8 +22,8 @@ Edit `.env` **before the first start**. These are read once, on first start:
 
 | Setting | Set it to | Why |
 |---|---|---|
-| `TZ` | Your zone, e.g. `Europe/London` | Schedules and tariff windows run on this clock. If unset, the bridge runs on `Australia/Sydney` and records it; changing it later raises a *TIMEZONE CHANGED* error until you confirm (#176). |
-| `ADMIN_PASSWORD` | A password of your own | If unset, the first admin is **admin / admin** (#177). |
+| `TZ` | Your zone, e.g. `Europe/London` | **Required.** Schedules and tariff windows run on this clock. Compose won't start until it's set. Changing it later raises a *TIMEZONE CHANGED* error until you confirm. |
+| `ADMIN_PASSWORD` | A password of your own | If empty, a password is generated and printed once in the log. |
 | `ADMIN_USERNAME` | Optional | Defaults to `admin`. |
 
 And these whenever they apply:
@@ -49,7 +49,13 @@ docker compose up -d --build
 
 ## 3. Sign in
 
-Open `http://<host>:8100` and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD` (**admin / admin** if you didn't set them). Change the password at once under **Settings → Admin → Users**.
+Open `http://<host>:8100` and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`. If you left the password empty, find the generated one:
+
+```bash
+docker compose logs app | grep -i password
+```
+
+Change it under **Settings → Admin → Users**.
 
 You'll see, in order: the **Unofficial software** notice (tick and **Continue**), then the [setup wizard](setup-wizard.md). Use the wizard's timezone step, or the **Confirm the bridge's timezone** banner, to confirm `TZ`.
 
@@ -73,13 +79,8 @@ You want `Bridge started (env=docker, v…)` and `MQTT connected to mosquitto:18
 |---|---|---|
 | `fwhbridge-app` | 8100 → 8099 | The bridge. Data in the `app-data` volume. |
 | `fwhbridge-mosquitto` | 1886 → 1883 | An MQTT broker, anonymous access, for the bridge and HA. |
-| `fwhbridge-homeassistant` | 18125 → 8123 | A **separate, empty Home Assistant** (2.5 GB image), not your own HA (#180). |
 
-If you already run Home Assistant, you don't need the last one. Start only the bridge and the broker:
-
-```bash
-docker compose up -d --build app
-```
+The compose file also has a throwaway Home Assistant for testing (`fwhbridge-homeassistant`, port 18125). It isn't part of an install and starts only with `docker compose --profile ha up -d`.
 
 To point your own HA at the bundled broker, add the MQTT integration with host `<docker host>` and port `1886`. To connect the bridge to your HA's entities, use **Settings → Home Assistant → + Add Home Assistant**.
 
@@ -116,9 +117,8 @@ Tested with Podman 6 (`podman machine` on macOS, arm64) and `podman-compose` as 
 - `podman compose` needs a provider: `docker-compose` or `podman-compose` on the `PATH`.
 - Use the commands above with `podman` in place of `docker`, including for [admin recovery](../admin-recovery.md).
 - Podman builds OCI images, which drop the image's `HEALTHCHECK`, so `ps` shows no health for the bridge.
-- **Admin recovery refuses** with *"not inside a container"*, because Podman has no `/.dockerenv` (#179). Add `--allow-host`; under compose the database is the right one (`Database: /data/bridge.db`).
 - The wizard may propose Podman's own network (`10.89.0.0/24`) as your LAN (#183). Use **Enter address**, or set `LAN_SUBNET`.
-- Always run the image through the compose file. A plain `podman run` without `APP_ENV=docker` stores the database outside the `/data` volume, and it's lost when the container is removed.
+- Run the image through the compose file, so the `/data` volume and settings are in place.
 
 ## Troubleshooting
 
@@ -128,4 +128,3 @@ Tested with Podman 6 (`podman machine` on macOS, arm64) and `podman-compose` as 
 | *TIMEZONE CHANGED* error in the log | `TZ` changed since first start. Confirm the new zone in the banner, or set `TZ` back. |
 | Can't change the broker in Settings | Expected: set `MQTT_*` in `.env`. |
 | *login requires HTTPS* | `ALLOW_INSECURE_AUTH` is off and you're on `http://`. Use HTTPS, or set it to `1` on a trusted LAN. |
-| `log_level`/`LOG_LEVEL=DEBUG` changes nothing | Known issue #181: `LOG_LEVEL` isn't read yet. |

@@ -78,3 +78,39 @@ def test_ha_options_loaded_in_addon_env(tmp_path):
         mock_ha.return_value = {"gateway": {"host": "192.168.50.1"}}
         settings = load_settings()
     assert settings.gateway.host == "192.168.50.1"
+
+
+def _load(tmp_path, env, file_text=None, ha_options=None):
+    config = None
+    if file_text is not None:
+        config = tmp_path / "config.yaml"
+        config.write_text(file_text)
+    with patch.dict(os.environ, env, clear=True), patch(
+        "franklinwh_bridge.config.settings.detect_environment",
+        return_value="ha_addon" if ha_options is not None else "dev",
+    ), patch("franklinwh_bridge.config.settings._load_ha_options", return_value=ha_options or {}):
+        return load_settings(config)
+
+
+def test_env_beats_config_file(tmp_path, monkeypatch):
+    """Documented precedence: env vars > config file (#181)."""
+    monkeypatch.chdir(tmp_path)
+    s = _load(
+        tmp_path,
+        {"LOG_LEVEL": "DEBUG", "MQTT_HOST": "from-env"},
+        "logging:\n  level: WARNING\nmqtt:\n  host: from-file\n  port: 8883\n",
+    )
+    assert s.log_level == "DEBUG"
+    assert s.mqtt.host == "from-env"
+    assert s.mqtt.port == 8883  # not in the env: the file still applies
+
+
+def test_log_level_from_env_alone(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert _load(tmp_path, {"LOG_LEVEL": "DEBUG"}).log_level == "DEBUG"
+
+
+def test_log_level_from_addon_options(tmp_path, monkeypatch):
+    """The add-on's options.json has a flat log_level key (#181)."""
+    monkeypatch.chdir(tmp_path)
+    assert _load(tmp_path, {}, ha_options={"log_level": "DEBUG"}).log_level == "DEBUG"
