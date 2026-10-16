@@ -1,0 +1,117 @@
+site_name: FranklinWH Modbus Bridge
+site_description: Home Assistant add-on and Docker bridge for FranklinWH aGates over Modbus TCP — dashboards, scheduler, MQTT entities
+site_url: https://david2069.github.io/franklinwh-modbus-bridge
+repo_url: https://github.com/david2069/franklinwh-modbus-bridge
+repo_name: david2069/franklinwh-modbus-bridge
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.mark
+  - pymdownx.keys
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/david2069/franklinwh-modbus-bridge
+
+# Design notes and internal reference stay in docs/ for the repo but are not
+# part of the user site.
+exclude_docs: |
+  /*.md
+  !/index.md
+  !/install-lifecycle.md
+  !/issue-policy.md
+  !/security.md
+  !/admin-recovery.md
+  !/restarts-and-shutdown.md
+  /reference/
+  _*.py
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Install (HA add-on): user/install-addon.md
+    - Install (Docker): user/install-docker.md
+    - First run & setup wizard: user/setup-wizard.md
+  - Dashboards & Settings:
+    - Overview: user/ui/index.md
+    - Top bar: user/ui/top-bar.md
+    - Dashboard: user/ui/dashboard.md
+    - Battery controls: user/ui/controls.md
+    - SunSpec Explorer: user/ui/sunspec-explorer.md
+    - Sequencer: user/ui/sequencer.md
+    - Logs: user/ui/logs.md
+    - Home Assistant page: user/ui/home-assistant-page.md
+    - Energy Costs: user/ui/energy-costs.md
+    - Simple dashboard (/user): user/ui/user-dashboard.md
+    - "Settings: Site & Gateways": user/ui/settings-site-gateways.md
+    - "Settings: Home Assistant": user/ui/settings-home-assistant.md
+    - "Settings: Energy & Automation": user/ui/settings-energy-automation.md
+    - "Settings: Data & Backup": user/ui/settings-data-backup.md
+    - "Settings: Admin": user/ui/settings-admin.md
+    - "Guide: location, weather & solar forecast": user/ui/guide-location-weather.md
+    - "Guide: utility, meter & tariff setup": user/ui/guide-utility-tariffs.md
+  - Scheduler:
+    - user/scheduler/index.md
+    - Triggers: user/scheduler/triggers.md
+    - Conditions: user/scheduler/conditions.md
+    - Actions: user/scheduler/actions.md
+    - Exit, release and conflicts: user/scheduler/exit-and-conflicts.md
+    - Dependencies and troubleshooting: user/scheduler/dependencies.md
+    - Examples: user/scheduler/examples.md
+  - Home Assistant:
+    - Fixing, moving and removing entities: user/home-assistant-entities.md
+  - Policies:
+    - Install lifecycle: install-lifecycle.md
+    - Issue policy: issue-policy.md
+    - Security: security.md
+    - Admin recovery: admin-recovery.md
+    - Restarts & shutdown: restarts-and-shutdown.md

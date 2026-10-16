@@ -40,3 +40,6 @@ tests/results/
 # is itself the disclosure. Findings belong in docs/vendor-issues.md, not here.
 docs/reference/*.xlsx
 !docs/reference/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx
+
+# MkDocs build output
+site/
