@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.14 — 2026-10-17
+
+### Fixes
+- **A force with a time limit now ends once, cleanly.** The Modbus library
+  also ran its own timer, which ended the command a second time without
+  coordinating with the bridge's readings, and without an entry in the
+  Activity Log. Only the bridge's timer is used now.
+
 ## 0.2.13 — 2026-10-17
 
 ### Fixes
