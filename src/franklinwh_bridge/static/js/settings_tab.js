@@ -1320,7 +1320,14 @@ function settingsTab() {
       this.phaseDetect = null;
       this.rating = null;
       this.ratingMsg = '';
-      this.loadRating(gw.id);
+      // Only a running real gateway has a rating to show (a mock is simulated).
+      if (gw.mock) {
+        // nothing to calibrate
+      } else if (gw.health === 'connected') {
+        this.loadRating(gw.id);
+      } else {
+        this.ratingMsg = 'Connect this gateway to see and calibrate its battery power rating.';
+      }
     },
 
     // ── Battery power rating + calibration (#133) ─────────
