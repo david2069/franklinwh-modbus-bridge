@@ -13,6 +13,10 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.11] — 2026-10-17
+
+S1 hotfix: MQTT battery commands while the Control group is off.
+
 ### Fixed
 
 - **MQTT commands while the Control group is off (#204, S1).** Switching
