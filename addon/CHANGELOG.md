@@ -7,6 +7,18 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.10 — 2026-10-17
+
+### Fixes
+- **The `log_level` option now works.** Set `DEBUG` when diagnosing; it had no
+  effect before.
+
+### Docs
+- New pages: Developer Guide, Home Assistant setup (instance and notification
+  device), and battery dispatch best practice.
+- The rest of 0.2.10 fixes the Docker install; nothing else changes for the
+  add-on.
+
 ## 0.2.9 — 2026-10-16
 
 ### Fixes

@@ -13,6 +13,39 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.10] — 2026-10-17
+
+Packaging: the Docker install (milestone R1b). Found by an end-to-end test of
+every install method on 0.2.9.
+
+### Fixed
+
+- **`.env.example` pointed MQTT at `localhost`**, so a compose install never
+  connected to its broker (#175).
+- **Compose preset the timezone to Australia/Sydney.** `TZ` is now required:
+  compose refuses to start until `.env` sets it (#176). A stopgap until each
+  gateway has its own timezone (#162).
+- **Compose seeded admin/admin.** The first admin now gets a generated password,
+  printed once in the log. An empty `ADMIN_PASSWORD` is treated as unset instead
+  of creating an admin with no password (#177).
+- **The image trusted `X-Forwarded-*` from any client.** The Dockerfile runs
+  uvicorn with `--no-proxy-headers`, as the add-on has since 0.2.7 (#178).
+- **Podman wasn't recognised as a container** (`/run/.containerenv`), so a plain
+  `podman run` kept its database outside `/data` and admin recovery refused
+  (#179).
+- **Compose started a full Home Assistant.** It now starts only with
+  `--profile ha` (#180).
+- **`LOG_LEVEL` and the add-on's `log_level` option were ignored** (#181). Env
+  vars now take precedence over `config.yaml` for every setting, as documented.
+
+### Documentation
+
+- Install guides rewritten after the end-to-end test (#199): a Python page,
+  Podman notes, check-it-works and uninstall steps.
+- Full disclaimer on the docs home page (#203).
+- Developer Guide, Home Assistant setup guide, and battery dispatch best
+  practice (#215).
+
 ## [0.2.9] — 2026-10-16
 
 S1 hotfix: scheduled dispatch (#164). Same day as 0.2.8, as an S1 hotfix.
