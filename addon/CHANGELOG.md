@@ -7,6 +7,18 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.9 — 2026-10-16
+
+### Fixes
+- **A schedule whose force command was refused showed "ok".** It now shows
+  **failed** with the reason (e.g. battery power rating not confirmed), notifies
+  you, and retries.
+- **Schedules with an empty Power** now run at your battery's full (confirmed)
+  rating. Before, they used whatever power was last set by hand.
+
+### Docs
+- New documentation site: https://david2069.github.io/franklinwh-modbus-bridge/
+
 ## 0.2.8 — 2026-10-16
 
 ### Fixes

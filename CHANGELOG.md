@@ -13,6 +13,29 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.9] — 2026-10-16
+
+S1 hotfix: scheduled dispatch (#164). Same day as 0.2.8, as an S1 hotfix.
+
+### Fixed
+
+- **A refused force command was audited "ok — dispatched"** (0.2.8 regression).
+  When a force command isn't sent (battery rating not trusted, unknown action,
+  error), the command handler now records a failed result with the reason, so a
+  schedule audits **failed**, notifies, and retries at 15/30/60 s. Before, the
+  previous command's "ok" was read.
+- **Manual values leaked into scheduled runs.** A force entry now always sets
+  its own power, duration and target SoC, using 0 when left empty: full trusted
+  rating, no time limit, no target. Before, an entry with empty Power ran at the
+  last manually set watts, and a leftover manual time limit or target could end
+  it early.
+
+### Documentation
+
+- New user documentation site (MkDocs Material, #173): install, setup wizard,
+  every dashboard and setting, the full scheduler reference, and the utility,
+  tariff and location guides.
+
 ## [0.2.8] — 2026-10-16
 
 S1 hotfix: battery control (#133, #134). Same day as 0.2.7, as an S1 hotfix.
