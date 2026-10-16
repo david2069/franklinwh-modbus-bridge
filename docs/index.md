@@ -1,18 +1,48 @@
 # FranklinWH Modbus Bridge
 
+!!! danger "Unofficial software — please read"
+    **franklinwh-modbus-bridge is unofficial and is not endorsed, supported, or affiliated
+    with FranklinWH in any way.** FranklinWH and aGate are trademarks of their
+    respective owners, used here only to describe what this software talks to.
+
+    It is provided "AS IS", for educational and informational purposes only,
+    without warranty of any kind, express or implied, including but not limited to
+    warranties of merchantability or fitness for any particular purpose. The
+    authors and contributors accept no responsibility or liability for any
+    consequences of its use.
+
+    By running it you acknowledge that you:
+
+    - are accessing an interface not intended for your use;
+    - assume all risk associated with that, including risk to your hardware,
+      your warranty, and your electricity supply;
+    - will use it responsibly and respect any rate limits;
+    - understand that excessive use may affect service for other users.
+
+    **This software issues WRITE commands to grid-connected battery hardware.**
+    Incorrect use can discharge your battery when you need it, import power when
+    you did not intend to, or leave the system in an unexpected state.
+
+    **COMPLIANCE.** Keep your system compliant with the settings your official
+    FranklinWH app or installer configured. Those settings may exist to protect
+    battery and gateway safety, to enforce your local grid profile and any
+    import/export limits, or to honour incentive, subsidy or VPP programme
+    conditions. Using this software to bypass them — deliberately or inadvertently
+    — is entirely at your own risk, and is neither condoned nor encouraged.
+
+    **DO NOT CONTACT FRANKLINWH SUPPORT about this software.** Bugs, defects and
+    feature requests belong here, not with the vendor:
+    <https://github.com/david2069/franklinwh-modbus-bridge/issues>
+
+    - Full terms: <https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE>
+    - SunSpec conformance (PICS SM-000028): <https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx>
+    - Related project documentation: <https://david2069.github.io/franklinwh-cloud/>
+
 Run your FranklinWH aGate from Home Assistant over your local network.
 
 The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery and grid data on its own dashboards, runs **schedules** (force charge or discharge, reserves and modes, with conditions such as SoC, spot price or weather), and publishes everything to Home Assistant as **MQTT entities**.
 
 ![The bridge's dashboard](images/ui/dashboard-full.png)
-
-!!! warning "Unofficial software"
-    This project is **not affiliated with or endorsed by FranklinWH**. It issues
-    **write commands to grid-connected battery hardware**: used wrongly, it can
-    discharge your battery when you need it or import power you didn't intend
-    to. Keep your system within the settings your installer configured and your
-    grid and VPP obligations. **Don't contact FranklinWH support about it.**
-    Report problems on [GitHub](https://github.com/david2069/franklinwh-modbus-bridge/issues).
 
 ## Start here
 
