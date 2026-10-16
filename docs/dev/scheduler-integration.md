@@ -117,7 +117,7 @@ What each does is in [Scheduler → Actions](../user/scheduler/actions.md).
 ### Execute and Stop are different from a scheduled run
 
 `…/execute` is the **▶ Run now** button and `…/stop` the **■ Stop** button (see
-[Run now and Stop](../user/scheduler/exit-and-conflicts.md#run-now-and-stop)). Tried on
+[Run now and Stop](../user/scheduler/outcomes.md#run-now-and-stop)). Tried on
 the demo gateway, with an entry like the one above plus `"duration_s": 600`:
 
 ```bash
@@ -156,7 +156,7 @@ curl -s -b jar.txt "$B/api/schedules/log?schedule_id=sch_0e0bbea1&limit=5"
 ```
 
 The `result` values are listed in
-[Exit, release and conflicts → Activity Log results](../user/scheduler/exit-and-conflicts.md#activity-log-results).
+[Outcomes and audit → Activity Log results](../user/scheduler/outcomes.md#activity-log-results).
 For a push instead of polling, put a Notify action on the entry: failures, ineffective
 dispatches and recoveries are sent to every notify target on it (see
 [Failure alerts](../user/scheduler/actions.md#failure-alerts)).
@@ -169,5 +169,13 @@ dispatches and recoveries are sent to every notify target on it (see
   timezone (see [Triggers](../user/scheduler/triggers.md)).
 - **Changes apply at once.** Every create, update or delete reloads the engine; the next
   15 s tick uses it.
-- **A restart re-fires open windows.** A window that is open when the bridge starts is
-  dispatched again (by its missed-fire policy). Plan restarts outside your windows.
+- **A restart re-fires open windows.** The bridge releases any active command at start-up,
+  and an entry whose window is still open is dispatched again on the first tick. The missed
+  policy only applies to fires that started and ended while the bridge was down. Plan
+  restarts outside your windows (see
+  [Restarts and the clock](../user/scheduler/restarts-and-clock.md)).
+- **Targets don't mix.** Priority only ranks entries with the same target; an entry for the
+  Site and one for the gateway see each other as manual control (see
+  [Priorities and conflicts](../user/scheduler/priorities.md#entries-on-different-targets)).
+- **Behaviour status.** The [Scheduler test plan](scheduler-test-plan.md) lists every
+  documented behaviour and whether a unit test covers it.

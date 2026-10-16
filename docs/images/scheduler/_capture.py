@@ -5,11 +5,24 @@ THROWAWAY bridge with a mock gateway called ``demo``. It creates, edits and
 deletes schedule entries, so never point it at a bridge you care about.
 
     source venv/bin/activate
-    python docs/images/scheduler/_capture.py [--base http://127.0.0.1:8100]
+    python docs/images/scheduler/_capture.py [--base https://127.0.0.1:8103] \\
+        [--only form,examples,reference]
 
-Viewport 1280x900, light theme. PNGs are written next to this script.
-Entries the script creates are named "Doc: …"; any left from a previous run are
-deleted first, and the ones it creates are left in place for the list shot.
+Viewport 1280x900, light theme, browser clock Australia/Sydney. PNGs are written
+next to this script. Entries the script creates are named "Doc: …" and are
+always created **disabled**: the script never saves an enabled schedule, never
+presses Run now or Stop, and so never makes the engine send anything. Any "Doc:"
+entries left from a previous run are deleted first.
+
+Groups: ``form`` (the editor), ``examples`` (each example entry, opened in the
+editor), ``reference`` (entry list, targets, Details, policies, Next fire) and
+``list``. ``list`` captures the Activity Log and timeline of a *running* engine,
+so it needs enabled entries; it is no longer in the default set and the
+committed ``activity-log.png`` / ``timeline.png`` come from an earlier run.
+
+A local bridge needs HTTPS for its login (or ALLOW_INSECURE_AUTH=1 on a LAN-only
+install); for ``https://127.0.0.1`` / ``https://localhost`` with a self-signed
+certificate the script tells the browser to accept it.
 """
 
 from __future__ import annotations
@@ -48,7 +61,7 @@ def base(name, **kw):
         "name": PREFIX + name,
         "target_type": "gateway",
         "target_id": GW,
-        "enabled": True,
+        "enabled": False,  # never save an enabled schedule
         "release": "release",
         "release_policy": "release",
         "conflict": "defer",
@@ -414,7 +427,7 @@ _created_at = [0.0]
 
 def shots_examples(page: Page, base_url: str) -> None:
     _created_at[0] = time.time()
-    for key, body in EXAMPLES.items():
+    for body in EXAMPLES.values():
         api(page, base_url, "POST", "/api/schedules", body)
     for key, body in EXAMPLES.items():
         edit_entry(page, base_url, body["name"])
@@ -450,27 +463,141 @@ def shots_list(page: Page, base_url: str) -> None:
     shot(tl, "timeline")
 
 
+# ── reference group: list, targets, Details, policies (all entries disabled) ──
+
+REFERENCE: dict[str, dict] = {
+    "window": base(
+        "Weekday solar sponge",
+        when_spec={"days": [0, 1, 2, 3, 4], "windows": [{"start": "10:00", "end": "15:00"}]},
+        action="force_charge", params={"power_w": 3000},
+    ),
+    "weekly_site": base(
+        "Weekend evening export (all gateways)",
+        target_type="site", target_id=None,
+        trigger_kind="weekly", trigger_spec={"time_of_day": "18:00", "days_of_week": [5, 6]},
+        duration_s=7200, action="force_discharge", params={"power_w": 3000},
+    ),
+    "cron": base(
+        "Cheap spot charge",
+        trigger_kind="cron", trigger_spec={"expr": "*/30 * * * *"}, duration_s=1740,
+        action="force_charge", params={"power_w": 3000},
+        entry_conditions=tree("ALL", leaf("tariff.spot_price", "<", 5),
+                              leaf("battery.soc_pct", "<", lookup="const.max_charge_soc")),
+        exit_conditions=tree("ANY", leaf("tariff.spot_price", ">=", 8),
+                             leaf("battery.soc_pct", ">=", lookup="const.max_charge_soc")),
+        release_policy="restore_prior_mode", entry_hold_s=120,
+    ),
+    "interval": base(
+        "Hourly mode check",
+        trigger_kind="interval", trigger_spec={"every_seconds": 3600}, action="mode",
+        params={"mode": "Self-Consumption"},
+    ),
+    "always_ha": base(
+        "Away-mode reminder (HA only)",
+        trigger_kind="always", action="none",
+        entry_conditions=tree("ALL", leaf("battery.soc_pct", "<", 30)),
+    ),
+    "monthly": base(
+        "Quarterly reserve reset",
+        trigger_kind="monthly", trigger_spec={"day": 1, "months": [1, 4, 7, 10],
+                                              "time_of_day": "09:00"},
+        action="reserve_self", params={"pct": 20},
+    ),
+    "priority": base(
+        "Peak-demand shave (priority 20)",
+        trigger_kind="daily", trigger_spec={"time_of_day": "16:00"}, duration_s=10800,
+        action="force_discharge", params={"power_w": 2500},
+        conflict="override", priority=20, missed_policy="late_fire_always",
+    ),
+}
+
+
+def ensure_service(page: Page, base_url: str) -> None:
+    """A utility service, so the Service target has something to list."""
+    if not api(page, base_url, "GET", "/api/services").get("services"):
+        api(page, base_url, "POST", "/api/services", {"name": "Ausgrid EA025"})
+
+
+def shots_reference(page: Page, base_url: str) -> None:
+    ensure_service(page, base_url)
+    for body in REFERENCE.values():
+        assert body["enabled"] is False
+        api(page, base_url, "POST", "/api/schedules", body)
+
+    open_schedule(page, base_url)
+    page.locator("select:has(option[value=enabled])").select_option("all")
+    page.wait_for_timeout(600)
+    card = page.locator("div.card:has(div.card-label:text-is('Entries'))").first
+    shot(card, "list-reference")
+
+    # Next fire column with its header, on the bridge's clock.
+    table = card.locator("table").first
+    hdr = table.locator("th:text-is('Next fire')").first
+    cells = table.locator("tbody tr td:nth-child(7)")
+    name_hdr = table.locator("th:text-is('Name')").first
+    boxes = [hdr.bounding_box(), name_hdr.bounding_box()]
+    boxes += [cells.nth(i).bounding_box() for i in range(cells.count())]
+    boxes += [table.locator("tbody tr td:nth-child(2)").nth(i).bounding_box()
+              for i in range(cells.count())]
+    shot(page, "next-fire-clock", clip=union_clip(*[b for b in boxes if b]))
+
+    # Details panel of the cron entry (gate + exit + restore_prior_mode).
+    row = page.locator("tr", has=page.locator(f"span:text-is('{PREFIX}Cheap spot charge')"))
+    row.locator("button[title=More]").click()
+    page.wait_for_timeout(300)
+    page.get_by_role("button", name="Details").first.click()
+    page.wait_for_timeout(300)
+    shot(page.locator("div.mt-3.rounded.border:visible").first, "details-trigger")
+
+    # Target: Site, then Service with its list expanded.
+    edit_entry(page, base_url, PREFIX + "Weekend evening export (all gateways)")
+    tgt = field_select(page, "Target")
+    tgt.evaluate("el => el.scrollIntoView({block: 'center'})")
+    page.wait_for_timeout(200)
+    shot(tgt.locator("xpath=../.."), "target-site")
+    tgt.select_option("service")
+    page.wait_for_timeout(200)
+    svc = field_select(page, "Service")
+    expand_select(svc)
+    shot(tgt.locator("xpath=../.."), "target-service")
+    collapse_select(svc)
+    close_form(page)  # never saved
+
+    # Policies row + missed policy, for a trigger entry (priority 20, override).
+    edit_entry(page, base_url, PREFIX + "Peak-demand shave (priority 20)")
+    pol = field_select(page, "On exit / release").locator("xpath=../..")
+    mp = field_select(page, "If missed during an outage").locator("xpath=..")
+    pol.evaluate("el => el.scrollIntoView({block: 'center'})")
+    page.wait_for_timeout(200)
+    shot(page, "form-policies", clip=union_clip(pol.bounding_box(), mp.bounding_box()))
+    close_form(page)  # never saved
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", default="http://127.0.0.1:8100")
-    ap.add_argument("--only", default="form,examples,list")
-    ap.add_argument("--keep", action="store_true", help="leave the example entries enabled")
+    ap.add_argument("--base", default="https://127.0.0.1:8103")
+    ap.add_argument("--only", default="form,examples,reference")
+    ap.add_argument("--keep", action="store_true", help="skip the final disable pass")
     args = ap.parse_args()
     only = set(args.only.split(","))
     with sync_playwright() as p:
+        local_tls = args.base.startswith(("https://127.0.0.1", "https://localhost"))
         browser = p.chromium.launch(channel="chrome", args=["--lang=en-GB"])
         ctx = browser.new_context(viewport={"width": 1280, "height": 900},
                                   color_scheme="light", locale="en-GB",
-                                  timezone_id="Pacific/Auckland")
+                                  timezone_id="Australia/Sydney",
+                                  ignore_https_errors=local_tls)
         ctx.add_init_script("try { localStorage.setItem('fwh-theme', 'light') } catch (e) {}")
         page = ctx.new_page()
         login(page, args.base)
-        if "examples" in only or "list" in only:
+        if only & {"examples", "list", "reference"}:
             reset_entries(page, args.base)
         if "form" in only:
             shots_form(page, args.base)
         if "examples" in only:
             shots_examples(page, args.base)
+        if "reference" in only:
+            shots_reference(page, args.base)
         if "list" in only:
             shots_list(page, args.base)
         if not args.keep:

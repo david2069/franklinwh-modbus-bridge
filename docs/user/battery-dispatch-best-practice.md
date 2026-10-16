@@ -88,7 +88,10 @@ re-fire until its next window. Disable the entry to stop it for good.
   a run earlier, never later.
 - A graceful bridge restart releases active commands, and a bridge that starts up releases
   a command it finds still active. After a crash or power cut the setpoint stays on the
-  aGate until the bridge is back. See [Exit, release and conflicts](scheduler/exit-and-conflicts.md#bridge-restart).
+  aGate until the bridge is back. See [Restarts and the clock](scheduler/restarts-and-clock.md#bridge-restart).
+- Don't run an *Always evaluate* battery entry on a gateway that has other battery entries:
+  a run is released at its window end only when no other battery entry on that gateway is
+  active. See [Exit and release](scheduler/exit-and-conflicts.md#how-a-run-ends).
 - Let one thing own the battery: the bridge's schedules, **or** a Home Assistant
   automation, **or** the app. Not two at once.
 
