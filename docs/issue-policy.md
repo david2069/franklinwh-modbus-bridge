@@ -1,6 +1,6 @@
 # Issue policy: classifying, queueing, releasing and closing issues
 
-Status: **draft for review**, 2026-10-16, revised after review by the Direct Connect bridge session.
+Status: **policy, accepted by the owner on 2026-10-16** (merged in #145), after review by the Direct Connect bridge session.
 
 **Applies to both bridges:** `franklinwh-modbus-bridge` and `franklinwh-direct-connect-bridge`.
 Shared policy documents live in **franklinwh-modbus-bridge `docs/`**, and the Direct Connect repo
