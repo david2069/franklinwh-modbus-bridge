@@ -73,13 +73,10 @@ working, enabled admin:
 
 ## Podman
 
-Use `podman exec` in place of `docker exec`. The tool doesn't recognise a
-Podman container (it looks for `/.dockerenv`, #179), so it reports `In container: NO`
-and `reset-admin-password` refuses. Check that `Database` is `/data/bridge.db`,
-then add `--allow-host`:
+Use `podman exec` in place of `docker exec`:
 
 ```bash
-podman exec -it fwhbridge-app bridge recovery reset-admin-password --allow-host
+podman exec -it fwhbridge-app bridge recovery reset-admin-password
 ```
 
 ## Python install

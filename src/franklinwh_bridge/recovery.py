@@ -28,6 +28,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from franklinwh_bridge.config import environment
 from franklinwh_bridge.security import hash_password
 
 MIN_PASSWORD_LEN = 8
@@ -38,7 +39,7 @@ class RecoveryError(Exception):
 
 
 def in_container() -> bool:
-    return Path("/.dockerenv").exists()
+    return environment.in_container()
 
 
 def connect(db_path: Path) -> sqlite3.Connection:

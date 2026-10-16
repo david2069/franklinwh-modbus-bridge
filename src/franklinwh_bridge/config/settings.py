@@ -6,12 +6,29 @@ import json
 from pathlib import Path
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from franklinwh_bridge.config.environment import detect_environment
 
 
-class GatewaySettings(BaseSettings):
+class _EnvFirst(BaseSettings):
+    """Env vars beat the values load_settings() passes in from the config file
+    and options.json. Pydantic's default puts init kwargs first, which made a
+    config file override the environment (#181)."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return env_settings, init_settings, dotenv_settings, file_secret_settings
+
+
+class GatewaySettings(_EnvFirst):
     model_config = SettingsConfigDict(env_prefix="MODBUS_")
 
     # No default address. A made-up host (this used to be 192.168.1.100) put a
@@ -25,7 +42,7 @@ class GatewaySettings(BaseSettings):
     poll_interval: int = 10
 
 
-class MqttSettings(BaseSettings):
+class MqttSettings(_EnvFirst):
     model_config = SettingsConfigDict(env_prefix="MQTT_")
 
     host: str = "localhost"
@@ -35,7 +52,7 @@ class MqttSettings(BaseSettings):
     tls: bool = False
 
 
-class AdminSettings(BaseSettings):
+class AdminSettings(_EnvFirst):
     model_config = SettingsConfigDict(env_prefix="ADMIN_")
 
     port: int = 8099
@@ -43,7 +60,7 @@ class AdminSettings(BaseSettings):
     password: str | None = None
 
 
-class BackupSettings(BaseSettings):
+class BackupSettings(_EnvFirst):
     model_config = SettingsConfigDict(env_prefix="BACKUP_")
 
     enabled: bool = True
@@ -51,7 +68,7 @@ class BackupSettings(BaseSettings):
     retention_days: int = 7
 
 
-class BridgeSettings(BaseSettings):
+class BridgeSettings(_EnvFirst):
     model_config = SettingsConfigDict(env_prefix="")
 
     app_env: str | None = Field(default=None, alias="APP_ENV")
@@ -108,10 +125,14 @@ def load_settings(config_path: Path | None = None) -> BridgeSettings:
     admin_kwargs = merged.get("admin", {})
     backup_kwargs = merged.get("backup", {})
 
+    # config.yaml has logging.level; the add-on's options.json has a flat log_level.
+    level = merged.get("logging", {}).get("level") or merged.get("log_level")
+    extra = {"log_level": level} if level else {}
+
     return BridgeSettings(
         gateway=GatewaySettings(**gateway_kwargs),
         mqtt=MqttSettings(**mqtt_kwargs),
         admin=AdminSettings(**admin_kwargs),
         backup=BackupSettings(**backup_kwargs),
-        log_level=merged.get("logging", {}).get("level", "INFO"),
+        **extra,
     )

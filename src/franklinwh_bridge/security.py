@@ -86,8 +86,10 @@ async def seed_admin(db: Any) -> None:
     guarantees there's always a way in (no lockout)."""
     if await count_users(db) > 0:
         return
-    username = os.environ.get("ADMIN_USERNAME", "admin")
-    password = os.environ.get("ADMIN_PASSWORD")
+    username = os.environ.get("ADMIN_USERNAME") or "admin"
+    # Empty counts as unset: compose passes ADMIN_PASSWORD= through when .env
+    # leaves it blank, and that must not seed an admin with no password.
+    password = os.environ.get("ADMIN_PASSWORD") or None
     generated = password is None
     if generated:
         password = generate_password()

@@ -57,7 +57,7 @@ curl -s http://localhost:8099/api/status   # "status":"ok"
 | aGate | The [setup wizard](setup-wizard.md), or `MODBUS_HOST` before starting. |
 | MQTT broker | **Settings → Home Assistant → MQTT broker**. Until one is set the log repeats `MQTT error: [Errno 61] Connection refused` (it tries `localhost:1883`); that's harmless. |
 | Timezone | The machine's own clock. The bridge records it on first start and asks you to confirm it. |
-| Log level | `logging: {level: DEBUG}` in a `config.yaml` in the start folder. `LOG_LEVEL` is not read yet (known issue #181). |
+| Log level | `LOG_LEVEL=DEBUG`, or `logging: {level: DEBUG}` in a `config.yaml` in the start folder. The environment variable wins. |
 
 ## Updating
 

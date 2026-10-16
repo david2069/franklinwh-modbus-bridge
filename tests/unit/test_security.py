@@ -82,3 +82,17 @@ async def test_seed_admin_from_env(db, monkeypatch):
     admin = await get_user_by_username(db, "root")
     assert admin is not None
     assert verify_password(admin["password_hash"], "hunter2")
+
+
+async def test_seed_admin_empty_env_generates(db, monkeypatch, caplog):
+    """Compose passes ADMIN_PASSWORD= through when .env leaves it blank (#177)."""
+    monkeypatch.setenv("ADMIN_USERNAME", "")
+    monkeypatch.setenv("ADMIN_PASSWORD", "")
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        await seed_admin(db)
+    admin = await get_user_by_username(db, "admin")
+    assert admin is not None
+    assert not verify_password(admin["password_hash"], "")
+    assert "GENERATED password" in caplog.text
