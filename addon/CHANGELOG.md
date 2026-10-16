@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.11 — 2026-10-17
+
+### Fixes
+- **Switching off the Control group now stops MQTT commands.** It removed the
+  controls from Home Assistant, but the bridge still obeyed commands published
+  to its MQTT command topics, so anything that could publish to your broker
+  could still command the battery. It now stops listening while Control is
+  off, and starts again when you switch it back on.
+- With more than one gateway, switching a publishing group off now removes
+  that group's entities for every gateway, not only the first.
+
 ## 0.2.10 — 2026-10-17
 
 ### Fixes
