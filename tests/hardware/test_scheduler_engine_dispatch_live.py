@@ -17,6 +17,7 @@ regardless of outcome — hardware auto-revert is cosmetic on this device
 
 import asyncio
 import contextlib
+import os
 from datetime import datetime, timedelta
 
 import pytest
@@ -24,6 +25,7 @@ import pytest
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 pytestmark = [pytest.mark.hardware, pytest.mark.destructive]
 
@@ -35,9 +37,18 @@ def _wset_enabled(hw: dict):
     return hw.get("wset_enabled", hw.get("wset_ena"))
 
 
+
+def _live_rating():
+    """Force commands need a trusted battery rating (#133). On real hardware the
+    operator states it: the site's calibrated power in watts, e.g. 5000."""
+    watts = os.environ.get("FWH_LIVE_RATED_W")
+    if not watts:
+        pytest.skip("set FWH_LIVE_RATED_W to the site's calibrated battery power (W)")
+    return calibrated_rating(charge_w=int(watts), discharge_w=int(watts))
+
 async def test_engine_dispatch_and_exit_release_live(controller, tmp_path):
     db = await init_db(tmp_path / "sched.db")
-    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock())
+    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock(), rating=_live_rating())
 
     soc = (await asyncio.to_thread(controller.read_battery_status))["soc"]
     print(f"\nlive SOC = {soc}")
@@ -118,7 +129,7 @@ async def test_engine_restore_prior_mode_live(controller, tmp_path):
     releases and that the aGate's mode is left exactly as it was.
     """
     db = await init_db(tmp_path / "sched2.db")
-    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock())
+    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock(), rating=_live_rating())
 
     soc = (await asyncio.to_thread(controller.read_battery_status))["soc"]
     mode0 = await asyncio.to_thread(controller.read_native_mode)
@@ -202,7 +213,7 @@ async def test_oneoff_trigger_duration_release_live(controller, tmp_path):
     duration bound, and v2 window-exit restore end to end on the aGate.
     """
     db = await init_db(tmp_path / "sched3.db")
-    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock())
+    handler = CommandHandler(controller, db, modbus_lock=asyncio.Lock(), rating=_live_rating())
 
     soc = (await asyncio.to_thread(controller.read_battery_status))["soc"]
     mode0 = await asyncio.to_thread(controller.read_native_mode)

@@ -115,6 +115,10 @@ function settingsTab() {
     gwRestartResults: {},  // per-gateway restart result, keyed by gateway id
     gwHealthResults: {},   // per-gateway force-healthcheck result, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
+    rating: null,          // battery power rating of the gateway being edited (#133)
+    ratingMsg: '',
+    ratingBusy: false,
+    _ratingTimer: null,
     editGw: null,          // gateway being edited (PATCH form fields) — shown in a modal,
                             // which also hosts Test/Diagnose/Healthcheck/Restart
     // Publishing groups
@@ -1314,6 +1318,57 @@ function settingsTab() {
         mock: !!gw.mock,
       };
       this.phaseDetect = null;
+      this.rating = null;
+      this.ratingMsg = '';
+      // Only a running real gateway has a rating to show (a mock is simulated).
+      if (gw.mock) {
+        // nothing to calibrate
+      } else if (gw.health === 'connected') {
+        this.loadRating(gw.id);
+      } else {
+        this.ratingMsg = 'Connect this gateway to see and calibrate its battery power rating.';
+      }
+    },
+
+    // ── Battery power rating + calibration (#133) ─────────
+    // Force commands are sized against this rating, so they're refused until
+    // it is calibrated (or Model 702 is confirmed by an observed peak).
+    async loadRating(id) {
+      clearTimeout(this._ratingTimer);
+      if (!this.editGw || this.editGw.id !== id) return;  // dialog closed
+      try {
+        this.rating = await fetchJSON(`api/gateways/${encodeURIComponent(id)}/battery-rating`);
+      } catch (e) {
+        this.rating = null;
+        this.ratingMsg = `Rating unavailable: ${e.message}`;
+        return;
+      }
+      if (this.rating.calibration) {
+        this._ratingTimer = setTimeout(() => this.loadRating(id), 2000);
+      }
+    },
+
+    async calibrate(action, direction = null) {
+      const id = this.editGw?.id;
+      if (!id) return;
+      this.ratingBusy = true;
+      this.ratingMsg = '';
+      try {
+        this.rating = await fetchJSON(
+          `api/gateways/${encodeURIComponent(id)}/battery-rating/calibration`,
+          { method: 'POST', body: JSON.stringify({ action, direction }) });
+        if (action === 'finish') this.ratingMsg = 'Calibrated.';
+        await this.loadRating(id);
+      } catch (e) {
+        this.ratingMsg = e.message;
+      } finally {
+        this.ratingBusy = false;
+      }
+    },
+
+    ratingLine(r) {
+      if (!r) return '';
+      return r.trusted ? `${r.rating_w} W — ${r.reason}` : r.reason;
     },
 
     // Detection result for the gateway being edited: {detected, matches_declared, ...}

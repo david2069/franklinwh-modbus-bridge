@@ -5,7 +5,7 @@ function controlsTab() {
   return {
     command: 'Not Active',
     powerW: 0,
-    powerPct: 0,
+    powerMaxW: 0,
     duration: 0,
     targetSoc: 0,
     operatingMode: '',
@@ -34,9 +34,9 @@ function controlsTab() {
       if (pts.battery_command_power_w != null) {
         this.powerW = pts.battery_command_power_w;
       }
-      if (pts.battery_command_power_pct != null) {
-        this.powerPct = pts.battery_command_power_pct;
-      }
+      // Trusted battery ratings (#133): null until calibrated or confirmed.
+      this.powerMaxW = Math.max(pts.battery_rating_charge_w || 0,
+                                pts.battery_rating_discharge_w || 0);
       if (pts.battery_command_duration_s != null) {
         this.duration = pts.battery_command_duration_s;
       }
@@ -77,13 +77,16 @@ function controlsTab() {
     },
 
     setMaxCharge() {
-      const v = Alpine.store('app').points.max_charge_rate_w ?? 5000;
+      // Trusted rating only (#133): no assumed 5000 W.
+      const v = Alpine.store('app').points.battery_rating_charge_w;
+      if (!v) return;
       this.powerW = v;
       this.sendCommand('battery_command_power', v);
     },
 
     setMaxDischarge() {
-      const v = Alpine.store('app').points.max_discharge_rate_w ?? 5000;
+      const v = Alpine.store('app').points.battery_rating_discharge_w;
+      if (!v) return;
       this.powerW = v;
       this.sendCommand('battery_command_power', v);
     },

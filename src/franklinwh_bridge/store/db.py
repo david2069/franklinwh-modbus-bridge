@@ -46,9 +46,26 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 59
+CURRENT_SCHEMA_VERSION = 60
 
 MIGRATIONS: dict[int, str] = {
+    60: """
+    -- Battery power rating evidence per gateway and direction (#133, #134).
+    -- Force commands are sized against a rating only once it is trusted:
+    -- calibrated by the owner, or Model 702 confirmed by an observed peak.
+    CREATE TABLE IF NOT EXISTS battery_ratings (
+        gateway_id          TEXT NOT NULL,
+        direction           TEXT NOT NULL,      -- charge | discharge
+        m702_w              INTEGER,
+        peak_w              INTEGER,
+        peak_at             REAL,
+        calibrated_w        INTEGER,
+        calibrated_at       REAL,
+        contradicted_at     REAL,
+        contradicted_reason TEXT,
+        PRIMARY KEY (gateway_id, direction)
+    );
+    """,
     59: """
     -- Dynamic (live) tariffs (#89 part B). A closed billing period records HOW
     -- its energy was priced, so history can say "Wholesale (live)" rather than
@@ -1481,7 +1498,8 @@ async def delete_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
             (gateway_id,),
         )
     # Remaining FK children + metrics (no FK, but clean them up too).
-    for table in ("device_models", "gateway_state", "metrics", "metrics_archive"):
+    for table in ("device_models", "gateway_state", "metrics", "metrics_archive",
+                  "battery_ratings"):
         with contextlib.suppress(aiosqlite.OperationalError):
             await db.execute(
                 f"DELETE FROM {table} WHERE gateway_id = ?",  # noqa: S608

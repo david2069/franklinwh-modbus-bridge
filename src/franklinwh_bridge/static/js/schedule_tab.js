@@ -993,9 +993,8 @@ function scheduleTab() {
         cron_expr: '0 0 1 * *', // cron: free-form expression
         duration_min: 0,
         action: 'force_charge',
-        power_w: 1000,
-        power_pct: 100,
-        power_unit: 'W',   // 'W' (watts) or 'pct' (% of max rate) — one or the other
+        power_w: 1000,     // watts; empty = the gateway's full (trusted) rating
+        legacy_pct: null,  // an entry saved with power % before it was removed (#133)
         pct: 20,
         mode: 'TOU',
         target_type: (Alpine.store('app').activeGateway === 'site') ? 'site' : 'gateway',
@@ -1067,7 +1066,7 @@ function scheduleTab() {
       // left op/action/trigger selects showing their defaults.
       const common = {
         trigger_type: 'always', action: 'force_discharge',
-        power_unit: 'pct', power_pct: 100, release_policy: 'release',
+        power_w: '', release_policy: 'release',  // empty = full trusted rating
         enabled: false,  // review → enable-on-save prompt
         // keep discharging until SOC hits the Min-Discharge floor
         exit_conditions: { match: 'ANY', conditions: [
@@ -1149,9 +1148,8 @@ function scheduleTab() {
         cron_expr: s.expr || '0 0 1 * *',
         duration_min: e.duration_s ? Math.round(e.duration_s / 60) : 0,
         action: e.action,
-        power_w: p.power_w ?? 1000,
-        power_pct: p.power_pct ?? 100,
-        power_unit: ('power_pct' in p) ? 'pct' : 'W',
+        power_w: p.power_w ?? '',
+        legacy_pct: ('power_pct' in p) ? p.power_pct : null,
         pct: p.pct ?? 20,
         mode: p.mode ?? 'TOU',
         target_type: e.target_type,
@@ -1299,8 +1297,8 @@ function scheduleTab() {
       const meta = this.actionMeta(f.action);
       const p = {};
       if (meta.params.includes('power')) {
-        if (f.power_unit === 'pct') p.power_pct = Number(f.power_pct);
-        else p.power_w = Number(f.power_w);
+        // Watts only (#133); empty = the gateway's full trusted rating at dispatch.
+        if (f.power_w !== '' && f.power_w != null) p.power_w = Number(f.power_w);
       }
       if (meta.params.includes('pct')) p.pct = Number(f.pct);
       if (meta.params.includes('mode')) p.mode = f.mode;

@@ -89,3 +89,19 @@ def default_gateway_bus():
         raise AssertionError("default gateway never registered")
 
     return _bus
+
+
+def calibrated_rating(gateway_id: str = "default", charge_w: int = 5000,
+                      discharge_w: int = 5000):
+    """A battery rating the owner has calibrated, so force commands are allowed (#133).
+
+    Without one a ``CommandHandler`` refuses force charge/discharge: its rating
+    is unknown. Tests that dispatch pass this explicitly.
+    """
+    from franklinwh_bridge.gateway.battery_rating import BatteryRating
+
+    rating = BatteryRating(gateway_id)
+    rating.dirs["charge"].calibrated_w, rating.dirs["charge"].calibrated_at = charge_w, 1.0
+    rating.dirs["discharge"].calibrated_w, rating.dirs["discharge"].calibrated_at = (
+        discharge_w, 1.0)
+    return rating

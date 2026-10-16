@@ -18,7 +18,6 @@ from pydantic import BaseModel
 from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
-from franklinwh_bridge.publish.command_handler import DEFAULT_MAX_POWER_W
 from franklinwh_bridge.store.alarms import (
     compute_grid_mode_intervals,
     pair_alarm_events,
@@ -953,14 +952,10 @@ async def put_pics(body: PicsUpdateRequest, request: Request):
 
 @router.get("/battery/limits")
 async def get_battery_limits(request: Request):
-    """Return current battery power limits (from M702 nameplate or defaults)."""
+    """Battery power limits a force command may use: trusted ratings only (#133)."""
     handler = _get_command_handler(request)
     if handler is None:
-        return {
-            "max_charge_w": DEFAULT_MAX_POWER_W,
-            "max_discharge_w": DEFAULT_MAX_POWER_W,
-            "source": "default",
-        }
+        return {"max_charge_w": None, "max_discharge_w": None, "source": "unknown"}
     return handler.power_limits
 
 

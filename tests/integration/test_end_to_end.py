@@ -23,6 +23,7 @@ from franklinwh_bridge.publish.mqtt_publisher import (
     build_discovery_payload,
 )
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -165,7 +166,7 @@ async def test_poll_to_api_points(mock_controller, sample_bus):
 
 async def test_power_limit_autodetect_flow(mock_controller, sample_bus, db, device_info):
     """First sample with M702 data triggers power limit updates on handler + publisher."""
-    handler = CommandHandler(mock_controller, db)
+    handler = CommandHandler(mock_controller, db, rating=calibrated_rating())
     publisher = MqttPublisher()
     publisher.set_device_info(device_info)
 
@@ -202,7 +203,8 @@ async def test_power_limit_autodetect_flow(mock_controller, sample_bus, db, devi
     assert limits_detected
     assert handler.max_charge_w == 6000
     assert handler.max_discharge_w == 5500
-    assert handler.power_limits["source"] == "hardware"
+    # Model 702 updates the display limits; force commands use the trusted rating (#133).
+    assert handler.power_limits["source"] == "calibrated"
 
     # Publisher should have overrides set
     assert "battery_command_power" in publisher._max_val_overrides
@@ -214,7 +216,7 @@ async def test_power_limit_autodetect_flow(mock_controller, sample_bus, db, devi
 
 async def test_power_limit_only_detects_once(mock_controller, sample_bus, db):
     """Power limits are set only on the first sample, not re-applied on subsequent polls."""
-    handler = CommandHandler(mock_controller, db)
+    handler = CommandHandler(mock_controller, db, rating=calibrated_rating())
     detect_count = 0
 
     async def detect_limits(sample: Sample) -> None:
@@ -267,7 +269,7 @@ async def test_power_limit_only_detects_once(mock_controller, sample_bus, db):
 
 async def test_command_dispatch_charge(mock_controller, db):
     """Charge command dispatches to controller with correct watts."""
-    handler = CommandHandler(mock_controller, db)
+    handler = CommandHandler(mock_controller, db, rating=calibrated_rating())
     handler.set_power_limits(6000, 5500)
 
     await handler.handle_command("battery_command_power", "4000")
@@ -280,8 +282,8 @@ async def test_command_dispatch_charge(mock_controller, db):
 
 async def test_command_dispatch_discharge_clamped(mock_controller, db):
     """Discharge command over limit is clamped to max_discharge_w."""
-    handler = CommandHandler(mock_controller, db)
-    handler.set_power_limits(6000, 3000)
+    handler = CommandHandler(mock_controller, db, rating=calibrated_rating())
+    handler.rating = calibrated_rating(charge_w=6000, discharge_w=3000)
 
     await handler.handle_command("battery_command_power", "5000")
     await handler.handle_command("battery_command", "Discharge")
@@ -295,7 +297,7 @@ async def test_command_virtual_points_flow(mock_controller, db, device_info):
     publisher = MqttPublisher()
     publisher.set_device_info(device_info)
 
-    handler = CommandHandler(mock_controller, db)
+    handler = CommandHandler(mock_controller, db, rating=calibrated_rating())
     publisher.set_command_handler(handler)
 
     # Issue a command to set virtual state
@@ -446,13 +448,11 @@ async def test_app_points_after_sample(client, default_gateway_bus):
 
 
 async def test_app_battery_limits_endpoint(client):
-    """Battery limits endpoint returns defaults when no hardware detected."""
+    """No trusted rating yet: limits are unknown, never an assumed 5000 W (#133, #134)."""
     resp = await client.get("/api/battery/limits")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["max_charge_w"] == DEFAULT_MAX_POWER_W
-    assert data["max_discharge_w"] == DEFAULT_MAX_POWER_W
-    assert data["source"] == "default"
+    assert data["max_charge_w"] is None and data["max_discharge_w"] is None
 
 
 async def test_app_stats_endpoint(client):

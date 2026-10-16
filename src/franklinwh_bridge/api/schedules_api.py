@@ -187,6 +187,8 @@ def _validate_action(action: str, params: dict) -> None:
         raise HTTPException(400, "action 'mode' requires params.mode")
     if action in ("reserve_self", "reserve_tou") and "pct" not in params:
         raise HTTPException(400, f"action '{action}' requires params.pct")
+    if "power_pct" in params:
+        raise HTTPException(400, "params.power_pct has been removed: set params.power_w in watts")
 
 
 async def _reload_engine(request: Request) -> None:
@@ -669,13 +671,13 @@ async def list_schedule_actions():
                 "id": "force_charge",
                 "label": "Force Charge",
                 "sustained": True,
-                "params": ["power_w", "power_pct", "duration_s", "target_soc"],
+                "params": ["power_w", "duration_s", "target_soc"],
             },
             {
                 "id": "force_discharge",
                 "label": "Force Discharge",
                 "sustained": True,
-                "params": ["power_w", "power_pct", "duration_s", "target_soc"],
+                "params": ["power_w", "duration_s", "target_soc"],
             },
             {
                 "id": "force_standby",

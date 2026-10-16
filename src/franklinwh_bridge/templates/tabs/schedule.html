@@ -704,17 +704,13 @@
             <div x-show="formActionMeta().params.includes('power')">
               <label class="card-label">Power</label>
               <div class="flex items-center gap-2">
-                <input x-show="form.power_unit === 'W'" type="number" x-model="form.power_w"
-                       min="0" max="5000" step="100" class="form-control w-28">
-                <input x-show="form.power_unit === 'pct'" type="number" x-model="form.power_pct"
-                       min="0" max="100" step="5" class="form-control w-28">
-                <select x-model="form.power_unit" class="form-control w-20">
-                  <option value="W">W</option>
-                  <option value="pct">%</option>
-                </select>
+                <input type="number" x-model="form.power_w"
+                       min="0" step="100" class="form-control w-28">
+                <span class="text-xs text-slate-500">W</span>
               </div>
-              <p class="text-[10px] text-slate-600 mt-1"
-                 x-text="form.power_unit === 'pct' ? '% of the gateway max charge/discharge rate' : 'watts (capped at the max rate)'"></p>
+              <p class="text-[10px] text-slate-600 mt-1">Watts, capped at the gateway's calibrated rating. Leave empty for full power.</p>
+              <p x-show="form.legacy_pct != null" class="text-[11px] text-amber-400 mt-1"
+                 x-text="'This entry was saved as ' + form.legacy_pct + '% of max. Percentages have been removed: it runs at that share of the calibrated rating until you enter watts and save.'"></p>
             </div>
             <div x-show="formActionMeta().params.includes('pct')">
               <label class="card-label">Reserve %</label>

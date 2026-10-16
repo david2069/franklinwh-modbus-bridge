@@ -89,3 +89,27 @@ async def test_nothing_when_ha_not_connected():
     ha = _HA([], [])
     ha.connected = False
     assert await cleanup.remove_empty_old_devices(ha, {"x"}) == 0
+
+
+def test_stale_configs_take_their_state_topics_with_them():
+    """A removed entity's last value must not stay retained (#133: Command Power %)."""
+    sw = {"device": {"sw_version": "Modbus Bridge v0.2.7"}}
+    retained = {
+        "homeassistant/number/fwh_mb_demo_battery_command_power_pct/config": json.dumps(
+            {**sw, "state_topic": "fwh_mb/demo/control/battery_command_power_pct"}).encode(),
+        "homeassistant/sensor/fwh_mb_demo_soc/config": json.dumps(
+            {**sw, "state_topic": "fwh_mb/demo/battery/soc"}).encode(),
+        # an entity that changed HA type: the old config is stale, the topic is not
+        "homeassistant/sensor/fwh_mb_demo_mode/config": json.dumps(
+            {**sw, "state_topic": "fwh_mb/demo/status/mode"}).encode(),
+        "homeassistant/select/fwh_mb_demo_mode/config": json.dumps(
+            {**sw, "state_topic": "fwh_mb/demo/status/mode"}).encode(),
+        # someone else's topic named by a stale config is never touched
+        "homeassistant/sensor/fwh_mb_demo_odd/config": json.dumps(
+            {**sw, "state_topic": "other/demo/odd"}).encode(),
+    }
+    stale = ["homeassistant/number/fwh_mb_demo_battery_command_power_pct/config",
+             "homeassistant/sensor/fwh_mb_demo_mode/config",
+             "homeassistant/sensor/fwh_mb_demo_odd/config"]
+    assert cleanup.stale_state_topics(retained, stale, "fwh_mb") == [
+        "fwh_mb/demo/control/battery_command_power_pct"]

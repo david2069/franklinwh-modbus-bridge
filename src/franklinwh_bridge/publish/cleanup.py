@@ -71,6 +71,27 @@ def stale_topics(
     return sorted(out)
 
 
+def stale_state_topics(
+    retained: dict[str, bytes], stale: list[str], prefix: str,
+) -> list[str]:
+    """Pure: the retained state topics named by stale configs, so they go too.
+
+    A removed entity left its last value retained under ``<prefix>/…`` (e.g.
+    the Command Power % removed in #133). Skips a state topic that a config
+    still in use also names (an entity that changed HA type keeps its topic).
+    """
+    def state_of(payload: bytes | None) -> str | None:
+        try:
+            topic = (json.loads(payload or b"{}") or {}).get("state_topic")
+        except (ValueError, TypeError):
+            return None
+        return topic if isinstance(topic, str) and topic.startswith(f"{prefix}/") else None
+
+    stale_set = set(stale)
+    in_use = {state_of(v) for t, v in retained.items() if t not in stale_set and v}
+    return sorted({t for t in (state_of(retained.get(s)) for s in stale) if t and t not in in_use})
+
+
 async def sweep_broker(publisher: Any) -> int:
     """Tombstone our own stale retained discovery configs. Returns the count."""
     if publisher.discovery_paused:
@@ -97,8 +118,9 @@ async def sweep_broker(publisher: Any) -> int:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(collect(), timeout=_COLLECT_S)
             stale = stale_topics(retained, publisher.topic_prefix, short_ids, current)
-            for topic in stale:
-                await client.publish(topic, b"", retain=True)
+            states = stale_state_topics(retained, stale, publisher.topic_prefix)
+            for topic in [*stale, *states]:
+                await client.publish(topic, b"", retain=True, qos=1)
     except Exception as exc:
         logger.warning("Stale discovery sweep skipped: %s", exc)
         return 0

@@ -476,6 +476,9 @@ async def lifespan(app: FastAPI):
             inst = registry.get(gw_id)
             if inst and inst.command_handler:
                 inst.command_handler.set_power_limits(charge_w, discharge_w)
+                # Model 702's rating is evidence, not trust (#133): it is used
+                # once an observed peak confirms it, or after calibration.
+                await inst.command_handler.rating.record_m702(charge_w, discharge_w)
             # Update MQTT publisher limits (for default gateway)
             if gw_id == "default":
                 mqtt_publisher.set_power_limits(charge_w, discharge_w)

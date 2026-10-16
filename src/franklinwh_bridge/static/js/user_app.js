@@ -297,6 +297,7 @@
   // actually reaches for. The API is the same; the capability gate is what
   // decides whether this card exists at all.
   let dispatchAction = null;   // 'Force Charge' | 'Force Discharge' | null
+  let ratingKnown = false;  // trusted battery rating present (#133)
   let lastSoc = null;          // live SoC, for the target-SoC hint
   let dispatchActive = false;
   let busy = false;
@@ -370,7 +371,8 @@
 
     // Start needs a chosen direction; Stop needs something running. Leaving
     // Start live with no selection is how you dispatch the wrong direction.
-    $('btnStart').disabled = busy || !dispatchAction;
+    // No trusted battery rating (#133): force commands would be refused.
+    $('btnStart').disabled = busy || !dispatchAction || !ratingKnown;
     $('btnStop').disabled = busy || !dispatchActive;
   }
 
@@ -385,6 +387,10 @@
     if (!lim || lim.error) return;
     const max = Math.max(Number(lim.max_charge_w) || 0,
                          Number(lim.max_discharge_w) || 0);
+    ratingKnown = max > 0;
+    if (!ratingKnown) {
+      setDispatchState('Battery power not calibrated yet — ask the bridge admin to calibrate it.', 'warn');
+    }
     if (max > 0) {
       const r = $('powRange');
       r.max = String(max);

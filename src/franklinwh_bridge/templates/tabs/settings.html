@@ -456,6 +456,49 @@
                 the entity, so prefer a test HA for those.
               </p>
             </div>
+            <!-- Battery power rating (#133). Force charge/discharge are sized
+                 against it, so they're refused until it is trusted. -->
+            <div class="sm:col-span-2 pt-1 border-t border-white/[0.06]" x-show="!editGw.mock">
+              <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Battery power rating</label>
+              <template x-if="rating">
+                <div class="space-y-1 text-[11px]">
+                  <template x-for="dir in ['charge', 'discharge']" :key="dir">
+                    <div class="flex items-start gap-2">
+                      <span class="w-16 shrink-0 capitalize text-slate-400" x-text="dir"></span>
+                      <span class="flex-1" :class="rating[dir].trusted ? 'text-emerald-300' : 'text-amber-300'"
+                            x-text="ratingLine(rating[dir])"></span>
+                      <button type="button" class="btn btn-sm btn-secondary !py-0.5 !text-[11px]"
+                              x-show="!rating.calibration" :disabled="ratingBusy"
+                              @click="calibrate('start', dir)">Calibrate</button>
+                    </div>
+                  </template>
+                  <template x-if="rating.calibration">
+                    <div class="mt-2 p-2 rounded bg-cyan-500/10 text-cyan-200 space-y-1">
+                      <p>
+                        Recording <b x-text="rating.calibration.direction"></b>. In the FranklinWH app, run a
+                        TOU battery dispatch:
+                        <span x-text="rating.calibration.direction === 'charge' ? 'force charge from grid' : 'force discharge to grid'"></span>,
+                        with grid import and export set to unlimited, at mid SoC. Keep it running at least a minute,
+                        then press Finish. The bridge sends nothing to the aGate.
+                      </p>
+                      <p class="font-mono">
+                        Peak <span x-text="rating.calibration.peak_w"></span> W ·
+                        now <span x-text="rating.battery_power_w ?? '—'"></span> W ·
+                        SoC <span x-text="rating.soc ?? '—'"></span>% ·
+                        <span x-text="Math.round(rating.calibration.elapsed_s)"></span> s
+                      </p>
+                      <div class="flex gap-2">
+                        <button type="button" class="btn btn-sm btn-primary !py-0.5 !text-[11px]"
+                                :disabled="ratingBusy" @click="calibrate('finish')">Finish</button>
+                        <button type="button" class="btn btn-sm btn-secondary !py-0.5 !text-[11px]"
+                                :disabled="ratingBusy" @click="calibrate('cancel')">Cancel</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <p x-show="ratingMsg" class="text-[11px] mt-1 text-slate-300" x-text="ratingMsg"></p>
+            </div>
           </div>
           <!-- Detection result / mismatch warning -->
           <template x-if="phaseDetect">

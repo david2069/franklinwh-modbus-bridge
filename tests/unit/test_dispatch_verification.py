@@ -20,6 +20,7 @@ from franklinwh_bridge.gateway import scheduler as sched
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.publish.command_handler import CommandHandler, DispatchResult
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 T0 = datetime(2026, 6, 15, 18, 0, 5)  # inside the 18:00–19:30 window, a Monday
 NOTIFY = {"kind": "notify", "instance_id": "ha1", "service": "mobile_app_phone",
@@ -297,7 +298,7 @@ async def _rows(db, sql):
 
 
 async def test_handler_failed_send_is_not_active_and_recorded(db):
-    h = CommandHandler(controller(send=(False, "Response timeout"), ena_after_send=0), db)
+    h = CommandHandler(controller(send=(False, "Response timeout"), ena_after_send=0), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge", requester="schedule:e1")
     assert h.state.active is False
     assert h.last_dispatch.ok is False and "Response timeout" in h.last_dispatch.reason
@@ -307,14 +308,14 @@ async def test_handler_failed_send_is_not_active_and_recorded(db):
 
 
 async def test_handler_accepted_but_not_enabled_is_failed(db):
-    h = CommandHandler(controller(send=(True, "Command Sent"), ena_after_send=0), db)
+    h = CommandHandler(controller(send=(True, "Command Sent"), ena_after_send=0), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge")
     assert h.state.active is False
     assert "not enabled after send" in h.last_dispatch.reason
 
 
 async def test_handler_success_then_release_is_recorded(db):
-    h = CommandHandler(controller(), db)
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge")
     assert h.state.active is True and h.last_dispatch.ok is True
     await h.handle_command("battery_command", "Release")
@@ -323,7 +324,7 @@ async def test_handler_success_then_release_is_recorded(db):
 
 
 async def test_handler_release_that_leaves_wset_enabled_is_not_verified(db):
-    h = CommandHandler(controller(ena_after_release=1), db)
+    h = CommandHandler(controller(ena_after_release=1), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge")
     await h.handle_command("battery_command", "Release")
     assert h.state.last_success is False
@@ -332,7 +333,7 @@ async def test_handler_release_that_leaves_wset_enabled_is_not_verified(db):
 
 
 async def test_handler_new_command_supersedes_the_active_row(db):
-    h = CommandHandler(controller(), db)
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge")
     await h.handle_command("battery_command", "Force Charge")
     states = await _rows(db, "SELECT action, state FROM dispatch_outcomes ORDER BY created_at")
@@ -346,7 +347,7 @@ async def test_dispatch_outcomes_endpoint(db):
 
     from franklinwh_bridge.api.gateways_api import router
 
-    h = CommandHandler(controller(send=(False, "Response timeout"), ena_after_send=0), db)
+    h = CommandHandler(controller(send=(False, "Response timeout"), ena_after_send=0), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge", requester="schedule:e1")
     app = FastAPI()
     app.state.db = db
@@ -363,7 +364,7 @@ async def test_dispatch_outcomes_endpoint(db):
 
 
 async def test_command_records_who_sent_it(db):
-    h = CommandHandler(controller(), db)
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
     await h.handle_command("battery_command_target_soc", "60", requester="user:admin")
     await h.handle_command("battery_command", "Force Discharge", requester="user:admin")
     await h.handle_command("battery_command", "Release", requester="mqtt")
@@ -380,7 +381,7 @@ class _Sample:
 
 
 async def test_external_dispatch_is_logged_start_and_end(db):
-    h = CommandHandler(controller(), db)
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
     t = 1_000_000.0
     await h.observe_sample(_Sample(t, wset_enabled=0, wset_pct=0))
     await h.observe_sample(_Sample(t + 10, wset_enabled=1, wset_pct=30.0, battery_power_w=1500))
@@ -394,7 +395,7 @@ async def test_external_dispatch_is_logged_start_and_end(db):
 
 async def test_own_dispatch_is_not_reported_as_external(db):
     import time as _t
-    h = CommandHandler(controller(), db)
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge", requester="user:admin")
     now = _t.time()
     await h.observe_sample(_Sample(now + 5, wset_enabled=1, wset_pct=100.0))   # settling
@@ -405,7 +406,7 @@ async def test_own_dispatch_is_not_reported_as_external(db):
 
 async def test_setpoint_changed_underneath_ours_is_logged_once(db):
     import time as _t
-    h = CommandHandler(controller(), db)
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
     await h.handle_command("battery_command", "Force Discharge")  # 100% of 5000 W
     now = _t.time()
     for k in (60, 70, 80):
