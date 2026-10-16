@@ -810,6 +810,18 @@ function settingsTab() {
       }
       sp.copyMsg = ok ? 'Copied.' : 'Press Ctrl/Cmd+C to copy the selected text.';
     },
+    /** Copy, then open GitHub's new-Gist page (#228). Nothing is sent from
+     *  here: the user pastes it and picks secret or public on GitHub. */
+    async gistSupportInfo() {
+      const sp = this.support;
+      if (!sp.md) return;
+      await this.copySupportInfo();
+      const copied = sp.copyMsg === 'Copied.';
+      window.open(GIST_NEW_URL, '_blank', 'noopener');
+      sp.copyMsg = (copied ? 'Copied. ' : 'Copy the text (Ctrl/Cmd+C), then: ')
+        + 'in the GitHub tab, paste it, name the file support-info.md, then choose '
+        + 'Create secret gist (unlisted: anyone with the link can see it) or Create public gist.';
+    },
     downloadSupportInfo() {
       const sp = this.support;
       if (!sp.md) return;

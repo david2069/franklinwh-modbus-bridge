@@ -70,6 +70,7 @@ function explorerTab() {
     // Vendor extensions state
     extFilter: '',
     extSuppressZeros: true,
+    extKnown: '',  // '' all | 'known' (labelled from docs or notes) | 'unknown'
 
     // Point filters (model points table): '' = all
     accessFilter: '',  // '' | 'R' | 'RW'
@@ -84,6 +85,12 @@ function explorerTab() {
 
     // On-demand model read state
     readingModel: false,
+
+    // Export modal (#228): GET api/models/export builds and redacts it.
+    exp: {
+      open: false, scope: 'model', chosen: [], format: 'json', redact: true,
+      loading: false, error: '', result: null, msg: '',
+    },
 
     // Resizable panel dimensions
     treeWidth: EXPLORER_DEFAULTS.treeWidth,
@@ -551,6 +558,7 @@ function explorerTab() {
         const note = VENDOR_EXT_15000_NOTES[a];
         regs.push({
           addr: a,
+          known: !!note,
           name: note ? note.name : 'Reg' + a,
           desc: note ? note.desc : 'Unknown',
           value: value,
@@ -572,6 +580,7 @@ function explorerTab() {
         }
         regs.push({
           addr: def.addr,
+          known: true,
           name: def.name,
           desc: def.desc,
           value: value,
@@ -593,6 +602,7 @@ function explorerTab() {
         }
         regs.push({
           addr: def.addr,
+          known: true,
           name: def.name,
           desc: def.desc,
           value: value,
@@ -613,6 +623,10 @@ function explorerTab() {
       if (this.extSuppressZeros) {
         regs = regs.filter(r => r.value != null && r.value !== 0);
       }
+
+      // Identified (a name from FranklinWH docs or site notes) vs unknown
+      if (this.extKnown === 'known') regs = regs.filter(r => r.known);
+      if (this.extKnown === 'unknown') regs = regs.filter(r => !r.known);
 
       // Search filter
       const q = (this.extFilter || '').toLowerCase().trim();
@@ -659,48 +673,90 @@ function explorerTab() {
       Alpine.store('app').toast('Exported: ' + filename, 'info');
     },
 
-    exportSunSpecJSON() {
-      const data = {};
-      if (this.selectedModel) {
-        const pts = this.selectedModelPoints.map(pt => ({
-          name: pt.name,
-          label: pt.label || '',
-          address: pt.address,
-          type: pt.type || '',
-          unit: pt.unit || '',
-          access: pt.access || 'R',
-          value: this.getPointValue(pt.name),
-        }));
-        data.model_id = this.selectedModel.model_id;
-        data.label = this.selectedModel.label;
-        data.points = pts;
-      }
-      this._downloadFile(
-        'sunspec_model_' + (this.selectedModel?.model_id || 'all') + '.json',
-        JSON.stringify(data, null, 2),
-        'application/json'
-      );
+    // ── SunSpec export modal (#228) ─────────────────────────
+
+    openExport() {
+      const e = this.exp;
+      e.scope = 'model';
+      e.chosen = this.selectedModelId != null ? [this.selectedModelId] : [];
+      e.msg = '';
+      e.open = true;
+      this.generateExport();
     },
 
-    exportSunSpecCSV() {
-      const rows = [['Point', 'Label', 'Value', 'Type', 'Unit', 'Address', 'Access']];
-      for (const pt of this.selectedModelPoints) {
-        rows.push([
-          pt.name,
-          pt.label || '',
-          this.getPointValue(pt.name) ?? '',
-          pt.type || '',
-          pt.unit || '',
-          pt.address ?? '',
-          pt.access || 'R',
-        ]);
+    exportScopeLabel() {
+      const m = this.selectedModel;
+      return m ? `This model (${m.model_id} ${m.label || ''})` : 'This model';
+    },
+
+    toggleExportModel(id) {
+      const c = this.exp.chosen;
+      const i = c.indexOf(id);
+      if (i >= 0) c.splice(i, 1); else c.push(id);
+      this.generateExport();
+    },
+
+    /** Ask the bridge for the export; the preview shows exactly what it returns. */
+    async generateExport() {
+      const e = this.exp;
+      let models = '';
+      if (e.scope === 'model') models = String(this.selectedModelId ?? '');
+      if (e.scope === 'choose') models = e.chosen.join(',');
+      e.error = ''; e.msg = '';
+      if (e.scope !== 'all' && !models) {
+        e.result = null;
+        e.error = 'Choose at least one model.';
+        return;
       }
-      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
-      this._downloadFile(
-        'sunspec_model_' + (this.selectedModel?.model_id || 'all') + '.csv',
-        csv,
-        'text/csv'
-      );
+      e.loading = true;
+      const q = new URLSearchParams({
+        gateway_id: this.gwId, models, format: e.format, redact_serial: e.redact ? 'true' : 'false',
+      });
+      try {
+        e.result = await fetchJSON('api/models/export?' + q.toString());
+      } catch (err) {
+        e.result = null;
+        e.error = 'Could not build the export: ' + (err.message || err);
+      } finally {
+        e.loading = false;
+      }
+    },
+
+    /** navigator.clipboard needs a secure context, which HA ingress over plain
+     *  http is not; fall back to selecting the preview and execCommand. */
+    async _copyExport() {
+      const text = this.exp.result?.content;
+      if (!text) return false;
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* fall through */ }
+      }
+      const ta = this.$refs.exportPreview;
+      if (!ta) return false;
+      ta.focus();
+      ta.select();
+      try { return document.execCommand('copy'); } catch (_) { return false; }
+    },
+
+    async copyExport() {
+      this.exp.msg = (await this._copyExport())
+        ? 'Copied.' : 'Press Ctrl/Cmd+C to copy the selected text.';
+    },
+
+    downloadExport() {
+      const r = this.exp.result;
+      if (r) this._downloadFile(r.filename, r.content, r.media_type);
+    },
+
+    /** Copy, then open GitHub's new-Gist page. Nothing is sent from here:
+     *  the user pastes it and picks secret or public on GitHub. */
+    async gistExport() {
+      const r = this.exp.result;
+      if (!r) return;
+      const copied = await this._copyExport();
+      window.open(GIST_NEW_URL, '_blank', 'noopener');
+      this.exp.msg = (copied ? 'Copied. ' : 'Copy the preview (Ctrl/Cmd+C), then: ')
+        + `in the GitHub tab, paste it, name the file ${r.filename}, then choose `
+        + 'Create secret gist (unlisted: anyone with the link can see it) or Create public gist.';
     },
 
     exportExtJSON() {

@@ -164,6 +164,9 @@
                 @click="copySupportInfo()" :disabled="!support.md">Copy</button>
         <button type="button" class="btn btn-sm btn-secondary" data-testid="support-download"
                 @click="downloadSupportInfo()" :disabled="!support.md">Download .md</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-testid="support-gist"
+                @click="gistSupportInfo()" :disabled="!support.md"
+                title="Copies it and opens GitHub's new-Gist page">Save as Gist</button>
         <a :href="SUPPORT_ISSUE_URL" target="_blank" rel="noopener noreferrer"
            class="btn btn-sm btn-secondary" data-testid="support-new-issue">Open a new issue on GitHub</a>
       </div>

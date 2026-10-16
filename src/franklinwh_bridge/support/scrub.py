@@ -198,3 +198,12 @@ def scrub_patterns(s: str) -> str:
     s = _COORD_RE.sub(COORD, s)
     s = _SHORT_ID_RE.sub(ID, s)
     return s
+
+
+def scrub_serial_patterns(s: str) -> str:
+    """Only the serial-number pattern of :func:`scrub_patterns`.
+
+    For text that is shared on purpose (a SunSpec export) where everything
+    but the serial should stay as it is.
+    """
+    return _SERIAL_RE.sub(SERIAL, s)

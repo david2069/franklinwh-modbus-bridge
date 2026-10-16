@@ -313,6 +313,10 @@ function _noteReachable(ok, info = {}) {
  *  before the next one starts rather than piling up. */
 const FETCH_TIMEOUT_MS = 8000;
 
+// GitHub's new-Gist page, for "Save as Gist" (#228). Nothing is sent from the
+// bridge: the user pastes and chooses secret (unlisted, not private) or public.
+const GIST_NEW_URL = 'https://gist.github.com/';
+
 /** How long a Sequencer run can legitimately take, from its own steps.
  *  POST /api/sequence/execute answers only when the whole run has finished,
  *  and runs sleep, verify and wait on purpose — far past FETCH_TIMEOUT_MS. A
