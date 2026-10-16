@@ -7,6 +7,22 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.12 — 2026-10-17
+
+### Fixes
+- **Force Charge and Force Discharge can no longer go out in the wrong
+  direction after a reconnect.** If the bridge reconnected to the aGate just as
+  a force command was sent, and your calibrated battery rating was higher than
+  the aGate's nameplate rating, the command could go out reversed at full rate.
+  A single aPower calibrated at its nameplate rating was not affected.
+
+### New
+- **SunSpec Explorer → Export…**: export this model, chosen models or all of
+  them as JSON or CSV, with a preview. The serial number is redacted unless you
+  turn that off.
+- **Save as Gist** on the export and on Settings → Admin → Support info.
+- Extension registers: an **All / Identified / Unknown** filter.
+
 ## 0.2.11 — 2026-10-17
 
 ### Fixes

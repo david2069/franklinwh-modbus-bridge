@@ -13,6 +13,20 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.12] — 2026-10-17
+
+A battery-direction fix, plus the SunSpec Explorer export.
+
+### Fixed
+
+- **Force command direction after a reconnect (#230, S2).** The bridge gave
+  franklinwh-modbus its trusted battery rating before taking the Modbus lock.
+  A poller reconnect in that gap reset the library's rating to the nameplate
+  (or 5000 W), and franklinwh-modbus 0.9.5 clamps an over-limit request in
+  the opposite direction (library #28), so a Force Charge could be sent as a
+  full-rate discharge when the trusted rating was higher than the nameplate.
+  The rating is now set under the lock, immediately before the send.
+
 ### Added
 
 - **SunSpec Explorer export (#228).** **Export…** opens a window: this model,
