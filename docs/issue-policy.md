@@ -1,150 +1,197 @@
-# Issue policy: classifying, prioritising and closing issues
+# Issue policy: classifying, queueing, releasing and closing issues
 
-Status: **draft for review**, 2026-10-16.
+Status: **draft for review**, 2026-10-16, revised after review by the Direct Connect bridge session.
 
-Applies to **franklinwh-modbus-bridge** and **franklinwh-direct-connect-bridge**. This repo's `docs/`
-is the home for the shared docs; the Direct Connect repo links here.
+**Applies to both bridges:** `franklinwh-modbus-bridge` and `franklinwh-direct-connect-bridge`.
+Shared policy documents live in **franklinwh-modbus-bridge `docs/`**, and the Direct Connect repo
+links to them.
 
-It completes the other two policies:
+**Source.** This builds on the owner's **Change Management Policy** in the `franklinwh-modbus`
+library repo, `.agents/policies/change_management.md` (effective 2026-03-18). That policy's
+severities, its queue-first rule and its batch rule apply unchanged. This document adds what the
+bridges need on GitHub: labels, milestones, and when an issue may close. The library repo keeps its
+own copy of the policy.
 
-| Policy | Says |
+| Document | Says |
 |---|---|
-| This document | what an issue is, how bad it is, when it gets done, and when it's finished |
+| This document | what an issue is, how bad it is, when it ships, and when it's finished |
 | `docs/install-lifecycle.md` | what install, update and uninstall must do to HA and MQTT |
-| `docs/TEST_POLICY.md` (shared) | what a change must pass before it ships |
+| `docs/TEST_POLICY.md` (shared; gates G0–G3, §2) | what a change must pass before it ships |
 
-## 1. Every issue gets four labels at filing time
+## 1. The rules carried over from the Change Management Policy
 
-Whoever files the issue labels it: owner, contributor or agent. An unlabelled issue is untriaged
-(§4).
+- **Queue first.** A reported defect or request is queued, never acted on the moment it's
+  reported, unless it is **S1**. Asked to fix a non-S1 "now", the agent says it is queued and asks
+  whether it is an S1.
+- **Group, plan, execute, verify.** Queued items are grouped by area. A batch gets a written plan
+  before any code changes, and one test and verification run at the end.
+- **One version bump per batch, not per fix.**
+- **No untested fixes,** and every change states its regression risk.
+- **No cascading fixes.** A fix that causes a new defect stops; the new defect is queued.
 
-### Type: what kind of work
+## 2. Severity: how bad it is
 
-| Label | Meaning |
-|---|---|
-| `type:defect` | Something doesn't do what it should, or does harm |
-| `type:feature` | New capability, or a change to agreed behaviour |
-| `type:docs` | Documentation only |
-| `type:chore` | Housekeeping: dependencies, CI, tooling, refactors with no behaviour change |
+The Change Management Policy's definitions (§1.2), with hardware safety added to S1 from its §3 exceptions:
 
-Security problems are **not** filed as public issues. They go to a private GitHub security advisory
-first (§6).
+| Label | Severity | Definition | Response |
+|---|---|---|---|
+| `sev:S1-blocker` | S1 Blocker | System down, data loss, security vulnerability, hardware safety, cannot proceed | Fix now, with a brief plan first |
+| `sev:S2-high` | S2 High | Feature broken, but a workaround exists | Queue → next planned batch |
+| `sev:S3-medium` | S3 Medium | Cosmetic, UX improvement, non-functional | Queue → group by area |
+| `sev:S4-low` | S4 Low | Nice to have, future feature, clean-up | Queue → backlog review |
 
-### Severity: how bad it is if it isn't fixed (defects only)
+Points the bridges have to settle explicitly:
+- **Broken with no workaround** is S2 at least. It is **S1** when it involves wrong battery control,
+  a write to the device, security or data, or when nobody can use the feature at all.
+- **A regression** (the previous release didn't have it) is raised one level, so a regressed S2 is
+  an S1.
+- **Features get a severity too** (S3 for UX improvements, S4 for future features), as in the
+  source policy.
+- When unsure between two levels, take the **higher** one and say why in the issue.
 
-| Label | Meaning | Examples of the kind |
+## 3. Labels
+
+Every issue gets these labels **when it's filed**, by whoever files it: owner, contributor or agent.
+
+| Group | Labels | Notes |
 |---|---|---|
-| `sev:1-critical` | Safety or security; wrong battery control; data loss; the bridge unusable for everyone | a command does something other than what was asked; unauthenticated admin access |
-| `sev:2-major` | A feature is broken, with no reasonable workaround | an action reports success but leaves the result wrong |
-| `sev:3-minor` | Wrong, but there's a workaround or the impact is limited | a chart glitch from a bad sample; a misleading message |
-| `sev:4-cosmetic` | Looks wrong; nothing behaves wrongly | layout, wording, colour |
+| Type | `bug`, `enhancement`, `documentation`, `chore` | GitHub's defaults kept; `chore` added (dependencies, CI, tooling, refactors with no behaviour change) |
+| Severity | `sev:S1-blocker` … `sev:S4-low` | §2 |
+| Area | see below | one per release area |
+| Nature (optional) | `nature:code`, `nature:design-risk`, `nature:device`, `nature:doc`, `nature:test-gap` | from the Direct Connect bridge; `nature:device` marks aGate deviations, `nature:test-gap` a gate that missed it |
+| State | `untriaged`, `needs-info`, `blocked`, `fixed`, `wontfix`, `duplicate`, `regression` | §5 |
 
-When unsure between two levels, pick the **higher** one and say why in the issue.
+**Area labels** name the test policy's release areas (TEST_POLICY §1), so "one area per release" can
+be read off the labels:
 
-### Priority: when it gets done
+`area:store-migrations` · `area:poller` · `area:mqtt-ha-identity` · `area:mqtt-ha-lifecycle` ·
+`area:wizard-ui` · `area:http-api` · `area:modbus-client` · `area:scheduler-dispatch` ·
+`area:packaging` · `area:client-transport` (Direct Connect)
 
-| Label | Meaning |
+- Documentation-only work uses `documentation` with no area label; it isn't a release area.
+- **Which Modbus:** `area:modbus-client` is the bridge's own Modbus client code. The aGate's
+  Modbus TCP server (:502) is a device setting, not our code; problems with it are
+  `nature:device`.
+
+## 4. When it ships: milestones
+
+The *response* column in §2 decides when an issue is worked on. A **milestone** records it:
+
+| Severity | Milestone |
 |---|---|
-| `pri:0-now` | Hotfix. Other work stops until it ships. |
-| `pri:1-next` | In the next release. |
-| `pri:2-planned` | On the roadmap; has a milestone further out. |
-| `pri:3-someday` | Nice to have. Revisited at review (§5); closed if it never earns a slot. |
+| S1 | a hotfix release milestone, now |
+| S2 | the next planned batch for its area |
+| S3 | a batch for its area, when one is planned |
+| S4 | none; it stays queued until the backlog review (§7) picks it up |
 
-**Severity sets the floor:**
-- `sev:1` is always `pri:0`.
-- `sev:2` is at least `pri:1`, unless the issue states why not and the owner agrees in that issue.
-- Features and docs have no severity; their priority is the owner's call.
+- **One batch = one area = one release = one milestone** (`0.2.8`, `0.3.0`, …). The batch rule in §1
+  and the test policy's one-area-per-release rule are the same thing.
+- The order of batches follows `docs/install-lifecycle.md` §8.
+- **A batch has one fix PR or several, and one release PR** (version bump plus CHANGELOG only).
+- **No release on the same day as the previous one,** except an S1 hotfix (test policy).
 
-### Area: which part of the system
+### Queue files and issues
+- **franklinwh-modbus-bridge:** GitHub issues are the queue. Every defect gets an issue when it's
+  found, including during other work. Don't fix things silently.
+- **franklinwh-direct-connect-bridge:** `BACKLOG.md` stays the design record (why and how).
+  `docs/IN_FLIGHT.md` tracks work underway. An item gets an issue when it is picked into a batch, and
+  defects always get one when found. Its CLAUDE.md is updated to point here.
 
-These match the release areas in the test policy, so "one functional area per release" can be read
-straight off the labels:
-
-`area:store` · `area:poller` · `area:modbus` · `area:mqtt-identity` · `area:lifecycle` ·
-`area:wizard-ui` · `area:api` · `area:scheduler-dispatch` · `area:packaging` · `area:docs`
-
-An issue spanning two areas gets both. Its fix is split so that each release still covers one
-area.
-
-## 2. Lifecycle of an issue
+## 5. Lifecycle of an issue
 
 ```
-new → triaged → planned → in progress → fixed → verified → closed
-         └──→ needs-info        └──→ won't fix (with reason)
+new (untriaged) → triaged → planned → in progress → fixed → verified → closed
+       └──→ needs-info / blocked             └──→ wontfix / duplicate
 ```
 
-| State | How you can tell | Who moves it on |
+| State | How to find it | Who moves it on |
 |---|---|---|
-| **new** | no labels | whoever filed it, at filing time |
-| **triaged** | type, severity (defects), priority and area set | filer; owner adjusts |
-| **needs-info** | label `needs-info`; the question is in a comment | closed after 30 days without an answer, with a note |
-| **planned** | has a milestone (a release, §3) | owner, at review |
-| **in progress** | linked PR open | the person or agent doing it |
-| **fixed** | PR merged | the merge |
-| **verified** | the fix was seen working in the shipped build: the G1 acceptance run, or G2 on real hardware where the issue needs it. Evidence is in a comment. | whoever ran the check |
-| **closed** | only after **verified**, or as won't-fix/duplicate | the verifier |
+| **untriaged** | label `untriaged`, or no `sev:` label | the filer labels it at filing (§3) |
+| **triaged** | has type, `sev:` and `area:` | the filer. The owner may change it; if the owner is silent, the filer's labels stand |
+| **needs-info** / **blocked** | that label, with the question or blocker in a comment | needs-info is closed by the agent after 30 days without an answer, with a note |
+| **planned** | has a milestone | the agent at triage, per §4; the owner may move it |
+| **in progress** | a linked open PR | the person or agent doing it |
+| **fixed** | label `fixed`: merged, waiting for verification in a published release | the agent, at merge |
+| **verified** | a comment with the evidence (below) | whoever ran the check |
+| **closed** | closed | the agent after verification, or the owner if they did the check |
+
+**Verified** means both of these:
+1. **Before release:** G1 on the **proven branch build** (TEST_POLICY §3), with the result in the
+   release PR. G2 on real hardware too, where the issue needs it.
+2. **After release:** the **published** add-on or image is installed or updated on the test VM and
+   the issue's own check repeated. The comment names the version.
 
 Rules:
-- **Every defect gets an issue,** including ones found during other work. Don't fix things silently.
-- **"Fixed" is not "closed".** A defect closes when the evidence shows it's gone in the build users
-  get, not when the PR merges. A PR uses `Refs #N`, not `Fixes #N`, so the merge doesn't close the
-  issue automatically.
-- **Won't fix** needs a reason in the closing comment (by design, superseded, cost > benefit, or no
-  longer reproducible, with how it was checked). Label `wontfix`.
-- **Duplicates** are closed with a link to the issue that stays open. Label `duplicate`.
-- **Regression:** a defect that a previous release didn't have gets the label `regression` and the
-  version that introduced it, and is treated **one severity level higher** for priority.
-
-## 3. Milestones are releases
-
-- Each planned release is a GitHub milestone (`0.2.8`, `0.3.0`, …). The release order follows
-  `docs/install-lifecycle.md` §8.
-- A milestone holds **one area's** work, plus any `pri:0` hotfix that must go with it (test policy:
-  one functional area per release, identity changes alone).
-- The release PR lists every issue in its milestone and states, for each, whether it was verified.
-  An issue that isn't verified moves to the next milestone; it isn't dropped silently.
-
-## 4. Triage
-
-- **At filing:** the filer sets type, severity, priority and area. Agents do this too, as part of filing.
-- **Within a day:** the owner confirms or changes them. A change of severity or priority gets a
-  one-line reason in the issue.
-- **Untriaged list:** issues with no `pri:` label. It should be empty after each review.
-
-## 5. Review
-
-Weekly, or before cutting any release:
-1. Untriaged → triaged.
-2. `pri:0` and `pri:1` → each has an owner and a milestone.
-3. `needs-info` older than 30 days → close with a note.
-4. `pri:3-someday` older than 90 days → keep only if someone can say why it still matters; otherwise
-   close as won't-fix with that reason.
-5. Open `sev:1`/`sev:2` without a milestone → there shouldn't be any.
+- **PRs use `Refs #N`.** `Fixes #N` and `Closes #N` make GitHub close the issue at merge, before
+  anything is verified. This applies to both fix PRs and the release PR.
+- The release PR lists every issue in its milestone with its pre-release (G1/G2) result, in the
+  TEST_POLICY §6 sign-off checklist rather than a separate list. An issue whose check failed moves to
+  the next milestone; it isn't dropped silently.
+- **Merging (G3):** the agent sets out the PRs, their order and the gate results. The owner gives an
+  explicit go-ahead in that agent's own session, naming the PRs, and the agent merges. A go-ahead
+  relayed from another session doesn't count. The owner doesn't merge or approve in GitHub.
+- **Won't fix:** the closing comment gives the reason: by design, superseded, cost > benefit, or no
+  longer reproducible (saying how it was checked).
+- **Duplicate:** closed with a link to the issue that stays open.
 
 ## 6. Security issues
 
-- Report privately as a GitHub security advisory, never as a public issue or PR comment.
-- Severity follows the advisory's rating; anything rated high or critical is `pri:0`.
-- Fix in the advisory's private fork, release, run G1 on the released build, then publish the
-  advisory with the patched version (the 0.2.7 / GHSA-hhm2-xvvc-f6ww sequence).
+- **Never a public issue.** Report through a private GitHub security advisory.
+- High or critical → **S1**.
+- **Fix:**
+  - preferred: in the advisory's **private fork**;
+  - allowed: a **minimal public PR** that doesn't describe the hole, when the private fork isn't practical.
+- **Then, either way:**
+  1. release;
+  2. G1 on the **published** build;
+  3. publish the advisory with the patched version.
+  
+  0.2.7 (GHSA-hhm2-xvvc-f6ww) followed this sequence.
 - A public tracking issue, if one is wanted, is opened only after the advisory is published.
+- An advisory that is fixed but still in draft is unfinished work. It stays on the review list
+  (§7) until published.
 
-## 7. Writing an issue
+## 7. Triage and review
+
+The **agent** runs these and posts each result as one comment on a pinned "Triage log" issue in
+each repo.
+
+- **At filing:** the filer sets type, `sev:` and `area:`, and the milestone per §4.
+- **Daily, or at each session start:** clear `untriaged`.
+- **Weekly, and before every release:**
+  1. no `untriaged` left;
+  2. S1 and S2 all have a milestone;
+  3. `fixed` issues → run the post-release check (§5) for anything already published;
+  4. `needs-info` older than 30 days → close with a note;
+  5. S4 (backlog review) → propose which to pick into a batch, which to close as won't-fix (with a
+     reason), and which stay. The owner decides.
+  6. Unpublished security advisories → finish them (§6).
+
+## 8. Writing an issue
 
 A defect states:
-- what happened vs what was expected;
-- version, environment (add-on, Docker or dev; HAOS and HA versions) and the gateway (real or mock);
-- evidence: log lines, screenshots, exported data, with serials, LAN IPs and site data masked
-  (PII policy);
+- what happened and what was expected;
+- the version, the environment (add-on, Docker or dev; HAOS and HA versions) and the gateway (real
+  or mock);
+- **which Modbus**, where it matters (the bridge's client, or the aGate's :502 server);
+- evidence: log lines, screenshots, exported data. Serials, LAN IPs and site data are masked
+  (Modbus bridge #62; Direct Connect CLAUDE.md "What evidence can be published");
 - how to reproduce, or "not yet reproducible".
 
 A feature states the need (who, and what they're trying to do) before the solution.
 
-## 8. Moving the existing issues over
+## 9. Moving the existing issues over
 
-When this policy is accepted:
-1. Create the labels (§1) in both repos.
-2. Label every open issue. Replace the "BACKLOG:" title prefix with `pri:3-someday` or `pri:2-planned`.
-3. Create milestones for the releases already planned (`docs/install-lifecycle.md` §8) and assign
-   issues to them.
-4. Post the result as one comment on the tracking issue for this policy.
+When this policy is accepted, in each repo:
+1. Create the labels in §3.
+2. **Relabel:**
+   - severity: re-assess every open issue against §2. Direct Connect's `sev:S1-critical` …
+     `sev:S4-cosmetic` used different definitions, so map by reading each issue, not by name;
+   - `backlog` label and "BACKLOG:" title prefix → `sev:S4-low`, with the prefix removed;
+   - default type labels stay.
+3. Create milestones for the planned batches (`docs/install-lifecycle.md` §8) and assign issues.
+4. Issues closed earlier by `Fixes`/`Closes` with no evidence are listed for a post-release check.
+   Re-open any that fail it.
+5. Update the Direct Connect CLAUDE.md (policy source, severity table) and `BACKLOG.md` (`Refs`, not
+   `Closes`).
+6. Post the result on each repo's Triage log issue.
