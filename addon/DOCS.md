@@ -20,7 +20,7 @@ tracking and battery control.
 
 ## First start
 
-1. **Start** the add-on and open **FranklinWH** from the sidebar. There's no
+1. **Start** the add-on and open **Modbus Bridge** from the sidebar. There's no
    second login: Home Assistant has already signed you in.
 2. Read and confirm the notice.
 3. The **setup wizard** opens:

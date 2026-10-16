@@ -21,7 +21,7 @@ init: false
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:home-battery
-panel_title: FranklinWH
+panel_title: Modbus Bridge
 panel_admin: true
 
 # Direct port is optional — the UI works through ingress without it. Publish it
