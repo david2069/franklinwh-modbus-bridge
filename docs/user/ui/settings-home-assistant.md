@@ -136,6 +136,9 @@ Each instance shows: name, badges (*default*, *disabled*, *auto*), URL, token (*
 On the add-on, the Home Assistant it runs in is added automatically (*auto*) through the
 Supervisor. It has no URL or token and cannot be deleted.
 
+Step by step, with creating the token in Home Assistant and sending notifications:
+[Home Assistant setup: instance & notifications](../ha-setup.md).
+
 **+ Add Home Assistant** (or **Edit** on an instance):
 
 ![Add Home Assistant form](../../images/ui/ha-instance-form.png)
