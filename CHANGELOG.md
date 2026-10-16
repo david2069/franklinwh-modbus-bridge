@@ -13,6 +13,20 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.13] — 2026-10-17
+
+S1 hotfix: connecting to the aGate wrote its operating mode and reserves.
+
+### Fixed
+
+- **Connecting no longer writes to the aGate (#239, S1).** franklinwh-modbus
+  0.9.5 runs a "writability test" inside `connect()`: it writes test values to
+  the operating mode (15507: Emergency Backup when the aGate is in
+  Self-Consumption) and both reserves (15508/15509), then writes the originals
+  back. The bridge connects at every start and reconnect, so the mode and
+  reserves were rewritten each time, and left wrong if the restore failed.
+  The bridge now turns that test off on the controller it creates.
+
 ## [0.2.12] — 2026-10-17
 
 A battery-direction fix, plus the SunSpec Explorer export.
