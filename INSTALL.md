@@ -72,7 +72,7 @@ Click the button above, or add the repository by hand:
    | `poll_interval` | Seconds between polls. `10` is a sensible default. |
    | `log_level` | `INFO` normally; `DEBUG` when diagnosing. |
 
-5. **Start**, then open **FranklinWH** from the sidebar. On a fresh install the
+5. **Start**, then open **Modbus Bridge** from the sidebar. On a fresh install the
    **setup wizard** opens: it finds your aGate (or creates a demo gateway) and
    ends with a Home Assistant checklist. The add-on's **Documentation** tab
    covers the same in more detail.
