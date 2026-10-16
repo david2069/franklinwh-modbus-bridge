@@ -13,6 +13,17 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.14] — 2026-10-17
+
+### Fixed
+
+- **A timed force is released once, by the bridge, under the Modbus lock
+  (#242, S2).** The bridge passed the duration to franklinwh-modbus, whose
+  own timer released the command from another thread without the gateway's
+  Modbus lock (its writes could interleave with a poll) and with no audit,
+  on top of the bridge's watchdog release. The library timer is no longer
+  used.
+
 ## [0.2.13] — 2026-10-17
 
 S1 hotfix: connecting to the aGate wrote its operating mode and reserves.
