@@ -227,7 +227,7 @@ Release rules (from the test policy):
 | Step | Release | Area | Contents | Issues |
 |---|---|---|---|---|
 | S1 | **0.2.7, hotfix, first** | security | Add-on auth: treat a request as ingress only when it comes from the Supervisor's ingress proxy with the ingress headers; everything else authenticates. Regression test; G1 port-auth check | GHSA-hhm2-xvvc-f6ww (private) |
-| R0 | — (now) | docs/process | **Freeze identity changes.** Hold PR #130. Merge this doc and the test policy. Correct user docs: Change namespace and Unpublish aren't reliable yet; delete doesn't unpublish. Guidance for HA Live (below). | — |
+| R0 | — (now) | docs/process | **Freeze identity changes.** Hold PR #130. Merge this doc and the test policy. Correct user docs: Change namespace and Unpublish aren't reliable yet; delete doesn't unpublish. Owner page `docs/user/home-assistant-entities.md` (symptoms, the stopgap below, what to avoid). Guidance for HA Live (below). The UI's "Learn more" links to that page (version-pinned) ship as a small UI release after S1. | — |
 | R1 | 0.2.8 | packaging | M12 build provenance; add-on branch builds for testing | #140 |
 | R2 | 0.2.9 | MQTT | M1 verified removal, applied to every existing tombstone path; M2 LWT/offline | #136 |
 | R3+R4 | 0.3.0 | lifecycle/clean-up | M3 inventory (dry run) + M4 purge + M5 delete/unpublish; mocks included in clean-up; empty HA devices of ours removed | BR-23/24/26, #8 |
@@ -244,6 +244,11 @@ Release rules (from the test policy):
 - Leave port 8099 unpublished, and don't install untrusted add-ons alongside the bridge, until S1
   ships (private advisory).
 - Leftover devices can be deleted by hand in HA once they have no entities.
+- **Stopgap for an L3b left half-done** (entities stuck on the pre-0.2.4 device; the new device
+  empty): Unpublish → delete the empty device in HA → Republish → regenerate the Dashboard card.
+  Used on HA Live on 2026-10-16 and it worked. **Cost:** new entity_ids, so automations break and
+  history splits unless the IDs are renamed back. Steps and caveats are in
+  `docs/user/home-assistant-entities.md`.
 
 ## 9. Acceptance matrix (runs as TEST_POLICY G1)
 
