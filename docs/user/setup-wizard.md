@@ -1,6 +1,6 @@
 # First run & setup wizard
 
-On a fresh install the bridge opens **Set up the bridge**. You can also open it later from **Settings → Site & Gateways → Run setup again**.
+On a fresh install the bridge first shows the **Unofficial software** notice: tick **I have read and agree** and press **Continue**. Then it opens **Set up the bridge**, and keeps opening it at each sign-in until you finish or close it. You can also open it later from **Settings → Site & Gateways → Run setup again**, or **Set up →** on the Dashboard.
 
 ![What would you like to do?](../images/wizard/wizard-start.png)
 
@@ -38,6 +38,13 @@ Then the wizard:
 - connects the gateway;
 - asks you to confirm the bridge's **timezone** (schedules and tariff windows run on this clock);
 - shows a **Home Assistant** checklist: MQTT broker connected, HA connected, the MQTT integration set up, and entities published.
+
+On the checklist step the wizard also asks:
+
+- **Publish …'s entities?** (default **No** for a demo). If you answer No, *Bridge entities* stays ✗ "None yet". That's expected. Publish later in **Settings → Home Assistant → Publish to Home Assistant**.
+- The **MQTT namespace**: keep **Modbus Bridge (recommended)** (`fwh_mb`) unless you're moving from an older install.
+
+On Docker and Python installs *HA connected* stays ✗ until you add your Home Assistant in **Settings → Home Assistant → + Add Home Assistant**. The add-on connects its own HA by itself.
 
 !!! tip "After connecting: battery power rating"
     Force charge and discharge stay unavailable until the gateway's battery power

@@ -2,11 +2,14 @@
 
 Three supported ways to run it. Pick one:
 
-| Method | Best for | Auth | MQTT setup |
-|---|---|---|---|
-| **Home Assistant add-on** | You already run HA | Handled by HA (ingress) | Automatic |
-| **Docker Compose** | Standalone / non-HA | Built-in login | Manual |
-| **Development** | Working on the bridge | Bypassable | Manual |
+| Method | Best for | Sign-in | MQTT setup | Step-by-step guide |
+|---|---|---|---|---|
+| **Home Assistant add-on** | You run HA OS or Supervised | Handled by HA (ingress) | Automatic | [docs/user/install-addon.md](docs/user/install-addon.md) |
+| **Docker Compose** | Standalone, NAS, HA Container | Bridge login | `MQTT_*` in `.env` | [docs/user/install-docker.md](docs/user/install-docker.md) |
+| **Python (development)** | Working on the bridge | Bridge login | Settings → Home Assistant | [docs/user/install-python.md](docs/user/install-python.md) |
+
+This page is the summary. The guides have the prerequisites, checks, updating,
+uninstalling and troubleshooting for each method.
 
 ---
 
@@ -55,10 +58,11 @@ Three supported ways to run it. Pick one:
 
 Click the button above, or add the repository by hand:
 
-1. In Home Assistant go to **Settings → Apps → App store** (called
-   **Add-ons → Add-on Store** in older versions).
-2. Open **⋮ → Repositories**, paste
-   `https://github.com/david2069/franklinwh-modbus-bridge` and click **Add**.
+1. In Home Assistant go to **Settings → Apps → Install app** (bottom right),
+   which opens the **App store** (**Settings → Add-ons → Add-on Store** before
+   HA 2026.10).
+2. Open **⋮ → Repositories**, press **+ Add**, paste
+   `https://github.com/david2069/franklinwh-modbus-bridge` and press **Add**.
 3. Find **FranklinWH Modbus Bridge** in the store and click **Install**. The
    first install builds the image on your HA host and compiles a few Python
    wheels, so it takes several minutes (longer on a Raspberry Pi).
@@ -66,14 +70,15 @@ Click the button above, or add the repository by hand:
 
    | Option | Meaning |
    |---|---|
-   | `gateway_host` | aGate IP, e.g. `192.168.1.50`. Leave blank to find it with the setup wizard on first start. |
+   | `gateway_host` | aGate IP, e.g. `192.0.2.50`. Leave blank to find it with the setup wizard on first start. |
    | `gateway_port` | Modbus TCP port, normally `502`. |
    | `gateway_unit_id` | Modbus unit id, normally `1`. |
    | `poll_interval` | Seconds between polls. `10` is a sensible default. |
-   | `log_level` | `INFO` normally; `DEBUG` when diagnosing. |
+   | `log_level` | `INFO`. `DEBUG` has no effect yet (known issue #181). |
 
-5. **Start**, then open **Modbus Bridge** from the sidebar. On a fresh install the
-   **setup wizard** opens: it finds your aGate (or creates a demo gateway) and
+5. **Start**, turn on **Show in sidebar** (off for a new add-on), then open
+   **Modbus Bridge** from the sidebar. On a fresh install, after the
+   *Unofficial software* notice, the **setup wizard** opens: it finds your aGate (or creates a demo gateway) and
    ends with a Home Assistant checklist. The add-on's **Documentation** tab
    covers the same in more detail.
 
@@ -105,34 +110,47 @@ second house.
 ```bash
 git clone https://github.com/david2069/franklinwh-modbus-bridge.git
 cd franklinwh-modbus-bridge
-cp .env.example .env        # set MODBUS_HOST, MQTT_HOST, …
-docker compose up -d
+cp .env.example .env        # set TZ, ADMIN_PASSWORD, MQTT_HOST, MODBUS_HOST
+docker compose up -d --build
 ```
 
 Open <http://localhost:8100> and sign in. The shipped `docker-compose.yml` seeds
 the first admin from `ADMIN_USERNAME` / `ADMIN_PASSWORD`, which default to
 **admin / admin**: set them in `.env` before the first start, or change the
-password under **Settings → Admin → Users** straight after signing in. (With
-`ADMIN_PASSWORD` unset, first run generates one and prints it to the log —
-`docker compose logs | grep -i password`.) Locked out? See
-[docs/admin-recovery.md](docs/admin-recovery.md).
+password under **Settings → Admin → Users** straight after signing in. Locked
+out? See [docs/admin-recovery.md](docs/admin-recovery.md).
 
-MQTT is configured by hand here (**Settings → MQTT**): there is no Supervisor to
-ask.
+MQTT is set in `.env` here: `MQTT_HOST=mosquitto` for the broker the compose
+file starts, or your own broker. Not `localhost`, which inside the container is
+the bridge itself. The UI can't override `MQTT_HOST` once it's in the
+environment.
+
+The compose file also starts a separate, empty Home Assistant on port 18125 (#180).
+If you have your own HA, start just the bridge and broker:
+`docker compose up -d --build app`.
+
+Full guide, including Podman: [docs/user/install-docker.md](docs/user/install-docker.md).
 
 ---
 
-## 3. Development
+## 3. Python (development)
+
+Needs Python 3.11 or later (on macOS, `python3` is often 3.9; use e.g. `python3.12`).
 
 ```bash
-python -m venv venv && source venv/bin/activate
-pip install -e ".[dev]"
-pip install git+https://github.com/david2069/franklinwh-modbus.git@v0.9.3
-bridge run
+git clone https://github.com/david2069/franklinwh-modbus-bridge.git
+cd franklinwh-modbus-bridge
+python3.12 -m venv venv && source venv/bin/activate
+pip install -e ".[dev]"            # includes franklinwh-modbus from PyPI
+ALLOW_INSECURE_AUTH=1 bridge run   # http://localhost:8099
 ```
 
+The first start prints a generated admin password once (`Seeded admin user
+'admin' with a GENERATED password: …`). Data goes in `./data` under the folder
+you start from.
+
 `ALLOW_INSECURE_AUTH=1` lets you **log in over plain HTTP** (without it, login
-requires HTTPS). It does not bypass the login. It is on in the shipped compose
+fails with *"login requires HTTPS"*). It does not bypass the login. It is on in the shipped compose
 file for LAN use; behind TLS, remove it and set `SESSION_COOKIE_SECURE=1`.
 
 ---
@@ -171,8 +189,26 @@ bridge source at `BRIDGE_REF` in `addon/Dockerfile`.)
 
 **Docker:** `git pull && docker compose up -d --build`.
 
-Migrations are forward-only. Take a backup (**Settings → Backup**) before a
-major upgrade if the data matters to you.
+**Python:** `git pull && pip install -e ".[dev]"`, then restart `bridge run`.
+
+Migrations are forward-only. Take a backup (**Settings → Data & Backup → Create
+Backup**) before a major upgrade if the data matters to you.
+
+---
+
+## Uninstalling
+
+Switch off **Publish to Home Assistant** for each gateway first (**Settings →
+Home Assistant**), so its HA device and entities are removed. Then:
+
+- **Add-on:** Uninstall. This deletes the bridge's data, even if you ask HA to
+  keep it (#153).
+- **Docker:** `docker compose down -v` (removes containers and volumes), then
+  delete the folder and, if you like, the images.
+- **Python:** stop it and delete the folder (`./data` goes with it).
+
+Retained state topics (`fwh_mb/<gateway>/…`) stay on the broker (#182); remove them
+with an MQTT client.
 
 ---
 
@@ -182,7 +218,8 @@ major upgrade if the data matters to you.
 check the tunnel is up — the banner distinguishes "this device is offline" from
 "online but the bridge isn't reachable".
 
-**No entities in Home Assistant.** Check MQTT is connected (**Settings → MQTT**)
+**No entities in Home Assistant.** Check MQTT is connected (**Settings → Home
+Assistant → MQTT broker**)
 and that HA's MQTT integration is set up. The bridge publishes via MQTT
 Discovery, so entities appear by themselves once the broker link works.
 

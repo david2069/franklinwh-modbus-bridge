@@ -20,6 +20,7 @@ The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery 
 |---|---|
 | Install it in Home Assistant | [Install (HA add-on)](user/install-addon.md) |
 | Run it without Home Assistant | [Install (Docker)](user/install-docker.md) |
+| Run it from source, or develop it | [Install (Python)](user/install-python.md) |
 | Connect my aGate, or try a demo | [First run & setup wizard](user/setup-wizard.md) |
 | Learn every screen and setting | [Dashboards & Settings](user/ui/index.md) |
 | Automate charge and discharge | [Scheduler](user/scheduler/index.md) |
