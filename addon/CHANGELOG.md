@@ -7,6 +7,27 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.8 — 2026-10-16
+
+### Fixes
+- **Force charge/discharge on systems with several batteries could run at full
+  power regardless of the setting** (#133). Commands are now sized against a
+  battery power rating that has been confirmed. Until then they're refused,
+  with a message saying how to calibrate.
+  - **Single-battery sites that have already run a full-power dispatch** (e.g.
+    a daily scheduled discharge) are confirmed automatically from their history.
+  - **Others:** Settings → your gateway → **Battery power rating** →
+    **Calibrate**, then run a TOU battery dispatch in the FranklinWH app.
+- The power sliders are no longer capped at 5000 W; they follow your
+  battery's rating.
+
+### Removed
+- **Command Power %.** Use Command Power in watts. Schedules saved with a % keep
+  working until you edit them.
+
+### Changed
+- The sidebar entry is now called **Modbus Bridge**.
+
 ## 0.2.7 — 2026-10-16
 
 ### Security
