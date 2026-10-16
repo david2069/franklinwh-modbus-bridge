@@ -82,6 +82,7 @@ nav:
     - Install (Docker): user/install-docker.md
     - Install (Python): user/install-python.md
     - First run & setup wizard: user/setup-wizard.md
+    - "Battery dispatch: best practice": user/battery-dispatch-best-practice.md
   - Dashboards & Settings:
     - Overview: user/ui/index.md
     - Top bar: user/ui/top-bar.md
@@ -109,7 +110,16 @@ nav:
     - Dependencies and troubleshooting: user/scheduler/dependencies.md
     - Examples: user/scheduler/examples.md
   - Home Assistant:
+    - "Setup: instance & notifications": user/ha-setup.md
     - Fixing, moving and removing entities: user/home-assistant-entities.md
+  - Developer Guide:
+    - dev/index.md
+    - REST API & OpenAPI: dev/rest-api.md
+    - API reference: dev/api-reference.md
+    - How the Web UI uses the API: dev/web-ui.md
+    - "Data out: MQTT to Home Assistant": dev/mqtt.md
+    - "Data in: HA entities over WebSocket": dev/ha-websocket.md
+    - "Use case: Scheduler integration": dev/scheduler-integration.md
   - Policies:
     - Install lifecycle: install-lifecycle.md
     - Issue policy: issue-policy.md

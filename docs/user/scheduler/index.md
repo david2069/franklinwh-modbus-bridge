@@ -9,6 +9,10 @@ You find it on the **Schedule** tab (`/?tab=schedule`).
 !!! warning "A force command takes the battery out of its own mode"
     Force Charge, Force Discharge and Force Standby write a *WSet* setpoint. That puts the aGate in remote-control (VPP) mode, which overrides Self-Consumption, TOU and Emergency Backup until the bridge releases it. While it holds, the FranklinWH app cannot change the mode.
 
+Leave the aGate in Self-Consumption or Emergency Backup and use the Scheduler instead of
+the FranklinWH app's Time-of-Use: see
+[Battery dispatch: best practice](../battery-dispatch-best-practice.md).
+
 ## Pages in this section
 
 | Page | What it covers |

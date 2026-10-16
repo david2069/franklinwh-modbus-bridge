@@ -57,6 +57,9 @@ The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery 
 | Set up my utility, meter and tariff | [Guide: utility, meter & tariff](user/ui/guide-utility-tariffs.md) |
 | Add a solar forecast and weather | [Guide: location & weather](user/ui/guide-location-weather.md) |
 | Fix or remove HA entities | [Fixing, moving and removing entities](user/home-assistant-entities.md) |
+| Use HA entities in schedules, get notifications on my phone | [Home Assistant setup: instance & notifications](user/ha-setup.md) |
+| Run the battery without fighting the FranklinWH app | [Battery dispatch: best practice](user/battery-dispatch-best-practice.md) |
+| Call the API, or integrate my own tools | [Developer Guide](dev/index.md) |
 
 ## What you need
 

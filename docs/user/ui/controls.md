@@ -7,6 +7,10 @@ Household members with the `user` role have simpler Charge / Discharge controls 
 [simple dashboard](user-dashboard.md). Schedules can send the same commands automatically:
 see the [Scheduler](../scheduler/index.md).
 
+Before you use them, read [Battery dispatch: best practice](../battery-dispatch-best-practice.md):
+leave the aGate in its default mode, plan with the Scheduler rather than the app's
+Time-of-Use, and release from the bridge when the app shows *VPP Mode*.
+
 !!! danger "Controls act immediately"
     Changing a dropdown, moving a slider or typing in a number box **sends the command as
     soon as you let go**. There is no Apply button. Every command is logged in the card,
