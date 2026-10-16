@@ -2,7 +2,7 @@
 
 ## What this is
 
-`~/dev/modbus/tools/modbus_sunspec2_reader.py` — a
+`~/dev/franklinwh-modbus/tools/modbus_sunspec2_reader.py` — a
 read-only SunSpec/raw-register diagnostic CLI in the sibling
 `franklinwh-modbus` library repo (part of a flat `tools/` dir of ~30
 scripts; listed in that repo's `tools/README.md` under "Diagnostic

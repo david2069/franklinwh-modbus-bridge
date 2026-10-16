@@ -19,7 +19,7 @@ It runs in two deployment modes from a single codebase:
 2. **Standalone Docker web app** -- runs anywhere, self-contained admin Web UI.
 
 It is the *bridge* tier. The upstream `franklinwh-modbus` PyPI library
-(local source: `~/dev/modbus`) does the actual Modbus
+(local source: `~/dev/franklinwh-modbus`) does the actual Modbus
 register I/O; this project does not re-implement Modbus.
 
 ### 1.1 v1 Scope
@@ -45,7 +45,7 @@ future consumers interact with the system.
 
 | Reference | Path | Role here |
 |-----------|------|-----------|
-| `franklinwh-modbus` | `~/dev/modbus` | **Dependency.** Provides `FranklinWHController`, SunSpec read methods, `modbus_sunspec2_reader.py`. Read-only reference. |
+| `franklinwh-modbus` | `~/dev/franklinwh-modbus` | **Dependency.** Provides `FranklinWHController`, SunSpec read methods, `modbus_sunspec2_reader.py`. Read-only reference. |
 | `franklinwh-ha-integrator` | `~/dev/franklinwh-ha-integrator` | **Pattern reference only.** Proven FastAPI + HA addon + MQTT + backup design. Read-only; nothing is copied or modified. |
 
 > Both reference repos are strictly read-only. No file edits, no git

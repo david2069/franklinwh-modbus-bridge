@@ -8,7 +8,7 @@ Device: aGate X, Firmware V10R01B04D00, tested 2026-03-13.
 Serial: 10060006A02F00000001. Connection: 192.168.1.100:502 unit 1.
 
 Documented in `franklinwh-modbus` library at
-`~/dev/modbus/src/franklinwh_modbus/types.py` (PICS_STATUS dict,
+`~/dev/franklinwh-modbus/src/franklinwh_modbus/types.py` (PICS_STATUS dict,
 line 200+). SunSpec spec PDF at
 `~/Downloads/Secure-SunSpec-Modbus-Specification_final.pdf`.
 

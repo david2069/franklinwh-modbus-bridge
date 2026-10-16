@@ -3,7 +3,7 @@
 ## Scope
 
 This file applies to `franklinwh-modbus-bridge` only. The reference repos
-(`~/dev/modbus` and `~/dev/franklinwh-ha-integrator`)
+(`~/dev/franklinwh-modbus` and `~/dev/franklinwh-ha-integrator`)
 are **read-only** — no file edits, no git operations against them.
 
 ## Project
@@ -22,7 +22,7 @@ pip install -e ".[dev]"
 
 For co-development against local modbus library changes:
 ```bash
-pip install -e ~/dev/modbus
+pip install -e ~/dev/franklinwh-modbus
 ```
 
 ## Commands
