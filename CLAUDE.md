@@ -72,7 +72,12 @@ Full practice and audit trail: `docs/restarts-and-shutdown.md`.
   slugs.
 - Releases and testing follow the shared test policy:
   `franklinwh-direct-connect-bridge` `docs/TEST_POLICY.md` (gates G0–G3, HAOS
-  acceptance run with a trace, owner merges the release PR).
+  acceptance run with a trace). G3: when G0–G2 pass, the agent tells the owner
+  the merge will happen (PRs, order, gate results), then merges; the owner can
+  stop it. A failed or skipped gate means no merge without the owner's word.
+- Issues are classified, queued and closed per `docs/issue-policy.md`
+  (severity S1–S4 from the Change Management Policy, labels, milestones,
+  `Refs #N` not `Fixes #N`, closed only when verified in the published build).
 
 ## Architecture rules
 
