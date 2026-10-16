@@ -148,17 +148,17 @@ The MQTT client id is `franklinwh_bridge_<8 hex>`, unique per install.
 
 ## Command topics
 
-The bridge subscribes to `<prefix>/<short_id>/control/+/set` for each gateway it can
-command (an aGate; a demo gateway has no controls) and passes the payload to that gateway's command handler: the same handler, slugs and
+The bridge subscribes to `<prefix>/<short_id>/control/+/set` for each gateway it
+publishes controls for and passes the payload to that gateway's command handler: the same handler, slugs and
 checks as `POST /api/gateways/{gw_id}/command` (see the
 [slug table](rest-api.md#send-a-battery-command)). The Activity and control logs record
 these as requested by `mqtt`.
 
 ```bash
-# Force charge an aGate at 2 kW from any MQTT client on the broker:
-mosquitto_pub -h <broker> -t fwh_mb/<short_id>/control/battery_command_power/set -m 2000
-mosquitto_pub -h <broker> -t fwh_mb/<short_id>/control/battery_command/set -m "Force Charge"
-mosquitto_pub -h <broker> -t fwh_mb/<short_id>/control/battery_command/set -m Release
+# Force charge the demo gateway at 2 kW from any MQTT client on the broker:
+mosquitto_pub -h <broker> -t fwh_mb/demo/control/battery_command_power/set -m 2000
+mosquitto_pub -h <broker> -t fwh_mb/demo/control/battery_command/set -m "Force Charge"
+mosquitto_pub -h <broker> -t fwh_mb/demo/control/battery_command/set -m Release
 ```
 
 Only the bridge's own namespace is obeyed; a topic for an unknown `short_id` is logged and
