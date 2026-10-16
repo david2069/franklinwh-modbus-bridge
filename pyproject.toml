@@ -54,6 +54,11 @@ dev = [
     # Chrome via channel="chrome", so no browser download is needed.
     "playwright>=1.47",
 ]
+# Documentation site (mkdocs.yml): `mkdocs serve` / `mkdocs build --strict`.
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
 
 [project.scripts]
 bridge = "franklinwh_bridge.cli:app"
