@@ -1,6 +1,6 @@
 # franklinwh-modbus documentation update proposal
 
-**Status:** Proposal only. `franklinwh-modbus` (`~/dev/modbus`) is
+**Status:** Proposal only. `franklinwh-modbus` (`~/dev/franklinwh-modbus`) is
 read-only from this bridge session — apply these from a dedicated session for
 that repo, per the multi-session repo workflow.
 
