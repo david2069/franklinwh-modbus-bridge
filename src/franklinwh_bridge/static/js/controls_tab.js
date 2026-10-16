@@ -77,13 +77,16 @@ function controlsTab() {
     },
 
     setMaxCharge() {
-      const v = Alpine.store('app').points.max_charge_rate_w ?? 5000;
+      // Trusted rating only (#133): no assumed 5000 W.
+      const v = Alpine.store('app').points.battery_rating_charge_w;
+      if (!v) return;
       this.powerW = v;
       this.sendCommand('battery_command_power', v);
     },
 
     setMaxDischarge() {
-      const v = Alpine.store('app').points.max_discharge_rate_w ?? 5000;
+      const v = Alpine.store('app').points.battery_rating_discharge_w;
+      if (!v) return;
       this.powerW = v;
       this.sendCommand('battery_command_power', v);
     },

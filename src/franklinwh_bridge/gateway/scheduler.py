@@ -529,7 +529,8 @@ class ScheduleEngine:
                     params.setdefault("duration_s", dur)
                 cmds = action_to_commands(entry.get("action"), params)
                 if cmds:
-                    await self._send(handlers[gateway_id], cmds)
+                    await self._send(handlers[gateway_id], cmds,
+                                     requester=f"schedule:{entry['id']}")
                     late_fired.append(entry["id"])
                     await self._audit(
                         entry["id"], entry.get("action"), target, "late_fired",
@@ -592,7 +593,7 @@ class ScheduleEngine:
                 cmds = action_to_commands(action, params)
                 if not cmds:
                     return {"status": "unknown_action", "action": action}
-                await self._send(handler, cmds)
+                await self._send(handler, cmds, requester=f"schedule:{schedule_id}")
                 dispatched.append(gw_id)
                 await self._audit(
                     schedule_id, action, target, "executed",

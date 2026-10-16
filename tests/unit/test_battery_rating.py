@@ -258,3 +258,43 @@ async def test_samples_feed_the_rating(ctrl, db):
     h = CommandHandler(ctrl, db, rating=rating)
     await h.observe_sample(SimpleNamespace(points={"battery_power_w": 4900}, ts=1.0))
     assert h.rating.decision("discharge").trusted
+
+
+# ── REST ─────────────────────────────────────────────────────────────────
+
+
+async def test_rating_and_calibration_routes(ctrl, db, clock):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from franklinwh_bridge.api import gateways_api
+
+    points = {"battery_power_w": 0, "soc": 52}
+    h = CommandHandler(ctrl, db, points_getter=lambda: points)
+    await h.rating.record_m702(5000, 5000)
+    inst = SimpleNamespace(command_handler=h)
+    app = FastAPI()
+    app.state.db = db
+    app.state.registry = SimpleNamespace(get=lambda gid: inst if gid == "g1" else None)
+    app.include_router(gateways_api.router)
+    app.dependency_overrides[gateways_api._REQUIRE_CONTROL] = lambda: {"username": "owner"}
+    base = "/api/gateways/g1/battery-rating"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = (await c.get(base)).json()
+        assert r["discharge"]["source"] == "m702_unconfirmed" and r["soc"] == 52
+        assert (await c.get("/api/gateways/g1/battery/limits")).json()["max_discharge_w"] is None
+        assert (await c.get("/api/gateways/nope/battery-rating")).status_code == 404
+
+        r = await c.post(base + "/calibration", json={"action": "start", "direction": "discharge"})
+        assert r.status_code == 200 and r.json()["calibration"]["direction"] == "discharge"
+        await h.observe_sample(SimpleNamespace(points={"battery_power_w": 19800}, ts=None))
+        r = await c.post(base + "/calibration", json={"action": "finish"})
+        assert r.status_code == 409 and "at least" in r.json()["detail"]
+        clock.t += 90
+        r = (await c.post(base + "/calibration", json={"action": "finish"})).json()
+        assert r["discharge"]["trusted"] and r["discharge"]["rating_w"] == 19800
+        lim = (await c.get("/api/gateways/g1/battery/limits")).json()
+        assert lim["max_discharge_w"] == 19800 and lim["max_charge_w"] is None
+
+        r = await c.post(base + "/calibration", json={"action": "start"})
+        assert r.status_code == 422

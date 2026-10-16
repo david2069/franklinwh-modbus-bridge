@@ -233,16 +233,15 @@ class CommandHandler:
         )
 
     @property
-    def power_limits(self) -> dict[str, int]:
-        """Return current power limits for REST/dashboard."""
+    def power_limits(self) -> dict[str, Any]:
+        """Limits a force command may use: trusted ratings only, None otherwise (#133)."""
+        charge, discharge = self.rating.decision("charge"), self.rating.decision("discharge")
         return {
-            "max_charge_w": self._max_charge_w,
-            "max_discharge_w": self._max_discharge_w,
-            "source": (
-                "hardware"
-                if self._max_charge_w != DEFAULT_MAX_POWER_W
-                else "default"
-            ),
+            "max_charge_w": charge.rating_w if charge.trusted else None,
+            "max_discharge_w": discharge.rating_w if discharge.trusted else None,
+            "charge_source": charge.source,
+            "discharge_source": discharge.source,
+            "source": charge.source if charge.source == discharge.source else "mixed",
         }
 
     @property

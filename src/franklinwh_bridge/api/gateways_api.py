@@ -21,7 +21,7 @@ from franklinwh_bridge.config import clock
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
-from franklinwh_bridge.publish.command_handler import COMMAND_SLUGS, DEFAULT_MAX_POWER_W
+from franklinwh_bridge.publish.command_handler import COMMAND_SLUGS
 from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store.db import (
@@ -1213,18 +1213,86 @@ async def send_gateway_command(
 
 @router.get("/gateways/{gw_id}/battery/limits")
 async def get_gateway_battery_limits(gw_id: str, request: Request):
-    """Return battery power limits for a specific gateway."""
-    registry = _registry(request)
-    inst = registry.get(gw_id)
+    """Battery power limits a force command may use: trusted ratings only (#133).
+
+    ``max_charge_w`` / ``max_discharge_w`` are None until the rating is
+    calibrated or Model 702 is confirmed by an observed peak; no 5000 W default.
+    """
+    inst = _running(request, gw_id)
+    if inst.command_handler is None:
+        return {"max_charge_w": None, "max_discharge_w": None, "source": "unknown"}
+    return inst.command_handler.power_limits
+
+
+def _running(request: Request, gw_id: str):
+    inst = _registry(request).get(gw_id)
     if inst is None:
         raise HTTPException(404, f"Gateway '{gw_id}' not running")
+    return inst
+
+
+def _rating(request: Request, gw_id: str):
+    inst = _running(request, gw_id)
     if inst.command_handler is None:
-        return {
-            "max_charge_w": DEFAULT_MAX_POWER_W,
-            "max_discharge_w": DEFAULT_MAX_POWER_W,
-            "source": "default",
-        }
-    return inst.command_handler.power_limits
+        raise HTTPException(409, f"Gateway '{gw_id}' has no command handler")
+    return inst.command_handler
+
+
+@router.get("/gateways/{gw_id}/battery-rating")
+async def get_battery_rating(gw_id: str, request: Request):
+    """The evidence behind this gateway's battery power rating, per direction (#133).
+
+    ``trusted`` says whether force commands are allowed; ``reason`` says why
+    not and how to fix it. ``calibration`` is the window being recorded, if any.
+    """
+    handler = _rating(request, gw_id)
+    status = handler.rating.status()
+    pts = handler._points_getter() if handler._points_getter else {}
+    status["soc"] = pts.get("soc")
+    status["battery_power_w"] = pts.get("battery_power_w")
+    return status
+
+
+class CalibrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: str = Field(..., pattern=r"^(start|finish|cancel)$")
+    direction: str | None = Field(default=None, pattern=r"^(charge|discharge)$")
+
+
+@router.post("/gateways/{gw_id}/battery-rating/calibration")
+async def calibrate_battery_rating(
+    gw_id: str, body: CalibrationRequest, request: Request,
+    _user: dict = Depends(_REQUIRE_CONTROL),
+):
+    """Record the battery's full-rate power while the owner runs a dispatch in the app.
+
+    Start, then in the FranklinWH app run a TOU battery dispatch (force charge
+    from grid, or force discharge to grid) with import and export unlimited, at
+    mid SoC. Finish after at least a minute: the peak becomes the calibrated
+    rating for that direction. The bridge sends nothing to the aGate here.
+    """
+    handler = _rating(request, gw_id)
+    rating = handler.rating
+    if body.action == "start":
+        if body.direction is None:
+            raise HTTPException(422, "direction is required to start")
+        if handler.state.active:
+            raise HTTPException(409, "release the active force command first")
+        pts = handler._points_getter() if handler._points_getter else {}
+        rating.start_calibration(body.direction, pts.get("soc"))
+    elif body.action == "finish":
+        try:
+            decision = await rating.finish_calibration()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if handler._on_state_changed:
+            await handler._on_state_changed()
+        logger.info("Gateway %s: battery %s rating calibrated at %s W by %s",
+                    gw_id, decision.direction, decision.rating_w,
+                    _user.get("username") or "?")
+    else:
+        rating.cancel_calibration()
+    return rating.status()
 
 
 @router.get("/gateways/{gw_id}/dispatch-outcomes")

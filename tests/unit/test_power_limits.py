@@ -69,12 +69,18 @@ def test_default_power_limits(handler):
     assert handler.max_power_w == DEFAULT_MAX_POWER_W
 
 
-def test_default_limits_dict(handler):
-    """power_limits reports 'default' source when unset."""
+def test_limits_dict_reports_the_trusted_rating(handler):
+    """power_limits reports the trusted (here calibrated) rating and its source (#133)."""
     limits = handler.power_limits
-    assert limits["max_charge_w"] == DEFAULT_MAX_POWER_W
-    assert limits["max_discharge_w"] == DEFAULT_MAX_POWER_W
-    assert limits["source"] == "default"
+    assert limits["max_charge_w"] == 5000 and limits["max_discharge_w"] == 5000
+    assert limits["source"] == "calibrated"
+
+
+async def test_limits_dict_is_empty_without_a_trusted_rating(mock_controller, db):
+    """No 5000 W default: an unknown rating reports None (#134)."""
+    limits = CommandHandler(mock_controller, db).power_limits
+    assert limits["max_charge_w"] is None and limits["max_discharge_w"] is None
+    assert limits["source"] == "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +94,8 @@ def test_set_power_limits(handler):
     assert handler.max_charge_w == 6000
     assert handler.max_discharge_w == 5500
     assert handler.max_power_w == 6000
-    assert handler.power_limits["source"] == "hardware"
+    # Display limits only: force commands use the trusted rating (#133).
+    assert handler.power_limits["source"] == "calibrated"
 
 
 def test_set_asymmetric_limits(handler):
@@ -248,7 +255,8 @@ async def test_init_with_custom_limits(mock_controller, db):
         max_charge_w=7500, max_discharge_w=5500, rating=calibrated_rating())
     assert h.max_charge_w == 7500
     assert h.max_discharge_w == 5500
-    assert h.power_limits["source"] == "hardware"
+    # Initial limits are display limits; force commands use the trusted rating (#133).
+    assert h.power_limits["source"] == "calibrated"
 
 
 # ---------------------------------------------------------------------------

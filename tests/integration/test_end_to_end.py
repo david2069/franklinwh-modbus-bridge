@@ -203,7 +203,8 @@ async def test_power_limit_autodetect_flow(mock_controller, sample_bus, db, devi
     assert limits_detected
     assert handler.max_charge_w == 6000
     assert handler.max_discharge_w == 5500
-    assert handler.power_limits["source"] == "hardware"
+    # Model 702 updates the display limits; force commands use the trusted rating (#133).
+    assert handler.power_limits["source"] == "calibrated"
 
     # Publisher should have overrides set
     assert "battery_command_power" in publisher._max_val_overrides
@@ -447,13 +448,11 @@ async def test_app_points_after_sample(client, default_gateway_bus):
 
 
 async def test_app_battery_limits_endpoint(client):
-    """Battery limits endpoint returns defaults when no hardware detected."""
+    """No trusted rating yet: limits are unknown, never an assumed 5000 W (#133, #134)."""
     resp = await client.get("/api/battery/limits")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["max_charge_w"] == DEFAULT_MAX_POWER_W
-    assert data["max_discharge_w"] == DEFAULT_MAX_POWER_W
-    assert data["source"] == "default"
+    assert data["max_charge_w"] is None and data["max_discharge_w"] is None
 
 
 async def test_app_stats_endpoint(client):
