@@ -71,8 +71,26 @@ working, enabled admin:
   open UI lets anyone on the network command the battery. Resetting a
   password gets you in without that exposure.
 
+## Podman
+
+Use `podman exec` in place of `docker exec`. The tool doesn't recognise a
+Podman container (it looks for `/.dockerenv`), so it reports `In container: NO`
+and `reset-admin-password` refuses. Check that `Database` is `/data/bridge.db`,
+then add `--allow-host`:
+
+```bash
+podman exec -it fwhbridge-app bridge recovery reset-admin-password --allow-host
+```
+
+## Python install
+
+Run it from the folder you start `bridge run` in, with `--allow-host`.
+`Database` should be `data/bridge.db`.
+
 ## HA add-on
 
 Under Home Assistant ingress you are signed in through Home Assistant, and the
-bridge's own login is not used, so this lockout does not arise there. Running
-the command inside an add-on container has not been tested yet.
+bridge's own login is not used, so this lockout does not arise there: open the
+bridge from the sidebar and reset the account under **Settings → Admin →
+Users**. The official SSH add-on has no `docker` command, so the commands above
+can't reach the add-on container.

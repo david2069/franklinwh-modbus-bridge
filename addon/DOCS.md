@@ -20,7 +20,8 @@ tracking and battery control.
 
 ## First start
 
-1. **Start** the add-on and open **Modbus Bridge** from the sidebar. There's no
+1. **Start** the add-on, turn on **Show in sidebar** (it starts off), and open
+   **Modbus Bridge** from the sidebar, or press **Open Web UI**. There's no
    second login: Home Assistant has already signed you in.
 2. Read and confirm the notice.
 3. The **setup wizard** opens:
@@ -32,12 +33,12 @@ tracking and battery control.
      hardware needed. A demo's energy sensors feed Home Assistant's long-term
      statistics, so try it on a test Home Assistant if you want to keep your
      Energy dashboard clean.
-   - **I'll set it up myself.** Add gateways under **Settings → Gateways**.
+   - **I'll set it up myself.** Add gateways under **Settings → Site & Gateways**.
 4. The wizard ends with a **Home Assistant checklist**. The step people most
    often miss: in Home Assistant, go to **Settings → Devices & services →
    Discovered → MQTT → Configure**. Until that's done, no entities appear.
 
-You can run the wizard again from **Settings → Gateways → Run setup again**.
+You can run the wizard again from **Settings → Site & Gateways → Run setup again**.
 
 ## Configuration
 
@@ -50,7 +51,7 @@ ground.
 | `gateway_port` | Modbus TCP port, normally `502`. |
 | `gateway_unit_id` | Modbus unit id, normally `1`. |
 | `poll_interval` | Seconds between reads. `10` is a sensible default. |
-| `log_level` | `INFO` normally; `DEBUG` when diagnosing a problem. |
+| `log_level` | `INFO` normally. `DEBUG` has no effect yet (known issue). |
 
 ## What sets itself up
 
@@ -64,7 +65,8 @@ ground.
   run on local time.
 
 Your data (settings, schedules, history, backups) is kept in the add-on's own
-storage, so updates don't lose it.
+storage, so updates don't lose it. **Uninstalling deletes it**, even if you
+choose to keep data (#153): use **Update**, not uninstall and reinstall.
 
 ## Troubleshooting
 
@@ -75,7 +77,7 @@ storage, so updates don't lose it.
 | No entities in Home Assistant | The wizard's checklist: broker connected, and Home Assistant's MQTT integration configured (**Discovered → MQTT → Configure**). |
 | *Install Mosquitto* banner | Install and start the **Mosquitto broker** app. The bridge connects within about 30 seconds. |
 
-The **Log** tab shows the bridge's log; set `log_level: DEBUG` for more detail.
+The **Log** tab shows the bridge's log.
 
 ## More
 

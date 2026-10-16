@@ -113,14 +113,14 @@ read from the Supervisor, so there's no second login and no broker to retype.
 
 ```bash
 git clone <repo-url> && cd franklinwh-modbus-bridge
-python3 -m venv venv && source venv/bin/activate
+python3.12 -m venv venv && source venv/bin/activate   # Python 3.11+; macOS python3 is often 3.9
 pip install -e ".[dev]"
 ```
 
 To verify:
 
 ```bash
-bridge --version
+bridge version
 pytest -m "not hardware"
 ```
 
@@ -135,8 +135,12 @@ pip install -e /path/to/franklinwh-modbus
 ### Standalone Docker
 
 ```bash
-docker compose -f docker/docker-compose.yml up
+cp .env.example .env    # set TZ, ADMIN_PASSWORD, MQTT_HOST=mosquitto
+docker compose up -d --build
 ```
+
+Then open <http://localhost:8100>. See
+[docs/user/install-docker.md](docs/user/install-docker.md).
 
 ### Home Assistant Add-on
 
@@ -159,7 +163,7 @@ Configuration is loaded with the following precedence (highest wins):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODBUS_HOST` | `192.168.1.100` | aGate IP address |
+| `MODBUS_HOST` | *(none: use the setup wizard)* | aGate IP address |
 | `MODBUS_PORT` | `502` | Modbus TCP port |
 | `MODBUS_UNIT_ID` | `1` | Modbus unit/slave ID |
 
@@ -177,8 +181,8 @@ Configuration is loaded with the following precedence (highest wins):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_ENV` | `dev` | Environment: `ha_addon`, `docker`, or `dev` |
-| `LOG_LEVEL` | `INFO` | Logging level |
-| `DATA_DIR` | `./data` | Data directory (DB, backups) |
+| `LOG_LEVEL` | `INFO` | Logging level. **Not read yet** (known issue); use `logging.level` in `config.yaml`. |
+| `DATA_DIR` | `./data` (dev), `/data` (Docker, add-on) | Data directory (DB, backups). **Not read yet**: the location follows `APP_ENV`. |
 
 #### Login and security
 
@@ -218,10 +222,10 @@ REST API without restarting the bridge:
 
 ```bash
 # View current config
-curl http://localhost:8000/api/mqtt/config
+curl http://localhost:8099/api/mqtt/config
 
 # Update broker settings
-curl -X PATCH http://localhost:8000/api/mqtt/config \
+curl -X PATCH http://localhost:8099/api/mqtt/config \
   -H "Content-Type: application/json" \
   -d '{"host": "mosquitto.local", "port": 8883}'
 ```
@@ -272,7 +276,7 @@ Mosquitto add-on broker at `core-mosquitto:1883`.
 ### Health Check
 
 ```bash
-curl http://localhost:8000/api/status
+curl http://localhost:8099/api/status
 ```
 
 Returns component-level status:
@@ -296,14 +300,14 @@ Returns component-level status:
 ### MQTT Status
 
 ```bash
-curl http://localhost:8000/api/mqtt/status
+curl http://localhost:8099/api/mqtt/status
 ```
 
 ### Logs
 
 ```bash
 # Recent log entries (in-memory ring buffer)
-curl http://localhost:8000/api/logs
+curl http://localhost:8099/api/logs
 
 # Follow bridge logs directly
 bridge run  # logs to stdout
@@ -538,23 +542,28 @@ three-phase only.
 
 ## Post-Installation Verification
 
-After installing and starting the bridge, verify everything is working:
+After installing and starting the bridge, verify everything is working.
+Port 8099 is the dev default; Docker publishes 8100. Only `/api/status` answers
+without signing in: for the other calls, sign in in a browser first, or pass the
+session cookie (`curl -c jar -d '{"username":"admin","password":"…"}' -H
+'Content-Type: application/json' http://localhost:8099/api/auth/login`, then
+`curl -b jar …`).
 
 1. **Health check** -- confirm all components report OK.
    ```bash
-   curl http://localhost:8000/api/status
+   curl http://localhost:8099/api/status
    # Look for: "status": "ok"
    ```
 
 2. **MQTT connection** -- confirm the bridge connected to your broker.
    ```bash
-   curl http://localhost:8000/api/mqtt/status
+   curl http://localhost:8099/api/mqtt/status
    # Look for: "connected": true
    ```
 
 3. **Test broker connectivity** -- run the built-in TCP test.
    ```bash
-   curl -X POST http://localhost:8000/api/mqtt/test
+   curl -X POST http://localhost:8099/api/mqtt/test
    # Look for: "success": true
    ```
 
@@ -564,13 +573,13 @@ After installing and starting the bridge, verify everything is working:
 
 5. **Check entity topics** -- list all published MQTT topics.
    ```bash
-   curl http://localhost:8000/api/mqtt/topics
+   curl http://localhost:8099/api/mqtt/topics
    # Entity count depends on AC wiring type (54 single / 61 split / 69 three-phase)
    ```
 
 6. **Monitor MQTT traffic** -- subscribe to all bridge topics.
    ```bash
-   mosquitto_sub -h localhost -t "franklinwh/#" -v
+   mosquitto_sub -h localhost -t "fwh_mb/#" -v   # "franklinwh/#" on installs from before 0.2.4
    ```
 
 ## Troubleshooting
@@ -579,7 +588,7 @@ After installing and starting the bridge, verify everything is working:
 
 - Check Python version: `python3 --version` (must be 3.11+).
 - Ensure the package is installed: `pip list | grep franklinwh`.
-- Check for port conflicts: `lsof -i :8000`.
+- Check for port conflicts: `lsof -i :8099`.
 - Review logs for startup errors (the bridge logs to stdout).
 
 ### Can't connect to aGate
@@ -593,26 +602,26 @@ After installing and starting the bridge, verify everything is working:
 
 - Test broker connectivity:
   ```bash
-  curl -X POST http://localhost:8000/api/mqtt/test
+  curl -X POST http://localhost:8099/api/mqtt/test
   ```
 - Verify broker credentials in the config.
 - Check if the broker requires TLS -- update `tls_mode` in the MQTT config.
 - For HA add-on mode, ensure the Mosquitto add-on is installed and running.
 - Check auto-detection:
   ```bash
-  curl http://localhost:8000/api/mqtt/detect-broker
+  curl http://localhost:8099/api/mqtt/detect-broker
   ```
 
 ### Entities not appearing in Home Assistant
 
 - Confirm MQTT Discovery is published:
   ```bash
-  curl http://localhost:8000/api/mqtt/status
+  curl http://localhost:8099/api/mqtt/status
   # Check "discovery_published": true
   ```
 - Force re-publish discovery:
   ```bash
-  curl -X POST http://localhost:8000/api/mqtt/publish
+  curl -X POST http://localhost:8099/api/mqtt/publish
   ```
 - Verify the HA MQTT integration is configured and connected to the
   same broker.
@@ -622,8 +631,8 @@ After installing and starting the bridge, verify everything is working:
 
 - Remove all discovery topics and re-publish:
   ```bash
-  curl -X POST http://localhost:8000/api/mqtt/unpublish
-  curl -X POST http://localhost:8000/api/mqtt/reconnect
+  curl -X POST http://localhost:8099/api/mqtt/unpublish
+  curl -X POST http://localhost:8099/api/mqtt/reconnect
   ```
 - In HA, go to **Settings > Devices & Services > MQTT** and remove the
   old device entry before re-publishing.
@@ -653,7 +662,7 @@ After installing and starting the bridge, verify everything is working:
 
 ### Port 8000 already in use
 
-- Find what's using the port: `lsof -i :8000`.
+- Find what's using the port: `lsof -i :8099`.
 - The bridge REST API defaults to port 8000. If another service uses
   this port, set `PORT=8080` (or another free port) before starting.
 

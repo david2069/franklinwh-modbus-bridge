@@ -80,6 +80,7 @@ nav:
   - Getting Started:
     - Install (HA add-on): user/install-addon.md
     - Install (Docker): user/install-docker.md
+    - Install (Python): user/install-python.md
     - First run & setup wizard: user/setup-wizard.md
   - Dashboards & Settings:
     - Overview: user/ui/index.md
