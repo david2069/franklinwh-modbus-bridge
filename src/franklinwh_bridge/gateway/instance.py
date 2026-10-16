@@ -36,6 +36,21 @@ from franklinwh_bridge.store.db import (
 logger = logging.getLogger(__name__)
 
 
+def disable_connect_writes(controller: Any) -> None:
+    """Stop the library writing to the aGate when it connects (#239).
+
+    franklinwh-modbus <= 0.9.5 runs ``_test_extension_writability()`` inside
+    ``connect()``: it writes test values to the operating mode (15507, even
+    Emergency Backup) and both reserves (15508/15509), then writes the
+    originals back. The bridge connects at every start and reconnect, so a live
+    aGate had its mode and reserves rewritten each time, and left wrong if the
+    restore failed. Nothing here uses the result. The library dropped the test
+    on its develop branch (its #24); keep this until the pin is past it (#230).
+    """
+    if hasattr(controller, "_test_extension_writability"):
+        controller._test_extension_writability = lambda: {}
+
+
 @dataclass
 class GatewayConfig:
     """Configuration for a single gateway."""
@@ -138,6 +153,7 @@ class GatewayInstance:
             ip_address=cfg.host, port=cfg.port, unit_id=cfg.unit_id,
             timeout=cfg.timeout,
         )
+        disable_connect_writes(self.controller)
 
         self.poller = ModbusPoller(
             controller=self.controller,
