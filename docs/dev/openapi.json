@@ -3,7 +3,7 @@
   "info": {
     "title": "franklinwh-modbus-bridge",
     "description": "**Unofficial software.** `franklinwh-modbus-bridge` is not endorsed, supported, or\naffiliated with FranklinWH in any way. Provided **\"AS IS\"**, for educational\nand informational purposes only, without warranty of any kind, express or\nimplied. The authors and contributors accept no responsibility or liability\nfor any consequences of its use.\n\nThis API issues **write commands to grid-connected battery hardware**. You\nassume all risk, including risk to your hardware, your warranty and your\nelectricity supply.\n\n**Compliance.** Keep your system compliant with the settings your official\nFranklinWH app or installer configured \u2014 they may enforce battery and gateway\nsafety, your local grid profile and import/export limits, or incentive/VPP\nprogramme conditions. Using this API to bypass them is entirely at your own\nrisk and is neither condoned nor encouraged.\n\n**Do not contact FranklinWH support about this software.** Report bugs and\nrequest features at [https://github.com/david2069/franklinwh-modbus-bridge/issues](https://github.com/david2069/franklinwh-modbus-bridge/issues).\n\nFull terms: [LICENSE](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE) \u00b7 SunSpec conformance:\n[PICS SM-000028](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx)\n",
-    "version": "0.2.9"
+    "version": "0.2.11"
   },
   "paths": {
     "/api/health": {
@@ -613,6 +613,80 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models/export": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Export Models",
+        "description": "Export a gateway's SunSpec models with their current values (#228).\n\n``models``: comma-separated model ids; empty for every model.\n``format``: ``json`` or ``csv``. ``redact_serial`` (default true) replaces\nthe serial number, in model 1's ``SN`` and anywhere else it appears, with\n``<serial>``. The gateway's address and name are never included.",
+        "operationId": "export_models_api_models_export_get",
+        "parameters": [
+          {
+            "name": "gateway_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default",
+              "title": "Gateway Id"
+            }
+          },
+          {
+            "name": "models",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Models"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "redact_serial",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Redact Serial"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SunSpecExport"
+                }
               }
             }
           },
@@ -10568,6 +10642,45 @@
           "configured"
         ],
         "title": "SpotSettingsResponse"
+      },
+      "SunSpecExport": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "model_count": {
+            "type": "integer",
+            "title": "Model Count"
+          },
+          "point_count": {
+            "type": "integer",
+            "title": "Point Count"
+          },
+          "serial_redacted": {
+            "type": "boolean",
+            "title": "Serial Redacted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "media_type",
+          "content",
+          "model_count",
+          "point_count",
+          "serial_redacted"
+        ],
+        "title": "SunSpecExport",
+        "description": "A SunSpec export, ready to preview, copy, download or put in a Gist."
       },
       "SupportInfo": {
         "properties": {

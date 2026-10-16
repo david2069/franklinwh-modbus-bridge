@@ -13,6 +13,21 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **SunSpec Explorer export (#228).** **Export…** opens a window: this model,
+  chosen models or all of them, as JSON or CSV, with a preview. **Redact serial
+  number** is on by default; it replaces the serial in model 1's `SN` and
+  anywhere else it appears. The gateway's IP address and name are never
+  included. Built by the new `GET /api/models/export`. It replaces the
+  per-model SunSpec JSON/CSV buttons, which exported the serial unredacted.
+- **Save as Gist (#228)** on the export and on Settings → Admin → Support
+  info: copies the text and opens GitHub's new Gist page, where you choose a
+  secret (unlisted) or public Gist. The bridge stores no GitHub token and
+  sends nothing to GitHub.
+- **Extension registers: All / Identified / Unknown filter (#228)**, to show
+  only the named registers or only the unnamed ones.
+
 ## [0.2.11] — 2026-10-17
 
 S1 hotfix: MQTT battery commands while the Control group is off.

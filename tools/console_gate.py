@@ -298,7 +298,7 @@ def run(url: str, user: str, password: str) -> int:
         _dismiss_disclaimer(page, problems)
         _walk_setup_wizard(page, problems)
 
-        for tab in ("dashboard", "schedule", "settings", "logs", "events"):
+        for tab in ("dashboard", "explorer", "schedule", "settings", "logs", "events"):
             _goto(page, f"{url}?tab={tab}", problems)
             page.wait_for_timeout(900)
 
@@ -328,6 +328,47 @@ def run(url: str, user: str, password: str) -> int:
             page.keyboard.press("Escape")
             page.mouse.click(5, 5)  # click-outside closes the panel
             page.wait_for_timeout(300)
+
+        # Explorer → SunSpec export modal (#228), opened twice for the teardown
+        # reason above; every scope, both formats and redaction off and on.
+        # "Save as Gist" is not clicked: it opens github.com.
+        _goto(page, f"{url}?tab=explorer", problems)
+        page.wait_for_timeout(1500)
+        for _ in (1, 2):
+            btn = page.locator("[data-testid=sunspec-export-open]:visible").first
+            if not btn.count():
+                # A bridge with only demo gateways has no SunSpec catalog, so
+                # there is no model to export. Said, not failed: nothing broke.
+                print("NOTE: explorer export not exercised — no SunSpec catalog on this bridge")
+                break
+            btn.click()
+            page.wait_for_timeout(800)
+            modal = page.locator("[data-testid=sunspec-export-modal]")
+            for scope in ("all", "choose", "model"):
+                modal.locator(f"input[type=radio][value={scope}]").check()
+                page.wait_for_timeout(500)
+            modal.locator("button:has-text('CSV')").click()
+            page.wait_for_timeout(500)
+            modal.locator("button:has-text('JSON')").click()
+            page.wait_for_timeout(500)
+            redact = modal.locator("[data-testid=sunspec-export-redact]")
+            redact.uncheck()
+            page.wait_for_timeout(500)
+            redact.check()
+            page.wait_for_timeout(500)
+            if not modal.locator("[data-testid=sunspec-export-preview]").input_value().strip():
+                problems.append("explorer: export preview is empty")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+
+        # Explorer → extension registers: identified / unknown filter.
+        known = page.locator("[data-testid=ext-known-filter]:visible").first
+        if known.count():
+            for value in ("known", "unknown", ""):
+                known.select_option(value)
+                page.wait_for_timeout(300)
+        else:
+            problems.append("explorer: identified/unknown filter missing")
 
         # Settings sub-tabs: visit each section, so a card that only renders
         # in one of them still gets its console checked.

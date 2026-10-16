@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
+from franklinwh_bridge import __version__
 from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
@@ -51,6 +52,7 @@ from franklinwh_bridge.store.metrics import (
     set_raw_age_days,
     set_retention_days,
 )
+from franklinwh_bridge.support import sunspec_export as sx
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +231,78 @@ async def list_catalog_points(request: Request, gateway_id: str = "default"):
     (promoted into an enabled group). Powers the Explorer → group picker."""
     db: aiosqlite.Connection = request.app.state.db
     return {"gateway_id": gateway_id, "points": await get_catalog_points(db, gateway_id)}
+
+
+class SunSpecExport(BaseModel):
+    """A SunSpec export, ready to preview, copy, download or put in a Gist."""
+
+    filename: str
+    media_type: str
+    content: str
+    model_count: int
+    point_count: int
+    serial_redacted: bool
+
+
+@router.get("/models/export", response_model=SunSpecExport)
+async def export_models(
+    request: Request,
+    gateway_id: str = "default",
+    models: str = "",
+    format: str = "json",
+    redact_serial: bool = True,
+) -> SunSpecExport:
+    """Export a gateway's SunSpec models with their current values (#228).
+
+    ``models``: comma-separated model ids; empty for every model.
+    ``format``: ``json`` or ``csv``. ``redact_serial`` (default true) replaces
+    the serial number, in model 1's ``SN`` and anywhere else it appears, with
+    ``<serial>``. The gateway's address and name are never included.
+    """
+    if format not in ("json", "csv"):
+        raise HTTPException(400, "format must be json or csv")
+    try:
+        model_ids = [int(m) for m in models.split(",") if m.strip()] or None
+    except ValueError as exc:
+        raise HTTPException(400, "models must be comma-separated model ids") from exc
+
+    db: aiosqlite.Connection = request.app.state.db
+    catalog = await load_catalog(db, gateway_id)
+    if not catalog:
+        raise HTTPException(404, f"No SunSpec catalog for gateway '{gateway_id}' yet")
+
+    inst = _get_gateway(request, gateway_id)
+    last = inst.sample_bus.last_sample if inst is not None else None
+    points = dict(last.points) if last is not None else {}
+    row = await get_gateway_row(db, gateway_id) or {}
+    status = getattr(inst, "status", None)
+    serials = [row.get("serial"), getattr(status, "serial", None),
+               points.get("serial"), points.get("1.SN")]
+    gateway = {
+        "device_type": row.get("device_type") or "agate",
+        "model": getattr(status, "model", None) or row.get("model"),
+        "firmware": getattr(status, "firmware", None) or row.get("firmware"),
+    }
+    try:
+        export = sx.build_export(
+            catalog, points, model_ids=model_ids, redact_serial=redact_serial,
+            serials=serials, gateway=gateway, version=__version__,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, f"Model(s) not in this gateway's catalog: {exc.args[0]}") from exc
+
+    if format == "csv":
+        content, media_type = sx.render_csv(export), "text/csv"
+    else:
+        content, media_type = sx.render_json(export), "application/json"
+    return SunSpecExport(
+        filename=sx.filename(export, format, all_models=model_ids is None),
+        media_type=media_type,
+        content=content,
+        model_count=export["model_count"],
+        point_count=export["point_count"],
+        serial_redacted=redact_serial,
+    )
 
 
 @router.post("/models/{model_id}/read")

@@ -147,8 +147,9 @@
             </div>
             <!-- Export buttons -->
             <div class="flex items-center gap-1 text-[10px]">
-              <button @click="exportSunSpecJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export JSON">JSON</button>
-              <button @click="exportSunSpecCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition" title="Export CSV">CSV</button>
+              <button @click="openExport()" data-testid="sunspec-export-open"
+                      class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition"
+                      title="Export this model, chosen models or all of them (JSON or CSV), with a preview">Export…</button>
             </div>
             <span class="text-xs text-slate-500"
                   x-text="(accessFilter || picsFilter)
@@ -262,6 +263,15 @@
         <input type="text" x-model="extFilter" placeholder="Search registers..."
                class="form-control !py-1 !px-2 !text-xs !w-40" @input.debounce.200ms="">
 
+        <!-- Identified / unknown filter -->
+        <select x-model="extKnown" data-testid="ext-known-filter" aria-label="Identified or unknown registers"
+                title="Identified: named from FranklinWH documentation or site notes (some unconfirmed). Unknown: no name yet."
+                class="bg-slate-800 border border-slate-600/40 rounded px-1 py-0.5 text-[10px] text-slate-300 cursor-pointer">
+          <option value="">All</option>
+          <option value="known">Identified</option>
+          <option value="unknown">Unknown</option>
+        </select>
+
         <!-- Suppress zeros toggle -->
         <label class="flex items-center gap-1.5 text-[10px] text-slate-500 cursor-pointer select-none">
           <input type="checkbox" x-model="extSuppressZeros"
@@ -300,9 +310,9 @@
           <template x-if="filteredExtensions.length === 0">
             <tr>
               <td colspan="8" class="px-3 py-6 text-center text-slate-600 text-xs">
-                <span x-show="extSuppressZeros">All registers are zero — uncheck "Hide zeros" to see all</span>
-                <span x-show="!extSuppressZeros && extFilter">No registers match filter</span>
-                <span x-show="!extSuppressZeros && !extFilter">No extension data available</span>
+                <span x-show="extFilter || extKnown">No registers match the filters</span>
+                <span x-show="!extFilter && !extKnown && extSuppressZeros">All registers are zero — uncheck "Hide zeros" to see all</span>
+                <span x-show="!extFilter && !extKnown && !extSuppressZeros">No extension data available</span>
               </td>
             </tr>
           </template>
@@ -335,5 +345,80 @@
   </div> <!-- end vendor extensions -->
 
   </div> <!-- end outer flex-col container -->
+
+  <!-- SunSpec export (#228): built and redacted by GET api/models/export;
+       the preview is exactly what is copied, downloaded or put in a Gist. -->
+  <template x-teleport="body">
+    <div x-show="exp.open" x-cloak data-testid="sunspec-export-modal"
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+         @keydown.escape.window="exp.open = false">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="exp.open = false"></div>
+      <div class="relative bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl w-full max-w-3xl p-5 flex flex-col max-h-[90vh]">
+        <div class="flex items-center justify-between mb-1">
+          <div class="text-sm font-semibold text-slate-200">Export SunSpec models</div>
+          <button @click="exp.open = false" class="text-slate-500 hover:text-slate-300 text-lg leading-none" aria-label="Close">&times;</button>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">
+          The catalog with its current values, and the gateway's model and firmware. Its IP address and name are never included.
+          <span class="text-amber-300">Review the preview before you share it: you are responsible for what you post.</span>
+        </p>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 text-xs text-slate-300">
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" value="model" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
+            <span x-text="exportScopeLabel()"></span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" value="all" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
+            <span x-text="'All models (' + modelCount + ')'"></span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" value="choose" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
+            Choose models
+          </label>
+          <span class="text-slate-600">|</span>
+          <div class="inline-flex rounded border border-white/10 overflow-hidden">
+            <button type="button" @click="exp.format = 'json'; generateExport()" class="px-2.5 py-1"
+                    :class="exp.format === 'json' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">JSON</button>
+            <button type="button" @click="exp.format = 'csv'; generateExport()" class="px-2.5 py-1 border-l border-white/10"
+                    :class="exp.format === 'csv' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'">CSV</button>
+          </div>
+          <label class="flex items-center gap-1.5 cursor-pointer" title="Replaces the serial number (model 1 SN, and anywhere else it appears) with &lt;serial&gt;">
+            <input type="checkbox" x-model="exp.redact" @change="generateExport()" class="accent-emerald-500"
+                   data-testid="sunspec-export-redact">
+            Redact serial number
+          </label>
+        </div>
+        <div x-show="exp.scope === 'choose'" class="flex flex-wrap gap-1.5 mb-2">
+          <template x-for="m in models" :key="m.model_id">
+            <button type="button" @click="toggleExportModel(m.model_id)"
+                    class="px-2 py-0.5 rounded border text-[11px] font-mono transition"
+                    :class="exp.chosen.includes(m.model_id) ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300' : 'border-white/10 text-slate-500 hover:text-slate-300'"
+                    :title="m.label" x-text="m.model_id"></button>
+          </template>
+        </div>
+        <div x-show="!exp.redact" class="mb-2 rounded border border-amber-500/40 bg-amber-500/[0.06] p-2 text-[11px] text-amber-200">
+          The serial number is included. Anyone you share this with can see it.
+        </div>
+        <div x-show="exp.error" class="mb-2 rounded border border-amber-500/40 bg-amber-500/[0.06] p-2 text-[11px] text-amber-200"
+             x-text="exp.error"></div>
+        <textarea x-ref="exportPreview" readonly spellcheck="false" data-testid="sunspec-export-preview"
+                  aria-label="Export preview" :value="exp.result ? exp.result.content : ''"
+                  class="form-control font-mono !text-[11px] w-full flex-1 min-h-[16rem] resize-y"
+                  :class="exp.loading && 'opacity-50'"></textarea>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <span class="text-[11px] text-slate-500 font-mono" x-show="exp.result"
+                x-text="exp.result ? exp.result.filename + ' · ' + exp.result.model_count + ' models, ' + exp.result.point_count + ' points' : ''"></span>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" class="btn btn-sm btn-secondary" @click="copyExport()" :disabled="!exp.result">Copy</button>
+            <button type="button" class="btn btn-sm btn-secondary" @click="downloadExport()" :disabled="!exp.result">Download</button>
+            <button type="button" class="btn btn-sm btn-primary" @click="gistExport()" :disabled="!exp.result"
+                    data-testid="sunspec-export-gist"
+                    title="Copies the export and opens GitHub's new-Gist page">Save as Gist</button>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-2" x-show="exp.msg" x-text="exp.msg"></div>
+      </div>
+    </div>
+  </template>
 
 </div>

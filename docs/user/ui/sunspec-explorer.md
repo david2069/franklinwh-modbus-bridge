@@ -35,7 +35,7 @@ were found, and:
 | **Addr: SunSpec / Base-0** | Shows register addresses the SunSpec way (1-based, as in the SunSpec documents) or 0-based (as many Modbus tools expect). |
 | **Access** | All, R (read-only) or RW (writable). |
 | **PICS** | Filters by compliance mark (see below). |
-| **JSON / CSV** | Downloads the model's points. |
+| **Export…** | Opens the export window: see [Exporting models](#exporting-models). |
 | **↻** | Reads the model from the aGate now. |
 
 If the model is not polled, a notice says **Not actively polled — no live values** with a
@@ -58,12 +58,45 @@ PICS is a compliance checklist. Click the PICS badge on a row to cycle it throug
 
 Your marks are saved in the bridge's database, per model and point.
 
+## Exporting models
+
+**Export…** opens a window to export the SunSpec map with its current values, for a GitHub
+issue, a Gist, or someone writing another integration.
+
+| Option | Choices |
+|---|---|
+| Models | **This model**, **All models**, or **Choose models** (click model numbers to add or remove them). |
+| Format | **JSON** (with the gateway's model and firmware) or **CSV** (one row per point). |
+| **Redact serial number** | On by default. Replaces the serial number with `<serial>`: in model 1's `SN` and anywhere else it appears, including its last 8 characters. Turn it off only if you want to share the serial. |
+
+The preview shows exactly what you will get. The gateway's IP address and name are never
+included. Then:
+
+- **Copy** copies it.
+- **Download** saves it, named for example `sunspec_all_redacted.json`.
+- **Save as Gist** copies it and opens GitHub's new Gist page. Paste it, give the file the
+  name shown under the preview, then choose:
+    - **Create secret gist**: unlisted, so only people with the link can find it. It is not
+      private: anyone with the link can read it.
+    - **Create public gist**: listed on your profile and searchable.
+
+  The bridge sends nothing to GitHub itself, and needs no GitHub account or token.
+
+The same export is available from the REST API: `GET /api/models/export` (see the
+[API reference](../../dev/api-reference.md)).
+
+!!! warning
+    Read the preview before you share it. You are responsible for what you post.
+
 ## FranklinWH Extension Registers
 
 The bottom panel lists the FranklinWH vendor registers (15000+, 15500+, 16000+) that are
 outside the SunSpec models. Click its header to show or hide it.
 
 - **Search registers…** filters by name or description.
+- **All / Identified / Unknown** shows every register, only the ones with a name (from
+  FranklinWH documentation, or from site notes marked *unconfirmed*), or only the unnamed
+  ones (`Reg15xxx`, description *Unknown*).
 - **Hide zeros** hides registers that read 0.
 - **JSON / CSV** download the list.
 

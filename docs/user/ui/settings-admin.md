@@ -100,6 +100,7 @@ anywhere; it is shown for you to review.
 | **Generate** / **Regenerate** | Builds the summary and shows it. |
 | **Copy** | Copies it to the clipboard. |
 | **Download .md** | Saves it as a Markdown file. |
+| **Save as Gist** | Copies it and opens GitHub's new Gist page. Paste it, name the file `support-info.md`, then choose **Create secret gist** (unlisted, but anyone with the link can read it) or **Create public gist**. The bridge sends nothing to GitHub itself. |
 | **Open a new issue on GitHub** | Opens the bug report form. Paste the summary into its *Support info* box. |
 
 Serials, IP addresses, host names, MAC addresses, location, usernames, Home Assistant URLs
