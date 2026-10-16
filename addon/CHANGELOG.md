@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.13 — 2026-10-17
+
+### Fixes
+- **Connecting to the aGate no longer changes its mode and reserves.** Each
+  time the bridge started or reconnected, the Modbus library briefly wrote
+  test values to the operating mode (it could switch to Emergency Backup for a
+  moment) and both reserves, then put them back. If putting them back failed,
+  the aGate kept the test value. That test is now turned off.
+
 ## 0.2.12 — 2026-10-17
 
 ### Fixes
