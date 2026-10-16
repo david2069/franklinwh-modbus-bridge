@@ -426,6 +426,8 @@ class CommandHandler:
         if base == "Idle":  # legacy alias
             base = "Standby"
 
+        rated_attr: str | None = None  # the library rating to set for this send
+        max_w = 0
         if base == "Standby":
             watts = 0
         elif base in ("Charge", "Discharge"):
@@ -439,12 +441,10 @@ class CommandHandler:
                     "command_refused", detail=self._state.last_result, by=self._requester)
                 return
             max_w = int(decision.rating_w)
-            # The library turns watts into WSetPct against its own rating: give
-            # it the trusted one, so 100 % means this battery's real full power.
-            if base == "Charge":
-                self._controller.RATED_MAX_CHARGE_W = max_w
-            else:
-                self._controller.RATED_MAX_DISCHARGE_W = max_w
+            # The library turns watts into WSetPct against its own rating, so it
+            # is given the trusted one (set under the Modbus lock, just before
+            # the send: see below).
+            rated_attr = "RATED_MAX_CHARGE_W" if base == "Charge" else "RATED_MAX_DISCHARGE_W"
             if self._command_power_pct > 0:
                 # Percentage mode: convert to watts using directional max
                 watts = int(max_w * self._command_power_pct / 100)
@@ -496,6 +496,16 @@ class CommandHandler:
         # Acquire Modbus lock for the entire send + revert-timer write
         # to prevent interleaving with poller reads.
         async with self._modbus_lock:
+            # Set the library's rating here, under the lock, not before waiting
+            # for it: the poller reconnects under the same lock, and the
+            # library's connect() rediscovers ratings (nameplate, or 5000 W when
+            # M702 can't be read). Set earlier, a reconnect in between could
+            # leave the rating below ``watts``, and franklinwh-modbus <= 0.9.5
+            # clamps an over-limit request in the OPPOSITE direction (#230,
+            # franklinwh-modbus #28): an over-rating charge became a full-rate
+            # discharge.
+            if rated_attr is not None:
+                setattr(self._controller, rated_attr, max_w)
             success, msg = await asyncio.to_thread(
                 self._io, "write", self._controller.send_command, cmd,
                 duration_s=lib_duration,
