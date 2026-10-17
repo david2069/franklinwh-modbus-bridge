@@ -29,6 +29,14 @@ def test_addon_and_package_versions_match():
     assert _addon_version() == pyproject["project"]["version"] == franklinwh_bridge.__version__
 
 
+def test_addon_builds_the_release_it_is_named_for():
+    """The add-on installs the bridge from GitHub at ``BRIDGE_REF``. 0.2.15
+    bumped the version but not this, so the "0.2.15" add-on ran 0.2.14 (#253)."""
+    m = re.search(r"^ARG BRIDGE_REF=(\S+)$", (ADDON / "Dockerfile").read_text(), flags=re.M)
+    assert m, "addon/Dockerfile has no ARG BRIDGE_REF"
+    assert m[1] == f"v{_addon_version()}"
+
+
 def test_addon_changelog_has_the_current_version_first():
     text = (ADDON / "CHANGELOG.md").read_text()
     versions = re.findall(r"^## (\d+\.\d+\.\d+)", text, flags=re.M)
