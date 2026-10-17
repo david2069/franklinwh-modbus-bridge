@@ -57,6 +57,13 @@ class ActiveReserveReader:
     def apply(self, points: dict[str, Any]) -> None:
         if "self_reserve_pct" not in points and "tou_reserve_pct" not in points:
             return  # not read this poll: add nothing (an empty poll stays empty)
+        # The registers as read, before any interpretation, so the Explorer
+        # always shows them (#256). #34's reading rests on evidence taken while
+        # the library wrote 15507-15509 on every connect (#239); these raw
+        # values are what re-checks it.
+        for key, raw in (("vreg_15508", "self_reserve_pct"), ("vreg_15509", "tou_reserve_pct")):
+            if points.get(raw) is not None:
+                points[key] = points[raw]
         active = points.get("self_reserve_pct")  # 15508 = the active reserve
         if active is None:
             active = points.get("tou_reserve_pct")

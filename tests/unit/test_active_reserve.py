@@ -183,3 +183,12 @@ async def test_migration_54_backfills_active_reserve_from_per_mode_columns():
             assert [r[0] for r in await cur.fetchall()] == [15, 30, 10, None]
     finally:
         await db.close()
+
+
+def test_raw_reserve_registers_are_kept_whatever_the_mode():
+    """#256: the Explorer shows 15508/15509 as read, even when #34's gating
+    blanks the per-mode reserve that isn't active."""
+    pts = {"mode_name": "Self-Consumption", "self_reserve_pct": 8, "tou_reserve_pct": 15}
+    ActiveReserveReader("gw").apply(pts)
+    assert pts["vreg_15508"] == 8 and pts["vreg_15509"] == 15
+    assert pts["tou_reserve_pct"] is None  # the gating itself is unchanged here
