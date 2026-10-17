@@ -19,11 +19,12 @@ From top to bottom it has:
 | Field | Meaning |
 |---|---|
 | Viewing | The gateway being shown (only with more than one gateway). |
-| Model, Serial, FW | Reported by the aGate. `--` on the demo gateway. |
+| Model, Serial | Reported by the aGate. `--` on the demo gateway. |
+| SoC | The battery's state of charge. The firmware version, which this bar used to show, is in **Info** and in Support info. |
 | IP, Unit | The gateway's address and Modbus unit ID from its settings. |
 | Grid | Grid mode: *Grid Following* (on-grid) or *Grid Forming* (islanded, the aGate is making its own grid). |
 | Inverter | Inverter state, for example *Running*. |
-| **Info** | Opens **Diagnostics**: about 20 control and health readings in one list (control mode, setpoints, revert timers, watchdog, last command result, temperatures, capacity). |
+| **Info** | Opens **Diagnostics**: about 20 control and health readings in one list (control mode, firmware, setpoints, revert timers, watchdog, last command result, temperatures, capacity). |
 | **Cards** | Opens the card list: show, hide and reorder cards. |
 
 ![Diagnostics dialog](../../images/ui/dashboard-diagnostics.png)
