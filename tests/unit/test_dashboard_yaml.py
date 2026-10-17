@@ -305,16 +305,30 @@ async def test_route_errors(client):
     assert (await client.get("/api/ha/dashboard-yaml")).status_code == 503
 
 
-def test_route_is_behind_auth_like_the_rest_of_the_ha_router():
-    """Mounted with the HA router's require_module + require_auth deps."""
-    from franklinwh_bridge.api.auth import require_auth
+async def test_route_is_behind_auth_like_the_rest_of_the_ha_router(tmp_path, monkeypatch):
+    """Mounted with the HA router's require_module + require_auth deps.
+
+    Asked through requests, not by reading ``app.routes``: since FastAPI 0.137
+    that holds included routers, not their routes, so a lookup there found
+    nothing (#248)."""
+    from franklinwh_bridge.api.auth import get_current_user, require_auth
+    from franklinwh_bridge.gateway.modules import set_module_enabled
     from franklinwh_bridge.main import app
 
-    route = next(r for r in app.routes if getattr(r, "path", "") == "/api/ha/dashboard-yaml")
-    calls = {d.call for d in route.dependant.dependencies}
-    assert require_auth in calls
-    sibling = next(r for r in app.routes if getattr(r, "path", "") == "/api/ha/entities")
-    assert {d.call for d in sibling.dependant.dependencies} == calls
+    app.dependency_overrides.pop(require_auth, None)  # conftest's admin bypass
+    app.dependency_overrides.pop(get_current_user, None)
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ALLOW_INSECURE_AUTH", "1")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with (
+        AsyncClient(transport=transport, base_url="http://test") as ac,
+        app.router.lifespan_context(app),
+    ):
+        await set_module_enabled(app.state.db, "ha_entities", True)
+        for path in ("/api/ha/dashboard-yaml", "/api/ha/entities"):
+            assert (await ac.get(path)).status_code == 401, path
 
 
 async def test_foreign_entities_on_the_merged_device_are_left_out():
