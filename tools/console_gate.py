@@ -334,6 +334,7 @@ def run(url: str, user: str, password: str) -> int:
         # "Save as Gist" is not clicked: it opens github.com.
         _goto(page, f"{url}?tab=explorer", problems)
         page.wait_for_timeout(1500)
+        has_catalog = bool(page.locator("[data-testid=sunspec-export-open]:visible").count())
         for _ in (1, 2):
             btn = page.locator("[data-testid=sunspec-export-open]:visible").first
             if not btn.count():
@@ -367,8 +368,11 @@ def run(url: str, user: str, password: str) -> int:
             for value in ("known", "unknown", ""):
                 known.select_option(value)
                 page.wait_for_timeout(300)
-        else:
+        elif has_catalog:
             problems.append("explorer: identified/unknown filter missing")
+        else:
+            # The whole Explorer, extension panel included, needs a catalog.
+            print("NOTE: extension filter not exercised — no SunSpec catalog on this bridge")
 
         # Settings sub-tabs: visit each section, so a card that only renders
         # in one of them still gets its console checked.

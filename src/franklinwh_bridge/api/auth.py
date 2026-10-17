@@ -6,6 +6,7 @@ so auth is bypassed there. See docs/multi-user-and-pwa-design.md §3.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
@@ -23,6 +24,8 @@ from franklinwh_bridge.store.db import (
     update_user,
     user_expired,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -161,9 +164,41 @@ async def require_auth(request: Request) -> dict:
     """
     user = await get_current_user(request)
     if user is None:
+        _log_refused_ingress(request)
         end = getattr(request.state, "auth_end", None) or {}
         raise HTTPException(401, {"message": "authentication required", **end})
     return user
+
+
+#: When _log_refused_ingress last logged (monotonic), so a page polling every
+#: 10 s can't flood the log.
+_last_refused_ingress_log = 0.0
+
+
+def _log_refused_ingress(request: Request) -> None:
+    """Log a request that claims ingress but wasn't trusted as it (#247).
+
+    In the add-on the page never shows a login (HA owns it), so a 401 there
+    has two possible sources: HA's own session lapsed (the Supervisor answers
+    401 and the bridge never sees the request), or the bridge refused one
+    that HA proxied. Only the second reaches here, so this line says which.
+    """
+    global _last_refused_ingress_log
+    config = getattr(request.app.state, "config", None)
+    if not (config and str(getattr(config, "environment", "")) == "ha_addon"):
+        return
+    if not request.headers.get("x-ingress-path"):
+        return
+    now = time.monotonic()
+    if now - _last_refused_ingress_log < 60:
+        return
+    _last_refused_ingress_log = now
+    peer = request.client.host if request.client else None
+    logger.warning(
+        "Refused a request with an ingress header from %s (not the Supervisor's "
+        "ingress proxy %s): %s %s", peer, SUPERVISOR_INGRESS_IP,
+        request.method, request.url.path,
+    )
 
 
 def require_role(*roles: str):
