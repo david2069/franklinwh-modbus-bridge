@@ -345,7 +345,7 @@ def run(url: str, user: str, password: str) -> int:
             btn.click()
             page.wait_for_timeout(800)
             modal = page.locator("[data-testid=sunspec-export-modal]")
-            for scope in ("all", "choose", "model"):
+            for scope in ("all", "displayed", "choose"):
                 modal.locator(f"input[type=radio][value={scope}]").check()
                 page.wait_for_timeout(500)
             modal.locator("button:has-text('CSV')").click()

@@ -88,7 +88,7 @@ function explorerTab() {
 
     // Export modal (#228): GET api/models/export builds and redacts it.
     exp: {
-      open: false, scope: 'model', chosen: [], format: 'json', redact: true,
+      open: false, scope: 'all', chosen: [], format: 'json', redact: true,
       loading: false, error: '', result: null, msg: '',
     },
 
@@ -677,7 +677,7 @@ function explorerTab() {
 
     openExport() {
       const e = this.exp;
-      e.scope = 'model';
+      e.scope = 'all';
       e.chosen = this.selectedModelId != null ? [this.selectedModelId] : [];
       e.msg = '';
       e.open = true;
@@ -685,8 +685,7 @@ function explorerTab() {
     },
 
     exportScopeLabel() {
-      const m = this.selectedModel;
-      return m ? `This model (${m.model_id} ${m.label || ''})` : 'This model';
+      return `Displayed models (${this.filteredModels.length})`;
     },
 
     toggleExportModel(id) {
@@ -700,7 +699,9 @@ function explorerTab() {
     async generateExport() {
       const e = this.exp;
       let models = '';
-      if (e.scope === 'model') models = String(this.selectedModelId ?? '');
+      // "Displayed": what the model tree shows after its filter and the
+      // hide-unpolled option (#228).
+      if (e.scope === 'displayed') models = this.filteredModels.map(m => m.model_id).join(',');
       if (e.scope === 'choose') models = e.chosen.join(',');
       e.error = ''; e.msg = '';
       if (e.scope !== 'all' && !models) {
