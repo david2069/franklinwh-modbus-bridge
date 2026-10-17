@@ -7,6 +7,13 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.16 — 2026-10-17
+
+### Fixes
+- **0.2.15's fix is now actually included.** The 0.2.15 add-on was built
+  from the 0.2.14 code by mistake, so it didn't contain the change below.
+  This release does.
+
 ## 0.2.15 — 2026-10-17
 
 ### Fixes

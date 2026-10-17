@@ -152,8 +152,10 @@ Home Assistant offers **Update available** only when `addon/config.yaml`'s
 **Changelog** link. Until 0.2.0 the version never moved, so no install was ever
 offered an update. For each release:
 
-1. Bump the version in **all three** places: `addon/config.yaml` (`version`),
-   `pyproject.toml` and `src/franklinwh_bridge/__init__.py`.
+1. Bump the version in **all four** places: `addon/config.yaml` (`version`),
+   `pyproject.toml`, `src/franklinwh_bridge/__init__.py`, and
+   `addon/Dockerfile`'s `ARG BRIDGE_REF=vX.Y.Z` (the code the add-on installs;
+   0.2.15 missed it and shipped 0.2.14's code, #253).
 2. Add a `## X.Y.Z — date` entry at the top of `addon/CHANGELOG.md`, written
    for users (what they'll notice), not the developer changelog.
 3. Move the root `CHANGELOG.md`'s `[Unreleased]` entries under `[X.Y.Z]`.
@@ -161,7 +163,7 @@ offered an update. For each release:
 5. Merge to `main`, then tag `vX.Y.Z`. The add-on installs the bridge from
    `main` (`BRIDGE_REF`), so the code is live as soon as HA rebuilds it.
 
-`tests/unit/test_addon_release.py` fails if the three versions disagree or the
+`tests/unit/test_addon_release.py` fails if the four disagree or the
 add-on changelog's newest entry isn't the current version.
 
 ---

@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.16] — 2026-10-17
+
+### Fixed
+
+- **The add-on builds the release it's named for (#253, S2).** 0.2.15 moved
+  the version but not `addon/Dockerfile`'s `BRIDGE_REF`, so the 0.2.15 add-on
+  installed the 0.2.14 code and #247's fix didn't ship. `BRIDGE_REF` is now
+  v0.2.16; `test_addon_release` fails if it doesn't match the version, and
+  `test_smoke` no longer pins a literal version.
+
 ## [0.2.15] — 2026-10-17
 
 ### Fixed
