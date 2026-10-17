@@ -13,6 +13,26 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.15] — 2026-10-17
+
+### Fixed
+
+- **No bridge logout modal under Home Assistant ingress (#247, S2).** Any 401
+  raised the "You have been logged out" modal, whose "Log in" went to a
+  bridge login page ingress doesn't serve ("page not found"). Pages served
+  through ingress are marked (`data-ha-ingress`); there a 401 shows no modal
+  and never leads to `/login`. The page keeps polling while HA renews its
+  session, and after 90 s of 401s a banner offers Reload (of the HA page).
+  The bridge logs a request that carries an ingress header but isn't trusted
+  as ingress, so the two 401 sources can be told apart.
+
+### Tests
+
+- **Route checks work with FastAPI 0.137 (#248).** `app.routes` now holds
+  included routers, so the dashboard-YAML auth test failed and the admin
+  write-gate test (#102) checked no route at all. Both now work by request;
+  every write route is called as a viewer and must be refused.
+
 ## [0.2.14] — 2026-10-17
 
 ### Fixed

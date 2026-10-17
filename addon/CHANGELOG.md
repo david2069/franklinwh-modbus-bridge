@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.15 — 2026-10-17
+
+### Fixes
+- **No more "You have been logged out" inside Home Assistant.** Home
+  Assistant signs you in, but when its session for the add-on page lapsed
+  (a sleeping laptop, a background tab) the bridge showed its own logout
+  message, and its **Log in** button led to "page not found". Now the page
+  waits for Home Assistant to renew the session. If that takes more than
+  90 seconds, a small banner offers **Reload**. Opening the bridge directly,
+  outside Home Assistant, works as before.
+
 ## 0.2.14 — 2026-10-17
 
 ### Fixes
