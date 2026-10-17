@@ -25,7 +25,10 @@ const VENDOR_EXT_16000 = [
   // Per franklinwh-modbus QUIRKS "Register 16000": the block mirrors 15508/15509.
   // Undocumented by FranklinWH; one site's readings — labelled as such.
   { addr: 16001, name: 'SelfReserveMirror', desc: 'Self-Consumption reserve, mirrors 15508 (unconfirmed)', keys: ['vreg_16001'], unit: '%', access: 'R', type: 'uint16' },
-  { addr: 16002, name: 'TouReserveMirror',  desc: 'TOU reserve, mirrors 15509 per library notes (unconfirmed)', keys: ['vreg_16002'], unit: '%', access: 'R', type: 'uint16' },
+  // 16002 is NOT the TOU reserve (#256): reference site 2026-10-17 read 20 with
+  // the TOU reserve at 15 (FranklinWH, via Direct Connect). 20 is the local
+  // API's 1405 BBBackupSoc (VPP backup SoC), as another site reported.
+  { addr: 16002, name: 'BBBackupSoc',  desc: 'Backup SoC (BBBackupSoc, VPP?), not the TOU reserve (unconfirmed)', keys: ['vreg_16002'], unit: '%', access: 'R', type: 'uint16' },
 ];
 
 // 15000-15039 is undocumented. These are what one site's recorded readings
