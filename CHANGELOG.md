@@ -13,6 +13,24 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.17] — 2026-10-18
+
+### Changed
+
+- **Device bar: SoC instead of firmware (#258).** Firmware moved to Info
+  (Diagnostics) and stays in Support info. Support info gains each gateway's
+  `battery_rating` per direction: M702 nameplate, dispatch rating, source,
+  trusted.
+- **Explorer Export… in the top bar (#228).** Scopes: all models (default),
+  displayed models (the tree after its filters), or chosen models.
+
+### Fixed
+
+- **Raw 15509 visible (#256).** The poller keeps `vreg_15508`/`vreg_15509`
+  as read, so the Explorer shows 15509 in any mode (#34's gating unchanged
+  pending franklinwh-modbus#63). 16002 relabelled BBBackupSoc, not the TOU
+  reserve.
+
 ## [0.2.16] — 2026-10-17
 
 ### Fixed
