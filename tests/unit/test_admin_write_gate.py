@@ -6,8 +6,9 @@ reconfigure gateways and MQTT, toggle modules, stop gateways and run schedules.
 
 from __future__ import annotations
 
+import re
+
 import pytest
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 
 from franklinwh_bridge.main import app
@@ -22,31 +23,24 @@ OPEN_WRITES = {
 }
 
 
-def _dep_names(dependant) -> set[str]:
-    names, stack = set(), list(dependant.dependencies)
-    while stack:
-        dep = stack.pop()
-        names.add(getattr(dep.call, "__qualname__", ""))
-        stack.extend(dep.dependencies)
-    return names
+def _write_routes() -> list[tuple[str, str]]:
+    """Every write route, from the OpenAPI schema (public API).
+
+    Not ``app.routes``: since FastAPI 0.137 it holds included routers, not
+    their routes, so a loop over it saw no write route at all and this check
+    passed while proving nothing (#248). No route is hidden from the schema
+    (checked when this was written), so the schema is the whole list.
+    """
+    paths = app.openapi()["paths"]
+    return [(m.upper(), path) for path, ops in paths.items() for m in ops
+            if m.upper() not in {"GET", "HEAD", "OPTIONS"}]
 
 
-def test_every_write_route_is_gated():
-    """A new write route must say who may call it — or be listed as open here."""
-    ungated = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
-        for method in route.methods - {"GET", "HEAD", "OPTIONS"}:
-            if (method, route.path) in OPEN_WRITES:
-                continue
-            names = _dep_names(route.dependant)
-            if "require_admin_for_writes" in names or any(
-                n.startswith(("require_role.", "require_capability.")) for n in names
-            ):
-                continue
-            ungated.append(f"{method} {route.path}")
-    assert ungated == []
+def test_the_write_route_list_is_real():
+    """Guards the check below against passing on an empty list again."""
+    routes = _write_routes()
+    assert len(routes) > 50
+    assert ("PATCH", "/api/gateways/{gw_id}") in routes
 
 
 @pytest.fixture(autouse=True)
@@ -122,6 +116,28 @@ async def test_control_roles_keep_the_gateway_command(client, role):
     resp = await client.post("/api/gateways/default/command",
                              json={"slug": "__probe__", "value": "0"})
     assert resp.status_code != 403, resp.text
+
+
+async def test_every_write_route_refuses_a_viewer(client):
+    """A new write route must say who may call it, or be listed as open here.
+
+    Asked with requests rather than by reading each route's dependencies, so
+    it holds however FastAPI stores them. Every module is switched on first,
+    so a module gate can't answer for a missing role gate."""
+    from franklinwh_bridge.gateway.modules import MODULES, set_module_enabled
+
+    for m in MODULES:
+        if not m.get("core"):
+            await set_module_enabled(app.state.db, m["id"], True)
+    await _login_as(client, "viewer")
+    allowed = []
+    for method, path in _write_routes():
+        if (method, path) in OPEN_WRITES:
+            continue
+        resp = await client.request(method, re.sub(r"\{[^}]+\}", "x", path), json={})
+        if resp.status_code not in (401, 403):
+            allowed.append(f"{method} {path} -> {resp.status_code}")
+    assert allowed == []
 
 
 async def test_admin_still_writes(client):
