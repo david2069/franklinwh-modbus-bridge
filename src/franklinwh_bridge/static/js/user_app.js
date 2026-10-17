@@ -10,9 +10,12 @@
 
   // A 401 means this page's login has ended. The login page shows why (it
   // asks the bridge using the login id saved at sign-in), so go there.
+  // Not under Home Assistant (#247): HA owns the login there and the bridge
+  // login page doesn't exist, so a 401 is HA's lapsed session; keep polling.
+  const HA_INGRESS = document.documentElement.dataset.haIngress === '1';
   let leaving = false;
   function onUnauthorized(status) {
-    if (status !== 401 || leaving) return;
+    if (status !== 401 || leaving || HA_INGRESS) return;
     leaving = true;
     window.location.href = `${base}/login`;
   }
@@ -482,7 +485,7 @@
   async function loadMe() {
     const me = await getJSON('api/auth/me');
     const u = me && me.user;
-    if (!u) { window.location.href = `${base}/login`; return; }
+    if (!u) { if (!HA_INGRESS) window.location.href = `${base}/login`; return; }
     $('userName').textContent = u.username;
     $('menuUser').textContent = u.username;
     $('menuRole').textContent = u.role;

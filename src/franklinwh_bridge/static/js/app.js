@@ -270,6 +270,38 @@ async function _noteLoggedOut(detail) {
   } catch (_) {}
 }
 
+/** Served through Home Assistant: the add-on's panel (#247). HA signed the
+ *  user in and the bridge has no login of its own there, so the logged-out
+ *  modal and its "Log in" (a bridge login page that doesn't exist under
+ *  ingress: "page not found") must never show. A 401 here means HA's session
+ *  for this panel lapsed (a sleeping laptop, a background tab); HA renews it
+ *  once the page is in use, so keep polling and only say so if it persists. */
+const HA_INGRESS = document.documentElement.dataset.haIngress === '1';
+const HA_SESSION_GRACE_S = 90;
+
+function _noteIngress401() {
+  try {
+    const s = window.Alpine && Alpine.store('app');
+    if (!s) return;
+    const now = Date.now() / 1000;
+    if (!s.haSessionLostSince) s.haSessionLostSince = now;
+    s.haSessionLost = now - s.haSessionLostSince >= HA_SESSION_GRACE_S;
+  } catch (_) {}
+}
+
+function _noteIngressOk() {
+  try {
+    const s = window.Alpine && Alpine.store('app');
+    if (s && s.haSessionLostSince) { s.haSessionLostSince = null; s.haSessionLost = false; }
+  } catch (_) {}
+}
+
+/** Reload the Home Assistant page around the panel, which renews HA's session.
+ *  Same origin under ingress, so the top window is reachable. */
+function _reloadHaPage() {
+  try { window.top.location.reload(); } catch (_) { location.reload(); }
+}
+
 function _noteReachable(ok, info = {}) {
   try {
     const s = window.Alpine && Alpine.store('app');
@@ -367,10 +399,12 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
         if (raw) detail = typeof raw === 'string' ? raw : (raw.message || JSON.stringify(raw));
       } catch (_) {}
       if (r.status === 401 && !String(url).includes('api/auth/login')) {
-        _noteLoggedOut(raw && typeof raw === 'object' ? raw : null);
+        if (HA_INGRESS) _noteIngress401();
+        else _noteLoggedOut(raw && typeof raw === 'object' ? raw : null);
       }
       throw new Error(detail);
     }
+    if (HA_INGRESS) _noteIngressOk();
     return await r.json();
   } catch (e) {
     // Transport failure = the request never completed. Two shapes: fetch()
@@ -595,6 +629,10 @@ document.addEventListener('alpine:init', () => {
     connected: false,
     loggedOutDismissed: false,  // "Stay on this page" in the logged-out modal
     loggedOut: null,    // set on a 401: {reason, reason_text, ended_at, ...} — see _noteLoggedOut
+    haIngress: HA_INGRESS,
+    haSessionLostSince: null,  // add-on only: first 401 of a run (#247)
+    haSessionLost: false,      // ...and it has lasted past HA_SESSION_GRACE_S
+    reloadHaPage() { _reloadHaPage(); },
     lastPollTs: null,
     version: '--',
     env: '',
@@ -684,6 +722,7 @@ document.addEventListener('alpine:init', () => {
       this.goToLogin();
     },
     goToLogin() {
+      if (HA_INGRESS) { _reloadHaPage(); return; }  // HA owns the login (#247)
       const base = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
       window.location.href = `${base}/login`;
     },

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark"{% if ha_ingress %} data-ha-ingress="1"{% endif %}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -80,6 +80,18 @@
                   class="px-2 py-0.5 rounded border border-red-400/40 hover:bg-red-500/20 disabled:opacity-50"
                   x-text="$store.app.connRetrying ? 'Retrying…' : 'Retry now'"></button>
         </span>
+      </div>
+
+      <!-- ── Home Assistant session lapsed (add-on only, #247) ──
+           Replaces the logged-out modal under ingress: HA owns the login, and
+           reloading HA's page renews its session. Shown only once 401s have
+           lasted HA_SESSION_GRACE_S, so a laptop waking up never sees it. -->
+      <div x-show="$store.app.haSessionLost" x-cloak
+           class="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 bg-amber-500/15 border-b border-amber-500/40 text-xs text-amber-200">
+        <span class="font-medium">Home Assistant's session for this page has expired</span>
+        <span class="text-amber-300/80">The bridge and your schedules keep running. Reload to continue.</span>
+        <button @click="$store.app.reloadHaPage()"
+                class="ml-auto px-2 py-0.5 rounded border border-amber-400/40 hover:bg-amber-500/20">Reload</button>
       </div>
 
       <!-- Connection details. The banner has to stay one line on a phone, but

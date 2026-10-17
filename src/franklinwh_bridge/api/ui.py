@@ -12,7 +12,12 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from franklinwh_bridge import disclaimer
-from franklinwh_bridge.api.auth import get_current_user, require_auth, require_capability
+from franklinwh_bridge.api.auth import (
+    _is_ingress,
+    get_current_user,
+    require_auth,
+    require_capability,
+)
 from franklinwh_bridge.api.disclaimer_api import _client_ip
 from franklinwh_bridge.api.gateways_api import require_known_slug
 from franklinwh_bridge.gateway.modules import API_ONLY_ROLES
@@ -132,7 +137,7 @@ async def index(request: Request, user: dict | None = Depends(get_current_user))
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"base_path": base_path, "cache_bust": _cache_bust()},
+        {"base_path": base_path, "cache_bust": _cache_bust(), "ha_ingress": _is_ingress(request)},
         headers=_HTML_HEADERS,
     )
 
@@ -149,7 +154,7 @@ async def user_dashboard(request: Request, user: dict | None = Depends(get_curre
     return templates.TemplateResponse(
         request,
         "user.html",
-        {"base_path": base_path, "cache_bust": _cache_bust()},
+        {"base_path": base_path, "cache_bust": _cache_bust(), "ha_ingress": _is_ingress(request)},
         headers=_HTML_HEADERS,
     )
 
