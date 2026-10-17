@@ -43,3 +43,6 @@ docs/reference/*.xlsx
 
 # MkDocs build output
 site/
+
+# Owner-private notes: local only, never committed (site data, captures, unpublished findings)
+private/
