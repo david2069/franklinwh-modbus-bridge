@@ -7,6 +7,23 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.17 — 2026-10-18
+
+### Changes
+- **The dashboard's device bar shows the battery SoC** instead of the
+  firmware version. Firmware is now under **Info**, and in Support info.
+- **SunSpec Explorer: Export… is at the top of the page**, next to Refresh
+  Catalog. Export all models, the models the list is showing, or the ones you
+  pick.
+- **Support info includes the battery's rated charge and discharge power**
+  (as the aGate reports it) and the rating the bridge sizes force commands
+  against.
+
+### Fixes
+- **SunSpec Explorer shows the TOU reserve register (15509)** in every mode;
+  it was blank outside TOU. Register 16002 is relabelled: it is not the TOU
+  reserve (it matches the backup SoC, `BBBackupSoc`).
+
 ## 0.2.16 — 2026-10-17
 
 ### Fixes
