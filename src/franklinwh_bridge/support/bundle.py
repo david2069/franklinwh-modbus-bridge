@@ -357,6 +357,7 @@ async def build_support_info(state: Any, *, now: float | None = None) -> dict[st
             "poll_errors": getattr(pstate, "errors_total", None),
             "consecutive_errors": getattr(pstate, "consecutive_errors", None),
             "last_error": clean(getattr(status, "last_error", None)),
+            "battery_rating": _rating_summary(inst),
         }
         rows = await link_stats_store.query(db, g["id"], since)
         with contextlib.suppress(Exception):
@@ -483,6 +484,29 @@ async def build_support_info(state: Any, *, now: float | None = None) -> dict[st
         "features": features,
         "recent_problems": problems,
     }
+
+
+def _rating_summary(inst: Any) -> dict[str, Any] | None:
+    """Rated charge/discharge power and what force commands are sized against (#258).
+
+    ``m702_w`` is Model 702's nameplate (WChaRteMaxRtg/WDisChaRteMaxRtg),
+    None when the aGate doesn't report it. ``rating_w``/``source`` are the
+    bridge's dispatch rating: calibrated, m702_confirmed, or untrusted.
+    """
+    handler = getattr(inst, "command_handler", None) if inst else None
+    rating = getattr(handler, "rating", None)
+    if rating is None:
+        return None
+    out: dict[str, Any] = {}
+    for direction in ("charge", "discharge"):
+        d = rating.decision(direction)
+        out[direction] = {
+            "m702_w": rating.dirs[direction].m702_w,
+            "trusted": d.trusted,
+            "rating_w": d.rating_w,
+            "source": d.source,
+        }
+    return out
 
 
 async def _recent_problems(
@@ -623,6 +647,13 @@ def render_markdown(info: dict[str, Any]) -> str:
             f"battery ports {_fmt(g['battery_ports'])}, home load {_fmt(g['home_load_source'])}, "
             f"poll {_fmt(g['poll_interval_s'])} s, publish to HA {_fmt(g['publish_to_ha'])}"
         )
+        for direction, r in (g.get("battery_rating") or {}).items():
+            L.append(
+                f"  - {direction}: M702 nameplate "
+                f"{(str(r['m702_w']) + ' W') if r['m702_w'] is not None else 'not reported'}, "
+                f"dispatch rating {(str(r['rating_w']) + ' W') if r['rating_w'] else '—'} "
+                f"({r['source']}{'' if r['trusted'] else ', not trusted'})"
+            )
         age = g["last_poll_age_s"]
         L.append(
             f"  - health {_fmt(g['health'])}, connected {_fmt(g['connected'])}, "

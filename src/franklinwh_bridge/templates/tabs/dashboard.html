@@ -30,8 +30,9 @@
         <span class="font-mono text-slate-300" x-text="deviceUnit"></span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-slate-500">FW</span>
-        <span class="font-mono text-slate-400" x-text="$store.app.points.version || '--'"></span>
+        <!-- SoC, not firmware (#258): firmware is in Info and Support info. -->
+        <span class="text-slate-500">SoC <span x-show="$store.app.showSources" class="source-tag">713.SoC</span></span>
+        <span class="font-mono font-semibold text-slate-200" x-text="($store.app.points.soc ?? '--') + '%'"></span>
       </div>
       <div class="flex items-center gap-2 ml-auto">
         <span class="text-slate-500">Grid</span>

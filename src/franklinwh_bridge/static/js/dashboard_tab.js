@@ -1529,6 +1529,8 @@ function dashboardTab() {
         { label: lbl('Cabinet Temperature', 'cabinet_temp_c'), value: fmt_val(pts.cabinet_temp_c, '°C') },
         { label: lbl('Command Elapsed Time', 'command_elapsed_s'), value: fmt_val(pts.command_elapsed_s, 's') },
         { label: lbl('Control Mode', 'loc_rem_ctl_name'), value: pts.loc_rem_ctl_name || '--' },
+        // Moved here from the top card, which shows SoC instead (#258).
+        { label: lbl('Firmware', 'version'), value: pts.version || '--' },
         { label: lbl('Grid Connection', 'connection_state'), value: pts.connection_state || '--' },
         { label: lbl('Grid Frequency', 'frequency_hz'), value: fmt_val(pts.frequency_hz, 'Hz') },
         { label: lbl('HW Revert Remaining', 'wset_revert_remain_s'), value: fmt_val(pts.wset_revert_remain_s, 's') },

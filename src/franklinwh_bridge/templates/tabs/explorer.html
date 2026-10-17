@@ -26,6 +26,11 @@
         <button @click="resetLayout()"
                 class="p-1.5 rounded hover:bg-slate-700/50 text-slate-600 hover:text-slate-300 transition text-xs font-bold"
                 title="Reset panel sizes to defaults">↻</button>
+        <!-- Export sits here, always visible (#228): in the model toolbar it
+             was small, crowded and only there once a model was picked. -->
+        <button @click="openExport()" data-testid="sunspec-export-open" x-show="modelCount > 0"
+                class="px-3 py-1.5 text-xs font-medium rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition"
+                title="Export this model, chosen models or all of them (JSON or CSV), with a preview">Export…</button>
         <button @click="refreshCatalog()"
                 class="px-3 py-1.5 text-xs font-medium rounded bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition disabled:opacity-40"
                 :disabled="refreshing">
@@ -144,12 +149,6 @@
                 <option value="F">F (Failed)</option>
                 <option value="X">X (N/A)</option>
               </select>
-            </div>
-            <!-- Export buttons -->
-            <div class="flex items-center gap-1 text-[10px]">
-              <button @click="openExport()" data-testid="sunspec-export-open"
-                      class="px-1.5 py-0.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition"
-                      title="Export this model, chosen models or all of them (JSON or CSV), with a preview">Export…</button>
             </div>
             <span class="text-xs text-slate-500"
                   x-text="(accessFilter || picsFilter)
@@ -364,12 +363,13 @@
         </p>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 text-xs text-slate-300">
           <label class="flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" value="model" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
-            <span x-text="exportScopeLabel()"></span>
-          </label>
-          <label class="flex items-center gap-1.5 cursor-pointer">
             <input type="radio" value="all" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
             <span x-text="'All models (' + modelCount + ')'"></span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer"
+                 title="The models the list on the left shows now, after its filter and Hide unpolled models">
+            <input type="radio" value="displayed" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
+            <span x-text="exportScopeLabel()"></span>
           </label>
           <label class="flex items-center gap-1.5 cursor-pointer">
             <input type="radio" value="choose" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">

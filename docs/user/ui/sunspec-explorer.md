@@ -35,7 +35,6 @@ were found, and:
 | **Addr: SunSpec / Base-0** | Shows register addresses the SunSpec way (1-based, as in the SunSpec documents) or 0-based (as many Modbus tools expect). |
 | **Access** | All, R (read-only) or RW (writable). |
 | **PICS** | Filters by compliance mark (see below). |
-| **Export…** | Opens the export window: see [Exporting models](#exporting-models). |
 | **↻** | Reads the model from the aGate now. |
 
 If the model is not polled, a notice says **Not actively polled — no live values** with a
@@ -60,12 +59,13 @@ Your marks are saved in the bridge's database, per model and point.
 
 ## Exporting models
 
-**Export…** opens a window to export the SunSpec map with its current values, for a GitHub
-issue, a Gist, or someone writing another integration.
+**Export…**, at the top of the page next to **Refresh Catalog**, opens a window to export the
+SunSpec map with its current values, for a GitHub issue, a Gist, or someone writing another
+integration.
 
 | Option | Choices |
 |---|---|
-| Models | **This model**, **All models**, or **Choose models** (click model numbers to add or remove them). |
+| Models | **All models** (the default), **Displayed models** (the ones the list on the left shows after its filter and *Hide unpolled models*), or **Choose models** (click model numbers to add or remove them). |
 | Format | **JSON** (with the gateway's model and firmware) or **CSV** (one row per point). |
 | **Redact serial number** | On by default. Replaces the serial number with `<serial>`: in model 1's `SN` and anywhere else it appears, including its last 8 characters. Turn it off only if you want to share the serial. |
 

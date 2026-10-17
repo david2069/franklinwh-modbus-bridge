@@ -227,3 +227,21 @@ async def test_startup_disclaimer_is_not_a_problem(client):
     body = (await client.get("/api/support/info")).json()
     assert not any("PLEASE READ" in e["message"] for e in body["info"]["recent_problems"]["last"])
     assert "PLEASE READ" not in body["markdown"]
+
+
+async def test_bundle_has_the_battery_rating(client):
+    """#258: the M702 nameplate and what force commands are sized against."""
+    r = await client.post("/api/setup/demo", json={})
+    assert r.status_code in (200, 201), r.text
+    for _ in range(100):
+        if app.state.registry.get("demo") is not None:
+            break
+        await asyncio.sleep(0.05)
+    body = (await client.get("/api/support/info")).json()
+    demo = next(g for g in body["info"]["gateways"] if g["mock"])
+    for direction in ("charge", "discharge"):
+        r = demo["battery_rating"][direction]
+        assert set(r) == {"m702_w", "trusted", "rating_w", "source"}
+        assert r["source"] == "mock" and r["trusted"] is True
+    assert "charge: M702 nameplate" in body["markdown"]
+    assert "dispatch rating" in body["markdown"]
