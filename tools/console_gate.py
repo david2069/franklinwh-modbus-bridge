@@ -522,6 +522,28 @@ def run(url: str, user: str, password: str) -> int:
         if not page.locator("[x-model\\.number='ph.interval_s']").count():
             problems.append("settings: Point History panel missing")
 
+        # Phone width (#262): the bottom bar replaces the sidebar, More opens
+        # and closes, and no page scrolls sideways.
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(500)
+        for tab in ("dashboard", "settings"):
+            _goto(page, f"{url}?tab={tab}", problems)
+            page.wait_for_timeout(1000)
+            if not page.locator("[data-testid=bottom-nav]").is_visible():
+                problems.append(f"phone: bottom bar missing on {tab}")
+                continue
+            width = page.evaluate("() => document.documentElement.scrollWidth")
+            if width > 390:
+                problems.append(f"phone: {tab} scrolls sideways ({width}px)")
+            page.locator("[data-testid=bottom-nav-more]").click()
+            page.wait_for_timeout(400)
+            if not page.locator("[data-testid=more-sheet]").is_visible():
+                problems.append(f"phone: More sheet did not open on {tab}")
+            page.locator("[data-testid=bottom-nav-more]").click()
+            page.wait_for_timeout(400)
+            if page.locator("[data-testid=more-sheet]").is_visible():
+                problems.append(f"phone: More sheet did not close on {tab}")
+
         browser.close()
 
     if problems:

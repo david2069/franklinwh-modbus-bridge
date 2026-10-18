@@ -16,6 +16,21 @@ The UI has three parts:
 | **Top bar** | Top | Live status, the gateway selector, battery release, and display options. See [Top bar](top-bar.md). |
 | **Page** | Centre | The page you picked in the sidebar. |
 
+### On a phone
+
+At 699 px wide or less (most phones, including the Home Assistant app), the
+sidebar gives way to a **bottom tab bar**, as in the Direct Connect bridge:
+
+- The bar shows as many pages as fit: Home, Schedule, HA, Logs, Settings, and so on, in that
+  order. Switched-off pages are left out.
+- **More** opens a sheet with the pages that didn't fit, plus **Guide** (this documentation,
+  at the page for the tab you are on) and, for admins, **Support** (the
+  [Support info](settings-admin.md#support-info) card).
+- The top bar wraps: the page title and actions on the first line, the Grid / Solar / Load
+  indicators below.
+
+Wider screens (tablets, desktops) keep the sidebar.
+
 The address bar always shows the page you are on, so you can bookmark or share it:
 `/?tab=dashboard`, `/?tab=settings&section=home-assistant`, and so on.
 

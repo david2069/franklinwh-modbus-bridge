@@ -150,6 +150,29 @@ const MODE_LEGEND_COLORS = {
 };
 
 // Settings sub-tabs, in display order. Every Settings card belongs to one.
+/** Navigation tabs, in bottom-bar priority order (#262). One list drives the
+ *  phone bar and its More sheet, like the Direct Connect bridge's registry;
+ *  the desktop sidebar keeps its own markup. Icons are the sidebar's. */
+const NAV_TABS = [
+  { key: 'dashboard', short: 'Home', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
+  { key: 'schedule', short: 'Schedule', icon: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="16" r="3"/>' },
+  { key: 'energy_costs', short: 'Costs', icon: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>' },
+  { key: 'ha_entities', short: 'HA', icon: '<path d="M3 9.5L12 3l9 6.5"/><path d="M5 10v10h14V10"/><rect x="9" y="13" width="6" height="7"/>' },
+  { key: 'logs', short: 'Logs', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>' },
+  { key: 'explorer', short: 'SunSpec', icon: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>' },
+  { key: 'sequencer', short: 'Sequencer', icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>' },
+  { key: 'settings', short: 'Settings', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' },
+];
+/** At this width and below the bottom bar replaces the sidebar (as Direct Connect). */
+const PHONE_NAV_QUERY = '(max-width: 699px)';
+/** The published user guide, and the page for each tab (#261: links, not bundled). */
+const DOCS_URL = 'https://david2069.github.io/franklinwh-modbus-bridge/';
+const GUIDE_PAGES = {
+  dashboard: 'user/ui/dashboard/', explorer: 'user/ui/sunspec-explorer/', logs: 'user/ui/logs/',
+  sequencer: 'user/ui/sequencer/', schedule: 'user/scheduler/', ha_entities: 'user/ui/home-assistant-page/',
+  energy_costs: 'user/ui/energy-costs/', settings: 'user/ui/settings-admin/',
+};
+
 const SETTINGS_SECTIONS = [
   { id: 'gateways',       label: 'Site & Gateways' },
   { id: 'home-assistant', label: 'Home Assistant' },
@@ -487,6 +510,24 @@ document.addEventListener('alpine:init', () => {
       return window.innerWidth < 768;
     })(),
 
+    // Phone navigation (#262).
+    phoneNav: window.matchMedia(PHONE_NAV_QUERY).matches,
+    viewW: window.innerWidth,
+    moreOpen: false,
+    get navTabs() { return NAV_TABS.filter(t => this.canSee(t.key)); },
+    /** Slots as in Direct Connect: max(4, width / 64). The last is always More,
+     *  which also holds Guide and Support info. */
+    get barTabs() { return this.navTabs.slice(0, Math.max(4, Math.floor(this.viewW / 64)) - 1); },
+    get moreTabs() { return this.navTabs.slice(this.barTabs.length); },
+    get moreActive() { return this.moreTabs.some(t => t.key === this.activeTab); },
+    get guideUrl() { return DOCS_URL + (GUIDE_PAGES[this.activeTab] || ''); },
+    goTab(key) { this.moreOpen = false; this.setTab(key); },
+    openSupportInfo() {
+      this.moreOpen = false;
+      this.setTab('settings', { section: 'admin' });
+      setTimeout(() => document.getElementById('support-info')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    },
+
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
       localStorage.setItem('fwh-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
@@ -681,6 +722,9 @@ document.addEventListener('alpine:init', () => {
       // on a phone losing wifi, well before our 10s poll notices.
       addEventListener('online', () => { this.deviceOffline = false; this.retryNow(); });
       addEventListener('offline', () => { this.deviceOffline = true; });
+      const phoneMq = window.matchMedia(PHONE_NAV_QUERY);
+      phoneMq.addEventListener('change', (e) => { this.phoneNav = e.matches; this.moreOpen = false; });
+      addEventListener('resize', () => { this.viewW = window.innerWidth; });
       this.loadMe();
       this.refresh();
       this.loadModules();
