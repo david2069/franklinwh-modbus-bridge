@@ -74,9 +74,10 @@ The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery 
 
 ## Battery power rating
 
-Force charge and discharge are sized against the battery's **power rating**.
-FranklinWH doesn't report the battery model or count over Modbus, so since
-0.2.8 a force command is only sent once the rating is **trusted**. That means
-either the bridge has seen your battery run at the aGate's rating, or you have
-**calibrated** it. See
+Force charge and discharge are sized against the battery's **power rating**:
+the aGate's **nameplate** charge and discharge rating, which it reports over
+SunSpec (Model 702 `WChaRteMaxRtg` / `WDisChaRteMaxRtg`; 5000 W each on a
+single-aPower reference site). The bridge uses it as reported. If the battery
+is ever seen running well above it, the bridge stops using it until you
+**calibrate** the rating. See
 [Settings: Site & Gateways → Battery power rating](user/ui/settings-site-gateways.md).

@@ -50,28 +50,31 @@ Power, Duration and Target SoC are *staged*: changing one while no command is ru
 stores it for the next command. Changing Power **while** a force command is running
 re-sends that command at the new power.
 
-### Power is in watts, and needs a trusted rating
+### Power is in watts, sized against the battery rating
 
-Since 0.2.8 force commands are sized only against a **trusted battery rating**. The aGate
-is commanded with a percentage of a rating that the bridge supplies. Earlier versions took
-the aGate's own Model 702 figure on trust, or assumed 5000 W. On a site with several
-aPowers, "100 %" of an assumed 5 kW was applied by the aGate as 100 % of 20 kW.
+Force commands are sized against the **battery rating**. The aGate is commanded with a
+percentage of a rating the bridge supplies: the aGate's **nameplate** rating from SunSpec
+Model 702, as reported (since 0.2.20), or the rating you calibrated. The bridge never
+assumes 5000 W: if the aGate reports no rating, force commands are refused.
 
-So now:
+There is a guard, from a site with several aPowers where "100 %" ran at 20 kW: if the
+battery is seen well above the rating, the bridge stops using it until you calibrate.
+
+So:
 
 - **Power % has been removed.** Power is set in watts only. A command in percent is
   refused with *"Power % has been removed: set Command Power in watts"*. Schedules saved
   before 0.2.8 that still use a percentage keep working; they are sized against the trusted
   rating when they run.
-- **Force Charge and Force Discharge are refused until the rating for that direction is
-  trusted.** The command log and toast show *"Refused Force Charge: … Calibrate it:
+- **Force Charge and Force Discharge are refused when the rating for that direction is
+  unknown or contradicted.** The command log and toast show *"Refused Force Charge: … Calibrate it:
   Settings → Site & Gateways → this gateway → Battery power rating"*. Force Standby and
   Release always work.
 - A requested power above the trusted rating is capped at the rating.
 
-A rating becomes trusted when you **calibrate** it, or when the battery has been seen
-running at 80–115 % of the aGate's own figure. It stops being trusted if the battery is
-later seen running well above it. How to calibrate:
+The rating is the aGate's nameplate as reported; seeing the battery run at 80–115 % of it
+confirms it, and **calibrating** replaces it with a measured figure. It stops being used if
+the battery is seen running well above it. How to calibrate:
 [Battery power rating](settings-site-gateways.md#battery-power-rating).
 
 !!! note "Demo gateway"

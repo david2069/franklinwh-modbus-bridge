@@ -60,11 +60,12 @@ def test_unknown_rating_is_not_trusted():
     assert not d.trusted and d.source == "unknown" and "Calibrate" in d.reason
 
 
-async def test_m702_alone_is_not_trusted():
+async def test_m702_nameplate_is_trusted_as_reported():
+    """#269: the aGate's SunSpec nameplate is a valid rating."""
     r = BatteryRating("g")
     await r.record_m702(5000, 5000)
-    assert r.decision("discharge").source == "m702_unconfirmed"
-    assert not r.decision("discharge").trusted
+    d = r.decision("discharge")
+    assert d.source == "m702_nameplate" and d.trusted and d.rating_w == 5000
 
 
 async def test_m702_confirmed_by_an_observed_peak():
@@ -73,7 +74,8 @@ async def test_m702_confirmed_by_an_observed_peak():
     await r.observe({"battery_power_w": 4900})  # the owner's 18:00 discharge
     d = r.decision("discharge")
     assert d.trusted and d.rating_w == 5000 and d.source == "m702_confirmed"
-    assert not r.decision("charge").trusted  # never seen charging near 5 kW
+    c = r.decision("charge")  # never seen charging near 5 kW: the nameplate as reported
+    assert c.trusted and c.source == "m702_nameplate"
 
 
 async def test_peak_far_above_m702_contradicts_it():
@@ -281,8 +283,8 @@ async def test_rating_and_calibration_routes(ctrl, db, clock):
     base = "/api/gateways/g1/battery-rating"
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         r = (await c.get(base)).json()
-        assert r["discharge"]["source"] == "m702_unconfirmed" and r["soc"] == 52
-        assert (await c.get("/api/gateways/g1/battery/limits")).json()["max_discharge_w"] is None
+        assert r["discharge"]["source"] == "m702_nameplate" and r["soc"] == 52
+        assert (await c.get("/api/gateways/g1/battery/limits")).json()["max_discharge_w"] == 5000
         assert (await c.get("/api/gateways/nope/battery-rating")).status_code == 404
 
         r = await c.post(base + "/calibration", json={"action": "start", "direction": "discharge"})
@@ -294,7 +296,7 @@ async def test_rating_and_calibration_routes(ctrl, db, clock):
         r = (await c.post(base + "/calibration", json={"action": "finish"})).json()
         assert r["discharge"]["trusted"] and r["discharge"]["rating_w"] == 19800
         lim = (await c.get("/api/gateways/g1/battery/limits")).json()
-        assert lim["max_discharge_w"] == 19800 and lim["max_charge_w"] is None
+        assert lim["max_discharge_w"] == 19800 and lim["max_charge_w"] == 5000  # nameplate
 
         r = await c.post(base + "/calibration", json={"action": "start"})
         assert r.status_code == 422

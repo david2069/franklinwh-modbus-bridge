@@ -47,9 +47,9 @@ On the checklist step the wizard also asks:
 On Docker and Python installs *HA connected* stays ✗ until you add your Home Assistant in **Settings → Home Assistant → + Add Home Assistant**. The add-on connects its own HA by itself.
 
 !!! tip "After connecting: battery power rating"
-    Force charge and discharge stay unavailable until the gateway's battery power
-    rating is trusted. If your battery has already run at full power, that happens
-    by itself. Otherwise calibrate it: **Settings → Site & Gateways → your gateway
+    Force charge and discharge use the aGate's nameplate rating (SunSpec Model 702)
+    as soon as the bridge has read it. Calibrating is optional; it replaces the
+    nameplate with a measured figure: **Settings → Site & Gateways → your gateway
     → Edit → Battery power rating**.
 
 ## Explore with a demo gateway

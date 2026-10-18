@@ -40,8 +40,9 @@ The footer gives the update time in the bridge's timezone.
    whichever comes first ends the dispatch.
 5. Press **Start**. **Stop** releases it and hands control back to the aGate.
 
-!!! info "Needs a trusted battery rating"
-    **Start** stays disabled until the gateway's battery power rating is trusted. The card
+!!! info "Needs a battery rating"
+    **Start** stays disabled while the gateway has no usable battery power rating (the
+    aGate reported none, or the battery ran well above it). The card
     then says *"Battery power not calibrated yet — ask the bridge admin to calibrate it"*.
     The admin does this in
     [Settings → Site & Gateways → Battery power rating](settings-site-gateways.md#battery-power-rating).
