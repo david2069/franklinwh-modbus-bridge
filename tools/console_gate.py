@@ -352,6 +352,13 @@ def run(url: str, user: str, password: str) -> int:
             page.wait_for_timeout(500)
             modal.locator("button:has-text('JSON')").click()
             page.wait_for_timeout(500)
+            ext = modal.locator("[data-testid=sunspec-export-ext]")
+            ext.uncheck()
+            page.wait_for_timeout(500)
+            ext.check()
+            page.wait_for_timeout(500)
+            if "franklinwh_extensions" not in modal.locator("[data-testid=sunspec-export-preview]").input_value():
+                problems.append("explorer: export has no franklinwh_extensions section")
             redact = modal.locator("[data-testid=sunspec-export-redact]")
             redact.uncheck()
             page.wait_for_timeout(500)

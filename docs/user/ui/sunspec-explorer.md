@@ -67,6 +67,7 @@ integration.
 |---|---|
 | Models | **All models** (the default), **Displayed models** (the ones the list on the left shows after its filter and *Hide unpolled models*), or **Choose models** (click model numbers to add or remove them). |
 | Format | **JSON** (with the gateway's model and firmware) or **CSV** (one row per point). |
+| **Include FranklinWH extensions** | On by default. Adds the FranklinWH extension registers (15000–15039, 15500+, 16000+) as their own section: in JSON a `franklinwh_extensions` block whose `note` says they are **not SunSpec** (undocumented by FranklinWH, named by this bridge, some unconfirmed); in CSV, rows with Model `ext`. The file name gains `_ext`. |
 | **Redact serial number** | On by default. Replaces the serial number with `<serial>`: in model 1's `SN` and anywhere else it appears, including its last 8 characters. Turn it off only if you want to share the serial. |
 
 The preview shows exactly what you will get. The gateway's IP address and name are never
@@ -98,7 +99,7 @@ outside the SunSpec models. Click its header to show or hide it.
   FranklinWH documentation, or from site notes marked *unconfirmed*), or only the unnamed
   ones (`Reg15xxx`, description *Unknown*).
 - **Hide zeros** hides registers that read 0.
-- **JSON / CSV** download the list.
+- To export them, use **Export…** at the top with *Include FranklinWH extensions* on.
 
 Columns: Addr, Register, Description, Value, Hex, Type, Acc (access), Unit.
 
