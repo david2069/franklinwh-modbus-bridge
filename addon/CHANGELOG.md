@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.19 — 2026-10-19
+
+### Fixes
+- **The top bar no longer hides things on narrower screens.** It wraps onto
+  a second line instead, at every width. Before, some widths (an iPad mini)
+  lost the Grid / Solar / Load indicators.
+- **The reserve of the mode that isn't active shows as unknown**, with no
+  slider. The aGate only reports the active mode's reserve over Modbus;
+  before, the other one showed a slider in the middle with an empty box, and
+  moving it could change the active reserve. Set it in the FranklinWH app.
+
 ## 0.2.18 — 2026-10-18
 
 ### Changes
