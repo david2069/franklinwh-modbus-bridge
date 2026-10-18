@@ -96,9 +96,10 @@ later seen running well above it. How to calibrate:
 | **TOU Reserve %** | 0–100 %, steps of 5 | The reserve SoC kept back in Time of Use mode. |
 
 !!! info "Only the active mode's reserve can be read"
-    Over Modbus the aGate only reports the reserve of the mode that is active now. The other
-    one shows blank, with *"— only readable while … is active"*. You can still set it. The
-    blank box does not mean the reserve is 0.
+    Over Modbus the aGate only reports the reserve of the mode that is active now: both
+    reserve registers return that one value (checked on firmware V10R01B04D00, 2026-10-18).
+    The other mode's reserve shows as *unknown*, with no slider, so nothing is written to
+    it from here. Set it in the FranklinWH app.
 
 The card has its own command log, like Battery Control.
 

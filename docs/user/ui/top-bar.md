@@ -54,7 +54,9 @@ When you have sent a force command (from the Dashboard, the simple dashboard or 
 schedule), an orange **Forced** badge appears next to the battery state. This is
 different from the battery's normal charging and discharging.
 
-On a narrow window the labels drop and only the dots remain. Each dot keeps its tooltip.
+Nothing in the top bar is hidden because the window is narrow. When it doesn't fit on one
+line it wraps onto a second (and on a phone a third): page title and gateway first, then the
+connection, time and buttons, then the Grid / Solar / Load / battery indicators.
 
 The time shows the bridge's timezone, for example `20:18 NZDT`. If your device is in a
 different timezone, a second labelled line gives your local time too.

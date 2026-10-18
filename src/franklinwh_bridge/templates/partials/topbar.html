@@ -1,8 +1,8 @@
 <!-- ── Topbar ─────────────────────────────────────────── -->
-<!-- On a phone (#262) it wraps: title and actions on one line, gateway and
-     status indicators below, instead of truncating and hiding them. -->
-<header :class="$store.app.phoneNav ? 'flex-wrap gap-y-1' : ''"
-        class="flex items-center justify-between gap-x-2 lg:gap-4 px-3 lg:px-6 py-2 lg:py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
+<!-- One rule at every width: nothing is hidden because the window is narrow;
+     the bar wraps onto a second line when it doesn't fit (#262, owner
+     2026-10-18: per-item breakpoints left 700-767 px with no status dots). -->
+<header class="flex flex-wrap gap-y-1 items-center justify-between gap-x-2 lg:gap-4 px-3 lg:px-6 py-2 lg:py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
 
   <!-- Left: Sidebar toggle + Page title -->
   <div class="flex items-center gap-2 lg:gap-3 min-w-0">
@@ -12,7 +12,7 @@
             x-text="$store.app.sidebarCollapsed ? '▶' : '◀'">
     </button>
 
-    <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider truncate"
+    <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider whitespace-nowrap"
         x-text="({ dashboard: 'Dashboard', explorer: 'SunSpec Explorer', logs: 'Logs',
                    sequencer: 'Sequencer', schedule: 'Schedule', ha_entities: 'Home Assistant',
                    energy_costs: 'Energy Costs', settings: 'Settings' })[$store.app.activeTab] || ''">
@@ -62,13 +62,13 @@
        them silently, including the red Grid dot that says the aGate is
        islanded. Below xl the labels give way and each dot keeps a tooltip. -->
   <div class="items-center gap-2 xl:gap-3 text-[10px] font-semibold uppercase tracking-wider"
-       :class="$store.app.phoneNav ? 'flex order-last' : 'hidden md:flex'">
+       :class="$store.app.phoneNav ? 'flex order-last' : 'flex'">
     <!-- Grid -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='grid')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='grid')}`"
          class="flex items-center gap-1.5"
          :title="'Grid: ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected')">
-      <span class="text-slate-500" :class="$store.app.phoneNav ? 'inline' : 'hidden xl:inline'">Grid</span>
+      <span class="text-slate-500">Grid</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="$store.app.points.connection_state === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
@@ -77,7 +77,7 @@
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='solar')}`"
          class="flex items-center gap-1.5"
          :title="'Solar: ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating')">
-      <span class="text-slate-500" :class="$store.app.phoneNav ? 'inline' : 'hidden xl:inline'">Solar</span>
+      <span class="text-slate-500">Solar</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="($store.app.solarPowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
@@ -86,7 +86,7 @@
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='load')}`"
          class="flex items-center gap-1.5"
          :title="'Load: ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none')">
-      <span class="text-slate-500" :class="$store.app.phoneNav ? 'inline' : 'hidden xl:inline'">Load</span>
+      <span class="text-slate-500">Load</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="($store.app.homePowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-slate-600'"></span>
     </div>
@@ -95,7 +95,7 @@
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='battery')}`"
          class="flex items-center gap-1.5"
          :title="'Battery: ' + ($store.app.points.battery_state || 'Standby')">
-      <span class="hidden xl:inline"
+      <span class="inline"
             :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
                     $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-500'"
             x-text="$store.app.points.battery_state || 'Standby'"></span>
@@ -110,18 +110,18 @@
   </div>
 
   <!-- Right: Status indicators + actions -->
-  <div class="flex items-center gap-2 lg:gap-4 shrink-0">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
 
     <!-- Logged out: the bridge answers but refuses this page's login. -->
     <button type="button" x-show="$store.app.loggedOut" @click="$store.app.goToLogin()"
             class="flex items-center gap-2 text-xs font-medium text-amber-400 hover:text-amber-300">
-      <span class="hidden sm:inline">Logged out — log in</span>
+      <span>Logged out — log in</span>
       <div class="w-2 h-2 rounded-full bg-amber-400"></div>
     </button>
 
     <!-- Connection status (text-then-dot, matching the indicators on the left) -->
     <div class="flex items-center gap-2" x-show="!$store.app.loggedOut">
-      <span class="hidden sm:inline text-xs font-medium"
+      <span class="text-xs font-medium"
             :class="$store.app.connected ? 'text-emerald-400' : 'text-red-400'"
             x-text="$store.app.connected ? 'Connected' : 'Disconnected'"></span>
       <div class="w-2 h-2 rounded-full"
@@ -137,7 +137,7 @@
     <!-- Last poll, in the BRIDGE's zone and labelled with it (#79). When this
          device is in another zone, a second, labelled line gives its own time:
          both readings, never an unlabelled one. Full stamp on hover. -->
-    <span class="hidden md:inline-flex flex-col items-end leading-tight text-xs text-slate-500"
+    <span class="inline-flex flex-col items-end leading-tight text-xs text-slate-500"
           :title="$store.app.hasAnyGateway ? 'Last poll: ' + fmt.at($store.app.lastPollTs) : 'No aGate or demo gateway set up yet'">
       <span data-testid="topbar-clock"
             x-text="$store.app.hasAnyGateway
@@ -164,7 +164,7 @@
     <!-- Model point source toggle -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='sunspec')?.visible !== false"
             @click="$store.app.toggleSources()"
-            class="hidden lg:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition"
+            class="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition"
             :class="$store.app.showSources
               ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
               : 'text-slate-300 hover:text-slate-100 bg-slate-700/50 hover:bg-slate-700 border border-slate-600/30'"
@@ -182,7 +182,7 @@
               :title="'Signed in as ' + ($store.app.me?.username || '')">
         <span class="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-300 grid place-items-center text-[11px] font-semibold uppercase"
               x-text="($store.app.me?.username || '?').slice(0,1)"></span>
-        <span class="text-xs hidden sm:inline" x-text="$store.app.me?.username"></span>
+        <span class="text-xs" x-text="$store.app.me?.username"></span>
       </button>
       <div x-show="open" x-cloak x-transition
            class="absolute right-0 mt-1 w-44 rounded-md border border-white/10 bg-slate-800 shadow-2xl py-1 z-[80]">
@@ -197,7 +197,7 @@
     <!-- Theme toggle -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='theme')?.visible !== false"
             @click="$store.app.toggleTheme()"
-            class="hidden sm:block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+            class="block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
             :title="$store.app.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
       <svg x-show="$store.app.theme === 'dark'" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="5"/><path stroke-linecap="round" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -210,7 +210,7 @@
     <!-- Refresh button -->
     <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='refresh')?.visible !== false"
             @click="$store.app.refresh()"
-            class="hidden sm:block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
+            class="block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
             title="Refresh now">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
