@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.18] — 2026-10-18
+
+### Added
+
+- **Phone layout (#262).** At ≤699 px: bottom tab bar (max(4, width/64)
+  slots, last is More), More sheet (overflow tabs, Guide to the published
+  docs, Support info), wrapping top bar and device bar. Desktop unchanged.
+  The console gate gains a phone-width pass.
+
 ## [0.2.17] — 2026-10-18
 
 ### Changed

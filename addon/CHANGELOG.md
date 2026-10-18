@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.18 — 2026-10-18
+
+### Changes
+- **A phone layout, like the Direct Connect bridge.** On a phone (including
+  the Home Assistant app) a bar at the bottom replaces the sidebar; **More**
+  holds the other pages, the **Guide** and **Support**. The top bar wraps
+  instead of cutting off the page title and hiding the status dots. Tablets
+  and desktops are unchanged.
+
 ## 0.2.17 — 2026-10-18
 
 ### Changes
