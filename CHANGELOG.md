@@ -13,6 +13,17 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.19] — 2026-10-19
+
+### Fixed
+
+- **One top-bar rule: wrap, never hide (#262 follow-up).** Per-item
+  breakpoints removed; 700–767 px had neither the phone layout nor the
+  status dots.
+- **Unknown reserve shows no slider (#256).** Dashboard and Controls show the
+  inactive mode's reserve as unknown, with no write; 15508 = 15509 = the
+  active reserve on V10R01B04D00 (owner reading). Other write paths: #266.
+
 ## [0.2.18] — 2026-10-18
 
 ### Added
