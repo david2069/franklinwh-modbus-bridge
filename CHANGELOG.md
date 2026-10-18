@@ -13,6 +13,19 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.20] — 2026-10-19
+
+### Changed
+
+- **M702 nameplate is the battery rating (#269).** Trusted as reported
+  (`m702_nameplate`); calibrated and observed-confirmed still preferred; no
+  M702 rating → refused (never 5000 W assumed); #133 guard unchanged. Docs
+  corrected: the aGate does report a nameplate rating.
+- **Export… includes the FranklinWH extensions (#228)**, marked not SunSpec
+  (JSON `franklinwh_extensions` block with a note; CSV rows `ext`). The
+  extensions panel's JSON/CSV buttons are removed. 15508/15509 descriptions
+  say both read the active reserve on V10R01B04D00.
+
 ## [0.2.19] — 2026-10-19
 
 ### Fixed

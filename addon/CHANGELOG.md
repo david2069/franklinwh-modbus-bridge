@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.20 — 2026-10-19
+
+### Changes
+- **The battery rating is the aGate's nameplate.** Force charge and
+  discharge use the rating the aGate reports over SunSpec (Model 702) as soon
+  as the bridge reads it; calibrating is optional. The bridge still stops
+  using a rating if the battery is seen running well above it.
+- **SunSpec Explorer → Export… can include the FranklinWH extension
+  registers**, in their own section marked as not SunSpec. The extensions
+  panel's separate JSON / CSV buttons are gone.
+
 ## 0.2.19 — 2026-10-19
 
 ### Fixes
