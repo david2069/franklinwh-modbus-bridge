@@ -128,9 +128,10 @@ refuses, because one aGate can only hold one Modbus session.
 
 ### Battery power rating
 
-Force charge and force discharge are sized against this rating, so they are **refused
-until it is trusted**. See [Battery controls](controls.md#power-is-in-watts-and-needs-a-trusted-rating)
-for why.
+Force charge and force discharge are sized against this rating: the aGate's SunSpec
+nameplate (Model 702) as reported, or the figure you calibrated. They are refused only when
+there is no rating or it has been contradicted. See
+[Battery controls](controls.md#power-is-in-watts-sized-against-the-battery-rating).
 
 The section shows one line per direction:
 
@@ -140,14 +141,13 @@ The section shows one line per direction:
 |---|---|---|
 | *N W — calibrated at N W* | Yes | You calibrated it. |
 | *N W — aGate rating N W, seen at M W* | Yes | The aGate's Model 702 rating, confirmed: the battery has run at 80–115 % of it. |
-| *aGate rating N W not confirmed (never seen running / highest seen M W)* | No | The aGate reports a rating, but the battery has not yet run near it. |
+| *N W — aGate nameplate rating (SunSpec M702) N W* | Yes | The aGate's Model 702 nameplate, as reported. |
 | *battery … seen at M W, above the aGate's rating of N W* | No | Contradicted: the battery ran more than 15 % (plus 300 W) above the rating. |
 | *battery … power rating unknown* | No | The aGate reports no rating. |
 | *Connect this gateway to see and calibrate its battery power rating* | — | The gateway is not connected. |
 
-A trusted rating stops being trusted if the battery is later seen well above it, or if a
-command overshoots it. Force commands in that direction are then blocked until you
-calibrate again.
+A rating stops being used if the battery is later seen well above it, or if a command
+overshoots it. Force commands in that direction are then blocked until you calibrate.
 
 #### Calibrating
 

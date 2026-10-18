@@ -1,21 +1,25 @@
 """Battery power rating: the reference every force command is sized against (#133, #134).
 
 The aGate is commanded with a percentage (Model 704 ``WSetPct``) of a power the
-bridge has to supply. Model 702's ``WChaRteMaxRtg``/``WDisChaRteMaxRtg`` were
-taken on trust, with 5000 W assumed when they were missing. On a site with
-several aPowers that sent "100 %" for a 5 kW request, and the aGate applied 100 %
-of 20 kW (#133). So a rating is now *trusted* only when it is backed by
-evidence, and force commands are refused until it is:
+bridge has to supply. The aGate reports its nameplate charge and discharge
+rating over SunSpec (Model 702 ``WChaRteMaxRtg``/``WDisChaRteMaxRtg``; 5000 W
+each on the reference site), and that is the rating used (owner, 2026-10-19,
+#269). In order of preference:
 
 * ``calibrated`` — the owner ran a full-rate dispatch from the official app
   (TOU battery dispatch: force charge from grid / force discharge to grid, with
-  import and export unlimited) and the bridge recorded the peak; or
-* ``m702_confirmed`` — Model 702's rating, and the battery has been seen running
-  at 80–115 % of it.
+  import and export unlimited) and the bridge recorded the peak;
+* ``m702_confirmed`` — the nameplate, and the battery has been seen at 80–115 %
+  of it;
+* ``m702_nameplate`` — the nameplate as reported.
 
+With no M702 rating at all (missing or failed read) the rating is unknown and
+force commands are refused: the bridge never assumes 5000 W.
+
+The guard from #133 stays: on a site with four aPower 2, "100 %" ran at 20 kW.
 A rating stops being trusted when the battery is seen above it (the passive
 detector) or a command overshoots (the guard in ``CommandHandler``), until it is
-calibrated again. Mock gateways are always trusted: they drive simulated state.
+calibrated. Mock gateways are always trusted: they drive simulated state.
 
 Telemetry sign: ``battery_power_w`` > 0 is discharging, < 0 charging.
 """
@@ -58,7 +62,7 @@ class Decision:
     direction: str
     trusted: bool
     rating_w: int | None
-    source: str  # calibrated | m702_confirmed | m702_unconfirmed | contradicted | unknown | mock
+    source: str  # calibrated | m702_confirmed | m702_nameplate | contradicted | unknown | mock
     reason: str
 
     def as_dict(self) -> dict[str, Any]:
@@ -123,9 +127,11 @@ class BatteryRating:
             if d.peak_w and d.peak_w >= d.m702_w * CONFIRM_MIN:
                 return Decision(direction, True, d.m702_w, "m702_confirmed",
                                 f"aGate rating {d.m702_w} W, seen at {d.peak_w} W")
-            seen = f"highest seen {d.peak_w} W" if d.peak_w else "never seen running"
-            return Decision(direction, False, None, "m702_unconfirmed",
-                            f"aGate rating {d.m702_w} W not confirmed ({seen}). {CALIBRATE_HINT}")
+            # The aGate's SunSpec nameplate is a valid rating (owner, 2026-10-19,
+            # #269): used as reported. The guard above still withdraws it if
+            # the battery is ever seen above it.
+            return Decision(direction, True, d.m702_w, "m702_nameplate",
+                            f"aGate nameplate rating (SunSpec M702) {d.m702_w} W")
         return Decision(direction, False, None, "unknown",
                         f"battery {direction} power rating unknown. {CALIBRATE_HINT}")
 
