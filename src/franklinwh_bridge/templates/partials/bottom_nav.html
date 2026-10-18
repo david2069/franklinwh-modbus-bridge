@@ -1,0 +1,74 @@
+{#
+  Phone navigation (#262), matching the Direct Connect bridge: at 699 px and
+  below a bottom tab bar replaces the sidebar. Tabs that don't fit go in the
+  More sheet, which also holds the Guide (the published docs, #261) and, for
+  admins, Support info. Tabs come from NAV_TABS in app.js.
+#}
+<div x-data>
+<template x-if="$store.app.phoneNav">
+  <div>
+    <!-- Backdrop; the bar stays above it, so pressing More again closes the sheet. -->
+    <div x-show="$store.app.moreOpen" x-cloak
+         class="fixed left-0 right-0 top-0 bottom-0 bg-black/60" style="z-index: 60;"
+         @click="$store.app.moreOpen = false"></div>
+    <!-- Sheet and bar in one fixed column, so the sheet always sits on the bar. -->
+    <div class="fixed left-0 right-0 bottom-0 flex flex-col" style="z-index: 61;">
+    <div x-show="$store.app.moreOpen" x-cloak x-transition.opacity data-testid="more-sheet"
+         class="border-t border-white/[0.1] px-3 pt-2 pb-3"
+         style="border-radius: 1rem 1rem 0 0; background: var(--surface-0);"
+         @keydown.escape.window="$store.app.moreOpen = false">
+      <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-600"></div>
+      <div class="grid grid-cols-3 gap-2">
+        <template x-for="t in $store.app.moreTabs" :key="t.key">
+          <button type="button" @click="$store.app.goTab(t.key)"
+                  style="min-height: 48px" class="flex items-center justify-center gap-2 rounded-lg border text-sm transition"
+                  :class="$store.app.activeTab === t.key
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                    : 'border-white/[0.08] bg-slate-700/40 text-slate-200'">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" x-html="t.icon"></svg>
+            <span x-text="t.short"></span>
+          </button>
+        </template>
+        <a :href="$store.app.guideUrl" target="_blank" rel="noopener noreferrer" data-testid="more-guide"
+           @click="$store.app.moreOpen = false"
+           style="min-height: 48px" class="flex items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-slate-700/40 text-sm text-slate-200">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          <span>Guide</span>
+        </a>
+        <button type="button" x-show="$store.app.isAdmin" @click="$store.app.openSupportInfo()"
+                style="min-height: 48px" class="flex items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-slate-700/40 text-sm text-slate-200">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>Support</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom tab bar -->
+    <nav data-testid="bottom-nav"
+         class="flex border-t border-white/[0.08]"
+         style="padding-bottom: env(safe-area-inset-bottom); background: var(--surface-0);">
+      <template x-for="t in $store.app.barTabs" :key="t.key">
+        <button type="button" @click="$store.app.goTab(t.key)"
+                style="min-height: 52px" class="flex-1 flex flex-col items-center justify-center gap-0.5"
+                :class="$store.app.activeTab === t.key ? 'text-emerald-400' : 'text-slate-400'">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" x-html="t.icon"></svg>
+          <span class="text-[10px]" x-text="t.short"></span>
+        </button>
+      </template>
+      <button type="button" @click="$store.app.moreOpen = !$store.app.moreOpen" data-testid="bottom-nav-more"
+              style="min-height: 52px" class="flex-1 flex flex-col items-center justify-center gap-0.5"
+              :class="$store.app.moreOpen || $store.app.moreActive ? 'text-emerald-400' : 'text-slate-400'">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>
+        </svg>
+        <span class="text-[10px]">More</span>
+      </button>
+    </nav>
+    </div>
+  </div>
+</template>
+</div>

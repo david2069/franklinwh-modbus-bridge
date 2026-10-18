@@ -1,9 +1,12 @@
 <!-- ── Topbar ─────────────────────────────────────────── -->
-<header class="flex items-center justify-between gap-2 lg:gap-4 px-3 lg:px-6 py-2 lg:py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
+<!-- On a phone (#262) it wraps: title and actions on one line, gateway and
+     status indicators below, instead of truncating and hiding them. -->
+<header :class="$store.app.phoneNav ? 'flex-wrap gap-y-1' : ''"
+        class="flex items-center justify-between gap-x-2 lg:gap-4 px-3 lg:px-6 py-2 lg:py-3 border-b border-white/[0.08] bg-slate-800/30 backdrop-blur-sm sticky top-0 z-50">
 
   <!-- Left: Sidebar toggle + Page title -->
   <div class="flex items-center gap-2 lg:gap-3 min-w-0">
-    <button @click="$store.app.toggleSidebar()"
+    <button @click="$store.app.toggleSidebar()" x-show="!$store.app.phoneNav"
             class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200 text-sm font-bold"
             :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
             x-text="$store.app.sidebarCollapsed ? '▶' : '◀'">
@@ -58,13 +61,14 @@
        Shown from md up (#82): at xl only, a zoomed-in or medium window dropped
        them silently, including the red Grid dot that says the aGate is
        islanded. Below xl the labels give way and each dot keeps a tooltip. -->
-  <div class="hidden md:flex items-center gap-2 xl:gap-3 text-[10px] font-semibold uppercase tracking-wider">
+  <div class="items-center gap-2 xl:gap-3 text-[10px] font-semibold uppercase tracking-wider"
+       :class="$store.app.phoneNav ? 'flex order-last' : 'hidden md:flex'">
     <!-- Grid -->
     <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='grid')?.visible !== false"
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='grid')}`"
          class="flex items-center gap-1.5"
          :title="'Grid: ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected')">
-      <span class="hidden xl:inline text-slate-500">Grid</span>
+      <span class="text-slate-500" :class="$store.app.phoneNav ? 'inline' : 'hidden xl:inline'">Grid</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="$store.app.points.connection_state === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
@@ -73,7 +77,7 @@
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='solar')}`"
          class="flex items-center gap-1.5"
          :title="'Solar: ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating')">
-      <span class="hidden xl:inline text-slate-500">Solar</span>
+      <span class="text-slate-500" :class="$store.app.phoneNav ? 'inline' : 'hidden xl:inline'">Solar</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="($store.app.solarPowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
@@ -82,7 +86,7 @@
          :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='load')}`"
          class="flex items-center gap-1.5"
          :title="'Load: ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none')">
-      <span class="hidden xl:inline text-slate-500">Load</span>
+      <span class="text-slate-500" :class="$store.app.phoneNav ? 'inline' : 'hidden xl:inline'">Load</span>
       <span class="w-1.5 h-1.5 rounded-full"
             :class="($store.app.homePowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-slate-600'"></span>
     </div>

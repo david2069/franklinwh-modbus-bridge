@@ -50,7 +50,10 @@
   <div class="flex h-screen overflow-hidden" x-data>
 
     <!-- ── Sidebar ──────────────────────────────────────── -->
+    <!-- On a phone the bottom bar replaces it (#262, partials/bottom_nav.html). -->
+    <div x-show="!$store.app.phoneNav" class="flex shrink-0">
     {% include "partials/sidebar.html" %}
+    </div>
 
     <!-- ── Main Area ────────────────────────────────────── -->
     <div class="flex-1 flex flex-col overflow-hidden">
@@ -188,7 +191,8 @@
       </template>
 
       <!-- ── Content ──────────────────────────────────── -->
-      <main class="flex-1 overflow-y-auto p-4 lg:p-6">
+      <main class="flex-1 overflow-y-auto p-4 lg:p-6"
+            :style="$store.app.phoneNav ? 'padding-bottom: calc(80px + env(safe-area-inset-bottom))' : ''">
 
         <!-- Dashboard Tab (includes Command Console) -->
         <div x-show="$store.app.activeTab === 'dashboard'" x-cloak>
@@ -480,6 +484,7 @@
   </div> <!-- closes x-data scope -->
 
 {% include "partials/disclaimer_modal.html" %}
+{% include "partials/bottom_nav.html" %}
 {% include "partials/logged_out_modal.html" %}
 {% include "partials/setup_wizard.html" %}
 </body>
