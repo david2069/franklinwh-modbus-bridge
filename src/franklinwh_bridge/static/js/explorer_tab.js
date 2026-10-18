@@ -14,8 +14,8 @@ const VENDOR_EXT_15500 = [
   { addr: 15506, name: 'LoadActiveP',       desc: 'Home Load',                      keys: ['home_load_ext_quantized', 'home_load_ext', 'vreg_15506'], unit: 'W', access: 'R', type: 'uint16' },
   { addr: 15507, name: 'OnGridMode',        desc: 'Operating Mode',                 keys: ['ongrid_mode', 'vreg_15507'],          unit: '',   access: 'RW', type: 'uint16',
     symbols: { 1: 'Emergency Backup', 2: 'Self-Consumption', 3: 'TOU' } },
-  { addr: 15508, name: 'SelfReserve',       desc: 'Self-Consumption SOC Reserve',   keys: ['self_reserve_pct', 'vreg_15508'],     unit: '%',  access: 'RW', type: 'uint16' },
-  { addr: 15509, name: 'TouReserve',        desc: 'TOU SOC Reserve',                keys: ['tou_reserve_pct', 'vreg_15509'],      unit: '%',  access: 'RW', type: 'uint16' },
+  { addr: 15508, name: 'SelfReserve',       desc: 'Reserve SOC: reads the ACTIVE mode\'s reserve (V10R01B04D00)', keys: ['self_reserve_pct', 'vreg_15508'],     unit: '%',  access: 'RW', type: 'uint16' },
+  { addr: 15509, name: 'TouReserve',        desc: 'TOU SOC Reserve per PICS, but reads the active reserve (= 15508) on V10R01B04D00', keys: ['vreg_15509', 'tou_reserve_pct'],      unit: '%',  access: 'RW', type: 'uint16' },
   { addr: 15510, name: 'PVOutputWh',        desc: 'PV Energy Total',                keys: ['pv_energy_total_wh'],                 unit: 'Wh', access: 'R',  type: 'uint32', span: 2 },
   { addr: 15512, name: 'proximalOutputWh',  desc: 'PV Energy Proximal',             keys: ['pv_energy_proximal_wh'],              unit: 'Wh', access: 'R',  type: 'uint32', span: 2 },
 ];
@@ -91,8 +91,8 @@ function explorerTab() {
 
     // Export modal (#228): GET api/models/export builds and redacts it.
     exp: {
-      open: false, scope: 'all', chosen: [], format: 'json', redact: true,
-      loading: false, error: '', result: null, msg: '',
+      open: false, scope: 'all', chosen: [], format: 'json', redact: true, ext: true,
+      loading: false, error: '', result: null, msg: '', extCount: 0,
     },
 
     // Resizable panel dimensions
@@ -717,13 +717,47 @@ function explorerTab() {
         gateway_id: this.gwId, models, format: e.format, redact_serial: e.redact ? 'true' : 'false',
       });
       try {
-        e.result = await fetchJSON('api/models/export?' + q.toString());
+        const r = await fetchJSON('api/models/export?' + q.toString());
+        e.extCount = 0;
+        e.result = (r && r.content && e.ext) ? this._withExtensions(r) : r;
       } catch (err) {
         e.result = null;
         e.error = 'Could not build the export: ' + (err.message || err);
       } finally {
         e.loading = false;
       }
+    },
+
+    /** Add the FranklinWH extension registers (#228, owner 2026-10-19) as their
+     *  own section, marked as NOT SunSpec: undocumented vendor registers named
+     *  by this bridge. Values only (numbers), so serial redaction is unaffected. */
+    _withExtensions(r) {
+      const regs = this.vendorExtensions.map(x => ({
+        address: x.addr, name: x.name, description: x.desc, identified: x.known,
+        value: x.value, hex: x.hex, type: x.type, access: x.access, unit: x.unit,
+      }));
+      this.exp.extCount = regs.length;
+      let content = r.content;
+      if (r.media_type === 'text/csv') {
+        const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+        const label = 'FranklinWH extension (not SunSpec)';
+        content = content.replace(/\n?$/, '\n') + regs.map(x => [
+          'ext', label, x.name, x.description, x.value ?? '', x.type, x.unit, x.address, x.access, '',
+        ].map(q).join(',')).join('\n') + '\n';
+      } else {
+        const obj = JSON.parse(content);
+        obj.franklinwh_extensions = {
+          note: 'NOT SunSpec. FranklinWH proprietary registers (15000-15039, 15500+, 16000+), '
+            + 'undocumented by FranklinWH. Names and descriptions are this bridge\'s; '
+            + '"identified": false means no meaning is known yet, and some identified ones '
+            + 'are unconfirmed (see each description).',
+          count: regs.length,
+          registers: regs,
+        };
+        content = JSON.stringify(obj, null, 2) + '\n';
+      }
+      const filename = r.filename.replace(/(_redacted)?\.(json|csv)$/, '_ext$1.$2');
+      return { ...r, content, filename };
     },
 
     /** navigator.clipboard needs a secure context, which HA ingress over plain
@@ -763,31 +797,5 @@ function explorerTab() {
         + 'Create secret gist (unlisted: anyone with the link can see it) or Create public gist.';
     },
 
-    exportExtJSON() {
-      const data = this.filteredExtensions.map(r => ({
-        address: r.addr,
-        name: r.name,
-        description: r.desc,
-        value: r.value,
-        hex: r.hex,
-        type: r.type,
-        access: r.access,
-        unit: r.unit,
-      }));
-      this._downloadFile(
-        'franklinwh_extensions.json',
-        JSON.stringify(data, null, 2),
-        'application/json'
-      );
-    },
-
-    exportExtCSV() {
-      const rows = [['Address', 'Name', 'Description', 'Value', 'Hex', 'Type', 'Access', 'Unit']];
-      for (const r of this.filteredExtensions) {
-        rows.push([r.addr, r.name, r.desc, r.value ?? '', r.hex || '', r.type, r.access, r.unit]);
-      }
-      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
-      this._downloadFile('franklinwh_extensions.csv', csv, 'text/csv');
-    },
   };
 }

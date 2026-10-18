@@ -278,11 +278,8 @@
           Hide zeros
         </label>
 
-        <!-- Export -->
-        <div class="flex items-center gap-1 text-[10px] border-l border-white/[0.06] pl-2">
-          <button @click="exportExtJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">JSON</button>
-          <button @click="exportExtCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">CSV</button>
-        </div>
+        <!-- Exported with the models: Export… at the top, "Include FranklinWH
+             extensions" (#228). The old JSON/CSV here had no preview or redaction. -->
 
         <!-- Count -->
         <span class="text-[10px] text-slate-600" x-text="filteredExtensions.length + ' / ' + vendorExtensions.length + ' regs'"></span>
@@ -387,6 +384,12 @@
                    data-testid="sunspec-export-redact">
             Redact serial number
           </label>
+          <label class="flex items-center gap-1.5 cursor-pointer"
+                 title="Adds the FranklinWH extension registers as their own section, marked as not SunSpec">
+            <input type="checkbox" x-model="exp.ext" @change="generateExport()" class="accent-amber-500"
+                   data-testid="sunspec-export-ext">
+            Include FranklinWH extensions
+          </label>
         </div>
         <div x-show="exp.scope === 'choose'" class="flex flex-wrap gap-1.5 mb-2">
           <template x-for="m in models" :key="m.model_id">
@@ -407,7 +410,7 @@
                   :class="exp.loading && 'opacity-50'"></textarea>
         <div class="flex flex-wrap items-center gap-2 mt-3">
           <span class="text-[11px] text-slate-500 font-mono" x-show="exp.result"
-                x-text="exp.result ? exp.result.filename + ' · ' + exp.result.model_count + ' models, ' + exp.result.point_count + ' points' : ''"></span>
+                x-text="exp.result ? exp.result.filename + ' · ' + exp.result.model_count + ' models, ' + exp.result.point_count + ' points' + (exp.extCount ? ' + ' + exp.extCount + ' extension registers' : '') : ''"></span>
           <div class="ml-auto flex items-center gap-2">
             <button type="button" class="btn btn-sm btn-secondary" @click="copyExport()" :disabled="!exp.result">Copy</button>
             <button type="button" class="btn btn-sm btn-secondary" @click="downloadExport()" :disabled="!exp.result">Download</button>
