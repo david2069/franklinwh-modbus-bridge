@@ -32,7 +32,7 @@ were found, and:
 
 | Control | What it does |
 |---|---|
-| **Addr: Base-0 / Base-1** | **Base-0** (the default) is the Modbus address you actually send: the aGate serves its SunSpec map starting at address 0. **Base-1** numbers the same registers from 1, as FranklinWH's PICS spreadsheet lists them. The conventional SunSpec 40001+ numbering is not offered: the aGate answers those addresses with exception 2 (illegal data address). |
+| **Addr: Base-0 / Base-1 / SunSpec 4xxxx** | **Base-0** (the default) is the Modbus address you actually send: the aGate serves its SunSpec map starting at address 0. **Base-1** numbers the same registers from 1, as FranklinWH's PICS spreadsheet lists them. **SunSpec 4xxxx** shows the conventional SunSpec numbering (40001+) for comparison with SunSpec documents, but the aGate does not answer those addresses: it returns exception 2 (illegal data address). |
 | **Access** | All, R (read-only) or RW (writable). |
 | **PICS** | Filters by compliance mark (see below). |
 | **↻** | Reads the model from the aGate now. |
@@ -65,7 +65,7 @@ integration.
 
 | Option | Choices |
 |---|---|
-| Models | **All models** (the default), **Displayed models** (the ones the list on the left shows after its filter and *Hide unpolled models*), or **Choose models** (click model numbers to add or remove them). |
+| Models | **This model** (the one open on the right, when one is), **All models** (the default), **Displayed models** (the ones the list on the left shows after its filter and *Hide unpolled models*), or **Choose models** (click model numbers to add or remove them). |
 | Format | **JSON** (with the gateway's model and firmware) or **CSV** (one row per point). |
 | Addresses | Every point carries both its **base-0** and **base-1** address (`address_base0` / `address_base1`; CSV columns *Address (base-0)* and *Address (base-1)*), and the JSON has an `addressing` note explaining them. |
 | **Include FranklinWH extensions** | On by default. Adds the FranklinWH extension registers (15000–15039, 15500+, 16000+) as their own section: in JSON a `franklinwh_extensions` block whose `note` says they are **not SunSpec** (undocumented by FranklinWH, named by this bridge, some unconfirmed); in CSV, rows with Model `ext`. The file name gains `_ext`. |
@@ -100,7 +100,7 @@ outside the SunSpec models. Click its header to show or hide it.
   FranklinWH documentation, or from site notes marked *unconfirmed*), or only the unnamed
   ones (`Reg15xxx`, description *Unknown*).
 - **Hide zeros** hides registers that read 0.
-- To export them, use **Export…** at the top with *Include FranklinWH extensions* on.
+- **JSON / CSV** download the list as filtered here. **Export…** at the top can also include them with the models (*Include FranklinWH extensions*).
 
 Columns: Addr, Register, Description, Value, Hex, Type, Acc (access), Unit.
 

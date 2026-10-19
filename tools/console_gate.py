@@ -345,8 +345,11 @@ def run(url: str, user: str, password: str) -> int:
             btn.click()
             page.wait_for_timeout(800)
             modal = page.locator("[data-testid=sunspec-export-modal]")
-            for scope in ("all", "displayed", "choose"):
-                modal.locator(f"input[type=radio][value={scope}]").check()
+            for scope in ("all", "displayed", "choose", "model"):
+                radio = modal.locator(f"input[type=radio][value={scope}]")
+                if not radio.is_visible():  # "This model" needs a model open
+                    continue
+                radio.check()
                 page.wait_for_timeout(500)
             modal.locator("button:has-text('CSV')").click()
             page.wait_for_timeout(500)
@@ -357,7 +360,8 @@ def run(url: str, user: str, password: str) -> int:
             page.wait_for_timeout(500)
             ext.check()
             page.wait_for_timeout(500)
-            if "franklinwh_extensions" not in modal.locator("[data-testid=sunspec-export-preview]").input_value():
+            preview = modal.locator("[data-testid=sunspec-export-preview]").input_value()
+            if "franklinwh_extensions" not in preview:
                 problems.append("explorer: export has no franklinwh_extensions section")
             redact = modal.locator("[data-testid=sunspec-export-redact]")
             redact.uncheck()

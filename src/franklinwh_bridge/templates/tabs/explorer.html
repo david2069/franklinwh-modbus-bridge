@@ -132,6 +132,10 @@
                       class="px-1.5 py-0.5 rounded transition"
                       title="Numbered from 1, as FranklinWH's PICS lists it. Not 40001+: the aGate answers those with exception 2."
                       :class="addrMode === 'base1' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-1</button>
+              <button @click="addrMode = 'sunspec'"
+                      class="px-1.5 py-0.5 rounded transition"
+                      title="Conventional SunSpec numbering (40001+). The aGate doesn't answer these addresses: it returns exception 2."
+                      :class="addrMode === 'sunspec' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'">SunSpec 4xxxx</button>
             </div>
             <!-- Access + PICS filters -->
             <div class="flex items-center gap-1.5 text-[10px]">
@@ -281,8 +285,12 @@
           Hide zeros
         </label>
 
-        <!-- Exported with the models: Export… at the top, "Include FranklinWH
-             extensions" (#228). The old JSON/CSV here had no preview or redaction. -->
+        <!-- Quick export of this list (as filtered). Export… at the top can also
+             include these, with the models (#228). -->
+        <div class="flex items-center gap-1 text-[10px] border-l border-white/[0.06] pl-2">
+          <button @click="exportExtJSON()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">JSON</button>
+          <button @click="exportExtCSV()" class="px-1.5 py-0.5 rounded text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition">CSV</button>
+        </div>
 
         <!-- Count -->
         <span class="text-[10px] text-slate-600" x-text="filteredExtensions.length + ' / ' + vendorExtensions.length + ' regs'"></span>
@@ -362,6 +370,10 @@
           <span class="text-amber-300">Review the preview before you share it: you are responsible for what you post.</span>
         </p>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 text-xs text-slate-300">
+          <label class="flex items-center gap-1.5 cursor-pointer" x-show="selectedModel">
+            <input type="radio" value="model" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
+            <span x-text="exportModelLabel()"></span>
+          </label>
           <label class="flex items-center gap-1.5 cursor-pointer">
             <input type="radio" value="all" x-model="exp.scope" @change="generateExport()" class="accent-cyan-500">
             <span x-text="'All models (' + modelCount + ')'"></span>
