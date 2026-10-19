@@ -330,7 +330,7 @@ def test_per_phase_entity_slugs():
 
 def test_total_entity_count():
     """Verify total entity count including per-phase + target SoC."""
-    assert len(BRIDGE_ENTITIES) == 85  # -1: Command Power % removed (#133)
+    assert len(BRIDGE_ENTITIES) == 86  # Command Power % restored (2026-10-19)
 
 
 # --- Phase filtering in MQTT publisher ---

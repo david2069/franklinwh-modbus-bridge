@@ -206,20 +206,42 @@ async def test_trusted_rating_is_what_the_library_sizes_against(ctrl, db):
     assert ctrl.send_command.call_args[0][0].power_watts == -5000
 
 
-async def test_power_percent_is_refused_outside_legacy_schedules(ctrl, db):
+async def test_power_percent_is_accepted_from_anyone(ctrl, db):
+    """Restored 2026-10-19 (owner): % of what the aGate can do, sent as WSetPct."""
     h = CommandHandler(ctrl, db, rating=calibrated_rating())
-    for who in ("manual", "ha", "rest"):
+    for who in ("manual", "ha", "rest", "schedule:e1"):
         res = await h.handle_command("battery_command_power_pct", "50", requester=who)
-        assert res["ok"] is False and "watts" in res["result"]
-    res = await h.handle_command("battery_command_power_pct", "50", requester="schedule:e1")
-    assert res["ok"] is True
+        assert res["ok"] is True, (who, res)
+    assert h.virtual_points["battery_command_power_pct"] == 50
 
 
-async def test_legacy_schedule_percent_is_sized_against_the_trusted_rating(ctrl, db):
-    h = CommandHandler(ctrl, db, rating=calibrated_rating(discharge_w=10000))
-    await h.handle_command("battery_command_power_pct", "100", requester="schedule:e1")
-    await h.handle_command("battery_command", "Force Discharge", requester="schedule:e1")
-    assert ctrl.send_command.call_args[0][0].power_watts == -10000
+def _library_wsetpct(watts: int, rated: int, pct_sf: int = 0) -> int:
+    """franklinwh-modbus send_command: int((|w| / rated) * 100 / 10**sf)."""
+    return int((abs(watts) / rated) * 100 / (10 ** pct_sf))
+
+
+@pytest.mark.parametrize("pct", range(1, 101))
+async def test_percent_reaches_the_agate_as_exactly_that_wsetpct(ctrl, db, pct):
+    h = CommandHandler(ctrl, db, rating=BatteryRating("g"))  # no rating at all
+    await h.handle_command("battery_command_power_pct", str(pct))
+    await h.handle_command("battery_command", "Force Discharge")
+    watts = ctrl.send_command.call_args[0][0].power_watts
+    rated = ctrl.RATED_MAX_DISCHARGE_W
+    assert watts < 0 and abs(watts) <= rated  # never above 100 %
+    assert _library_wsetpct(watts, rated) == pct
+    assert _library_wsetpct(watts, rated, -1) == pct * 10  # a 0.1 % scale factor too
+    assert h.state.power_pct == pct and h.state.power_w == 0
+
+
+async def test_percent_needs_no_rating_and_skips_the_overshoot_guard(ctrl, db, monkeypatch):
+    points = {"battery_power_w": 20000}  # e.g. four aPowers at full power
+    h = CommandHandler(ctrl, db, rating=BatteryRating("g"), points_getter=lambda: points)
+    await h.handle_command("battery_command_power_pct", "100")
+    await h.handle_command("battery_command", "Force Discharge")
+    assert h.state.active
+    h._state.started_at -= 60
+    assert await h._overshoot_guard() is False
+    assert h.state.active
 
 
 async def test_overshoot_guard_releases_and_revokes_trust(ctrl, db, monkeypatch):

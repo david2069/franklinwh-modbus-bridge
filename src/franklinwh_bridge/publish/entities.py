@@ -1118,6 +1118,22 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         source="virtual",
     ),
     EntityDef(
+        # Restored (owner, 2026-10-19; removed in 0.2.8): % of what the aGate
+        # can do, sent as WSetPct unchanged. Same slug as before 0.2.8.
+        slug="battery_command_power_pct",
+        name="Command Power %",
+        ha_type="number",
+        state_group="control",
+        stat_key="battery_command_power_pct",
+        unit="%",
+        icon="mdi:percent-circle",
+        is_control=True,
+        min_val=0,
+        max_val=100,
+        step=5,
+        source="virtual",
+    ),
+    EntityDef(
         slug="battery_command_duration",
         name="Command Duration",
         ha_type="number",

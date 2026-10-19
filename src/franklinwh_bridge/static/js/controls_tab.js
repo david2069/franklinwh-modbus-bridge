@@ -5,6 +5,8 @@ function controlsTab() {
   return {
     command: 'Not Active',
     powerW: 0,
+    powerPct: 0,
+    powerUnit: 'W',   // 'W' or '%' (% sent as WSetPct unchanged)
     powerMaxW: 0,
     duration: 0,
     targetSoc: 0,
@@ -33,6 +35,10 @@ function controlsTab() {
       }
       if (pts.battery_command_power_w != null) {
         this.powerW = pts.battery_command_power_w;
+      }
+      if (pts.battery_command_power_pct != null) {
+        this.powerPct = pts.battery_command_power_pct;
+        if (pts.battery_command_power_pct > 0) this.powerUnit = '%';
       }
       // Trusted battery ratings (#133): null until calibrated or confirmed.
       this.powerMaxW = Math.max(pts.battery_rating_charge_w || 0,

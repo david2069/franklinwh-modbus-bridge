@@ -187,8 +187,16 @@ def _validate_action(action: str, params: dict) -> None:
         raise HTTPException(400, "action 'mode' requires params.mode")
     if action in ("reserve_self", "reserve_tou") and "pct" not in params:
         raise HTTPException(400, f"action '{action}' requires params.pct")
-    if "power_pct" in params:
-        raise HTTPException(400, "params.power_pct has been removed: set params.power_w in watts")
+    if params.get("power_pct") not in (None, "", 0):
+        # Power % (restored 2026-10-19): % of what the aGate can do, sent as WSetPct.
+        try:
+            pct = float(params["power_pct"])
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "params.power_pct must be a number 1-100") from exc
+        if not 1 <= pct <= 100:
+            raise HTTPException(400, "params.power_pct must be 1-100")
+        if params.get("power_w"):
+            raise HTTPException(400, "set params.power_w or params.power_pct, not both")
 
 
 async def _reload_engine(request: Request) -> None:

@@ -994,7 +994,8 @@ function scheduleTab() {
         duration_min: 0,
         action: 'force_charge',
         power_w: 1000,     // watts; empty = the gateway's full (trusted) rating
-        legacy_pct: null,  // an entry saved with power % before it was removed (#133)
+        power_unit: 'W',   // 'W' or '%' (% restored 2026-10-19: sent as WSetPct)
+        power_pct: '',
         pct: 20,
         mode: 'TOU',
         target_type: (Alpine.store('app').activeGateway === 'site') ? 'site' : 'gateway',
@@ -1066,7 +1067,7 @@ function scheduleTab() {
       // left op/action/trigger selects showing their defaults.
       const common = {
         trigger_type: 'always', action: 'force_discharge',
-        power_w: '', release_policy: 'release',  // empty = full trusted rating
+        power_w: '', power_unit: 'W', power_pct: '', release_policy: 'release',  // empty = full trusted rating
         enabled: false,  // review → enable-on-save prompt
         // keep discharging until SOC hits the Min-Discharge floor
         exit_conditions: { match: 'ANY', conditions: [
@@ -1149,7 +1150,8 @@ function scheduleTab() {
         duration_min: e.duration_s ? Math.round(e.duration_s / 60) : 0,
         action: e.action,
         power_w: p.power_w ?? '',
-        legacy_pct: ('power_pct' in p) ? p.power_pct : null,
+        power_unit: p.power_pct ? '%' : 'W',
+        power_pct: p.power_pct ?? '',
         pct: p.pct ?? 20,
         mode: p.mode ?? 'TOU',
         target_type: e.target_type,
@@ -1297,8 +1299,12 @@ function scheduleTab() {
       const meta = this.actionMeta(f.action);
       const p = {};
       if (meta.params.includes('power')) {
-        // Watts only (#133); empty = the gateway's full trusted rating at dispatch.
-        if (f.power_w !== '' && f.power_w != null) p.power_w = Number(f.power_w);
+        if (f.power_unit === '%') {
+          // % of what the aGate can do, sent as WSetPct unchanged.
+          if (f.power_pct !== '' && f.power_pct != null) p.power_pct = Number(f.power_pct);
+        } else if (f.power_w !== '' && f.power_w != null) {
+          p.power_w = Number(f.power_w);  // empty = the gateway's full rating at dispatch
+        }
       }
       if (meta.params.includes('pct')) p.pct = Number(f.pct);
       if (meta.params.includes('mode')) p.mode = f.mode;

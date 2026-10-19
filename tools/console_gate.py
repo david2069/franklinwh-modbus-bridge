@@ -381,8 +381,11 @@ def run(url: str, user: str, password: str) -> int:
             page.wait_for_timeout(400)
             if not page.locator("[data-testid=reader-raw]").is_visible():
                 problems.append("explorer: reader tab shows no reader")
-        else:
+        elif page.locator("[data-testid=explorer-section-models]:visible").count():
             problems.append("explorer: no Modbus reader sub-tab")
+        else:
+            # The Explorer module is off (the default on a new install).
+            print("NOTE: explorer sub-tabs not exercised — the Explorer module is off")
 
         # Explorer → extension registers sub-tab: identified / unknown filter.
         ext_tab = page.locator("[data-testid=explorer-section-extensions]")

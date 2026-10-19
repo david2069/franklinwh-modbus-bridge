@@ -835,8 +835,24 @@
       <!-- Power + Duration + Target SoC -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <div>
-          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 block">Power (W)</label>
-          <div class="flex items-center gap-1">
+          <label class="text-[10px] uppercase text-slate-500 font-semibold mb-1 flex items-center gap-2">Power
+            <!-- W or % (restored 2026-10-19): % is sent to the aGate as WSetPct unchanged. -->
+            <span class="inline-flex rounded border border-white/10 overflow-hidden normal-case" data-testid="power-unit">
+              <button type="button" class="px-1.5" @click="powerUnit = 'W'"
+                      :class="powerUnit === 'W' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500'">W</button>
+              <button type="button" class="px-1.5" @click="powerUnit = '%'"
+                      :class="powerUnit === '%' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500'">%</button>
+            </span>
+          </label>
+          <div x-show="powerUnit === '%'" class="flex items-center gap-1">
+            <input type="range" min="0" max="100" step="5" x-model="powerPct"
+                   class="flex-1 accent-cyan-500 h-1.5 cursor-pointer" style="min-width:0"
+                   @change="sendCommand('battery_command_power_pct', powerPct)">
+            <input type="number" x-model="powerPct" min="0" max="100" step="5"
+                   class="form-control !py-1 !text-xs w-16 text-center" data-testid="power-pct"
+                   @change="sendCommand('battery_command_power_pct', powerPct)">
+          </div>
+          <div x-show="powerUnit !== '%'" class="flex items-center gap-1">
             <input type="range" min="0"
                    :max="Math.max($store.app.points.max_charge_rate_w ?? 5000, $store.app.points.max_discharge_rate_w ?? 5000)"
                    step="100" x-model="powerW"
@@ -896,7 +912,7 @@
           <span class="text-slate-500">Active:</span>
           <span class="font-medium"
                 :class="$store.app.points.battery_command_state && $store.app.points.battery_command_state !== 'Not Active' ? 'text-cyan-400' : 'text-slate-500'"
-                x-text="($store.app.points.battery_command_state || 'Not Active') + ($store.app.points.battery_command_power_w ? ' ' + $store.app.points.battery_command_power_w + 'W' : '')"></span>
+                x-text="($store.app.points.battery_command_state || 'Not Active') + ($store.app.points.battery_command_power_pct ? ' ' + $store.app.points.battery_command_power_pct + '%' : ($store.app.points.battery_command_power_w ? ' ' + $store.app.points.battery_command_power_w + 'W' : ''))"></span>
           <span class="text-slate-600" x-text="$store.app.points.sw_watchdog_remain_s ? $store.app.points.sw_watchdog_remain_s + 's left' : ''"></span>
         </div>
         <!-- Target SoC indicator (shown when set) -->

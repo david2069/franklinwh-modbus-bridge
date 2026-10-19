@@ -69,7 +69,7 @@ async def test_battery_group_members(db):
 async def test_control_group_members(db):
     grp = await get_publishing_group(db, "control")
     assert grp is not None
-    assert len(grp["members"]) == 8  # Command Power % removed (#133)
+    assert len(grp["members"]) == 9  # Command Power % restored (2026-10-19)
 
 
 async def test_status_group_members(db):

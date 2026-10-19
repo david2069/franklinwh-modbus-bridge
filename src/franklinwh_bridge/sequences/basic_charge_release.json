@@ -1,16 +1,20 @@
 [
   {
     "step": "Enable Remote Control",
-    "writes": { "704.WSetEna": 1 },
+    "writes": {
+      "704.WSetEna": 1
+    },
     "verify": true,
     "note": "Must enable master switch first"
   },
   {
     "step": "Set Charge Power",
-    "writes": { "704.WSetPct": 30 },
+    "writes": {
+      "704.WSetPct": -30
+    },
     "verify": true,
     "sleep_ms": 500,
-    "note": "30% charge (~1.5kW on aGate X)"
+    "note": "30% charge (~1.5kW on aGate X) WSetPct is negative for charge on the aGate (positive = discharge)."
   },
   {
     "step": "Wait for 10 seconds",
