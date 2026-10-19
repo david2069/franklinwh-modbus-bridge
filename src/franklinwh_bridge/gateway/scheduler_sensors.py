@@ -188,9 +188,8 @@ def _mode_name(points: Points, _now: datetime) -> str | None:
 def _reserve_current(points: Points, _now: datetime) -> float | None:
     """The reserve-SOC floor in force right now, whatever the mode.
 
-    15508/15509 both carry the active mode's reserve (documented quirk, #34), so
-    this is the one reserve Modbus can always read. Falls back to the per-mode
-    points for producers that don't set ``active_reserve_pct``.
+    The active mode's reserve register. Falls back to the per-mode points for
+    producers that don't set ``active_reserve_pct``.
     """
     active = _num(points, "active_reserve_pct")
     if active is not None:
@@ -443,9 +442,7 @@ SENSORS: list[SensorDef] = [
     # Reserve-SOC setpoints (the "floor" the aGate holds). Exposed so an
     # automation can compare live SOC against the reserve — e.g. force-charge
     # when battery.soc_pct < battery.reserve_pct (Lookup RHS). `reserve_pct` is
-    # the active reserve (15508). Modbus reads a mode-specific reserve only while
-    # that mode is active (15508/15509 quirk, #34); otherwise it is unknown and a
-    # condition on it does not hold.
+    # the active mode's reserve; the per-mode ones are 15508 / 15509 as read.
     SensorDef(
         "battery.reserve_pct",
         "Reserve SOC — current mode (%)",
@@ -455,14 +452,14 @@ SENSORS: list[SensorDef] = [
     ),
     SensorDef(
         "battery.reserve_self_pct",
-        "Reserve SOC — Self-Consumption, while active (%)",
+        "Reserve SOC — Self-Consumption (%)",
         "%",
         "number",
         lambda p, _n: _num(p, "self_reserve_pct"),
     ),
     SensorDef(
         "battery.reserve_tou_pct",
-        "Reserve SOC — TOU, while active (%)",
+        "Reserve SOC — TOU (%)",
         "%",
         "number",
         lambda p, _n: _num(p, "tou_reserve_pct"),

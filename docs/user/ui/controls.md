@@ -98,11 +98,7 @@ the battery is seen running well above it. How to calibrate:
 | **Self Reserve %** | 0–100 %, steps of 5 | The reserve SoC kept back in Self-Consumption mode. |
 | **TOU Reserve %** | 0–100 %, steps of 5 | The reserve SoC kept back in Time of Use mode. |
 
-!!! info "Only the active mode's reserve can be read"
-    Over Modbus the aGate only reports the reserve of the mode that is active now: both
-    reserve registers return that one value (checked on firmware V10R01B04D00, 2026-10-18).
-    The other mode's reserve shows as *unknown*, with no slider, so nothing is written to
-    it from here. Set it in the FranklinWH app.
+Self Reserve shows register 15508 and TOU Reserve register 15509, as the aGate reports them.
 
 The card has its own command log, like Battery Control.
 

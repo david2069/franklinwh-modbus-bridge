@@ -1,7 +1,8 @@
-"""Reserve points under the documented 15508/15509 quirk (#34).
+"""Reserve points (#34, #256).
 
-Both registers carry the ACTIVE mode's reserve, so the bridge publishes that as
-the active reserve and a per-mode reserve only while its mode is active.
+15508 and 15509 are published as the aGate reports them (owner, 2026-10-19:
+report what the registers report). ``active_reserve_pct`` is the active mode's
+register.
 """
 
 from __future__ import annotations
@@ -24,26 +25,23 @@ def _poll(mode, r15508, r15509=None, r16001=None):
     return pts
 
 
-def test_self_consumption_does_not_claim_a_tou_reserve():
-    """The reference-site case: in Self-Consumption, 15509 read 5 while the
-    app's TOU reserve was 15. TOU must be unknown, not 5."""
-    pts = _poll("Self-Consumption", 5, r16001=5)
-    assert pts["active_reserve_pct"] == 5
-    assert pts["self_reserve_pct"] == 5
-    assert pts["tou_reserve_pct"] is None
+def test_registers_are_reported_as_read():
+    """Owner's site, Self-Consumption: 15508 = 15509 = 8. Both show 8."""
+    pts = _poll("Self-Consumption", 8, r16001=8)
+    assert pts["active_reserve_pct"] == 8
+    assert pts["self_reserve_pct"] == 8
+    assert pts["tou_reserve_pct"] == 8
 
 
-def test_tou_mode_reports_tou_reserve_only():
-    pts = _poll("TOU", 20)
+def test_tou_mode_active_reserve_is_15509():
+    pts = _poll("TOU", 10, r15509=20)
     assert pts["active_reserve_pct"] == 20
-    assert pts["tou_reserve_pct"] == 20
-    assert pts["self_reserve_pct"] is None
+    assert (pts["self_reserve_pct"], pts["tou_reserve_pct"]) == (10, 20)
 
 
-def test_backup_mode_leaves_both_per_mode_reserves_unknown():
+def test_backup_mode_keeps_both_registers():
     pts = _poll("Emergency Backup", 100)
-    assert pts["active_reserve_pct"] == 100
-    assert pts["self_reserve_pct"] is None and pts["tou_reserve_pct"] is None
+    assert pts["self_reserve_pct"] == 100 and pts["tou_reserve_pct"] == 100
 
 
 def test_16001_disagreement_warns_once(caplog):
@@ -65,15 +63,15 @@ def test_unread_reserve_adds_nothing():
 
 
 def test_time_of_use_spelling_counts_as_tou():
-    pts = _poll("Time of Use", 20)
-    assert pts["tou_reserve_pct"] == 20 and pts["self_reserve_pct"] is None
+    pts = _poll("Time of Use", 10, r15509=20)
+    assert pts["active_reserve_pct"] == 20
 
 
-def test_mock_gateway_reports_reserves_like_real_hardware():
+def test_mock_gateway_reports_both_reserves():
     pts = synthetic_points("m", 0, controls={"mode_name": "TOU", "self_reserve_pct": 20,
                                              "tou_reserve_pct": 30})
     assert pts["active_reserve_pct"] == 30
-    assert pts["tou_reserve_pct"] == 30 and pts["self_reserve_pct"] is None
+    assert pts["tou_reserve_pct"] == 30 and pts["self_reserve_pct"] == 20
 
 
 def test_scheduler_current_reserve_uses_active_reserve():
@@ -105,13 +103,13 @@ async def _queued(points):
     return out
 
 
-async def test_mqtt_resets_an_unknown_reserve_instead_of_keeping_a_stale_one():
-    pts = {"mode_name": "Self-Consumption", "self_reserve_pct": 5, "tou_reserve_pct": 5}
+async def test_mqtt_publishes_both_registers_as_read():
+    pts = {"mode_name": "Self-Consumption", "self_reserve_pct": 8, "tou_reserve_pct": 8}
     ActiveReserveReader("gw1").apply(pts)
     out = await _queued(pts)
-    assert out["tou_reserve_pct"] == "None"  # HA: unknown, not a retained 5
-    assert out["self_reserve_pct"] == "5"
-    assert out["active_reserve_pct"] == "5"
+    assert out["tou_reserve_pct"] == "8"
+    assert out["self_reserve_pct"] == "8"
+    assert out["active_reserve_pct"] == "8"
 
 
 async def test_mqtt_keeps_last_value_when_the_reserve_was_not_read():
@@ -123,8 +121,8 @@ async def test_mqtt_keeps_last_value_when_the_reserve_was_not_read():
 
 
 async def test_history_keeps_the_active_reserve_in_backup_mode(tmp_path):
-    """Backup mode has no per-mode reserve, but history must still carry the
-    active one — through the raw read, the 5-min archive and the export."""
+    """History carries the active reserve through the raw read, the 5-min
+    archive and the export."""
     import time
 
     from franklinwh_bridge.store.db import init_db
@@ -140,7 +138,6 @@ async def test_history_keeps_the_active_reserve_in_backup_mode(tmp_path):
     try:
         points = {"battery_power_w": 100, "soc": 60, "mode_name": "Emergency Backup"}
         apply_active_reserve(points, 20)
-        assert points["self_reserve_pct"] is None and points["tou_reserve_pct"] is None
         await record_sample(db, points)
 
         rows = await query_metrics(db, range_seconds=600)
@@ -185,10 +182,8 @@ async def test_migration_54_backfills_active_reserve_from_per_mode_columns():
         await db.close()
 
 
-def test_raw_reserve_registers_are_kept_whatever_the_mode():
-    """#256: the Explorer shows 15508/15509 as read, even when #34's gating
-    blanks the per-mode reserve that isn't active."""
+def test_raw_reserve_registers_are_kept():
     pts = {"mode_name": "Self-Consumption", "self_reserve_pct": 8, "tou_reserve_pct": 15}
     ActiveReserveReader("gw").apply(pts)
     assert pts["vreg_15508"] == 8 and pts["vreg_15509"] == 15
-    assert pts["tou_reserve_pct"] is None  # the gating itself is unchanged here
+    assert pts["tou_reserve_pct"] == 15
