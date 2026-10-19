@@ -17,7 +17,8 @@ from __future__ import annotations
 
 PROJECT_NAME = "franklinwh-modbus-bridge"
 ISSUES_URL = "https://github.com/david2069/franklinwh-modbus-bridge/issues"
-DOCS_URL = "https://github.com/david2069/franklinwh-modbus-bridge#readme"
+#: The published documentation site, not the README (owner, 2026-10-19).
+DOCS_URL = "https://david2069.github.io/franklinwh-modbus-bridge/"
 CLOUD_DOCS_URL = "https://david2069.github.io/franklinwh-cloud/"
 SUNSPEC_URL = "https://sunspec.org/contributing-members/franklin-wh/"
 #: The conformance documents themselves, not just the landing page. This is the
