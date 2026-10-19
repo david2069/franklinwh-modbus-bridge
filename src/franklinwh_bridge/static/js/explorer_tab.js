@@ -90,6 +90,12 @@ function explorerTab() {
     readingModel: false,
 
     // Export modal (#228): GET api/models/export builds and redacts it.
+    // Modbus reader (#288): the franklinwh-modbus reader via api/reader/run.
+    READER_PRESETS: ['15000:40', '15500:14', '16000:3'],
+    rdr: {
+      open: false, raw: '15500:14', models: '', point: '', detail: 'basic',
+      nz: false, match: false, running: false, out: '', error: '', elapsed: null,
+    },
     exp: {
       open: false, scope: 'all', chosen: [], format: 'json', redact: true, ext: true,
       loading: false, error: '', result: null, msg: '', extCount: 0,
@@ -796,6 +802,40 @@ function explorerTab() {
       }
       const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
       this._downloadFile('franklinwh_extensions.csv', csv, 'text/csv');
+    },
+
+    async runReader() {
+      const r = this.rdr;
+      r.running = true; r.error = ''; r.out = ''; r.elapsed = null;
+      const body = { gateway_id: this.gwId, detail: r.detail, nz: r.nz, match: r.match };
+      if (r.raw.trim()) body.raw = r.raw.trim();
+      if (r.models.trim()) body.models = r.models.trim();
+      if (r.point.trim()) body.point = r.point.trim();
+      try {
+        const res = await fetchJSON('api/reader/run', {
+          method: 'POST', body: JSON.stringify(body),
+        }, 120000);
+        if (res && res.ok === false) {
+          r.error = res.error || 'reader failed';
+        } else if (res) {
+          r.out = res.output || '';
+          r.error = res.error || (r.out ? '' : 'no output');
+          r.elapsed = res.elapsed_s;
+        }
+      } finally {
+        r.running = false;
+      }
+    },
+
+    async copyReader() {
+      const text = this.rdr.out;
+      if (!text) return;
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(text); Alpine.store('app').toast('Copied', 'info'); return; } catch (_) {}
+      }
+      const sel = window.getSelection(); const range = document.createRange();
+      range.selectNodeContents(this.$refs.readerOut); sel.removeAllRanges(); sel.addRange(range);
+      try { document.execCommand('copy'); Alpine.store('app').toast('Copied', 'info'); } catch (_) {}
     },
 
     /** navigator.clipboard needs a secure context, which HA ingress over plain

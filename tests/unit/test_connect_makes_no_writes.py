@@ -94,3 +94,48 @@ def test_guard_is_harmless_without_the_method():
         pass
 
     disable_connect_writes(Plain())  # a mock controller, or a fixed library
+
+
+# ── #64: the library left its TCP socket open on disconnect/connect ──
+
+
+class _Dev:
+    def __init__(self, log):
+        self.log = log
+
+    def disconnect(self):
+        self.log.append("socket closed")
+
+    def close(self):  # pysunspec2's TCP device: a no-op
+        pass
+
+
+class _Ctrl:
+    def __init__(self, log):
+        self.log = log
+        self.dev = _Dev(log)
+
+    def disconnect(self):
+        self.dev.close()
+        self.dev = None
+        self.log.append("disconnect")
+
+    def connect(self):
+        self.dev = _Dev(self.log)  # replaces dev without closing the old one
+        self.log.append("connect")
+        return True
+
+
+def test_disconnect_and_connect_close_the_old_socket_first():
+    from franklinwh_bridge.gateway.instance import close_sockets_on_disconnect
+
+    log: list[str] = []
+    c = _Ctrl(log)
+    close_sockets_on_disconnect(c)
+    c.connect()
+    c.disconnect()
+    assert log == ["socket closed", "connect", "socket closed", "disconnect"]
+    close_sockets_on_disconnect(c)  # idempotent: no double wrap
+    c.connect()  # dev is None after the disconnect: nothing to close
+    c.connect()  # one close for the dev the previous connect made
+    assert log[-3:] == ["connect", "socket closed", "connect"]
