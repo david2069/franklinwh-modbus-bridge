@@ -67,7 +67,7 @@ function explorerTab() {
     filter: '',
     loading: true,
     refreshing: false,
-    addrMode: 'sunspec', // 'sunspec' or 'base0'
+    addrMode: 'base0', // 'base0' (PDU, what you send) or 'base1' (as in FranklinWH's PICS)
     gateway: { host: '--', port: 502, unit_id: 1 },
 
     // Vendor extensions state
@@ -442,9 +442,11 @@ function explorerTab() {
 
     formatAddress(addr) {
       if (addr == null) return '';
-      // SunSpec addresses are 1-based (40001+), Base-0 are the raw register number
-      if (this.addrMode === 'base0') return String(addr);
-      return String(40001 + addr);
+      // The aGate serves SunSpec at base 0 (#273): base-0 is the PDU address
+      // you send; base-1 is how FranklinWH's PICS numbers it. The 40001+ form
+      // is not shown: the aGate answers it with exception 2.
+      if (this.addrMode === 'base1') return String(addr + 1);
+      return String(addr);
     },
 
     // ── Symbols tooltip ───────────────────────────────────
@@ -742,7 +744,7 @@ function explorerTab() {
         const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
         const label = 'FranklinWH extension (not SunSpec)';
         content = content.replace(/\n?$/, '\n') + regs.map(x => [
-          'ext', label, x.name, x.description, x.value ?? '', x.type, x.unit, x.address, x.access, '',
+          'ext', label, x.name, x.description, x.value ?? '', x.type, x.unit, x.address, x.address, x.access, '',
         ].map(q).join(',')).join('\n') + '\n';
       } else {
         const obj = JSON.parse(content);
@@ -750,7 +752,8 @@ function explorerTab() {
           note: 'NOT SunSpec. FranklinWH proprietary registers (15000-15039, 15500+, 16000+), '
             + 'undocumented by FranklinWH. Names and descriptions are this bridge\'s; '
             + '"identified": false means no meaning is known yet, and some identified ones '
-            + 'are unconfirmed (see each description).',
+            + 'are unconfirmed (see each description). Each address is the register number '
+            + 'you read, as listed (no base offset applies to these).',
           count: regs.length,
           registers: regs,
         };

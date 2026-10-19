@@ -123,12 +123,15 @@
             <!-- Address mode toggle -->
             <div class="flex items-center gap-1.5 text-[10px]">
               <span class="text-slate-600">Addr:</span>
-              <button @click="addrMode = 'sunspec'"
-                      class="px-1.5 py-0.5 rounded transition"
-                      :class="addrMode === 'sunspec' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'">SunSpec</button>
+              <!-- #273: the aGate serves SunSpec at base 0; 40001+ addresses get exception 2. -->
               <button @click="addrMode = 'base0'"
                       class="px-1.5 py-0.5 rounded transition"
-                      :class="addrMode === 'base0' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-0</button>
+                      title="The Modbus PDU address you send (the aGate serves SunSpec at base 0)"
+                      :class="addrMode === 'base0' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'">Base-0</button>
+              <button @click="addrMode = 'base1'"
+                      class="px-1.5 py-0.5 rounded transition"
+                      title="Numbered from 1, as FranklinWH's PICS lists it. Not 40001+: the aGate answers those with exception 2."
+                      :class="addrMode === 'base1' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-1</button>
             </div>
             <!-- Access + PICS filters -->
             <div class="flex items-center gap-1.5 text-[10px]">

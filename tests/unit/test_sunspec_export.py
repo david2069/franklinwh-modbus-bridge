@@ -201,3 +201,16 @@ async def test_api_export_bad_requests(client):
     assert r.status_code == 404 and "999" in r.text
     r = await client.get("/api/models/export", params={"gateway_id": "nope"})
     assert r.status_code == 404
+
+
+def test_addresses_in_both_bases_and_the_note():
+    """#273: base-0 is the PDU address the aGate answers; base-1 as FranklinWH's
+    PICS numbers it. 40001+ isn't offered: the aGate returns exception 2."""
+    exp = _build()
+    dcw = next(p for m in exp["models"] for p in m["points"] if p["name"] == "DCW")
+    assert (dcw["address_base0"], dcw["address_base1"]) == (1048, 1049)
+    assert "address" not in dcw
+    assert "base 0" in exp["addressing"] and "exception 2" in exp["addressing"]
+    row = list(csv.reader(io.StringIO(sx.render_csv(exp))))[-1]
+    assert row[sx.CSV_HEADER.index("Address (base-0)")] == "1048"
+    assert row[sx.CSV_HEADER.index("Address (base-1)")] == "1049"
