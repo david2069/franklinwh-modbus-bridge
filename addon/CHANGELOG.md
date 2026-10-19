@@ -7,6 +7,12 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.29 — 2026-10-19
+
+### Fixes
+- **The Modbus reader runs while a battery command is active**, like the
+  original reader.
+
 ## 0.2.28 — 2026-10-19
 
 ### Changes

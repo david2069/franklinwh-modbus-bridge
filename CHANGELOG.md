@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.29] — 2026-10-19
+
+### Fixed
+
+- **Reader: no block while a battery command is active** (owner; not in the
+  original reader).
+
 ## [0.2.28] — 2026-10-19
 
 ### Added
