@@ -173,6 +173,9 @@ const GUIDE_PAGES = {
   energy_costs: 'user/ui/energy-costs/', settings: 'user/ui/settings-admin/',
 };
 
+/** SunSpec Explorer sub-tabs (?tab=explorer&section=…). */
+const EXPLORER_SECTIONS = ['models', 'extensions', 'reader'];
+
 const SETTINGS_SECTIONS = [
   { id: 'gateways',       label: 'Site & Gateways' },
   { id: 'home-assistant', label: 'Home Assistant' },
@@ -682,6 +685,7 @@ document.addEventListener('alpine:init', () => {
 
     // Multi-gateway
     settingsSection: 'gateways',  // Settings sub-tab (see SETTINGS_SECTIONS)
+    explorerSection: 'models',    // SunSpec Explorer sub-tab (see EXPLORER_SECTIONS)
     activeGateway: 'default',  // 'default', gateway_id, or 'site'
     gatewayChosen: false,      // set once the user picks; stops auto-selection
     gatewayList: [],            // [{id, name, health, polling, ...}]
@@ -797,6 +801,9 @@ document.addEventListener('alpine:init', () => {
       if (tab === 'settings' && section && SETTINGS_SECTIONS.some(s => s.id === section)) {
         this.settingsSection = section;
       }
+      if (tab === 'explorer' && section && EXPLORER_SECTIONS.includes(section)) {
+        this.explorerSection = section;
+      }
       // Keep ?tab= (and ?section= on Settings) in sync so the address bar is
       // always shareable/refreshable — and so docs can link to a section.
       // replaceState, not pushState: tab switches shouldn't stack up in Back.
@@ -805,12 +812,19 @@ document.addEventListener('alpine:init', () => {
           const u = new URL(window.location.href);
           u.searchParams.set('tab', tab);
           if (tab === 'settings') u.searchParams.set('section', this.settingsSection);
+          else if (tab === 'explorer') u.searchParams.set('section', this.explorerSection);
           else u.searchParams.delete('section');
           window.history.replaceState(null, '', u);
         } catch { /* non-browser context — URL sync is cosmetic */ }
       }
       // Notify tab components
       window.dispatchEvent(new CustomEvent('tab:changed', { detail: { tab } }));
+    },
+
+    /** Switch the SunSpec Explorer sub-tab and keep ?section= in sync. */
+    setExplorerSection(section) {
+      if (!EXPLORER_SECTIONS.includes(section)) return;
+      this.setTab('explorer', { section });
     },
 
     /** Open the tab named in ?tab=, if it's real and this role may see it.

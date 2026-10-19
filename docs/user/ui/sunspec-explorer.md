@@ -22,7 +22,18 @@ were found, and:
 - **Refresh Catalog** scans the aGate again for its SunSpec models. Use it after a firmware
   update. If no catalog exists yet the page offers this button in the middle.
 
-**Model tree** (left):
+**Sub-tabs**, under the connection bar. Each opens at full height, and the address bar
+remembers which one you are on:
+
+| Tab | Address | Shows |
+|---|---|---|
+| **Models** | `?tab=explorer&section=models` | The SunSpec model tree and the points of the model you pick (below). |
+| **FranklinWH extensions** | `?tab=explorer&section=extensions` | The extension registers ([below](#franklinwh-extension-registers)). |
+| **Modbus reader** | `?tab=explorer&section=reader` | The reader ([below](#modbus-reader)). Admins only. |
+
+**Export…** stays in the connection bar and works from any tab.
+
+**Model tree** (left, on the Models tab):
 
 - **Filter models/points…** searches model names and point names.
 - **Hide unpolled models (no live values)** hides models the bridge does not poll.
@@ -111,7 +122,7 @@ Panel sizes are draggable, and the layout is remembered in this browser.
 
 ## Modbus reader
 
-**Modbus reader** (admins only, at the bottom of the page) runs the franklinwh-modbus
+**Modbus reader** (admins only, its own tab) runs the franklinwh-modbus
 reader against the gateway, the same tool as the library's `modbus_sunspec2_reader.py`.
 It only reads.
 
