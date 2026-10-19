@@ -126,11 +126,11 @@
               <!-- #273: the aGate serves SunSpec at base 0; 40001+ addresses get exception 2. -->
               <button @click="addrMode = 'base0'"
                       class="px-1.5 py-0.5 rounded transition"
-                      title="The Modbus PDU address you send (the aGate serves SunSpec at base 0)"
+                      title="The Modbus PDU address you send. Matches FranklinWH's official SunSpec PICS, which lists addresses 0-based (e.g. ControllerHb 1092)."
                       :class="addrMode === 'base0' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'">Base-0</button>
               <button @click="addrMode = 'base1'"
                       class="px-1.5 py-0.5 rounded transition"
-                      title="Numbered from 1, as FranklinWH's PICS lists it. Not 40001+: the aGate answers those with exception 2."
+                      title="The same registers numbered from 1, as some Modbus tools show them. FranklinWH's PICS uses Base-0."
                       :class="addrMode === 'base1' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-1</button>
               <button @click="addrMode = 'sunspec'"
                       class="px-1.5 py-0.5 rounded transition"

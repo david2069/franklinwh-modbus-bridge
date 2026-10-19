@@ -204,8 +204,8 @@ async def test_api_export_bad_requests(client):
 
 
 def test_addresses_in_both_bases_and_the_note():
-    """#273: base-0 is the PDU address the aGate answers; base-1 as FranklinWH's
-    PICS numbers it. 40001+ isn't offered: the aGate returns exception 2."""
+    """#273: base-0 is the PDU address the aGate answers, and FranklinWH's PICS
+    numbering; base-1 is the same numbered from 1. The note says 40001+ fails."""
     exp = _build()
     dcw = next(p for m in exp["models"] for p in m["points"] if p["name"] == "DCW")
     assert (dcw["address_base0"], dcw["address_base1"]) == (1048, 1049)

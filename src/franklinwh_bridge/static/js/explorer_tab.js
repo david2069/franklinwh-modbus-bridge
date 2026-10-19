@@ -67,7 +67,7 @@ function explorerTab() {
     filter: '',
     loading: true,
     refreshing: false,
-    addrMode: 'base0', // 'base0' (PDU, what you send), 'base1' (FranklinWH's PICS) or 'sunspec' (40001+)
+    addrMode: 'base0', // 'base0' (PDU; matches FranklinWH's PICS), 'base1' or 'sunspec' (40001+)
     gateway: { host: '--', port: 502, unit_id: 1 },
 
     // Vendor extensions state
@@ -443,8 +443,8 @@ function explorerTab() {
     formatAddress(addr) {
       if (addr == null) return '';
       // The aGate serves SunSpec at base 0 (#273): base-0 is the PDU address
-      // you send; base-1 is how FranklinWH's PICS numbers it. The 40001+ form
-      // is not shown: the aGate answers it with exception 2.
+      // you send and how FranklinWH's PICS numbers it (owner, 2026-10-19).
+      // Base-1 is the same numbered from 1.
       if (this.addrMode === 'base1') return String(addr + 1);
       // Conventional SunSpec numbering (40001+): shown on request, but the
       // aGate doesn't answer these addresses (exception 2).
