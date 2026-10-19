@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.23 — 2026-10-19
+
+### Fixes
+- **SunSpec Explorer: Base-0 is how FranklinWH's official SunSpec PICS
+  numbers registers.** 0.2.21 said Base-1 matched FranklinWH's spreadsheet;
+  that was wrong. Base-0 stays the default; Base-1 is now described as the
+  numbering some Modbus tools use.
+
 ## 0.2.22 — 2026-10-19
 
 ### Fixes
