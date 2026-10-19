@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.22 — 2026-10-19
+
+### Fixes
+- **SunSpec Explorer: put back what 0.2.17–0.2.21 removed.** The extension
+  registers' own JSON / CSV buttons, the "SunSpec 4xxxx" address view (with a
+  note that the aGate doesn't answer those addresses), and "This model" in
+  Export… are back, alongside the new options.
+
 ## 0.2.21 — 2026-10-19
 
 ### Fixes

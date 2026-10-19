@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.22] — 2026-10-19
+
+### Fixed
+
+- **Restored features removed without being asked (#277):** extensions panel
+  JSON/CSV, the SunSpec 4xxxx address view, the export's This model scope.
+
 ## [0.2.21] — 2026-10-19
 
 ### Fixed
