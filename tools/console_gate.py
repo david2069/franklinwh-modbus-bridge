@@ -373,16 +373,22 @@ def run(url: str, user: str, password: str) -> int:
             page.keyboard.press("Escape")
             page.wait_for_timeout(300)
 
-        # Explorer → Modbus reader card (#288): open it; don't Run (a demo
-        # gateway answers 409, and a real aGate would be read).
-        reader = page.locator("[data-testid=reader-card] button").first
-        if reader.count() and reader.is_visible():
-            reader.click()
-            page.wait_for_timeout(300)
+        # Explorer → Modbus reader sub-tab (#294): it opens expanded; don't Run
+        # (a demo gateway answers 409, and a real aGate would be read).
+        tab = page.locator("[data-testid=explorer-section-reader]")
+        if tab.count() and tab.is_visible():
+            tab.click()
+            page.wait_for_timeout(400)
             if not page.locator("[data-testid=reader-raw]").is_visible():
-                problems.append("explorer: reader card did not open")
+                problems.append("explorer: reader tab shows no reader")
+        else:
+            problems.append("explorer: no Modbus reader sub-tab")
 
-        # Explorer → extension registers: identified / unknown filter.
+        # Explorer → extension registers sub-tab: identified / unknown filter.
+        ext_tab = page.locator("[data-testid=explorer-section-extensions]")
+        if ext_tab.count() and ext_tab.is_visible():
+            ext_tab.click()
+            page.wait_for_timeout(400)
         known = page.locator("[data-testid=ext-known-filter]:visible").first
         if known.count():
             for value in ("known", "unknown", ""):

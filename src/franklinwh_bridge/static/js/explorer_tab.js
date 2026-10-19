@@ -93,7 +93,7 @@ function explorerTab() {
     // Modbus reader (#288): the franklinwh-modbus reader via api/reader/run.
     READER_PRESETS: ['15000:40', '15500:14', '16000:3'],
     rdr: {
-      open: false, raw: '15500:14', models: '', point: '', detail: 'basic',
+      open: true, raw: '15500:14', models: '', point: '', detail: 'basic',
       nz: false, match: false, running: false, out: '', error: '', elapsed: null,
     },
     exp: {
