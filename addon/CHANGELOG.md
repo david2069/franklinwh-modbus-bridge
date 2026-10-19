@@ -7,6 +7,13 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.30 — 2026-10-19
+
+### Changes
+- **SunSpec Explorer has tabs: Models, FranklinWH extensions and Modbus
+  reader.** Each fills the page, so the reader is no longer hidden below the
+  extension registers. Export… works from any tab.
+
 ## 0.2.29 — 2026-10-19
 
 ### Fixes
