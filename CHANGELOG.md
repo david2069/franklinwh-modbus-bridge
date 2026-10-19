@@ -13,6 +13,18 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.31] — 2026-10-19
+
+### Added
+
+- **Power % restored (#305):** passed through as WSetPct (no rating
+  conversion, the cause of #133); dashboard, schedules, HA entity.
+
+### Fixed
+
+- Sample sequences `basic_charge_release` and `conflict_test_160` used +WSetPct
+  (discharge) for a charge.
+
 ## [0.2.30] — 2026-10-19
 
 ### Changed

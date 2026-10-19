@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.31 — 2026-10-19
+
+### Changes
+- **Power % is back** for Force Charge and Force Discharge: on the
+  dashboard (W / % switch), in schedules (W or %) and in Home Assistant
+  (Command Power %). A % is sent to the aGate as that exact percentage of
+  what it can do, so it works on any system without a battery rating.
+
+### Fixes
+- Two example sequences labelled "charge" actually discharged; fixed.
+
 ## 0.2.30 — 2026-10-19
 
 ### Changes
