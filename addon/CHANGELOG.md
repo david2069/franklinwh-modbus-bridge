@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.25 — 2026-10-19
+
+### Fixes
+- **Both reserves show what the aGate reports.** Self Reserve shows register
+  15508 and TOU Reserve register 15509, as read, on the dashboard, in Home
+  Assistant and in schedules. 0.2.19's "unknown" and its note are gone, and
+  the SunSpec Explorer's descriptions of these registers are back to the
+  originals.
+
 ## 0.2.24 — 2026-10-19
 
 ### Changes

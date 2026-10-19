@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.25] — 2026-10-19
+
+### Fixed
+
+- **15508/15509 reported as read (#285).** The #34 per-mode blanking, the
+  0.2.19 "unknown" note and the rewritten Explorer descriptions are removed
+  (owner: report what the register reports).
+
 ## [0.2.24] — 2026-10-19
 
 ### Changed
