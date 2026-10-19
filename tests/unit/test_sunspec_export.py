@@ -208,9 +208,12 @@ def test_addresses_in_both_bases_and_the_note():
     numbering; base-1 is the same numbered from 1. The note says 40001+ fails."""
     exp = _build()
     dcw = next(p for m in exp["models"] for p in m["points"] if p["name"] == "DCW")
-    assert (dcw["address_base0"], dcw["address_base1"]) == (1048, 1049)
+    assert (dcw["address_base0"], dcw["address_base1"], dcw["holding_register_4x"]) == (
+        1048, 1049, 41049)
     assert "address" not in dcw
-    assert "base 0" in exp["addressing"] and "exception 2" in exp["addressing"]
+    assert "PDU address 0" in exp["addressing"] and "exception 2" in exp["addressing"]
     row = list(csv.reader(io.StringIO(sx.render_csv(exp))))[-1]
     assert row[sx.CSV_HEADER.index("Address (base-0)")] == "1048"
     assert row[sx.CSV_HEADER.index("Address (base-1)")] == "1049"
+    assert row[sx.CSV_HEADER.index("Holding register (4xxxx)")] == "41049"
+    assert "holding register" in exp["addressing"]

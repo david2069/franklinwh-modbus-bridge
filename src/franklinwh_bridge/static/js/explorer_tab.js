@@ -446,8 +446,8 @@ function explorerTab() {
       // you send and how FranklinWH's PICS numbers it (owner, 2026-10-19).
       // Base-1 is the same numbered from 1.
       if (this.addrMode === 'base1') return String(addr + 1);
-      // Conventional SunSpec numbering (40001+): shown on request, but the
-      // aGate doesn't answer these addresses (exception 2).
+      // Modbus holding-register reference (4xxxx, Modicon style): 40001 is
+      // register 1, PDU address 0. A notation, not an address to send.
       if (this.addrMode === 'sunspec') return String(40001 + addr);
       return String(addr);
     },
@@ -752,7 +752,7 @@ function explorerTab() {
         const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
         const label = 'FranklinWH extension (not SunSpec)';
         content = content.replace(/\n?$/, '\n') + regs.map(x => [
-          'ext', label, x.name, x.description, x.value ?? '', x.type, x.unit, x.address, x.address, x.access, '',
+          'ext', label, x.name, x.description, x.value ?? '', x.type, x.unit, x.address, '', '', x.access, '',
         ].map(q).join(',')).join('\n') + '\n';
       } else {
         const obj = JSON.parse(content);
