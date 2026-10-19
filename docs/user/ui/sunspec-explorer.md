@@ -32,7 +32,7 @@ were found, and:
 
 | Control | What it does |
 |---|---|
-| **Addr: Base-0 / Base-1 / SunSpec 4xxxx** | **Base-0** (the default) is the Modbus address you actually send: the aGate serves its SunSpec map starting at address 0. **Base-1** numbers the same registers from 1, as FranklinWH's PICS spreadsheet lists them. **SunSpec 4xxxx** shows the conventional SunSpec numbering (40001+) for comparison with SunSpec documents, but the aGate does not answer those addresses: it returns exception 2 (illegal data address). |
+| **Addr: Base-0 / Base-1 / SunSpec 4xxxx** | **Base-0** (the default) is the Modbus address you actually send: the aGate serves its SunSpec map starting at address 0, and FranklinWH's official SunSpec PICS lists addresses the same way. **Base-1** numbers the same registers from 1, as some Modbus tools show them. **SunSpec 4xxxx** shows the conventional SunSpec numbering (40001+) for comparison with SunSpec documents, but the aGate does not answer those addresses: it returns exception 2 (illegal data address). |
 | **Access** | All, R (read-only) or RW (writable). |
 | **PICS** | Filters by compliance mark (see below). |
 | **↻** | Reads the model from the aGate now. |

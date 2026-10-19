@@ -32,8 +32,9 @@ CSV_HEADER = ["Model", "Model label", "Point", "Label", "Value", "Type", "Unit",
 #: "Register Addressing", tested 2026-03-15).
 ADDRESSING_NOTE = (
     "The aGate serves its SunSpec map at base 0: address_base0 is the Modbus PDU "
-    "address you send. address_base1 is the same register numbered from 1, as "
-    "FranklinWH's PICS lists it. The conventional 40001+ (base 40000) addresses "
+    "address you send, and matches FranklinWH's official SunSpec PICS, which "
+    "lists addresses 0-based. address_base1 is the same register numbered from 1, "
+    "as some Modbus tools show it. The conventional 40001+ (base 40000) addresses "
     "are not answered by the aGate: they return exception 2, illegal data address."
 )
 
