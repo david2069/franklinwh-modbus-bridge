@@ -1,20 +1,8 @@
-"""Reserve SoC points under the documented 15508/15509 quirk (#34).
+"""Reserve SoC points (#34, #256).
 
-Documented (franklinwh-modbus docs/FRANKLINWH_SUNSPEC_QUIRKS.md, "SOC Reserve
-Registers — Known Defect"; vendor PICS SPAN tab): 15508 (Self-Consumption
-reserve) and 15509 (TOU reserve) always return the same value, so at least one
-of them is not the reserve its name says.
-
-UNCONFIRMED working reading: the shared value is the reserve of the mode
-currently active. The only evidence is the reference site in Self-Consumption
-(app SC 5 / TOU 15, registers 5): consistent with it, not proof. An unverified
-community report (franklinwh-modbus#18) claims the same; it is a lead, not
-evidence. To verify: a mode switch, or reserves set apart, on the reference site.
-
-Publishing on that reading is still the safer choice: a per-mode reserve is shown
-only while its mode is active (else unknown), which avoids the documented wrong
-value either way; ``active_reserve_pct`` is "the shared value", cross-checked
-against 16001 (also unconfirmed).
+``self_reserve_pct`` (15508) and ``tou_reserve_pct`` (15509) are published as
+the aGate reports them. ``active_reserve_pct`` is the active mode's register,
+cross-checked against 16001.
 """
 
 from __future__ import annotations
@@ -35,16 +23,10 @@ def is_self_consumption(mode: object) -> bool:
 
 
 def apply_active_reserve(points: dict[str, Any], active: float | int | None) -> None:
-    """Set ``active_reserve_pct`` and gate the per-mode reserve points.
-
-    ``self_reserve_pct`` / ``tou_reserve_pct`` keep a value only while their own
-    mode is active; otherwise they become None (unknown). Emergency Backup and
-    unknown modes leave both unknown.
-    """
+    """Set ``active_reserve_pct``. ``self_reserve_pct`` (15508) and
+    ``tou_reserve_pct`` (15509) are left exactly as the aGate reported them
+    (owner, 2026-10-19: report what the registers report)."""
     points["active_reserve_pct"] = active
-    mode = points.get("mode_name")
-    points["self_reserve_pct"] = active if is_self_consumption(mode) else None
-    points["tou_reserve_pct"] = active if is_tou(mode) else None
 
 
 class ActiveReserveReader:
@@ -64,9 +46,11 @@ class ActiveReserveReader:
         for key, raw in (("vreg_15508", "self_reserve_pct"), ("vreg_15509", "tou_reserve_pct")):
             if points.get(raw) is not None:
                 points[key] = points[raw]
-        active = points.get("self_reserve_pct")  # 15508 = the active reserve
-        if active is None:
+        # The active mode's own register.
+        if is_tou(points.get("mode_name")):
             active = points.get("tou_reserve_pct")
+        else:
+            active = points.get("self_reserve_pct")
         cross = points.get("vreg_16001")
         if active is not None and cross is not None and int(cross) != int(active):
             pair = (int(active), int(cross))

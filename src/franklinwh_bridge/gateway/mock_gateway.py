@@ -314,10 +314,10 @@ def synthetic_points(
         "cabinet_temp_c":     cabinet_temp,
     }
 
-    # Reserves as a real aGate reports them over Modbus: only the active mode's
-    # reserve is readable (see modbus/reserves.py).
     self_r = (controls or {}).get("self_reserve_pct", 20)
     tou_r = (controls or {}).get("tou_reserve_pct", 30)
+    points["self_reserve_pct"] = self_r
+    points["tou_reserve_pct"] = tou_r
     active = {"TOU": tou_r, "Emergency Backup": 100}.get(mode_name, self_r)
     apply_active_reserve(points, active)
 

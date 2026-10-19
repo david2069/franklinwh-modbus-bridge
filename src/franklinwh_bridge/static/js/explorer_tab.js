@@ -14,8 +14,8 @@ const VENDOR_EXT_15500 = [
   { addr: 15506, name: 'LoadActiveP',       desc: 'Home Load',                      keys: ['home_load_ext_quantized', 'home_load_ext', 'vreg_15506'], unit: 'W', access: 'R', type: 'uint16' },
   { addr: 15507, name: 'OnGridMode',        desc: 'Operating Mode',                 keys: ['ongrid_mode', 'vreg_15507'],          unit: '',   access: 'RW', type: 'uint16',
     symbols: { 1: 'Emergency Backup', 2: 'Self-Consumption', 3: 'TOU' } },
-  { addr: 15508, name: 'SelfReserve',       desc: 'Reserve SOC: reads the ACTIVE mode\'s reserve (V10R01B04D00)', keys: ['self_reserve_pct', 'vreg_15508'],     unit: '%',  access: 'RW', type: 'uint16' },
-  { addr: 15509, name: 'TouReserve',        desc: 'TOU SOC Reserve per PICS, but reads the active reserve (= 15508) on V10R01B04D00', keys: ['vreg_15509', 'tou_reserve_pct'],      unit: '%',  access: 'RW', type: 'uint16' },
+  { addr: 15508, name: 'SelfReserve',       desc: 'Self-Consumption SOC Reserve',   keys: ['self_reserve_pct', 'vreg_15508'],     unit: '%',  access: 'RW', type: 'uint16' },
+  { addr: 15509, name: 'TouReserve',        desc: 'TOU SOC Reserve',                keys: ['tou_reserve_pct', 'vreg_15509'],      unit: '%',  access: 'RW', type: 'uint16' },
   { addr: 15510, name: 'PVOutputWh',        desc: 'PV Energy Total',                keys: ['pv_energy_total_wh'],                 unit: 'Wh', access: 'R',  type: 'uint32', span: 2 },
   { addr: 15512, name: 'proximalOutputWh',  desc: 'PV Energy Proximal',             keys: ['pv_energy_proximal_wh'],              unit: 'Wh', access: 'R',  type: 'uint32', span: 2 },
 ];

@@ -564,8 +564,7 @@ class ModbusPoller:
             # (new in franklinwh-modbus multi-battery update)
             self._extract_per_battery(points)
 
-            # 15508/15509 both carry the ACTIVE mode's reserve (documented
-            # quirk): publish it as such, and per-mode only while active.
+            # Reserves: 15508/15509 as read, plus the active mode's reserve.
             self._reserves.apply(points)
 
             # Home load from the register this gateway is set to use (#35).

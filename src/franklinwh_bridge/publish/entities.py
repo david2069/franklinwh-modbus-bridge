@@ -1056,7 +1056,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
     EntityDef(
         slug="self_reserve_pct",
         name="Self-Consumption Reserve SOC",
-        reset_when_unknown=True,  # only readable while this mode is active (#34)
+        reset_when_unknown=True,
         ha_type="number",
         state_group="control",
         stat_key="self_reserve_pct",
@@ -1071,7 +1071,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
     EntityDef(
         slug="tou_reserve_pct",
         name="TOU Reserve SOC",
-        reset_when_unknown=True,  # only readable while this mode is active (#34)
+        reset_when_unknown=True,
         ha_type="number",
         state_group="control",
         stat_key="tou_reserve_pct",
