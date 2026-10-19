@@ -13,6 +13,21 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.28] — 2026-10-19
+
+### Added
+
+- **Modbus reader in the SunSpec Explorer (#294).** The franklinwh-modbus
+  reader (vendored, MIT) via `POST /api/reader/run`, admin, read-only; the
+  bridge hands it the aGate's connection under the Modbus lock and takes it
+  back after.
+
+### Fixed
+
+- **Socket leak on disconnect/reconnect (#64).** The library's disconnect()
+  never closed the TCP socket (pysunspec2's close() is a no-op for TCP
+  devices); `close_sockets_on_disconnect()` closes it.
+
 ## [0.2.27] — 2026-10-19
 
 ### Changed
