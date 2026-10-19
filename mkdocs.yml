@@ -126,6 +126,7 @@ nav:
     - "Data in: HA entities over WebSocket": dev/ha-websocket.md
     - "Use case: Scheduler integration": dev/scheduler-integration.md
     - Scheduler test plan: dev/scheduler-test-plan.md
+    - Scheduler parity (Modbus Bridge side): dev/scheduler-parity.md
   - Policies:
     - Install lifecycle: install-lifecycle.md
     - Issue policy: issue-policy.md
