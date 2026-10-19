@@ -90,9 +90,11 @@ SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
 OVERSHOOT_CHECK_AFTER_S = 20
 OVERSHOOT_FACTOR = 1.25
 OVERSHOOT_SLACK_W = 500
-#: Requester prefix allowed to stage a power percentage: schedules written
-#: before % was removed. Anything else is told to use watts.
-LEGACY_PCT_REQUESTER = "schedule:"
+#: Power % (restored, owner 2026-10-19): passed through to the aGate as WSetPct
+#: exactly. The library turns watts into WSetPct as watts / rating * 100, so a
+#: % command hands it this rating and the matching watts (+1 W below 100 %, so
+#: the library's float maths and int() can't round 29 % down to 28 %).
+PCT_BASE_W = 10000
 
 OPERATING_MODES = {
     "Emergency Backup": 1,
@@ -115,6 +117,7 @@ class CommandState:
     active: bool = False
     action: str = ""
     power_w: int = 0
+    power_pct: int = 0  # a % command (WSetPct passed through); power_w is 0 then
     started_at: float = 0.0
     watchdog_s: int = DEFAULT_WATCHDOG_S
     last_result: str = ""
@@ -252,6 +255,7 @@ class CommandHandler:
         return {
             "battery_command_state": self._state.action if self._state.active else "Not Active",
             "battery_command_power_w": self._command_power_w,
+            "battery_command_power_pct": self._command_power_pct,
             "battery_command_duration_s": self._command_duration_s,
             "battery_command_target_soc": self._target_soc,
             # 0 = no time limit (the command runs until released or the target
@@ -350,12 +354,7 @@ class CommandHandler:
                     resent = True
                     await self._handle_battery_command(self._state.action)
             elif slug == "battery_command_power_pct":
-                # Our "%" was a share of an assumed rating, not of the battery
-                # (#133). Only a schedule saved before it was removed may still
-                # stage one; it is sized against the trusted rating at dispatch.
-                if not self._requester.startswith(LEGACY_PCT_REQUESTER):
-                    return {"ok": False, "result": (
-                        "Power % has been removed: set Command Power in watts")}
+                # % of what this aGate can do: sent as WSetPct unchanged.
                 self._command_power_pct = max(0, min(int(float(payload)), 100))
                 self._command_power_w = 0  # pct takes precedence, clear watts
                 staged = f"Staged power {self._command_power_pct}%"
@@ -430,6 +429,16 @@ class CommandHandler:
         max_w = 0
         if base == "Standby":
             watts = 0
+        elif base in ("Charge", "Discharge") and self._command_power_pct > 0:
+            # Power %: WSetPct passed through exactly. It is a share of what the
+            # aGate itself can do, so no bridge rating is involved (the cause of
+            # #133 was converting % through a rating that wasn't the aGate's).
+            pct = self._command_power_pct
+            max_w = PCT_BASE_W
+            rated_attr = "RATED_MAX_CHARGE_W" if base == "Charge" else "RATED_MAX_DISCHARGE_W"
+            watts = PCT_BASE_W * pct // 100 + (1 if pct < 100 else 0)
+            if base == "Discharge":
+                watts = -watts
         elif base in ("Charge", "Discharge"):
             decision = self.rating.decision("charge" if base == "Charge" else "discharge")
             if not decision.trusted:
@@ -445,11 +454,7 @@ class CommandHandler:
             # is given the trusted one (set under the Modbus lock, just before
             # the send: see below).
             rated_attr = "RATED_MAX_CHARGE_W" if base == "Charge" else "RATED_MAX_DISCHARGE_W"
-            if self._command_power_pct > 0:
-                # Percentage mode: convert to watts using directional max
-                watts = int(max_w * self._command_power_pct / 100)
-            else:
-                watts = min(self._command_power_w or max_w, max_w)
+            watts = min(self._command_power_w or max_w, max_w)
             if base == "Discharge":
                 watts = -watts
         else:
@@ -460,6 +465,11 @@ class CommandHandler:
             return
 
         display_action = f"Force {base}"  # canonical, prefixed label
+        # A % command records 0 W and says the % (its watts are only the
+        # library's carrier for WSetPct, not a power anyone asked for).
+        pct_cmd = self._command_power_pct if base in ("Charge", "Discharge") else 0
+        report_w = 0 if pct_cmd else watts
+        power_label = f"{pct_cmd}%" if pct_cmd else f"{abs(watts)}W"
 
         # Capture the prior dispatch so we can log a "superseded" event when a
         # new command replaces a *different* active one (not just a power tweak).
@@ -532,29 +542,33 @@ class CommandHandler:
                    f"(WSetEna={hw.get('wset_enabled')}, WSetPct={hw.get('wset_pct')})")
 
         if not success:
-            await self._dispatch_failed(display_action, watts, msg, hw, prev_active)
+            await self._dispatch_failed(display_action, report_w, msg, hw, prev_active)
             return
 
         if self._active_dispatch_id:
             await dispatch_outcomes.update(
                 self._db, self._active_dispatch_id,
-                "superseded", reason=f"replaced by {display_action} {abs(watts)}W")
+                "superseded", reason=f"replaced by {display_action} {power_label}")
         self._active_dispatch_id = await dispatch_outcomes.create(
             self._db, gateway_id=self._gateway_id, requester=self._requester,
-            action=display_action, requested_w=watts, state="sent", reason=msg)
+            action=display_action, requested_w=report_w, state="sent", reason=msg)
         self._last_dispatch = DispatchResult(
-            ok=True, reason=msg, action=display_action, requested_w=watts,
+            ok=True, reason=msg, action=display_action, requested_w=report_w,
             dispatch_id=self._active_dispatch_id, hw=hw, ts=time.time())
         # Hardware WSetPct: + discharge, - charge (BatteryCommand: - discharge).
-        rated = self._max_charge_w if watts > 0 else self._max_discharge_w
-        self._sent_pct = (-watts / rated * 100.0) if rated else None
+        if pct_cmd:
+            self._sent_pct = float(pct_cmd if watts < 0 else -pct_cmd)
+        else:
+            rated = self._max_charge_w if watts > 0 else self._max_discharge_w
+            self._sent_pct = (-watts / rated * 100.0) if rated else None
         self._last_change_ts = time.time()
         self._external = None
         self._external_change = False
 
         self._state.active = True
         self._state.action = display_action
-        self._state.power_w = abs(watts)
+        self._state.power_w = 0 if pct_cmd else abs(watts)
+        self._state.power_pct = pct_cmd
         self._state.started_at = time.time()
         # The dispatch path (M704) is not the one the SPAN sentence is attached
         # to, but route it through the same filter anyway — a message the user
@@ -590,14 +604,14 @@ class CommandHandler:
         if self._target_soc > 0:
             limits.append(f"target SoC {self._target_soc}%")
         await self._log_event(
-            "command_sent", action=display_action, power_w=abs(watts),
+            "command_sent", action=display_action, power_w=abs(report_w),
             detail=f"{msg} [{', '.join(limits)}]", hw_state=hw, by=self._requester,
         )
 
         if self._on_state_changed:
             await self._on_state_changed()
 
-        logger.info("Battery command: %s %dW — %s", display_action, abs(watts), msg)
+        logger.info("Battery command: %s %s — %s", display_action, power_label, msg)
 
     #: Ignore samples this long after our own send/release, so a poll that
     #: still shows the previous state isn't mistaken for someone else's dispatch.
@@ -673,6 +687,7 @@ class CommandHandler:
         if not self._state.active:
             self._state.action = ""
             self._state.power_w = 0
+            self._state.power_pct = 0
             if self._active_dispatch_id:
                 await dispatch_outcomes.update(
                     self._db, self._active_dispatch_id, "superseded",
@@ -729,6 +744,7 @@ class CommandHandler:
         self._state.active = False
         self._state.action = ""
         self._state.power_w = 0
+        self._state.power_pct = 0
         self._state.last_result = (
             "Release not verified (WSetEna still 1)" if unverified
             else "Released" if success else "Release failed"

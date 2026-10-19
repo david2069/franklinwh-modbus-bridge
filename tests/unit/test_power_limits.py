@@ -142,21 +142,20 @@ async def test_charge_under_limit_not_clamped(handler):
     assert cmd.power_watts == 4000  # not clamped
 
 
-async def test_percentage_uses_directional_max(handler):
-    """Percentage mode uses the directional max rate."""
+async def test_percentage_is_wsetpct_whatever_the_rating(handler):
+    """Power % reaches the aGate as that WSetPct, independent of the bridge's
+    rating (restored 2026-10-19; #133 was % converted through a wrong rating)."""
     handler.rating = calibrated_rating(charge_w=6000, discharge_w=4000)
     handler._command_power_pct = 50
     handler._command_power_w = 0
-    await handler._handle_battery_command("Charge")
-    args = handler._controller.send_command.call_args
-    cmd = args[0][0]
-    assert cmd.power_watts == 3000  # 50% of 6000
-
-    handler._controller.send_command.reset_mock()
-    await handler._handle_battery_command("Discharge")
-    args = handler._controller.send_command.call_args
-    cmd = args[0][0]
-    assert cmd.power_watts == -2000  # 50% of 4000, negative
+    for action, sign, attr in (("Charge", 1, "RATED_MAX_CHARGE_W"),
+                               ("Discharge", -1, "RATED_MAX_DISCHARGE_W")):
+        handler._controller.send_command.reset_mock()
+        await handler._handle_battery_command(action)
+        w = handler._controller.send_command.call_args[0][0].power_watts
+        rated = getattr(handler._controller, attr)
+        assert (w > 0) == (sign > 0)
+        assert int(abs(w) / rated * 100) == 50  # the library's own WSetPct maths
 
 
 async def test_default_power_uses_directional_max(handler):

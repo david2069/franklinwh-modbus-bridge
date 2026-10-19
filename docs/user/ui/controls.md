@@ -23,7 +23,7 @@ Time-of-Use, and release from the bridge when the app shows *VPP Mode*.
 | Control | Range | What it does |
 |---|---|---|
 | **Command** | *Not Active*, *Force Charge*, *Force Discharge*, *Force Standby*, *Release* | Sends the command at once. |
-| **Power (W)** | 0 up to the slider maximum, steps of 100 W | The power for force charge or discharge, in **watts**. 0 means "the battery's full trusted rating". |
+| **Power** (W / %) | **W**: 0 up to the slider maximum, steps of 100 W. **%**: 0–100, steps of 5 | The power for force charge or discharge. In watts, 0 means "the battery's full rating". In %, the share of what the aGate can do, sent as WSetPct unchanged. |
 | **Max Charge / Max Discharge** | — | Sets Power to the gateway's **trusted** charge or discharge rating. Greyed out until that rating is trusted. |
 | **Duration** | 0–7200 s (2 h), steps of 60 s | How long the command runs before the bridge stops it. 0 = *No limit*: it runs until released or until the target SoC. |
 | **Target SoC** | 0–100 %, steps of 5 | Stops the command when the battery reaches this SoC. 0 = *Disabled*. |
@@ -62,10 +62,11 @@ battery is seen well above the rating, the bridge stops using it until you calib
 
 So:
 
-- **Power % has been removed.** Power is set in watts only. A command in percent is
-  refused with *"Power % has been removed: set Command Power in watts"*. Schedules saved
-  before 0.2.8 that still use a percentage keep working; they are sized against the trusted
-  rating when they run.
+- **Power in W or %.** The **W / %** switch next to Power picks the unit. A **%** is a share
+  of what the aGate itself can do and is sent to it as WSetPct unchanged (50 % arrives as
+  WSetPct 50), so it works without a battery rating, with one aPower or several. Watts are
+  sized against the battery rating as below. Home Assistant has both: *Command Power* (W)
+  and *Command Power %*.
 - **Force Charge and Force Discharge are refused when the rating for that direction is
   unknown or contradicted.** The command log and toast show *"Refused Force Charge: … Calibrate it:
   Settings → Site & Gateways → this gateway → Battery power rating"*. Force Standby and

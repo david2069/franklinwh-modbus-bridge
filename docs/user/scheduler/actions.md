@@ -42,19 +42,16 @@ or a reserve without `params.pct` is refused.
 <!-- @b ACT-03 ;; src: publish/command_handler.py:441-454 ;; tested: tests/unit/test_battery_rating.py::test_trusted_rating_is_what_the_library_sizes_against ;; write: yes ;; b: Force power is capped at the trusted rating for that direction; the library sizes WSetPct against the trusted rating ;; test: — -->
 <!-- @b ACT-04 ;; src: gateway/scheduler.py:315-329 ;; tested: tests/unit/test_battery_rating.py::test_scheduled_empty_power_is_full_trusted_rating_not_a_manual_leftover ;; write: yes ;; b: A force entry always stages its own duration, target SoC and power (0 when empty), so empty Power means the full trusted rating and no manual value leaks in ;; test: — -->
 
-- Power is in **watts only**. Percentage power was removed in 0.2.8: creating an entry with
-  `params.power_pct` is refused with *"params.power_pct has been removed: set
-  params.power_w in watts"*. <!-- @b ACT-05 ;; src: api/schedules_api.py:190-191 ;; untested ;; write: no ;; b: POST with params.power_pct is rejected with 400 ;; test: unit (API) — POST force_charge with power_pct 50; assert 400 and the message -->
-- **A PATCH that changes only `params` is not checked**, so `power_pct` can still be set on
-  an existing entry through the API.
-  <!-- @b ACT-06 ;; src: api/schedules_api.py:619-621 ;; untested ;; write: yes ;; b: PATCH validates params only when action is in the update, so params.power_pct can be added to an existing entry ;; test: unit (API) — PATCH {'params': {'power_pct': 50}} returns 200 (defect) -->
-- An entry saved before 0.2.8 with a percentage still runs at that share of the trusted
-  rating. The form shows *"This entry was saved as N % of max …"*. Saving it in the form
-  drops the percentage: with Power empty it runs at full power from then on.
-  <!-- @b ACT-07 ;; src: gateway/scheduler.py:324-325, publish/command_handler.py:352-366, publish/command_handler.py:448-450 ;; tested: tests/unit/test_battery_rating.py::test_legacy_schedule_percent_is_sized_against_the_trusted_rating ;; write: yes ;; b: A legacy power_pct entry is sized as that share of the trusted rating; only schedule: requesters may stage a percentage ;; test: — -->
-  <!-- @b ACT-08 ;; src: static/js/schedule_tab.js:1295-1307, templates/tabs/schedule.html:712-713 ;; untested ;; write: yes ;; b: Saving a legacy power_pct entry from the form drops power_pct; empty Power then means full trusted rating ;; test: browser — open a legacy entry, save with Power empty, GET params -->
-- **Duplicating** a legacy percentage entry fails: the copy carries `power_pct` and the API
-  refuses it. <!-- @b ACT-09 ;; src: static/js/schedule_tab.js:1552-1584, api/schedules_api.py:190-191 ;; untested ;; write: no ;; b: Duplicate of a legacy power_pct entry POSTs params.power_pct and fails with 400 ;; test: browser — duplicate a legacy entry; expect 'Copy failed' -->
+- Power is in **watts or %** (the form's W / % choice). A **%** is a share of what the aGate
+  itself can do and is sent to it as WSetPct unchanged: 50 % arrives as WSetPct 50, on a
+  site with one aPower or four. It needs no battery rating, and the overshoot guard doesn't
+  apply to it. Percentages were removed in 0.2.8 and restored in 0.2.31.
+  <!-- @b ACT-05 ;; src: api/schedules_api.py:_validate_action, publish/command_handler.py (PCT_BASE_W) ;; tested: tests/unit/test_battery_rating.py::test_percent_reaches_the_agate_as_exactly_that_wsetpct ;; write: yes ;; b: params.power_pct 1-100 is accepted (not with power_w) and reaches the aGate as exactly that WSetPct ;; test: — -->
+- `params.power_pct` must be 1–100, and an entry can't set both `power_w` and `power_pct`.
+- **A PATCH that changes only `params` is not checked**, so a value outside those rules can
+  still be set on an existing entry through the API.
+  <!-- @b ACT-06 ;; src: api/schedules_api.py:619-621 ;; untested ;; write: yes ;; b: PATCH validates params only when action is in the update ;; test: unit (API) — PATCH {'params': {'power_pct': 500}} returns 200 (defect) -->
+- An entry saved with a percentage opens in the form with **%** selected.
 - A power above the gateway's **Model 702 nameplate** limit is first cut to that limit,
   even when the trusted (calibrated) rating is higher.
   <!-- @b ACT-10 ;; src: publish/command_handler.py:343-345, publish/command_handler.py:221-224 ;; unclear ;; write: yes ;; b: Staged power is clamped to the handler's max_power_w (702 nameplate or 5000 W default) before the trusted cap, so a calibrated rating above the nameplate cannot be reached with an explicit power ;; test: unit — handler with nameplate 5000, calibrated 8000; stage 7000; assert sent watts -->
