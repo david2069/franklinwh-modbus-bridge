@@ -33,6 +33,7 @@ from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.nem_api import router as nem_router
 from franklinwh_bridge.api.point_history_api import router as point_history_router
+from franklinwh_bridge.api.reader_api import router as reader_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
 from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.setup_api import router as setup_router
@@ -1208,6 +1209,9 @@ app.include_router(nem_router, dependencies=_AUTH)
 app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(support_router)  # admin-only via its own require_role dep
+app.include_router(
+    reader_router, dependencies=[require_module("explorer")],
+)  # admin-only via its own require_role dep (#288)
 app.include_router(
     schedules_router,
     dependencies=[require_module("automations"), Depends(require_auth), _ADMIN_WRITES],

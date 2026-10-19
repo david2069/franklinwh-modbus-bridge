@@ -108,3 +108,25 @@ Columns: Addr, Register, Description, Value, Hex, Type, Acc (access), Unit.
     Extension registers are undocumented by FranklinWH and can change with firmware.
 
 Panel sizes are draggable, and the layout is remembered in this browser.
+
+## Modbus reader
+
+**Modbus reader** (admins only, at the bottom of the page) runs the franklinwh-modbus
+reader against the gateway, the same tool as the library's `modbus_sunspec2_reader.py`.
+It only reads.
+
+| Option | What it does |
+|---|---|
+| **Raw** | A raw register read, `start:count` (base-0 PDU addresses, up to 125 registers). Buttons fill in the known blocks: `17000:32`, `15000:40`, `15500:14`, `16000:3`. Leave empty for no raw read. |
+| **Models** | Scan only these SunSpec models, e.g. `1,701-704`. |
+| **Point** | Read one point, e.g. `714.DCW`. |
+| **Detail** | How much the model scan prints: minimal, basic, values, detailed, full. |
+| **Non-zero only** | For a raw read, show only registers that aren't 0. |
+| **Match** | Look for SunSpec points whose value equals each raw register's value, to help work out what an unknown register is. It scans the models first, so it takes longer. |
+
+The output is the reader's own text; **Copy** copies it. A register the aGate doesn't
+answer shows the Modbus error rather than a blank.
+
+While the reader runs, the bridge hands it the aGate's Modbus connection (the aGate takes
+one client at a time), so polling pauses for those few seconds. It won't run while a
+battery command is active, or on a demo gateway.

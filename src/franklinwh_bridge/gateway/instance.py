@@ -9,6 +9,7 @@ for any number of gateways.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from dataclasses import dataclass
@@ -49,6 +50,38 @@ def disable_connect_writes(controller: Any) -> None:
     """
     if hasattr(controller, "_test_extension_writability"):
         controller._test_extension_writability = lambda: {}
+
+
+def _close_device_socket(controller: Any) -> None:
+    dev = getattr(controller, "dev", None)
+    if dev is not None:
+        with contextlib.suppress(Exception):
+            dev.disconnect()  # SunSpecModbusClientDeviceTCP -> ModbusClientTCP.disconnect
+
+
+def close_sockets_on_disconnect(controller: Any) -> None:
+    """Make the library actually close its TCP socket (#64, #288).
+
+    franklinwh-modbus ``disconnect()`` calls ``dev.close()``, which for
+    pysunspec2's ``SunSpecModbusClientDeviceTCP`` (1.3.6) is the base class's
+    no-op, then drops ``dev``: the socket stays open. ``connect()`` and
+    ``reconnect()`` replace ``dev`` the same way. Every disconnect or reconnect
+    left a live session on the aGate, which serves one client at a time: the
+    CLOSE_WAIT socket of #64, and the reason a second connection (the Explorer
+    reader, the library's per-poll extension reads) was refused on a strict
+    one-client device. Wrap both so the old socket is closed first.
+    """
+    for name in ("disconnect", "connect", "reconnect"):
+        original = getattr(controller, name, None)
+        if original is None or getattr(original, "_closes_socket", False):
+            continue
+
+        def wrapped(*args, _original=original, **kwargs):
+            _close_device_socket(controller)
+            return _original(*args, **kwargs)
+
+        wrapped._closes_socket = True  # type: ignore[attr-defined]
+        setattr(controller, name, wrapped)
 
 
 @dataclass
@@ -154,6 +187,7 @@ class GatewayInstance:
             timeout=cfg.timeout,
         )
         disable_connect_writes(self.controller)
+        close_sockets_on_disconnect(self.controller)
 
         self.poller = ModbusPoller(
             controller=self.controller,
