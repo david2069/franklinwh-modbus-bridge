@@ -130,12 +130,12 @@
                       :class="addrMode === 'base0' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-500 hover:text-slate-300'">Base-0</button>
               <button @click="addrMode = 'base1'"
                       class="px-1.5 py-0.5 rounded transition"
-                      title="The same registers numbered from 1, as some Modbus tools show them. FranklinWH's PICS uses Base-0."
+                      title="The Modbus register number: the same register counted from 1. FranklinWH's PICS uses Base-0."
                       :class="addrMode === 'base1' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-500 hover:text-slate-300'">Base-1</button>
               <button @click="addrMode = 'sunspec'"
                       class="px-1.5 py-0.5 rounded transition"
-                      title="Conventional SunSpec numbering (40001+). The aGate doesn't answer these addresses: it returns exception 2."
-                      :class="addrMode === 'sunspec' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'">SunSpec 4xxxx</button>
+                      title="Modbus holding-register reference (4xxxx, Modicon style): 40001 = register 1 = PDU address 0. The leading 4 means 'holding register', not part of the address; sending 40001+ as the address gets exception 2 from the aGate."
+                      :class="addrMode === 'sunspec' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'">4xxxx</button>
             </div>
             <!-- Access + PICS filters -->
             <div class="flex items-center gap-1.5 text-[10px]">

@@ -26,16 +26,20 @@ from franklinwh_bridge.support.scrub import SERIAL, compile_known, scrub_serial_
 SERIAL_POINTS = frozenset({"SN"})
 
 CSV_HEADER = ["Model", "Model label", "Point", "Label", "Value", "Type", "Unit",
-              "Address (base-0)", "Address (base-1)", "Access", "Scale factor"]
+              "Address (base-0)", "Address (base-1)", "Holding register (4xxxx)",
+              "Access", "Scale factor"]
 
 #: How the aGate addresses its SunSpec map (#273; franklinwh-modbus QUIRKS,
 #: "Register Addressing", tested 2026-03-15).
 ADDRESSING_NOTE = (
-    "The aGate serves its SunSpec map at base 0: address_base0 is the Modbus PDU "
-    "address you send, and matches FranklinWH's official SunSpec PICS, which "
-    "lists addresses 0-based. address_base1 is the same register numbered from 1, "
-    "as some Modbus tools show it. The conventional 40001+ (base 40000) addresses "
-    "are not answered by the aGate: they return exception 2, illegal data address."
+    "Modbus addressing (the aGate's SunSpec map starts at PDU address 0). "
+    "address_base0 is the Modbus PDU address sent in the request; FranklinWH's "
+    "official SunSpec PICS lists addresses this way. address_base1 is the Modbus "
+    "register number, the same register counted from 1. holding_register_4x is "
+    "the legacy Modicon reference for a holding register (40001 = register 1 = "
+    "PDU address 0): the leading 4 means 'holding register' and is not part of "
+    "the address. Tools that send 40001+ as the address get exception 2 "
+    "(illegal data address) from the aGate."
 )
 
 
@@ -130,6 +134,8 @@ def build_export(
                 "unit": rec.get("unit") or "",
                 "address_base0": rec.get("address"),
                 "address_base1": None if rec.get("address") is None else rec["address"] + 1,
+                "holding_register_4x": (None if rec.get("address") is None
+                                        else 40001 + rec["address"]),
                 "access": rec.get("access") or "R",
                 "scale_factor": rec.get("scale_factor"),
             })
@@ -168,7 +174,9 @@ def render_csv(export: Mapping[str, Any]) -> str:
                 m["model_id"], m["label"] or "", p["name"], p["label"],
                 "" if p["value"] is None else p["value"], p["type"], p["unit"],
                 "" if p["address_base0"] is None else p["address_base0"],
-                "" if p["address_base1"] is None else p["address_base1"], p["access"],
+                "" if p["address_base1"] is None else p["address_base1"],
+                "" if p["holding_register_4x"] is None else p["holding_register_4x"],
+                p["access"],
                 "" if p["scale_factor"] is None else p["scale_factor"],
             ])
     return buf.getvalue()
