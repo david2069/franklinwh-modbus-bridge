@@ -81,6 +81,7 @@ The **Log** tab shows the bridge's log.
 
 ## More
 
-- Full install guide (add-on, Docker, development):
-  [INSTALL.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/INSTALL.md)
+- User guide: <https://david2069.github.io/franklinwh-modbus-bridge/>
+- Install guide (add-on, Docker, Python):
+  <https://david2069.github.io/franklinwh-modbus-bridge/user/install-addon/>
 - Source and issues: <https://github.com/david2069/franklinwh-modbus-bridge>
