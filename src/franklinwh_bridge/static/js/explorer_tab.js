@@ -67,7 +67,7 @@ function explorerTab() {
     filter: '',
     loading: true,
     refreshing: false,
-    addrMode: 'base0', // 'base0' (PDU, what you send) or 'base1' (as in FranklinWH's PICS)
+    addrMode: 'base0', // 'base0' (PDU, what you send), 'base1' (FranklinWH's PICS) or 'sunspec' (40001+)
     gateway: { host: '--', port: 502, unit_id: 1 },
 
     // Vendor extensions state
@@ -446,6 +446,9 @@ function explorerTab() {
       // you send; base-1 is how FranklinWH's PICS numbers it. The 40001+ form
       // is not shown: the aGate answers it with exception 2.
       if (this.addrMode === 'base1') return String(addr + 1);
+      // Conventional SunSpec numbering (40001+): shown on request, but the
+      // aGate doesn't answer these addresses (exception 2).
+      if (this.addrMode === 'sunspec') return String(40001 + addr);
       return String(addr);
     },
 
@@ -692,6 +695,10 @@ function explorerTab() {
     exportScopeLabel() {
       return `Displayed models (${this.filteredModels.length})`;
     },
+    exportModelLabel() {
+      const m = this.selectedModel;
+      return m ? `This model (${m.model_id} ${m.label || ''})` : 'This model';
+    },
 
     toggleExportModel(id) {
       const c = this.exp.chosen;
@@ -706,6 +713,7 @@ function explorerTab() {
       let models = '';
       // "Displayed": what the model tree shows after its filter and the
       // hide-unpolled option (#228).
+      if (e.scope === 'model') models = String(this.selectedModelId ?? '');
       if (e.scope === 'displayed') models = this.filteredModels.map(m => m.model_id).join(',');
       if (e.scope === 'choose') models = e.chosen.join(',');
       e.error = ''; e.msg = '';
@@ -761,6 +769,33 @@ function explorerTab() {
       }
       const filename = r.filename.replace(/(_redacted)?\.(json|csv)$/, '_ext$1.$2');
       return { ...r, content, filename };
+    },
+
+    exportExtJSON() {
+      const data = this.filteredExtensions.map(r => ({
+        address: r.addr,
+        name: r.name,
+        description: r.desc,
+        value: r.value,
+        hex: r.hex,
+        type: r.type,
+        access: r.access,
+        unit: r.unit,
+      }));
+      this._downloadFile(
+        'franklinwh_extensions.json',
+        JSON.stringify(data, null, 2),
+        'application/json'
+      );
+    },
+
+    exportExtCSV() {
+      const rows = [['Address', 'Name', 'Description', 'Value', 'Hex', 'Type', 'Access', 'Unit']];
+      for (const r of this.filteredExtensions) {
+        rows.push([r.addr, r.name, r.desc, r.value ?? '', r.hex || '', r.type, r.access, r.unit]);
+      }
+      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+      this._downloadFile('franklinwh_extensions.csv', csv, 'text/csv');
     },
 
     /** navigator.clipboard needs a secure context, which HA ingress over plain
