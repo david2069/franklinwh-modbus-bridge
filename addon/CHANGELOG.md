@@ -7,6 +7,19 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.28 — 2026-10-19
+
+### Changes
+- **SunSpec Explorer: Modbus reader** (admins). Runs the franklinwh-modbus
+  reader against your aGate: read a raw register range, scan models, read a
+  point, show only non-zero values, or match raw values against SunSpec
+  points. It only reads. A register the aGate doesn't answer shows the Modbus
+  error. Polling pauses for the few seconds it runs.
+
+### Fixes
+- **The bridge no longer leaves old connections open to the aGate** when it
+  reconnects. The aGate serves one Modbus client at a time.
+
 ## 0.2.27 — 2026-10-19
 
 ### Changes
