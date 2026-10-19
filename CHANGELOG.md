@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.24] — 2026-10-19
+
+### Changed
+
+- **Modbus address terms; 4xxxx in the export (#273).** `holding_register_4x`
+  (CSV "Holding register (4xxxx)"); the `addressing` note uses Modbus terms
+  (PDU address, register number, holding-register reference). Explorer
+  "SunSpec 4xxxx" renamed "4xxxx".
+
 ## [0.2.23] — 2026-10-19
 
 ### Fixed
