@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.27 — 2026-10-19
+
+### Changes
+- **Documentation links open the formatted user guide**
+  (david2069.github.io/franklinwh-modbus-bridge) instead of the GitHub
+  README: the sidebar's Docs (at the page for the tab you're on), the legal
+  notice, and this add-on's page.
+
 ## 0.2.26 — 2026-10-19
 
 ### Fixes

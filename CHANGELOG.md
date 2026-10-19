@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.27] — 2026-10-19
+
+### Changed
+
+- **Docs links go to the github.io site** (sidebar Docs per tab,
+  `disclaimer.DOCS_URL`, add-on `url`, addon/DOCS.md).
+
 ## [0.2.26] — 2026-10-19
 
 ### Fixed
