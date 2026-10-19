@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.24 — 2026-10-19
+
+### Changes
+- **SunSpec Explorer uses Modbus's own terms for addresses.** Base-0 is the
+  address sent (and FranklinWH's PICS numbering), Base-1 the register number,
+  and **4xxxx** the holding-register reference (40001 = register 1). Exports
+  now include the 4xxxx reference too.
+
 ## 0.2.23 — 2026-10-19
 
 ### Fixes
