@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.23] — 2026-10-19
+
+### Fixed
+
+- **Base-0 is FranklinWH's PICS numbering (#273, #279).** Labels, the export
+  `addressing` note and docs said Base-1; the library's PICS cross-reference
+  records 0-based PDU addresses (ControllerHb 1092).
+
 ## [0.2.22] — 2026-10-19
 
 ### Fixed
