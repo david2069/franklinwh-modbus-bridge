@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.21 — 2026-10-19
+
+### Fixes
+- **SunSpec Explorer shows register addresses your aGate actually answers.**
+  The default view was the conventional 40001+ numbering, which the aGate
+  rejects. It now shows **Base-0** (the address you send) by default, or
+  **Base-1** (as in FranklinWH's spreadsheet). Exports carry both, with a note.
+
 ## 0.2.20 — 2026-10-19
 
 ### Changes

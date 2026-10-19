@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.21] — 2026-10-19
+
+### Fixed
+
+- **Register addresses: base-0 (default) and base-1, no 40001+ (#273).** The
+  aGate serves SunSpec at base 0 and answers 4xxxx with exception 2. Export:
+  `address_base0` / `address_base1` (CSV: two columns) and an `addressing`
+  note.
+
 ## [0.2.20] — 2026-10-19
 
 ### Changed
