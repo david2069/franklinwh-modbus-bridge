@@ -26,7 +26,16 @@ from franklinwh_bridge.support.scrub import SERIAL, compile_known, scrub_serial_
 SERIAL_POINTS = frozenset({"SN"})
 
 CSV_HEADER = ["Model", "Model label", "Point", "Label", "Value", "Type", "Unit",
-              "Address", "Access", "Scale factor"]
+              "Address (base-0)", "Address (base-1)", "Access", "Scale factor"]
+
+#: How the aGate addresses its SunSpec map (#273; franklinwh-modbus QUIRKS,
+#: "Register Addressing", tested 2026-03-15).
+ADDRESSING_NOTE = (
+    "The aGate serves its SunSpec map at base 0: address_base0 is the Modbus PDU "
+    "address you send. address_base1 is the same register numbered from 1, as "
+    "FranklinWH's PICS lists it. The conventional 40001+ (base 40000) addresses "
+    "are not answered by the aGate: they return exception 2, illegal data address."
+)
 
 
 def _snake(name: str) -> str:
@@ -118,7 +127,8 @@ def build_export(
                 "value": value,
                 "type": rec.get("type") or "",
                 "unit": rec.get("unit") or "",
-                "address": rec.get("address"),
+                "address_base0": rec.get("address"),
+                "address_base1": None if rec.get("address") is None else rec["address"] + 1,
                 "access": rec.get("access") or "R",
                 "scale_factor": rec.get("scale_factor"),
             })
@@ -136,6 +146,7 @@ def build_export(
         "generated_at": (now or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "gateway": gw,
         "serial_redacted": redact_serial,
+        "addressing": ADDRESSING_NOTE,
         "model_count": len(out_models),
         "point_count": sum(len(m["points"]) for m in out_models),
         "models": out_models,
@@ -155,7 +166,8 @@ def render_csv(export: Mapping[str, Any]) -> str:
             w.writerow([
                 m["model_id"], m["label"] or "", p["name"], p["label"],
                 "" if p["value"] is None else p["value"], p["type"], p["unit"],
-                "" if p["address"] is None else p["address"], p["access"],
+                "" if p["address_base0"] is None else p["address_base0"],
+                "" if p["address_base1"] is None else p["address_base1"], p["access"],
                 "" if p["scale_factor"] is None else p["scale_factor"],
             ])
     return buf.getvalue()
