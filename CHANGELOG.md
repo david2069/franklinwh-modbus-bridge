@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.30] — 2026-10-19
+
+### Changed
+
+- **Explorer sub-tabs** (Models / FranklinWH extensions / Modbus reader),
+  `?section=` in the URL.
+
 ## [0.2.29] — 2026-10-19
 
 ### Fixed
