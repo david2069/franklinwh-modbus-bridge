@@ -112,9 +112,8 @@ async def test_bad_requests_are_refused(calls, body, status):
     assert "read" not in calls
 
 
-async def test_refused_for_a_demo_gateway_an_active_command_or_an_unknown_gateway(calls):
+async def test_refused_for_a_demo_gateway_or_an_unknown_gateway(calls):
     assert (await _post(_app(_inst(mock=True)), {"raw": "15500:14"})).status_code == 409
-    assert (await _post(_app(_inst(active=True)), {"raw": "15500:14"})).status_code == 409
     assert (await _post(_app(_inst()), {"gateway_id": "x", "raw": "15500:14"})).status_code == 404
     assert "read" not in calls
 
@@ -138,3 +137,9 @@ def test_the_vendored_reader_has_no_write_path():
     src = inspect.getsource(rdr)
     for needle in ("write_hregs", ".write(", "0x06", "0x10"):
         assert needle not in src, needle
+
+
+async def test_runs_while_a_battery_command_is_active(calls):
+    """Like the original reader: no extra rule about active commands (owner)."""
+    r = await _post(_app(_inst(active=True)), {"raw": "15500:14"})
+    assert r.status_code == 200, r.text

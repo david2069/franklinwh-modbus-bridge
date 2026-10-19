@@ -110,9 +110,6 @@ async def run_reader(body: ReaderRequest, request: Request) -> ReaderResult:
         raise HTTPException(404, f"gateway '{body.gateway_id}' is not running")
     if inst.config.mock:
         raise HTTPException(409, "the reader needs a real aGate; this is a demo gateway")
-    handler = getattr(inst, "command_handler", None)
-    if handler is not None and handler.state.active:
-        raise HTTPException(409, "a battery command is active; release it first")
     if _run_lock.locked():
         raise HTTPException(409, "the reader is already running")
     opts = _options(body)

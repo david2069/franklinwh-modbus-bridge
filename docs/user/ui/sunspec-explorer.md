@@ -128,5 +128,5 @@ The output is the reader's own text; **Copy** copies it. A register the aGate do
 answer shows the Modbus error rather than a blank.
 
 While the reader runs, the bridge hands it the aGate's Modbus connection (the aGate takes
-one client at a time), so polling pauses for those few seconds. It won't run while a
-battery command is active, or on a demo gateway.
+one client at a time), so polling pauses for those few seconds. It doesn't run on a demo
+gateway.
