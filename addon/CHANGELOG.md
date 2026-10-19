@@ -7,6 +7,12 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.26 — 2026-10-19
+
+### Fixes
+- **The Sequencer comes with its example sequences.** They were left out of
+  the installed package, so the Sequencer started empty.
+
 ## 0.2.25 — 2026-10-19
 
 ### Fixes

@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.26] — 2026-10-19
+
+### Fixed
+
+- **Example sequences ship in the package (#287).** package-data now
+  includes `sequences/*.json` (29 files; the wheel had none).
+
 ## [0.2.25] — 2026-10-19
 
 ### Fixed
