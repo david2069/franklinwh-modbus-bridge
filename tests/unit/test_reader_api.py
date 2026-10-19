@@ -74,12 +74,12 @@ async def _post(app, body):
 
 async def test_raw_read_uses_base_0_skips_the_model_scan_and_hands_over_the_client(calls):
     inst = _inst()
-    r = await _post(_app(inst), {"raw": "17000:32", "nz": True})
+    r = await _post(_app(inst), {"raw": "15000:40", "nz": True})
     assert r.status_code == 200, r.text
     body = r.json()
     assert "15508 SelfReserve 8" in body["output"] and body["error"] is None
     assert calls["read"]["base_address"] == 0
-    assert calls["read"]["raw_read_spec"] == "17000:32"
+    assert calls["read"]["raw_read_spec"] == "15000:40"
     assert calls["read"]["scan_models"] is False
     assert calls["print"]["show_nonzero"] is True
     assert inst.controller.disconnects == 1   # one client: the bridge let go first
@@ -101,9 +101,9 @@ async def test_models_are_parsed_with_the_readers_own_parser(calls):
 
 
 @pytest.mark.parametrize("body, status", [
-    ({"raw": "17000:126"}, 400),
+    ({"raw": "15000:126"}, 400),
     ({"raw": "65530:10"}, 400),
-    ({"raw": "17000;32"}, 422),
+    ({"raw": "15000;40"}, 422),
     ({"models": "1; rm -rf /"}, 422),
     ({"point": "714.DCW extra"}, 422),
 ])

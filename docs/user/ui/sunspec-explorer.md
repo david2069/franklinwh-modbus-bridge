@@ -117,7 +117,7 @@ It only reads.
 
 | Option | What it does |
 |---|---|
-| **Raw** | A raw register read, `start:count` (base-0 PDU addresses, up to 125 registers). Buttons fill in the known blocks: `17000:32`, `15000:40`, `15500:14`, `16000:3`. Leave empty for no raw read. |
+| **Raw** | A raw register read, `start:count` (base-0 PDU addresses, up to 125 registers). Buttons fill in the known blocks: `15000:40`, `15500:14`, `16000:3`. Leave empty for no raw read. |
 | **Models** | Scan only these SunSpec models, e.g. `1,701-704`. |
 | **Point** | Read one point, e.g. `714.DCW`. |
 | **Detail** | How much the model scan prints: minimal, basic, values, detailed, full. |

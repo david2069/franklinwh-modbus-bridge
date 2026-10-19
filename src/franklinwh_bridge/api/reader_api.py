@@ -40,7 +40,7 @@ _run_lock = asyncio.Lock()
 class ReaderRequest(BaseModel):
     gateway_id: str = "default"
     raw: str | None = Field(None, pattern=r"^\d{1,5}(:\d{1,3})?$",
-                            description="start:count, e.g. 17000:32 (PDU addresses)")
+                            description="start:count, e.g. 15500:14 (PDU addresses)")
     models: str | None = Field(None, pattern=r"^[\d,\-\s]+$", description="e.g. 1,701-704")
     point: str | None = Field(None, pattern=r"^\d+\.\w+$", description="e.g. 714.DCW")
     detail: Literal["minimal", "basic", "values", "detailed", "full"] = "basic"
