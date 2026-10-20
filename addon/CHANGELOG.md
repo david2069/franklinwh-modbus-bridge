@@ -7,6 +7,16 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.32 — 2026-10-21
+
+### Fixes
+- **Works with aGate firmware V12R02B60D00.** The new firmware also answers
+  at a second set of Modbus addresses; the bridge now stays on the aGate's
+  usual ones, so battery commands and the SunSpec Explorer's addresses are
+  as before. Update before restarting the bridge on the new firmware.
+- **Firmware version follows an aGate update** without restarting the
+  bridge (status, SunSpec export, support bundle).
+
 ## 0.2.31 — 2026-10-19
 
 ### Changes
