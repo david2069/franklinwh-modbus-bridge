@@ -84,6 +84,37 @@ def close_sockets_on_disconnect(controller: Any) -> None:
         setattr(controller, name, wrapped)
 
 
+#: The order SunSpec bases are probed in: the aGate's own base first (#308).
+SUNSPEC_BASE_ORDER = (0, 40000, 50000)
+
+
+def prefer_sunspec_base_0() -> None:
+    """Make the library's SunSpec scan bind base 0 before the 40000 mirror (#308).
+
+    franklinwh-modbus asks for base 0, but pysunspec2 1.3.6's ``scan()`` takes
+    no base: it probes ``base_addr_list = [40000, 0, 50000]`` in order. aGate
+    firmware up to V10R01B04D00 refused 40000, so the scan fell back to 0;
+    V12R02B60D00 mirrors the whole map at 40000, so the scan would bind there,
+    sending every model read and write to the mirror and shifting the catalog's
+    addresses by 40000. Swap in a device class that probes 0 first.
+    """
+    from franklinwh_modbus import controller as lib
+
+    base = getattr(lib, "SunSpecModbusClientDeviceTCP", None)
+    if base is None or getattr(base, "_base_0_first", False):
+        return
+
+    class Base0FirstDevice(base):  # type: ignore[misc, valid-type]
+        _base_0_first = True
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            rest = [a for a in getattr(self, "base_addr_list", []) if a not in SUNSPEC_BASE_ORDER]
+            self.base_addr_list = [*SUNSPEC_BASE_ORDER, *rest]
+
+    lib.SunSpecModbusClientDeviceTCP = Base0FirstDevice
+
+
 @dataclass
 class GatewayConfig:
     """Configuration for a single gateway."""
@@ -182,6 +213,7 @@ class GatewayInstance:
         # log-reported retries/rescans, attributed to this gateway.
         link_stats.install()
         link_stats.register_address(self.gateway_id, cfg.host, cfg.port)
+        prefer_sunspec_base_0()
         self.controller = FranklinWHController(
             ip_address=cfg.host, port=cfg.port, unit_id=cfg.unit_id,
             timeout=cfg.timeout,
