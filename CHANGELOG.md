@@ -13,6 +13,19 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.32] — 2026-10-21
+
+### Fixed
+
+- **aGate firmware V12R02B60D00 (#308):** the aGate now mirrors its SunSpec map
+  at PDU 40000, and pysunspec2's scan probes 40000 first, ignoring the
+  library's base 0. The bridge now probes base 0 first, so reads and writes
+  stay at the aGate's own addresses and the Explorer/export addresses don't
+  shift by 40000. Library defect: franklinwh-modbus#84.
+- **Firmware after an aGate update (#307):** the nameplate is re-read after a
+  reconnect, so status, export header and support bundle show the new
+  firmware without a bridge restart; the change is logged.
+
 ## [0.2.31] — 2026-10-19
 
 ### Added
