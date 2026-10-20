@@ -2,7 +2,7 @@
 
 ``self_reserve_pct`` (15508) and ``tou_reserve_pct`` (15509) are published as
 the aGate reports them. ``active_reserve_pct`` is the active mode's register,
-cross-checked against 16001.
+cross-checked against 16001; in Emergency Backup it is 16001 itself (#311).
 """
 
 from __future__ import annotations
@@ -30,7 +30,13 @@ def apply_active_reserve(points: dict[str, Any], active: float | int | None) -> 
 
 
 class ActiveReserveReader:
-    """Derive the active reserve from a real poll (15508, cross-checked vs 16001)."""
+    """Derive the active reserve from a real poll.
+
+    Self-Consumption: 15508. TOU: 15509. Both cross-checked against 16001, which
+    reads the active mode's reserve (owner's aGate, V12R02B60D00, 2026-10-21:
+    SC 8, TOU 15, Emergency Backup 100). Any other mode (Emergency Backup) has
+    no reserve register of its own, so it is 16001 as read (#311).
+    """
 
     def __init__(self, gateway_id: str) -> None:
         self._gateway_id = gateway_id
@@ -46,18 +52,21 @@ class ActiveReserveReader:
         for key, raw in (("vreg_15508", "self_reserve_pct"), ("vreg_15509", "tou_reserve_pct")):
             if points.get(raw) is not None:
                 points[key] = points[raw]
-        # The active mode's own register.
-        if is_tou(points.get("mode_name")):
-            active = points.get("tou_reserve_pct")
-        else:
-            active = points.get("self_reserve_pct")
+        # The active mode's own register; 16001 where the mode has none (#311).
+        mode = points.get("mode_name")
         cross = points.get("vreg_16001")
-        if active is not None and cross is not None and int(cross) != int(active):
+        if is_tou(mode):
+            active, reg = points.get("tou_reserve_pct"), "15509"
+        elif is_self_consumption(mode):
+            active, reg = points.get("self_reserve_pct"), "15508"
+        else:
+            active, reg = cross, None
+        if reg and active is not None and cross is not None and int(cross) != int(active):
             pair = (int(active), int(cross))
             if pair != self._last_mismatch:  # once per distinct disagreement
                 logger.warning(
-                    "Gateway %s: active reserve 15508=%s disagrees with 16001=%s",
-                    self._gateway_id, active, cross,
+                    "Gateway %s: active reserve %s=%s disagrees with 16001=%s",
+                    self._gateway_id, reg, active, cross,
                 )
                 self._last_mismatch = pair
         elif self._last_mismatch is not None:
