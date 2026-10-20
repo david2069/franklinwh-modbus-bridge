@@ -255,13 +255,13 @@ port has an active alarm — bit 0 is first port", no per-bit names). All names
 below were guessed/empirically inferred by the `franklinwh-modbus` library
 author, not confirmed by FranklinWH. Source: `franklinwh_bridge/store/alarms.py`.
 
-**M714.PrtAlrms (register 41044, DC port alarms) — bits 0-7 named, 8-31 unknown:**
+**M714.PrtAlrms (Base-0 register 1044, DC port alarms) — bits 0-7 named, 8-31 unknown:**
 | Bit | Assumed name | Confidence |
 |-----|-------------|------------|
 | 0-7 | PortOverVoltage, PortUnderVoltage, PortOverCurrent, PortOverTemp, PortUnderTemp, ContactorFault, FuseFault, PortGroundFault | Guessed, unconfirmed |
 | 8-31 | `VendorBit8`...`VendorBit31` — no meaning known at all | Unknown |
 
-**M701.Alrm (register 40076, system alarms) — bits 0-15 named, 16-31 unknown:**
+**M701.Alrm (Base-0 register 76, system alarms) — bits 0-15 named, 16-31 unknown:**
 Bits 0-15 (GroundFault, InputOverCurrent, DCOverVoltage, ACDisconnect,
 DCDisconnect, GridDisconnect, CabinetOpen, ManualShutdown, OverTemp,
 OverFrequency, UnderFrequency, ACOverVoltage, ACUnderVoltage, StringFault,
@@ -282,7 +282,7 @@ physically incoherent combinations — looks more like transient register
 read noise than real hardware faults, independent of whether the bit names
 themselves are correct.
 
-**M713.Sta (register 41039, battery state enum):** values 0-7 are guessed
+**M713.Sta (Base-0 register 1039, battery state enum):** values 0-7 are guessed
 (Idle, Charging, Discharging, Holding, Full, Empty, FAULT, Sleep). A real
 device produced `State400` (value 400) in 30 days of data — **far outside
 the assumed 0-7 range** — meaning either the enum has values well beyond
@@ -530,7 +530,7 @@ source of `_M701_ALRM_BITS`'s bit-position assumptions, per its own docstring).
 
 ### 12b. M714 — the bridge reads the wrong alarm register entirely
 
-FranklinWH's PICS confirms `PrtAlrms` (register 41044, what
+FranklinWH's PICS confirms `PrtAlrms` (Base-0 register 1044, what
 `controller.py:1757-1758` actually reads into `dc_port_alrm`) has **no per-bit
 alarm-type names at all** — the official Model 714 spec describes it as "bitfield
 of ports with active alarms; bit is 1 if port has an active alarm; bit 0 is first
@@ -572,8 +572,8 @@ The bridge's alarm-tracking use of this table should be corrected or dropped.
 
 ### 12d. M701.DERMode ("PV Clipped") — confirmed UNIMPLEMENTED by FranklinWH's own certification
 
-This is the strongest finding. FranklinWH's PICS lists `DERMode` (register
-40078) — **all three of its states, `GRID_FOLLOWING`, `GRID_FORMING`, and
+This is the strongest finding. FranklinWH's PICS lists `DERMode` (Base-0 register
+78) — **all three of its states, `GRID_FOLLOWING`, `GRID_FORMING`, and
 `PV_CLIPPED`** — as **`unimplemented`**. Not "supported," not partially
 supported: explicitly unimplemented, in FranklinWH's own signed conformance
 statement. Bit ordering itself matches what the bridge assumes (0/1/2 =
@@ -634,7 +634,7 @@ design regardless.
    real 17-bit list, and 2 real bits missing (`HW_TEST_FAILURE`,
    `MANUFACTURER_ALRM`) (Issue 12a)
 3. **Read `Prt.N.DCAlrm` (register 41085+) for alarm-type detail** instead of
-   decoding `PrtAlrms` (41044) as if its bits were alarm types — `PrtAlrms` is
+   decoding `PrtAlrms` (Base-0 1044) as if its bits were alarm types — `PrtAlrms` is
    a per-port active-alarm summary flag with no per-bit names in the spec;
    the real, PICS-certified alarm-type bitfield is a different, currently
    unread register (Issue 12b)

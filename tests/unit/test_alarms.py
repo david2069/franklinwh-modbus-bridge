@@ -94,7 +94,7 @@ def test_pair_simple_set_then_clear():
     assert row["end_ts"] == 110.0
     assert row["duration_seconds"] == 10.0
     assert row["ongoing"] is False
-    assert row["register"] == 41044
+    assert row["register"] == 1044
     assert row["point"] == "DERMeasureDC.PrtAlrms"
     assert row["severity"] == "warning"
 
@@ -195,7 +195,7 @@ def test_pair_m713_sta_chained_state_transitions():
     assert charging["ts"] == 400.0
     assert charging["end_ts"] == 460.0
     assert charging["duration_seconds"] == 60.0
-    assert charging["register"] == 41039
+    assert charging["register"] == 1039
     assert charging["point"] == "DERStorageCapacity.Sta"
 
     # "Discharging" opened at 460.0 with no later clear -> ongoing.
@@ -218,7 +218,7 @@ def test_grid_mode_single_sample_blip_has_nonzero_duration():
     assert row["end_ts"] == 1020.0
     assert row["duration_seconds"] == 10.0
     assert row["ongoing"] is False
-    assert row["register"] == 40078
+    assert row["register"] == 78
     assert row["point"] == "DERMeasureAC.DERMode"
 
 
