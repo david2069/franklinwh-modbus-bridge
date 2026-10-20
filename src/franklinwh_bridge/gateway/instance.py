@@ -84,6 +84,29 @@ def close_sockets_on_disconnect(controller: Any) -> None:
         setattr(controller, name, wrapped)
 
 
+def note_reconnects(controller: Any, callback: Any) -> None:
+    """Call ``callback()`` after each successful library ``connect``/``reconnect`` (#307).
+
+    The library reconnects on its own (and the poller and the Explorer reader
+    call ``connect()``), so the instance can't see every new session from
+    above. An aGate firmware update reboots the device and ends in one of
+    these, and the nameplate read at start is then out of date.
+    """
+    for name in ("connect", "reconnect"):
+        original = getattr(controller, name, None)
+        if original is None or getattr(original, "_notes_reconnect", False):
+            continue
+
+        def wrapped(*args, _original=original, **kwargs):
+            result = _original(*args, **kwargs)
+            if result:
+                callback()
+            return result
+
+        wrapped._notes_reconnect = True  # type: ignore[attr-defined]
+        setattr(controller, name, wrapped)
+
+
 #: The order SunSpec bases are probed in: the aGate's own base first (#308).
 SUNSPEC_BASE_ORDER = (0, 40000, 50000)
 
@@ -98,7 +121,10 @@ def prefer_sunspec_base_0() -> None:
     sending every model read and write to the mirror and shifting the catalog's
     addresses by 40000. Swap in a device class that probes 0 first.
     """
-    from franklinwh_modbus import controller as lib
+    try:
+        from franklinwh_modbus import controller as lib
+    except ImportError:  # a stand-in library (tests): nothing to patch
+        return
 
     base = getattr(lib, "SunSpecModbusClientDeviceTCP", None)
     if base is None or getattr(base, "_base_0_first", False):
@@ -189,6 +215,10 @@ class GatewayInstance:
         self.reader_fn: Any | None = None  # for POST /api/models/refresh
 
         self._init_task: asyncio.Task | None = None
+        # Set from the library's thread after a reconnect; the next sample
+        # re-reads the nameplate (#307).
+        self._rediscover_due = False
+        self._rediscover_task: asyncio.Task | None = None
 
     @property
     def is_running(self) -> bool:
@@ -220,6 +250,7 @@ class GatewayInstance:
         )
         disable_connect_writes(self.controller)
         close_sockets_on_disconnect(self.controller)
+        note_reconnects(self.controller, self._note_reconnect)
 
         self.poller = ModbusPoller(
             controller=self.controller,
@@ -234,6 +265,7 @@ class GatewayInstance:
 
         # Fan-in: forward per-gateway samples to the global bus
         self.sample_bus.subscribe(self._forward_to_global)
+        self.sample_bus.subscribe(self._rediscover_if_due)
 
         rating = BatteryRating(self.gateway_id)
         await rating.load(self._db)
@@ -429,6 +461,11 @@ class GatewayInstance:
                 self._tracked, self.controller.read_nameplate, "model_read", "startup",
             )
             if nameplate.get("serial"):
+                old = self.status.firmware
+                new = nameplate.get("version")
+                if old and new and old != new:
+                    logger.warning("Gateway %s: firmware changed %s -> %s",
+                                   self.gateway_id, old, new)
                 self.device_info = DeviceInfo(
                     serial=nameplate["serial"],
                     manufacturer=nameplate.get("manufacturer", ""),
@@ -451,6 +488,24 @@ class GatewayInstance:
                 )
         except Exception as exc:
             logger.warning("Gateway %s: nameplate read failed: %s", self.gateway_id, exc)
+
+    def _note_reconnect(self) -> None:
+        # Only once the start-up discovery has run: that one reads it anyway.
+        if self.device_info is not None:
+            self._rediscover_due = True
+
+    async def _rediscover_if_due(self, sample: Sample) -> None:
+        """Re-read the nameplate after a reconnect, outside the poll (#307)."""
+        if not self._rediscover_due:
+            return
+        if self._rediscover_task is not None and not self._rediscover_task.done():
+            return
+        self._rediscover_due = False
+        self._rediscover_task = asyncio.create_task(self._rediscover())
+
+    async def _rediscover(self) -> None:
+        async with self.modbus_lock:
+            await self._discover_device()
 
     async def _log_startup_state(self) -> None:
         """Log hardware control state at startup."""
