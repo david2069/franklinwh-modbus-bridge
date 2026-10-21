@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.33 — 2026-10-21
+
+### Fixes
+- **Active reserve in Emergency Backup** now shows the reserve the aGate
+  reports for that mode, not the self-consumption reserve.
+- **Events lists** on the Dashboard show register addresses as Base-0
+  (e.g. 76, not 40076), labelled as such.
+
 ## 0.2.32 — 2026-10-21
 
 ### Fixes

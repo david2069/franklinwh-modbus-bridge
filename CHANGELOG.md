@@ -13,6 +13,19 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.33] — 2026-10-21
+
+### Fixed
+
+- **Active reserve in Emergency Backup (#311):** the bridge showed the
+  self-consumption reserve (15508). In EB it now shows 16001 as the aGate
+  reports it; SC (15508) and TOU (15509) are unchanged and still
+  cross-checked against 16001.
+- **Events registers (#314):** the Dashboard's events lists showed
+  40076/40078/41039/41044, which are neither Base-0 addresses nor 4xxxx
+  references. They now show the Base-0 addresses (76, 78, 1039, 1044) and the
+  column is labelled "REGISTER (Base-0)".
+
 ## [0.2.32] — 2026-10-21
 
 ### Fixed
