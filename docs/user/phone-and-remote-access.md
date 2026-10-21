@@ -124,6 +124,17 @@ Keep a copy of your Home Assistant backups somewhere other than your home:
   ([R2 pricing](https://developers.cloudflare.com/r2/pricing/)). Keep the number of
   backups you retain small enough to stay under 10 GB.
 
+  It needs Home Assistant 2026.2 or later. Set it up in three steps:
+
+  1. In the Cloudflare dashboard, **Storage & databases → R2 object storage**: create a
+     bucket (Standard storage).
+  2. **Manage API Tokens → Create User API token:** tick **Object Read & Write**, choose
+     **Apply to specific buckets only** with your bucket. Note the Access key ID, Secret
+     access key and the endpoint URL.
+  3. [Add the Cloudflare R2 integration to your HA](https://my.home-assistant.io/redirect/config_flow_start?domain=cloudflare_r2)
+     and enter those values and the bucket name (a folder prefix is optional). R2 then
+     appears as a backup location in **Settings → System → Backups**.
+
 ### Use two
 
 Install Home Assistant Link as your main way in, and Tailscale as a free backup. If one
