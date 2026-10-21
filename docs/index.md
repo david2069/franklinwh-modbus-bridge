@@ -30,10 +30,11 @@
     conditions. Using this software to bypass them — deliberately or inadvertently
     — is entirely at your own risk, and is neither condoned nor encouraged.
 
-    **DO NOT CONTACT FRANKLINWH SUPPORT about this software.** Questions, bugs,
-    defects and feature requests belong here, not with the vendor:
-    [Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions)
-    or [Issues](https://github.com/david2069/franklinwh-modbus-bridge/issues).
+    **DO NOT CONTACT FRANKLINWH SUPPORT about this software.** Bugs, defects and
+    feature requests belong here, not with the vendor:
+    <https://github.com/david2069/franklinwh-modbus-bridge/issues>
+    Questions of any kind are welcome in
+    [Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions).
 
     - Full terms: <https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE>
     - SunSpec conformance (PICS SM-000028): <https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx>
