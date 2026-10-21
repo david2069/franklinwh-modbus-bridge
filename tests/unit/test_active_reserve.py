@@ -39,9 +39,26 @@ def test_tou_mode_active_reserve_is_15509():
     assert (pts["self_reserve_pct"], pts["tou_reserve_pct"]) == (10, 20)
 
 
-def test_backup_mode_keeps_both_registers():
-    pts = _poll("Emergency Backup", 100)
-    assert pts["self_reserve_pct"] == 100 and pts["tou_reserve_pct"] == 100
+def test_backup_mode_active_reserve_is_16001(caplog):
+    """#311, owner's aGate on V12R02B60D00: EB reads 15508 = 8, 15509 = 15,
+    16001 = 100. The active reserve is 16001; both registers stay as read."""
+    with caplog.at_level(logging.WARNING):
+        pts = _poll("Emergency Backup", 8, r15509=15, r16001=100)
+    assert pts["active_reserve_pct"] == 100
+    assert (pts["self_reserve_pct"], pts["tou_reserve_pct"]) == (8, 15)
+    assert "disagrees" not in caplog.text
+
+
+def test_backup_mode_without_16001_reports_no_active_reserve():
+    pts = _poll("Emergency Backup", 8, r15509=15)
+    assert pts["active_reserve_pct"] is None
+
+
+def test_owner_reads_per_mode_v12():
+    """One read per mode, 2026-10-21: 16001 follows the active mode."""
+    assert _poll("Self-Consumption", 8, r15509=15, r16001=8)["active_reserve_pct"] == 8
+    assert _poll("TOU", 8, r15509=15, r16001=15)["active_reserve_pct"] == 15
+    assert _poll("Emergency Backup", 8, r15509=15, r16001=100)["active_reserve_pct"] == 100
 
 
 def test_16001_disagreement_warns_once(caplog):
