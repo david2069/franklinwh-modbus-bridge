@@ -66,7 +66,8 @@ HISTORISED_POINTS: tuple[str, ...] = (
     "vreg_15013",
     "vreg_15035",
     # 15016: a status register, meaning unmapped (#36). Seen at one site as 2
-    # on-grid, 6 with a WSet dispatch active, 3 islanded. Only its changes
+    # on-grid, 6 with a WSet dispatch active, and 1 during both off-grid
+    # episodes on 2026-10-21 (V12R02B60D00; an earlier note said 3). Only its changes
     # were logged; a series lets those states be lined up against the rest.
     "vreg_15016",
     # Raw 701.DERMode bitfield (bit 0 Grid Following, 1 Grid Forming, 2 PV

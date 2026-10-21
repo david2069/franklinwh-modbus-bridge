@@ -38,7 +38,7 @@ const VENDOR_EXT_15000_NOTES = {
   15013: { name: 'BatteryPowerRaw', unit: 'W',
            desc: 'Battery power at ~1 W (unconfirmed; one site). Sign while charging not established — raw 65269 seen = −267 if int16' },
   15016: { name: 'StatusRaw',
-           desc: 'Status code (unconfirmed; one site): 2 on-grid, 6 with WSet active, 3 islanded' },
+           desc: 'Status code (unconfirmed; one site): 2 on-grid, 6 with WSet active, 1 off-grid (V12, seen twice 2026-10-21; an earlier note said 3 islanded)' },
   15035: { name: 'SocX10Raw', unit: '‰',
            desc: 'State of charge ×10 (unconfirmed; one site)' },
 };
