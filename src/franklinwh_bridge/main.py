@@ -22,6 +22,7 @@ from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.alerts_api import router as alerts_router
 from franklinwh_bridge.api.auth import require_admin_for_writes, require_auth
 from franklinwh_bridge.api.auth import router as auth_router
+from franklinwh_bridge.api.diagnostics_api import router as diagnostics_router
 from franklinwh_bridge.api.disclaimer_api import router as disclaimer_router
 from franklinwh_bridge.api.energy_api import router as energy_router
 from franklinwh_bridge.api.gateways_api import router as gateways_router
@@ -76,7 +77,7 @@ from franklinwh_bridge.publish.namespace import (
 from franklinwh_bridge.security import seed_admin, session_secret_key
 from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import link_stats as link_stats_store
-from franklinwh_bridge.store import point_history
+from franklinwh_bridge.store import modbus_audit, point_history
 from franklinwh_bridge.store.alarms import AlarmTracker
 from franklinwh_bridge.store.backup import BackupManager
 from franklinwh_bridge.store.db import (
@@ -555,6 +556,7 @@ async def lifespan(app: FastAPI):
                     rows.append(log_persist_queue.popleft())
                 if rows:
                     await insert_logs(db, rows)
+                await modbus_audit.flush(db)  # the Modbus write audit trail (#342)
             except Exception as exc:
                 logger.debug("Log flush failed: %s", exc)
             purge_ticks += 1
@@ -562,6 +564,8 @@ async def lifespan(app: FastAPI):
                 purge_ticks = 0
                 with contextlib.suppress(Exception):
                     await purge_logs(db, time.time() - LOG_RETENTION_DAYS * 86400)
+                with contextlib.suppress(Exception):
+                    await modbus_audit.prune(db)
 
     log_flush_task = asyncio.create_task(_log_flush_loop())
 
@@ -1139,6 +1143,8 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await log_flush_task
     with contextlib.suppress(Exception):
+        await modbus_audit.flush(db)  # the last writes, e.g. the shutdown release
+    with contextlib.suppress(Exception):
         final_rows = []
         while log_persist_queue:
             final_rows.append(log_persist_queue.popleft())
@@ -1227,6 +1233,7 @@ app.include_router(nem_router, dependencies=_AUTH)
 app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(alerts_router)  # GET any signed-in role; ack admin-only (#324)
+app.include_router(diagnostics_router)  # admin-only via its own require_role dep (#342)
 app.include_router(support_router)  # admin-only via its own require_role dep
 app.include_router(
     reader_router, dependencies=[require_module("explorer")],

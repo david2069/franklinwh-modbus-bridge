@@ -27,6 +27,7 @@ from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo
+from franklinwh_bridge.store import modbus_audit
 from franklinwh_bridge.store.db import (
     load_control_state,
     log_control_event,
@@ -137,6 +138,16 @@ def prefer_sunspec_base_0() -> None:
             super().__init__(*args, **kwargs)
             rest = [a for a in getattr(self, "base_addr_list", []) if a not in SUNSPEC_BASE_ORDER]
             self.base_addr_list = [*SUNSPEC_BASE_ORDER, *rest]
+
+        def write(self, addr: int, data: Any) -> Any:
+            # Every SunSpec write, as sent and as answered (#342 audit trail).
+            try:
+                result = super().write(addr, data)
+            except BaseException as exc:
+                modbus_audit.record_write(addr, data, exc)
+                raise
+            modbus_audit.record_write(addr, data, None)
+            return result
 
     lib.SunSpecModbusClientDeviceTCP = Base0FirstDevice
 

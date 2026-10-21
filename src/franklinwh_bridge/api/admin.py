@@ -19,6 +19,7 @@ from franklinwh_bridge import __version__
 from franklinwh_bridge.api.auth import require_capability
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
+from franklinwh_bridge.store import modbus_audit
 from franklinwh_bridge.store.alarms import (
     compute_grid_mode_intervals,
     pair_alarm_events,
@@ -856,11 +857,13 @@ async def execute_sequence(
                 with link_stats.track(gw, "diag", "sequencer") as req:
                     return req.check(seq.run_sequence(steps, dry_run=False))
 
-            if modbus_lock:
-                async with modbus_lock:
+            who = f"sequencer:user:{_user.get('username') or '?'}"
+            with modbus_audit.writing_as(target_id, who):  # #342 audit trail
+                if modbus_lock:
+                    async with modbus_lock:
+                        success = await asyncio.to_thread(_run)
+                else:
                     success = await asyncio.to_thread(_run)
-            else:
-                success = await asyncio.to_thread(_run)
 
             seq_logger.removeHandler(handler)
 
