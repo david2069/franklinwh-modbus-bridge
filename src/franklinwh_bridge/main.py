@@ -19,6 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from franklinwh_bridge import __version__, disclaimer
 from franklinwh_bridge.api.admin import router as admin_router
+from franklinwh_bridge.api.alerts_api import router as alerts_router
 from franklinwh_bridge.api.auth import require_admin_for_writes, require_auth
 from franklinwh_bridge.api.auth import router as auth_router
 from franklinwh_bridge.api.disclaimer_api import router as disclaimer_router
@@ -73,6 +74,7 @@ from franklinwh_bridge.publish.namespace import (
     mark_published,
 )
 from franklinwh_bridge.security import seed_admin, session_secret_key
+from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store import point_history
 from franklinwh_bridge.store.alarms import AlarmTracker
@@ -304,6 +306,9 @@ async def lifespan(app: FastAPI):
 
     app.state.config = config
     app.state.db = db
+    # Closed alerts older than 90 days; open ones are never pruned (#324).
+    with contextlib.suppress(Exception):
+        await alert_store.prune(db)
     app.state.stats = stats
     app.state.backup_manager = backup_manager
     app.state.sample_bus = sample_bus
@@ -1221,6 +1226,7 @@ app.include_router(nem_router, dependencies=_AUTH)
 # must stay reachable for any signed-in role so the modal can render.
 app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
+app.include_router(alerts_router)  # GET any signed-in role; ack admin-only (#324)
 app.include_router(support_router)  # admin-only via its own require_role dep
 app.include_router(
     reader_router, dependencies=[require_module("explorer")],

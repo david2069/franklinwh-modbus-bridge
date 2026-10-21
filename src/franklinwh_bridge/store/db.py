@@ -46,9 +46,43 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 60
+CURRENT_SCHEMA_VERSION = 61
 
 MIGRATIONS: dict[int, str] = {
+    61: """
+    -- Critical alerts (#324; shared spec with the DC bridge, its #271).
+    --   kind 'event':     open until acknowledged
+    --   kind 'condition': active until resolved_ts; the ack stops the modal only
+    -- Repeats of an open event within 10 min merge: count + 1, last_ts moves.
+    CREATE TABLE IF NOT EXISTS alerts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        gateway_id  TEXT NOT NULL DEFAULT '',
+        kind        TEXT NOT NULL CHECK (kind IN ('event','condition')),
+        severity    TEXT NOT NULL CHECK (severity IN ('warning','critical')),
+        code        TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        message     TEXT NOT NULL DEFAULT '',
+        opened_ts   REAL NOT NULL,
+        last_ts     REAL NOT NULL,
+        count       INTEGER NOT NULL DEFAULT 1,
+        resolved_ts REAL,
+        acked_by    TEXT,
+        acked_ts    REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_alerts_open ON alerts (acked_ts, resolved_ts);
+    CREATE INDEX IF NOT EXISTS idx_alerts_code ON alerts (gateway_id, code);
+    -- Outbox: one row per alert and channel ('ha', 'push', ...).
+    --   status 'pending' | 'delivered' | 'failed' | 'skipped'
+    CREATE TABLE IF NOT EXISTS alert_deliveries (
+        alert_id     INTEGER NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+        channel      TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        delivered_ts REAL,
+        last_error   TEXT,
+        PRIMARY KEY (alert_id, channel)
+    );
+    """,
     60: """
     -- Battery power rating evidence per gateway and direction (#133, #134).
     -- Force commands are sized against a rating only once it is trusted:

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any
 
 from fastapi import APIRouter, Request
 
 from franklinwh_bridge import __version__
+from franklinwh_bridge.store import alerts as alert_store
 
 router = APIRouter(tags=["health"])
 
@@ -24,9 +26,18 @@ def register_component(name: str, state_fn) -> None:
 async def health(request: Request):
     config = getattr(request.app.state, "config", None)
     env = config.environment if config else "unknown"
+    alerts = None
+    db = getattr(request.app.state, "db", None)
+    if db is not None:
+        with contextlib.suppress(Exception):
+            alerts = await alert_store.summary(db)
+
     return {
         "status": "ok",
         "version": __version__,
+        # Critical-alert summary (#324): the UI refetches /api/alerts when
+        # latest_id or changed_ts moves.
+        "alerts": alerts,
         "environment": env,
         "uptime_s": round(time.time() - _start_time, 1),
         # {source: supervisor|configured|none, waiting_for_broker} — drives the
