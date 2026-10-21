@@ -61,6 +61,13 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/david2069/franklinwh-modbus-bridge
+      name: Source on GitHub
+    - icon: fontawesome/solid/comments
+      link: https://github.com/david2069/franklinwh-modbus-bridge/discussions
+      name: Discussions — ask anything
+    - icon: fontawesome/solid/bug
+      link: https://github.com/david2069/franklinwh-modbus-bridge/issues
+      name: Issues
 
 # Design notes and internal reference stay in docs/ for the repo but are not
 # part of the user site.
@@ -77,6 +84,9 @@ exclude_docs: |
 
 nav:
   - Home: index.md
+  - Help & Community:
+    - "Discussions — ask anything": https://github.com/david2069/franklinwh-modbus-bridge/discussions
+    - Issues: https://github.com/david2069/franklinwh-modbus-bridge/issues
   - Getting Started:
     - Install (HA add-on): user/install-addon.md
     - Install (Docker): user/install-docker.md
