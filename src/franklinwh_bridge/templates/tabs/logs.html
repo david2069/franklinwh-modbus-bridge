@@ -169,4 +169,48 @@
     </div>
   </div>
 
+  <!-- Modbus write audit trail (#342): every SunSpec write, as sent and as
+       answered. Admin only; downloads go through fetch + Blob so they work
+       under HA ingress, where there is no address bar. -->
+  <div x-show="$store.app.isAdmin" x-data="modbusWrites()" x-init="load()" class="card !p-0 overflow-hidden mt-4"
+       data-testid="modbus-writes">
+    <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Battery-control writes</h3>
+      <span class="text-[11px] text-slate-500">every Modbus write the bridge sent, and the aGate's reply</span>
+      <div class="ml-auto flex items-center gap-2">
+        <button @click="load()" class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-300 hover:bg-slate-600">Refresh</button>
+        <button @click="download('csv')" class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
+                data-testid="modbus-writes-csv">Download CSV</button>
+        <button @click="download('json')" class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-300 hover:bg-slate-600">Download JSON</button>
+      </div>
+    </div>
+    <div x-show="error" class="px-4 py-3 text-xs text-red-400" x-text="error"></div>
+    <div x-show="!error && rows.length === 0" class="px-4 py-3 text-xs text-slate-500">No writes recorded yet.</div>
+    <div x-show="rows.length > 0" class="overflow-x-auto max-h-96">
+      <table class="w-full text-xs font-mono">
+        <thead class="text-slate-500 text-[10px] uppercase">
+          <tr>
+            <th class="text-left px-4 py-2">Time <span class="normal-case" x-text="'(' + fmt.tz() + ')'"></span></th>
+            <th class="text-left px-2 py-2">Register</th>
+            <th class="text-left px-2 py-2">Raw values</th>
+            <th class="text-left px-2 py-2">aGate reply</th>
+            <th class="text-left px-2 py-2">Sent by</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="r in rows" :key="r.id">
+            <tr class="border-t border-white/[0.04]">
+              <td class="px-4 py-1.5 whitespace-nowrap" x-text="stamp(r.ts)"></td>
+              <td class="px-2 py-1.5 whitespace-nowrap" x-text="regLabel(r.address)"></td>
+              <td class="px-2 py-1.5" x-text="'[' + r.values.join(', ') + ']'"></td>
+              <td class="px-2 py-1.5" :class="r.result === 'ok' ? 'text-green-400' : 'text-red-400'"
+                  x-text="r.result === 'ok' ? 'OK' : r.detail"></td>
+              <td class="px-2 py-1.5 text-slate-400 whitespace-nowrap" x-text="r.initiator"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>

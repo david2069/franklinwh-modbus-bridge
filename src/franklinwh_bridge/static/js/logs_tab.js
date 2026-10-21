@@ -208,3 +208,54 @@ function logsTab() {
     },
   };
 }
+
+/** Modbus write audit trail (#342): the last writes, newest first, plus downloads. */
+// M704 register names at base 0 (DER AC Controls), for the start of each write.
+const M704_REGISTERS = {
+  318: 'WSetEna', 319: 'WSetMod', 320: 'WSet', 322: 'WSetRvrt', 324: 'WSetPct',
+  325: 'WSetPctRvrt', 326: 'WSetEnaRvrt', 327: 'WSetRvrtTms', 329: 'WSetRvrtRem',
+};
+
+function modbusWrites() {
+  return {
+    rows: [],
+    error: '',
+
+    async load() {
+      const data = await fetchJSON('api/diagnostics/modbus-writes?limit=200');
+      if (!data || !Array.isArray(data.writes)) {
+        this.error = 'Could not load the write audit trail.';
+        return;
+      }
+      this.error = '';
+      this.rows = data.writes.slice().reverse();
+    },
+
+    stamp(ts) {
+      const ms = ts * 1000;
+      return `${bridgeTime.dayMonth(ms)} ${bridgeTime.time(ms, true)}`;
+    },
+
+    regLabel(addr) {
+      const name = M704_REGISTERS[addr];
+      return name ? `${addr} ${name}` : String(addr);
+    },
+
+    async download(format) {
+      try {
+        const resp = await fetch(`api/diagnostics/modbus-writes?limit=100000&format=${format}`,
+                                 { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `modbus_writes.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        Alpine.store('app').toast(`Download failed: ${e.message}`, 'error');
+      }
+    },
+  };
+}

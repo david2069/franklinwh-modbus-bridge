@@ -46,9 +46,24 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 61
+CURRENT_SCHEMA_VERSION = 62
 
 MIGRATIONS: dict[int, str] = {
+    62: """
+    -- Modbus write audit trail (#342 part 1): every SunSpec write as sent and
+    -- as answered. values = JSON list of the raw register words (int16).
+    CREATE TABLE IF NOT EXISTS modbus_writes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts         REAL NOT NULL,
+        gateway_id TEXT NOT NULL DEFAULT '',
+        initiator  TEXT NOT NULL DEFAULT '',
+        address    INTEGER NOT NULL,
+        "values"   TEXT NOT NULL DEFAULT '[]',
+        result     TEXT NOT NULL,             -- ok | error
+        detail     TEXT                       -- the error, e.g. "Modbus exception 3 ..."
+    );
+    CREATE INDEX IF NOT EXISTS idx_modbus_writes_ts ON modbus_writes (ts);
+    """,
     61: """
     -- Critical alerts (#324; shared spec with the DC bridge, its #271).
     --   kind 'event':     open until acknowledged

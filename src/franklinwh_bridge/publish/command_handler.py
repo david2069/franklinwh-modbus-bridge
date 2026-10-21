@@ -43,7 +43,7 @@ import aiosqlite
 
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.gateway.battery_rating import BatteryRating
-from franklinwh_bridge.store import dispatch_outcomes
+from franklinwh_bridge.store import dispatch_outcomes, modbus_audit
 from franklinwh_bridge.store.db import log_control_event, save_control_state
 
 logger = logging.getLogger(__name__)
@@ -346,6 +346,13 @@ class CommandHandler:
             logger.warning("Failed to write control log: %s", exc)
 
     async def handle_command(
+        self, slug: str, payload: str, requester: str = "manual",
+    ) -> dict[str, Any]:
+        """Attribute this command's Modbus writes (#342), then apply it."""
+        with modbus_audit.writing_as(self._gateway_id, requester or "manual"):
+            return await self._handle_command(slug, payload, requester)
+
+    async def _handle_command(
         self, slug: str, payload: str, requester: str = "manual",
     ) -> dict[str, Any]:
         """Apply one command and return what THIS call did: ``{ok, result}``.
