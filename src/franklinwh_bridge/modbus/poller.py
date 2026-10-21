@@ -52,6 +52,12 @@ _SMALL_NEGATIVE_MIN = 65536 - 1000  # raw 64536..65534 == -1000..-2 W as int16
 # before the library's session is rebuilt with a full reconnect (#317).
 EXTENSION_MISSING_RECONNECT_POLLS = 3
 
+# 15000-range registers that are signed (int16), from one site's readings:
+# 15013 tracks M714 DCW (-4998 vs -5000 charging at 5 kW, +500 vs +500
+# discharging; 2026-10-20/21), so negative = charging, as DCW. As uint16 it read
+# 65496 for -40 W, and history buckets averaged across zero were nonsense.
+SIGNED_VREGS = frozenset({15013})
+
 # Read every poll cycle (10s default) — live telemetry
 POLL_METHODS = [
     "read_battery_status",
@@ -830,6 +836,10 @@ class ModbusPoller:
             )
             if not r1.isError():
                 for i, val in enumerate(r1.registers):
+                    # int16, as the aGate means it. 0xFFFF stays as read: it is
+                    # also the aGate's not-available marker, which history skips.
+                    if 15000 + i in SIGNED_VREGS and 0x8000 <= val < 0xFFFF:
+                        val -= 0x10000
                     points[f"vreg_{15000 + i}"] = val
 
             # Range 2: 15510-15513 (PV energy counters — uint32 high:low pairs)

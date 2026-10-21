@@ -35,10 +35,10 @@ const VENDOR_EXT_16000 = [
 // suggest (PR #73, #76, #77) — NOT FranklinWH documentation. Values stay raw;
 // the description says what was observed so it can be tested, not trusted.
 const VENDOR_EXT_15000_NOTES = {
-  15013: { name: 'BatteryPowerRaw', unit: 'W',
-           desc: 'Battery power at ~1 W (unconfirmed; one site). Sign while charging not established — raw 65269 seen = −267 if int16' },
+  15013: { name: 'BatteryPowerRaw', unit: 'W', type: 'int16',
+           desc: 'Battery power at ~1 W (unconfirmed; one site). Signed: negative = charging, as M714 DCW (−4998 vs DCW −5000; +500 vs +500)' },
   15016: { name: 'StatusRaw',
-           desc: 'Status code (unconfirmed; one site): 2 on-grid, 6 with WSet active, 3 islanded' },
+           desc: 'Status code (unconfirmed; one site): 2 on-grid, 6 with WSet active, 1 seen during two aGate service restarts on 2026-10-21 (V12; meaning unconfirmed; an earlier note said 3 islanded)' },
   15035: { name: 'SocX10Raw', unit: '‰',
            desc: 'State of charge ×10 (unconfirmed; one site)' },
 };
@@ -576,10 +576,10 @@ function explorerTab() {
           name: note ? note.name : 'Reg' + a,
           desc: note ? note.desc : 'Unknown',
           value: value,
-          type: 'uint16',
+          type: (note && note.type) || 'uint16',
           access: 'R',
           unit: (note && note.unit) || '',
-          hex: value != null ? ('0000' + value.toString(16).toUpperCase()).slice(-4) : null,
+          hex: value != null ? ('0000' + (value & 0xFFFF).toString(16).toUpperCase()).slice(-4) : null,
         });
       }
 
