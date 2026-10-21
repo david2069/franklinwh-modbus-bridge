@@ -2,6 +2,13 @@
 
 The add-on is the easiest way if you run **Home Assistant OS** or **Supervised**. It needs the Supervisor; HA Container can't install add-ons, so use [Docker](install-docker.md) there.
 
+!!! tip "Back up first: regularly, and always before a big change"
+    Turn on Home Assistant's automatic backups (**Settings → System → Backups**), daily if
+    you can. Take one by hand **before** installing something new or making a major change:
+    a new add-on or app (this bridge included), a Home Assistant or OS update, or a network
+    change. Keep a copy off the premises too; see
+    [Backups off the premises](phone-and-remote-access.md#backups-off-the-premises).
+
 ## Before you start
 
 - A **64-bit** Home Assistant host: amd64 or aarch64 (e.g. Raspberry Pi 4/5 on 64-bit HAOS). 32-bit (armv7) isn't supported.

@@ -114,6 +114,13 @@ page. It asks for your HA address the first time.
 
 ### Backups off the premises
 
+!!! tip "Back up regularly, and always before a big change"
+    Turn on Home Assistant's **automatic backups** (**Settings → System → Backups**), daily
+    if you can. And take a backup by hand **before** you install something new or make a
+    major change: a new add-on or app (this bridge included), a Home Assistant or
+    operating-system update, or a change to your network. If anything goes wrong, you can
+    restore it as it was.
+
 Keep a copy of your Home Assistant backups somewhere other than your home:
 
 - **Home Assistant Link** includes offsite backups.
