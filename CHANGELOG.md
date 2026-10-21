@@ -13,6 +13,26 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.35] — 2026-10-21
+
+### Fixed
+
+- **MQTT last will (#325):** a crashed or cut-off bridge left the retained
+  availability "online", so HA showed frozen values as live. The broker now
+  marks the gateway "offline". It uses the gateway's existing availability
+  topic (D1), so it is set when exactly one gateway is announced.
+- **Failed commands in plain words (#323):** the result names what the Modbus
+  exception means and says the command did not run, or that the previous
+  command stopped. A % command is logged as e.g. `50%`, not `0W`. Sent HA
+  notifications are logged too.
+
+### Added
+
+- **Docs:** phone notifications (Companion app), the bridge on the home
+  screen, remote access (Home Assistant Link recommended; Tailscale and
+  Cloudflare Tunnel compared), off-premises backups, and "back up first" in
+  the add-on install guide (#327).
+
 ## [0.2.34] — 2026-10-21
 
 ### Fixed
