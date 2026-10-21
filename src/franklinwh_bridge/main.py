@@ -17,7 +17,8 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from franklinwh_bridge import __version__, disclaimer
+from franklinwh_bridge import __version__, disclaimer, workers
+from franklinwh_bridge.alert_monitor import AlertMonitor
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.alerts_api import router as alerts_router
 from franklinwh_bridge.api.auth import require_admin_for_writes, require_auth
@@ -550,6 +551,7 @@ async def lifespan(app: FastAPI):
         purge_ticks = 0
         while True:
             await asyncio.sleep(LOG_FLUSH_INTERVAL_S)
+            workers.beat("log_flush")
             try:
                 rows = []
                 while log_persist_queue:
@@ -568,6 +570,8 @@ async def lifespan(app: FastAPI):
                     await modbus_audit.prune(db)
 
     log_flush_task = asyncio.create_task(_log_flush_loop())
+    workers.register("log_flush", "Log and audit writes", LOG_FLUSH_INTERVAL_S,
+                     task=log_flush_task)
 
     # ── Link health (Phase 0b): write each closed hour ────────
     # The collector seals an hour in memory when it rolls over; this writes
@@ -733,6 +737,9 @@ async def lifespan(app: FastAPI):
     # ── Health Checker ─────────────────────────────────────────
     health_checker = HealthChecker(registry)
     app.state.health_checker = health_checker
+    # Opens and resolves alert conditions; watches the workers (#324 §11).
+    alert_monitor = AlertMonitor(db, registry)
+    app.state.alert_monitor = alert_monitor
 
     # ── Start All Gateways ────────────────────────────────────
 
@@ -981,6 +988,11 @@ async def lifespan(app: FastAPI):
             logger.error("Health checker start failed: %s", exc)
 
         try:
+            await alert_monitor.start()
+        except Exception as exc:
+            logger.error("Alert monitor start failed: %s", exc)
+
+        try:
             # The schedule engine no-ops on targets with no running handler, so
             # a late-arriving or failed gateway is fine.
             await schedule_engine.start()
@@ -1106,6 +1118,7 @@ async def lifespan(app: FastAPI):
     # 1. Stop the schedule engine (so it can't re-dispatch during teardown),
     #    then the health checker.
     await schedule_engine.stop()
+    await alert_monitor.stop()
     await health_checker.stop()
     await ha_registry.stop()
     solar_forecast_task.cancel()

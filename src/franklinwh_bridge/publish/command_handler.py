@@ -43,6 +43,7 @@ import aiosqlite
 
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.gateway.battery_rating import BatteryRating
+from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import dispatch_outcomes, modbus_audit
 from franklinwh_bridge.store.db import log_control_event, save_control_state
 
@@ -140,6 +141,19 @@ COMMAND_SLUGS = frozenset({
     "battery_command_duration", "battery_command_target_soc",
     "operating_mode", "self_reserve_pct", "tou_reserve_pct",
 })
+
+
+#: How a refused command is named in its alert.
+_COMMAND_LABELS = {
+    "battery_command": "Battery command",
+    "battery_command_power": "Battery power (W)",
+    "battery_command_power_pct": "Battery power (%)",
+    "battery_command_duration": "Command duration (s)",
+    "battery_command_target_soc": "Target SoC (%)",
+    "operating_mode": "Operating mode",
+    "self_reserve_pct": "Self-consumption reserve (%)",
+    "tou_reserve_pct": "TOU reserve (%)",
+}
 
 
 @dataclass
@@ -348,9 +362,25 @@ class CommandHandler:
     async def handle_command(
         self, slug: str, payload: str, requester: str = "manual",
     ) -> dict[str, Any]:
-        """Attribute this command's Modbus writes (#342), then apply it."""
+        """Attribute this command's Modbus writes (#342), apply it, and alert on a refusal."""
         with modbus_audit.writing_as(self._gateway_id, requester or "manual"):
-            return await self._handle_command(slug, payload, requester)
+            result = await self._handle_command(slug, payload, requester)
+        if not result["ok"] and slug in COMMAND_SLUGS:
+            await self._alert_refused(slug, payload, result["result"])
+        return result
+
+    async def _alert_refused(self, slug: str, payload: str, reason: str) -> None:
+        """COMMAND_REFUSED, or WRITE_IGNORED when the aGate took it and kept the old value (#324).
+
+        The reason says who refused: "Rejected by the aGate (Modbus exception
+        …)" or the bridge's own "Refused …". The alert store never raises.
+        """
+        ignored = "Hardware ignored write" in reason or _UNKNOWN_CAUSE in reason
+        what = _COMMAND_LABELS.get(slug, slug)
+        await alert_store.raise_event(
+            self._db, "WRITE_IGNORED" if ignored else "COMMAND_REFUSED",
+            f"{what} {payload.strip()} (by {self._requester}): {reason}",
+            gateway_id=self._gateway_id)
 
     async def _handle_command(
         self, slug: str, payload: str, requester: str = "manual",

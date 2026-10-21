@@ -6,9 +6,10 @@ import contextlib
 import time
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
-from franklinwh_bridge import __version__
+from franklinwh_bridge import __version__, workers
+from franklinwh_bridge.api.auth import require_auth
 from franklinwh_bridge.store import alerts as alert_store
 
 router = APIRouter(tags=["health"])
@@ -54,6 +55,17 @@ async def connectivity(request: Request):
     if monitor is None:
         return {"connected": True, "gateways": {}, "recent_outages": []}
     return await monitor.snapshot()
+
+
+@router.get("/api/health/workers", dependencies=[Depends(require_auth)])
+async def health_workers() -> dict[str, Any]:
+    """The bridge's background loops and when each last ran (#324 §11 C).
+
+    ``{ok, counts, stale[], broken[], workers[]}``, the DC bridge's shape. A
+    stalled worker is reported here and as WORKER_STALLED; it never fails the
+    health check, so the platform doesn't restart away the evidence.
+    """
+    return workers.REGISTRY.snapshot()
 
 
 @router.get("/api/status")

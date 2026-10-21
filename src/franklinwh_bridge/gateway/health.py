@@ -16,6 +16,7 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
+from franklinwh_bridge import workers
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 
 if TYPE_CHECKING:
@@ -44,9 +45,12 @@ class HealthChecker:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._loop())
+        workers.register("health_checker", "aGate reachability", self._check_interval,
+                         task=self._task)
         logger.info("Health checker started (interval=%ds)", self._check_interval)
 
     async def stop(self) -> None:
+        workers.unregister("health_checker")
         if self._task and not self._task.done():
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -56,6 +60,7 @@ class HealthChecker:
     async def _loop(self) -> None:
         try:
             while True:
+                workers.beat("health_checker")
                 try:
                     await self._check_all()
                 except Exception:  # never let one bad pass kill the monitor (#31)

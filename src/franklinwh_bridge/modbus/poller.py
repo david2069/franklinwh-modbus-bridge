@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from franklinwh_bridge import workers
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.home_load import STANDARD, HomeLoadSelector
 from franklinwh_bridge.modbus.register_watch import RegisterWatch
@@ -82,6 +83,12 @@ class PollerState:
     consecutive_errors: int = 0
     polls_total: int = 0
     errors_total: int = 0
+    #: Last poll that read anything (quality not "error"); the alert monitor's
+    #: LIVE_DATA_MISSING signal (#324).
+    last_good_ts: float | None = None
+    #: The 15500-15509 block, seen before, was absent from the latest good poll
+    #: (DATA_MISSING_PARTIAL, #324).
+    block_missing: bool = False
 
 
 class ModbusPoller:
@@ -911,8 +918,13 @@ class ModbusPoller:
     def _backoff_delay(self) -> float:
         return min(5.0 * (2**self._state.consecutive_errors), 60.0)
 
+    @property
+    def worker_name(self) -> str:
+        return f"poller:{self._gateway_id}"
+
     async def _run_loop(self) -> None:
         while not self._stop_event.is_set():
+            workers.beat(self.worker_name)
             if not self._state.connected and not await self._connect():
                 delay = self._backoff_delay()
                 logger.info("Reconnect in %.0fs", delay)
@@ -942,6 +954,7 @@ class ModbusPoller:
                 else:
                     self._state.consecutive_errors = 0
                     self._state.last_error = None
+                    self._state.last_good_ts = self._state.last_poll_ts
                     reason = self._library_session_lost(sample.points)
                     if reason:
                         logger.warning("Gateway %s: %s; reconnecting to the aGate",
@@ -989,9 +1002,11 @@ class ModbusPoller:
         if "ongrid_mode" in points:
             self._ext_seen = True
             self._ext_missing = 0
+            self._state.block_missing = False
             return None
         if not self._ext_seen:
             return None
+        self._state.block_missing = True
         self._ext_missing += 1
         if self._ext_missing < EXTENSION_MISSING_RECONNECT_POLLS:
             return None
@@ -1004,10 +1019,15 @@ class ModbusPoller:
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run_loop())
+        # A pass takes up to the read timeout; a reconnect waits up to the 60 s
+        # back-off. Either way it beats at least once a minute.
+        workers.register(self.worker_name, "Modbus polling", max(self._poll_interval, 60),
+                         scope=self._gateway_id, task=self._task)
         logger.info("Poller started (interval=%ds)", self._poll_interval)
 
     async def stop(self) -> None:
         self._stop_event.set()
+        workers.unregister(self.worker_name)
         if self._task:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from franklinwh_bridge import workers
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate as eval_conditions
 from franklinwh_bridge.gateway.scheduler_sensors import snapshot as sensor_snapshot
 from franklinwh_bridge.gateway.scheduler_triggers import prev_fire_at
@@ -661,9 +662,13 @@ class ScheduleEngine:
     async def start(self) -> None:
         await self.load()
         self._task = asyncio.create_task(self._loop())
+        # A tick that dispatches waits on the Modbus lock and the read-back, so
+        # it is given at least a minute (4 × 15 s) before it counts as stalled.
+        workers.register("scheduler", "Schedules", max(self._tick_s, 15), task=self._task)
         logger.info("Schedule engine started (%d active entries)", len(self._entries))
 
     async def stop(self) -> None:
+        workers.unregister("scheduler")
         if self._task and not self._task.done():
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -673,6 +678,7 @@ class ScheduleEngine:
     async def _loop(self) -> None:
         try:
             while True:
+                workers.beat("scheduler")
                 try:
                     await self.tick()
                 except Exception as exc:  # never let one bad tick kill the loop
