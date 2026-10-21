@@ -48,6 +48,10 @@ MAX_SANE_POWER_W = 150_000
 # never this high (64,536 W+ on one register).
 _SMALL_NEGATIVE_MIN = 65536 - 1000  # raw 64536..65534 == -1000..-2 W as int16
 
+# Polls in a row without the 15500-15509 block, after it has been seen,
+# before the library's session is rebuilt with a full reconnect (#317).
+EXTENSION_MISSING_RECONNECT_POLLS = 3
+
 # Read every poll cycle (10s default) — live telemetry
 POLL_METHODS = [
     "read_battery_status",
@@ -107,6 +111,8 @@ class ModbusPoller:
         self._vreg_client: Any | None = None  # cached pymodbus client
         self._ever_connected = False  # a later connect counts as a reconnect
         self._last_good_ext: dict[str, int | float] = {}  # previous good extension values
+        self._ext_seen = False  # the 15500-15509 block has arrived at least once
+        self._ext_missing = 0  # polls in a row without it since then (#317)
         self._stats = stats  # OperationalStats (optional)
         self._modbus_lock = modbus_lock or asyncio.Lock()
 
@@ -926,6 +932,12 @@ class ModbusPoller:
                 else:
                     self._state.consecutive_errors = 0
                     self._state.last_error = None
+                    reason = self._library_session_lost(sample.points)
+                    if reason:
+                        logger.warning("Gateway %s: %s; reconnecting to the aGate",
+                                       self._gateway_id, reason)
+                        await self._disconnect()
+                        self._startup_points = {}  # Re-read on reconnect
 
                 # Record poll quality in operational stats
                 if self._stats:
@@ -953,6 +965,29 @@ class ModbusPoller:
 
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._poll_interval)
+
+    def _library_session_lost(self, points: dict[str, Any]) -> str | None:
+        """Why the library's session needs a full reconnect, or None (#317).
+
+        A failed library-internal ``reconnect()`` leaves ``controller.dev``
+        None but keeps its cached models, which go on reading. Only the
+        15500-15509 read (``self.dev.client``) stops, silently, so the poll
+        looks healthy and nothing reconnects (franklinwh-modbus#89).
+        """
+        if getattr(self._controller, "dev", True) is None:
+            return "the library lost its device after a failed reconnect"
+        if "ongrid_mode" in points:
+            self._ext_seen = True
+            self._ext_missing = 0
+            return None
+        if not self._ext_seen:
+            return None
+        self._ext_missing += 1
+        if self._ext_missing < EXTENSION_MISSING_RECONNECT_POLLS:
+            return None
+        self._ext_missing = 0
+        return (f"registers 15500-15509 (solar, home, mode, reserves) missing for "
+                f"{EXTENSION_MISSING_RECONNECT_POLLS} polls")
 
     async def start(self) -> None:
         if self._task and not self._task.done():

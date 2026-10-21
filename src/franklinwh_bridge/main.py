@@ -175,6 +175,10 @@ class _QuietAccessLog(logging.Filter):
         return True
 
 
+#: franklinwh-modbus logs under this name; WARNING and above reach the bridge's logs.
+LIBRARY_LOGGER = "franklinwh_modbus"
+
+
 def configure_console_logging(level: int) -> None:
     """Send the bridge's own log to stderr, timestamped, and timestamp uvicorn's.
 
@@ -191,6 +195,14 @@ def configure_console_logging(level: int) -> None:
         console.setFormatter(fmt)
         bridge.addHandler(console)
     bridge.setLevel(level)
+    # The library's own warnings and errors, e.g. a failed internal reconnect (#318).
+    library = logging.getLogger(LIBRARY_LOGGER)
+    if not any(getattr(h, "_bridge_console", False) for h in library.handlers):
+        lib_console = logging.StreamHandler(sys.stderr)
+        lib_console._bridge_console = True  # type: ignore[attr-defined]
+        lib_console.setFormatter(fmt)
+        library.addHandler(lib_console)
+    library.setLevel(logging.WARNING)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         for h in logging.getLogger(name).handlers:
             h.setFormatter(fmt)
@@ -211,6 +223,7 @@ async def lifespan(app: FastAPI):
     handler = LogBufferHandler(log_buffer, log_persist_queue)
     handler.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger("franklinwh_bridge").addHandler(handler)
+    logging.getLogger(LIBRARY_LOGGER).addHandler(handler)  # its warnings too (#318)
     configure_console_logging(getattr(logging, config.settings.log_level.upper(), logging.INFO))
     logger.info(
         "FranklinWH Modbus Bridge v%s starting (environment: %s)", __version__, config.environment
