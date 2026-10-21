@@ -7,6 +7,18 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.34 — 2026-10-21
+
+### Fixes
+- **Solar, home load, mode and reserves no longer go missing after a network
+  drop.** The bridge now notices within about 30 seconds, reconnects to the
+  aGate and logs a warning. Before, they could stay missing until a restart.
+- **The library's own warnings** now appear in the bridge's Logs.
+
+### Changes
+- **Guide** in the sidebar, and **Discussions** links in the app and the
+  docs: ask anything there.
+
 ## 0.2.33 — 2026-10-21
 
 ### Fixes

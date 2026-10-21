@@ -13,6 +13,25 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.34] — 2026-10-21
+
+### Fixed
+
+- **Live data silently missing after a network drop (#317):** a failed
+  library-internal reconnect left the library without its device while its
+  cached SunSpec models kept reading. Only 15500–15509 (solar, home, mode,
+  reserves) stopped, with no warning, for 3.5 h on a live aGate. The poller now
+  forces a full reconnect when the library's device is gone, or when the block
+  is missing for 3 polls after it was seen, and logs a warning. Library
+  defect: franklinwh-modbus#89.
+- **Library warnings in the bridge logs (#318):** `franklinwh_modbus` WARNING
+  and above now reach the add-on log and the Logs tab.
+
+### Added
+
+- **Guide in the sidebar**, and **Discussions** links in the sidebar footer, the
+  phone menu and the docs (nav, footer, front page).
+
 ## [0.2.33] — 2026-10-21
 
 ### Fixed
