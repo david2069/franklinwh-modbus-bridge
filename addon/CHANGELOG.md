@@ -7,6 +7,20 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.35 — 2026-10-21
+
+### Fixes
+- **HA shows the bridge offline if it stops unexpectedly**, rather than
+  showing frozen values as if they were live.
+- **A failed battery command says what went wrong in plain words**, and
+  whether anything ran, e.g. "Rejected by the aGate (Modbus exception 3:
+  illegal data value …). The command did not run; the battery carries on as
+  before."
+
+### Docs
+- New guide: alerts on your phone, the bridge on your home screen, reaching
+  it away from home, and backups off the premises.
+
 ## 0.2.34 — 2026-10-21
 
 ### Fixes
