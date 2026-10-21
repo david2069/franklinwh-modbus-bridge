@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -77,6 +78,35 @@ def _strip_speculation(msg: str) -> str:
     if not msg or _SPECULATION not in msg:
         return msg
     return f"{msg.replace(_SPECULATION, '').strip()} {_UNKNOWN_CAUSE}".strip()
+
+
+#: What the aGate's Modbus exception codes mean, in words.
+MODBUS_EXCEPTIONS = {
+    1: "illegal function: the aGate doesn't support that request",
+    2: "illegal data address: the aGate has no such register",
+    3: "illegal data value: the aGate refused a value it was sent",
+    4: "device failure: the aGate hit an internal error",
+    6: "device busy: the aGate was busy",
+}
+_MODBUS_EXCEPTION_RE = re.compile(r"Modbus exception:?\s*(\d+)", re.IGNORECASE)
+
+
+def explain_command_failure(msg: str, stopped_previous: bool = False) -> str:
+    """A failed command's reason in words: what the code means and that it didn't run.
+
+    "Modbus exception: 3" alone told the owner nothing (#323), and a toast
+    that only says "failed" doesn't say whether the battery did anything.
+    """
+    m = _MODBUS_EXCEPTION_RE.search(msg or "")
+    if m:
+        code = int(m.group(1))
+        meaning = MODBUS_EXCEPTIONS.get(code, "an error code this bridge doesn't know")
+        text = f"Rejected by the aGate (Modbus exception {code}: {meaning})."
+    else:
+        text = (msg or "Failed").rstrip(".") + "."
+    if stopped_previous:
+        return f"{text} The command did not run, and the previous command has stopped."
+    return f"{text} The command did not run; the battery carries on as before."
 
 
 DEFAULT_WATCHDOG_S = 0  # 0 = no time limit (run until explicitly released)
@@ -542,7 +572,8 @@ class CommandHandler:
                    f"(WSetEna={hw.get('wset_enabled')}, WSetPct={hw.get('wset_pct')})")
 
         if not success:
-            await self._dispatch_failed(display_action, report_w, msg, hw, prev_active)
+            await self._dispatch_failed(display_action, report_w, msg, hw, prev_active,
+                                        power_label=power_label)
             return
 
         if self._active_dispatch_id:
@@ -673,6 +704,7 @@ class CommandHandler:
 
     async def _dispatch_failed(
         self, display_action: str, watts: int, msg: str, hw: dict | None, prev_active: bool,
+        power_label: str = "",
     ) -> None:
         """A battery command that did not take: record it as failed, not active.
 
@@ -693,7 +725,9 @@ class CommandHandler:
                     self._db, self._active_dispatch_id, "superseded",
                     reason=f"stopped by a failed {display_action} send")
                 self._active_dispatch_id = None
-        self._state.last_result = _strip_speculation(msg)
+        msg = explain_command_failure(_strip_speculation(msg), stopped_previous=(
+            prev_active and not self._state.active))
+        self._state.last_result = msg
         self._state.last_success = False
         did = await dispatch_outcomes.create(
             self._db, gateway_id=self._gateway_id, requester=self._requester,
@@ -709,7 +743,8 @@ class CommandHandler:
         )
         if self._on_state_changed:
             await self._on_state_changed()
-        logger.warning("Battery command FAILED: %s %dW — %s", display_action, abs(watts), msg)
+        logger.warning("Battery command FAILED: %s %s — %s", display_action,
+                       power_label or f"{abs(watts)}W", msg)
 
     async def _release_command(self, reason: str = "release") -> None:
         was_active = self._state.active
