@@ -1,5 +1,14 @@
 # Home Assistant setup: instance and notifications
 
+!!! note "Installed as a Home Assistant app (add-on)? Skip steps 1 and 2"
+    If you installed the bridge from the Home Assistant app store, it is already
+    connected to the Home Assistant it runs in. There is **no token to create and no
+    instance to add**: it appears in **Settings → Home Assistant** as **auto**. Start at
+    [step 3](#step-3-expose-the-entities-your-schedules-need).
+
+    Steps 1 and 2 are only for the bridge running in **Docker or Python**, or for
+    connecting a **second** Home Assistant.
+
 This guide connects the bridge to a Home Assistant so that:
 
 - your **schedules can use Home Assistant entities** as conditions (for example "only
@@ -19,12 +28,10 @@ is MQTT, covered in [Settings → Home Assistant](ui/settings-home-assistant.md)
 | 5. Send notifications from a schedule | Bridge: Schedule |
 | 6. Try it: an away-mode alert | Both |
 
-!!! tip "On the Home Assistant add-on, skip steps 1 and 2"
-    The add-on adds the Home Assistant it runs in by itself (shown as **auto**). Its
-    entities, notify services and token come through the Supervisor. You need steps 1 and
-    2 only for **another** Home Assistant, or when the bridge runs in Docker or Python.
-
 ## Step 1: Create a token in Home Assistant
+
+*Not needed when the bridge is installed as a Home Assistant app (add-on): skip to
+[step 3](#step-3-expose-the-entities-your-schedules-need).*
 
 1. In Home Assistant, click your name at the bottom of the sidebar, then the **Security**
    tab.
@@ -45,6 +52,9 @@ The token acts as you. To limit what the bridge can do, create a separate, non-a
 Assistant user for it and create the token while signed in as that user.
 
 ## Step 2: Add the instance in the bridge
+
+*Not needed when the bridge is installed as a Home Assistant app (add-on): skip to
+[step 3](#step-3-expose-the-entities-your-schedules-need).*
 
 Open **Settings → Home Assistant** (`?tab=settings&section=home-assistant`), find the
 **Home Assistant** card (*entity access*) and click **+ Add Home Assistant**.
