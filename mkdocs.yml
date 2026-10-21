@@ -127,6 +127,7 @@ nav:
   - Home Assistant:
     - "Setup: instance & notifications": user/ha-setup.md
     - Fixing, moving and removing entities: user/home-assistant-entities.md
+    - "Phone, notifications & remote access": user/phone-and-remote-access.md
   - Developer Guide:
     - dev/index.md
     - REST API & OpenAPI: dev/rest-api.md

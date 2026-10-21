@@ -73,6 +73,7 @@ The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery 
 | Add a solar forecast and weather | [Guide: location & weather](user/ui/guide-location-weather.md) |
 | Fix or remove HA entities | [Fixing, moving and removing entities](user/home-assistant-entities.md) |
 | Use HA entities in schedules, get notifications on my phone | [Home Assistant setup: instance & notifications](user/ha-setup.md) |
+| Get alerts on my phone, add the bridge to my home screen, reach it away from home | [Phone, notifications & remote access](user/phone-and-remote-access.md) |
 | Run the battery without fighting the FranklinWH app | [Battery dispatch: best practice](user/battery-dispatch-best-practice.md) |
 | Call the API, or integrate my own tools | [Developer Guide](dev/index.md) |
 | Ask a question, suggest an idea, or report a problem | [Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions) · [Issues](https://github.com/david2069/franklinwh-modbus-bridge/issues) |
