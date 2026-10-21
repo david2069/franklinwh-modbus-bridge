@@ -30,9 +30,10 @@
     conditions. Using this software to bypass them — deliberately or inadvertently
     — is entirely at your own risk, and is neither condoned nor encouraged.
 
-    **DO NOT CONTACT FRANKLINWH SUPPORT about this software.** Bugs, defects and
-    feature requests belong here, not with the vendor:
-    <https://github.com/david2069/franklinwh-modbus-bridge/issues>
+    **DO NOT CONTACT FRANKLINWH SUPPORT about this software.** Questions, bugs,
+    defects and feature requests belong here, not with the vendor:
+    [Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions)
+    or [Issues](https://github.com/david2069/franklinwh-modbus-bridge/issues).
 
     - Full terms: <https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE>
     - SunSpec conformance (PICS SM-000028): <https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx>
@@ -43,6 +44,19 @@ Run your FranklinWH aGate from Home Assistant over your local network.
 The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery and grid data on its own dashboards, runs **schedules** (force charge or discharge, reserves and modes, with conditions such as SoC, spot price or weather), and publishes everything to Home Assistant as **MQTT entities**.
 
 ![The bridge's dashboard](images/ui/dashboard-full.png)
+
+!!! tip "Questions? Ask anything in Discussions"
+    **[Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions)**
+    is the place for anything about the bridge or its API: questions, ideas,
+    feature requests, and anything that looks wrong.
+
+    **New to this? You're welcome here.** No question is too basic, and you don't
+    need to know Modbus, Home Assistant or GitHub jargon. Ask in your own words;
+    nobody will judge you for it. If it turns out to be a defect, it gets moved
+    to Issues for you.
+
+    Already sure it's a defect, with steps to reproduce? Go straight to
+    **[Issues](https://github.com/david2069/franklinwh-modbus-bridge/issues)**.
 
 ## Start here
 
@@ -60,6 +74,7 @@ The bridge talks to the aGate over **Modbus TCP**. It shows live power, battery 
 | Use HA entities in schedules, get notifications on my phone | [Home Assistant setup: instance & notifications](user/ha-setup.md) |
 | Run the battery without fighting the FranklinWH app | [Battery dispatch: best practice](user/battery-dispatch-best-practice.md) |
 | Call the API, or integrate my own tools | [Developer Guide](dev/index.md) |
+| Ask a question, suggest an idea, or report a problem | [Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions) · [Issues](https://github.com/david2069/franklinwh-modbus-bridge/issues) |
 
 ## What you need
 
