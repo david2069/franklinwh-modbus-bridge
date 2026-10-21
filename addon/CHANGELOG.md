@@ -7,6 +7,18 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.36 — 2026-10-21
+
+### New
+- **Battery-control writes** at the bottom of **Logs**: every command the
+  bridge sent to the aGate, the exact value, the aGate's reply and who sent
+  it, with **Download CSV / JSON**.
+
+### Fixes
+- The **battery power register 15013** now shows a signed value (e.g. -40 W,
+  not 65496 W).
+- The **15016** description no longer claims "off-grid".
+
 ## 0.2.35 — 2026-10-21
 
 ### Fixes

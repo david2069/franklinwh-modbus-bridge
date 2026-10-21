@@ -13,6 +13,29 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.36] — 2026-10-21
+
+### Added
+
+- **Modbus write audit trail (#342 part 1):** every SunSpec write the bridge
+  makes is recorded with time (ms), register, raw values, the aGate's reply
+  (ok or the exception) and who asked (user, schedule, sequencer). One log
+  line per write; kept 90 days / 200k rows; Logs → "Battery-control writes"
+  with CSV/JSON download (works under HA ingress);
+  `GET /api/diagnostics/modbus-writes` (admin).
+- **Alert record and API (#324, shared spec with the DC bridge):** schema 61,
+  `GET /api/alerts`, `POST /api/alerts/{id}/ack`, summary in `/api/status`.
+  Nothing raises alerts yet.
+
+### Fixed
+
+- **15013 (BatteryPowerRaw)** is decoded as signed int16: it showed 65496 W for
+  -40 W. Negative = charging, as M714 DCW (one site's readings).
+- **15016 (StatusRaw)** description: 1 seen during two aGate service restarts
+  on 2026-10-21 (V12; meaning unconfirmed).
+- **Docs:** the HA setup page says up front that steps 1–2 don't apply to the
+  HA app install.
+
 ## [0.2.35] — 2026-10-21
 
 ### Fixed
