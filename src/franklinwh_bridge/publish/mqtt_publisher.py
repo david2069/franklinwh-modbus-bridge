@@ -848,6 +848,21 @@ class MqttPublisher:
             except asyncio.QueueFull:
                 break
 
+    def _will_topic(self) -> str | None:
+        """The availability topic the broker marks "offline" if we vanish (#325).
+
+        MQTT carries one last will per connection, and topics are frozen (D1),
+        so it can only be an existing per-gateway availability topic: set when
+        exactly one gateway is announced. With several there is no will until a
+        bridge-level availability topic is allowed after the identity freeze.
+        """
+        sids = {d.device_info.short_id for d in self._devices.values() if d.device_info}
+        if self._device_info:
+            sids.add(self._device_info.short_id)
+        if len(sids) != 1:
+            return None
+        return self._availability_topic(next(iter(sids)))
+
     def _backoff_delay(self, attempt: int) -> float:
         return min(5.0 * (2 ** attempt), 60.0)
 
@@ -918,6 +933,8 @@ class MqttPublisher:
     async def _run_loop(self) -> None:
         attempt = 0
         while not self._stop_event.is_set():
+            rewill = False
+            will_topic = self._will_topic()
             try:
                 async with aiomqtt.Client(
                     hostname=self._host,
@@ -925,6 +942,8 @@ class MqttPublisher:
                     username=self._username,
                     password=self._password,
                     identifier=self._client_id,
+                    will=(aiomqtt.Will(will_topic, "offline", qos=1, retain=True)
+                          if will_topic else None),
                 ) as client:
                     self._state.connected = True
                     self._state.last_error = None
@@ -941,6 +960,12 @@ class MqttPublisher:
 
                     try:
                         while not self._stop_event.is_set():
+                            # Gateways register after we connect: once the will
+                            # topic is known (or changes), reconnect cleanly to
+                            # carry it. A clean disconnect doesn't fire the will.
+                            if self._will_topic() != will_topic:
+                                rewill = True
+                                break
                             # Subscribe each commandable device as it appears
                             # (gateways register after we connect), and drop
                             # any that stops being one: unregistered, or the
@@ -999,6 +1024,10 @@ class MqttPublisher:
                 self._state.last_error = str(exc)
                 logger.error("MQTT unexpected error: %s", exc)
 
+            if rewill and not self._stop_event.is_set():
+                logger.info("MQTT reconnecting to set the last will (%s)",
+                            self._will_topic() or "none")
+                continue
             if not self._stop_event.is_set():
                 delay = self._backoff_delay(attempt)
                 attempt += 1
