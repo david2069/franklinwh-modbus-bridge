@@ -169,6 +169,10 @@ class HaInstance:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(url, headers=self._headers(), json=payload)
                 resp.raise_for_status()
+            # Every notification sent is also in the app log, not only in the
+            # schedule audit, so "who was told what, when" is one place to look.
+            logger.info("HA %s notify.%s: %s%s", self.name, name,
+                        f"{title}: " if title else "", (message or "")[:200])
             return {"ok": True, "error": None}
         except Exception as exc:
             err = str(exc) or type(exc).__name__
