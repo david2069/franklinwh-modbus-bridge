@@ -91,14 +91,15 @@ _WARN_BITS_M701 = {1, 2, 3, 4, 7, 8, 9, 10, 11, 13, 14, 15, 16}
 _FAULT_BITS_M714 = {2, 5, 6, 7}
 _WARN_BITS_M714 = {0, 1, 3, 4}
 
-# SunSpec register/point metadata per alarm_events.source and the grid-mode
+# SunSpec register (Base-0 PDU address, as the Explorer's default and
+# FranklinWH's PICS number them) and point per alarm_events.source and the grid-mode
 # pseudo-source used for PV-Clipping intervals — not stored in alarm_events
 # itself, joined in at read time for display.
 _SOURCE_META: dict[str, dict[str, Any]] = {
-    "M701_Alrm":     {"register": 40076, "point": "DERMeasureAC.Alrm"},
-    "M701_DERMode":  {"register": 40078, "point": "DERMeasureAC.DERMode"},
-    "M713_Sta":      {"register": 41039, "point": "DERStorageCapacity.Sta"},
-    "M714_PrtAlrms": {"register": 41044, "point": "DERMeasureDC.PrtAlrms"},
+    "M701_Alrm":     {"register": 76, "point": "DERMeasureAC.Alrm"},
+    "M701_DERMode":  {"register": 78, "point": "DERMeasureAC.DERMode"},
+    "M713_Sta":      {"register": 1039, "point": "DERStorageCapacity.Sta"},
+    "M714_PrtAlrms": {"register": 1044, "point": "DERMeasureDC.PrtAlrms"},
 }
 
 # grid_mode values worth surfacing as a distinct interval (the default
