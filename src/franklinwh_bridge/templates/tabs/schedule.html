@@ -1293,8 +1293,13 @@
 
           <!-- Sticky footer: Save is always reachable without scrolling; the
                Enabled control is a clear toggle switch (not a label) next to it. -->
-          <div class="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex items-center justify-between gap-3 border-t"
+          <div class="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-t"
                style="background: var(--surface-0); border-color: var(--border);">
+          <!-- The editor's latest result stays here, always in view (#351). -->
+          <div x-show="formResult" role="status"
+               class="w-full text-xs px-2 py-1 rounded border"
+               :class="formResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+               x-text="formResult?.msg"></div>
             <button type="button" @click="form.enabled = !form.enabled"
                     class="flex items-center gap-2 text-sm select-none"
                     :title="form.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'">
@@ -1361,6 +1366,10 @@
           </template>
         </div>
 
+        <div x-show="importResult" role="status"
+               class="text-xs px-2 py-1 rounded border"
+               :class="importResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+               x-text="importResult?.msg"></div>
         <div class="flex items-center justify-end gap-2 pt-1">
           <button class="btn btn-sm btn-secondary" @click="closeImport()">Cancel</button>
           <button class="btn btn-sm btn-secondary" @click="validateImport()" :disabled="!importText.trim()">Validate</button>

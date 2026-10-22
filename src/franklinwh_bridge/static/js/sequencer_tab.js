@@ -20,6 +20,7 @@ function sequencerTab() {
     dryRun: false,
     output: [],
     showNewDialog: false,
+    newResult: null,  // the New Sequence dialog's latest result (#351)
     newName: '',
     renameMode: false,
     renameName: '',
@@ -274,6 +275,7 @@ function sequencerTab() {
     async createSequence() {
       const name = this.newName.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
       if (!name) return;
+      this.newResult = null;
 
       const template = JSON.stringify([
         {
@@ -295,6 +297,9 @@ function sequencerTab() {
         await this.loadSequences();
         await this.selectSequence(name);
         Alpine.store('app').toast('Created sequence: ' + name, 'info');
+      } else {
+        // A failed create showed nothing at all (#351); it stays in the dialog.
+        this.newResult = { ok: false, msg: 'Not created: ' + (data?.error || 'unknown') };
       }
     },
 

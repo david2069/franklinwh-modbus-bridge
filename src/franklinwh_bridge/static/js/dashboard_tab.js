@@ -305,6 +305,8 @@ function dashboardTab() {
 
     // Chart popup modal
     showChartModal: false,
+    // The chart dialog's latest export result, shown in the dialog (#351).
+    chartExportResult: null,
 
     // Multi-gateway compare modal
     showCompareModal: false,
@@ -1051,8 +1053,13 @@ function dashboardTab() {
     exportChartData(format) {
       // Use modal chart data if modal is open, otherwise main chart
       const src = (this.showChartModal && _modalChart) ? _modalChart : _chart;
+      // In the dialog the result stays in the dialog (#351); on the card, a toast.
+      const report = (ok, msg) => {
+        if (this.showChartModal) this.chartExportResult = { ok, msg };
+        else Alpine.store('app').toast(msg, ok ? 'info' : 'error');
+      };
       if (!src || !src.data.labels.length) {
-        Alpine.store('app').toast('No chart data to export', 'error');
+        report(false, 'No chart data to export');
         return;
       }
       const labels = src.data.labels;
@@ -1096,11 +1103,12 @@ function dashboardTab() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      Alpine.store('app').toast(`Exported ${labels.length} points as ${format.toUpperCase()}`, 'info');
+      report(true, `Exported ${labels.length} points as ${format.toUpperCase()}`);
     },
 
     // ── Chart Modal ─────────────────────────────────────────
     openChartModal() {
+      this.chartExportResult = null;
       this.showChartModal = true;
       this.$nextTick(() => {
         requestAnimationFrame(() => this._createModalChart());
