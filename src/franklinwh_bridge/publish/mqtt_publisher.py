@@ -13,6 +13,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiomqtt
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from franklinwh_bridge.modbus.sample import Sample
+from franklinwh_bridge.publish import bridge_device
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.entities import (
     BRIDGE_ENTITIES,
@@ -321,6 +323,10 @@ class MqttPublisher:
         self._max_val_overrides: dict[str, float] = {}
         # Multi-gateway device registry
         self._devices: dict[str, GatewayDevice] = {}
+        # The bridge's own device (#324 v1.2): announced on every connection,
+        # its last "Bridge problem" state kept to re-send after a reconnect.
+        self._bridge_discovery_published = False
+        self._bridge_problem: str | None = None
 
     @property
     def state(self) -> MqttState:
@@ -954,6 +960,7 @@ class MqttPublisher:
                     if (self._has_discoverable() and not self._state.discovery_published
                             and not self._discovery_paused):
                         await self._publish_discovery(client)
+                    self._bridge_discovery_published = False
 
                     listener_task = None
                     subscribed: set[str] = set()  # short_ids whose control topics we hold
@@ -1002,6 +1009,8 @@ class MqttPublisher:
                                     and not self._discovery_paused):
                                 await self._publish_discovery(client)
                                 await self._publish_availability(client, online=True)
+                            if not self._bridge_discovery_published and not self._discovery_paused:
+                                await self._publish_bridge_discovery(client)
                         if self._offline_on_stop:
                             # Publishing switched off (#96): HA shows the
                             # entities unavailable, not frozen at a last value.
@@ -1178,6 +1187,7 @@ class MqttPublisher:
                 topic = entity.discovery_topic(sid, old_prefix, self._discovery_prefix)
                 if topic not in topics:
                     topics.append(topic)
+        topics += bridge_device.discovery_topics(old_prefix, self._discovery_prefix)
         wanted = set(topics)
         retained: dict[str, bytes | str] = {}
         removed = 0
@@ -1221,6 +1231,41 @@ class MqttPublisher:
         )
         return counts
 
+    async def _publish_bridge_discovery(self, client: aiomqtt.Client) -> None:
+        """Announce the bridge's own device; re-send its last problem state."""
+        from franklinwh_bridge import __version__
+
+        configs = bridge_device.discovery_configs(
+            self._topic_prefix, self._discovery_prefix, __version__)
+        for topic, config in configs.items():
+            await client.publish(topic, json.dumps(config), retain=True)
+        if self._bridge_problem is not None:
+            await client.publish(bridge_device.problem_topic(self._topic_prefix),
+                                 self._bridge_problem, retain=True)
+        self._bridge_discovery_published = True
+
+    def _enqueue_bridge(self, topic: str, payload: str) -> None:
+        # Only while connected: a reconnect re-sends the problem state, and a
+        # heartbeat queued while down would be stale when it went out.
+        if not self._state.connected or self._discovery_paused:
+            return
+        with contextlib.suppress(asyncio.QueueFull):
+            self._queue.put_nowait(MqttMessage(topic=topic, payload=payload, retain=True))
+
+    def publish_bridge_problem(self, payload: dict) -> None:
+        """The "Bridge problem" state, sent when it changes (retained)."""
+        text = json.dumps(payload, sort_keys=True)
+        if text == self._bridge_problem:
+            return
+        self._bridge_problem = text
+        self._enqueue_bridge(bridge_device.problem_topic(self._topic_prefix), text)
+
+    def publish_bridge_heartbeat(self, ts: float | None = None) -> None:
+        """The "Bridge heartbeat": now, ISO 8601 UTC (retained)."""
+        ts = time.time() if ts is None else ts
+        stamp = datetime.fromtimestamp(ts, UTC).isoformat(timespec="seconds")
+        self._enqueue_bridge(bridge_device.heartbeat_topic(self._topic_prefix), stamp)
+
     def request_discovery_republish(self) -> None:
         """Flag discovery for re-publish on the next connection cycle.
 
@@ -1228,6 +1273,7 @@ class MqttPublisher:
         """
         self._discovery_paused = False
         self._state.discovery_published = False
+        self._bridge_discovery_published = False
 
     def published_discovery(self) -> tuple[set[str], set[str]]:
         """(short ids, discovery topics) this publisher currently publishes.
@@ -1275,8 +1321,6 @@ class MqttPublisher:
         for dev in self._devices.values():
             if dev.device_info and dev.device_info.short_id not in sids:
                 sids.append(dev.device_info.short_id)
-        if not sids:
-            return 0
 
         count = 0
         try:
@@ -1293,6 +1337,13 @@ class MqttPublisher:
                         count += 1
                     avail_topic = self._availability_topic(short_id)
                     await client.publish(avail_topic, b"", retain=True)
+                # The bridge's own device, with its retained states (#324).
+                p = self._topic_prefix
+                for topic in bridge_device.discovery_topics(p, self._discovery_prefix):
+                    await client.publish(topic, b"", retain=True)
+                    count += 1
+                for topic in (bridge_device.problem_topic(p), bridge_device.heartbeat_topic(p)):
+                    await client.publish(topic, b"", retain=True)
         except Exception as exc:
             logger.error("Failed to unpublish discovery: %s", exc)
             raise

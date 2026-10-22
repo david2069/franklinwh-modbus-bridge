@@ -126,6 +126,7 @@ nav:
     - Examples: user/scheduler/examples.md
   - Home Assistant:
     - "Setup: instance & notifications": user/ha-setup.md
+    - Alerts and health sensors: user/alerts.md
     - Fixing, moving and removing entities: user/home-assistant-entities.md
     - "Phone, notifications & remote access": user/phone-and-remote-access.md
   - Developer Guide:

@@ -84,6 +84,7 @@ The fix is not another identity change. It is to:
 | HA device | identifier `<prefix>_modbus_<SERIAL>` (others `slug(<prefix>_modbus_<gw>_<serial>)`) | namespace, gateway id, serial | yes, while any discovery config references it |
 | HA entity | unique_id `<prefix>_<sid>_<slug>` | namespace, short id, slug | yes, while its config is retained |
 | **entity_id** | derived by HA from **device name + entity name** at first registration; we send no `object_id` | device name `FranklinWH Modbus <serial8>` | kept by unique_id; a device rename changes the entity_ids of **new** installs only |
+| Bridge device (#324) | configs `homeassistant/binary_sensor/<prefix>_bridge/bridge_problem/config` and `homeassistant/sensor/<prefix>_bridge/bridge_heartbeat/config`; states `<prefix>/bridge/problem` and `<prefix>/bridge/heartbeat` (retained); identifier `<prefix>_modbus_bridge`; unique_ids `<prefix>_bridge_problem`, `<prefix>_bridge_heartbeat`; no availability topic | namespace | yes, until removed. Unpublish removes the configs and both states; a namespace change removes the old configs (E6, E10) |
 | HA long-term statistics | recorder | entity_id | **outlives the entity** |
 | Bridge data | add-on `/data/bridge.db` (Docker volume `app-data`) | — | add-on: **no** (see M7) |
 
@@ -285,3 +286,4 @@ Accepted by the owner on 2026-10-16.
 | D5 | **No per-install demo id.** Document "one demo per broker"; purge and delete remove demos. | Demos are throwaway; not worth an identity change. |
 | D6 | **Release order:** S1 security hotfix → R1 provenance → R2 verified removal + offline → R3+R4 inventory and purge → R5 naming choice (#130) → R6 data location and install id; R7 any time. | Security first; R3 alone gives users nothing. |
 | D7 | **This document is the repo's lifecycle policy**; the shared TEST_POLICY is the release and test procedure; user procedures go in INSTALL.md and addon/DOCS.md. | One home per rule. |
+| D8 | **D1 exception (owner, 2026-10-21):** a new bridge-level device and its two sensors (Bridge problem, Bridge heartbeat; #324 spec v1.2) may be added. No change to any existing device, unique_id or topic. | An alert must show even for a gateway that never answered, which has no device. |
