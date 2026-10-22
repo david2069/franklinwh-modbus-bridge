@@ -87,6 +87,7 @@ class HaInstance:
     def __init__(self, cfg: dict, *, timeout: float = 10.0) -> None:
         self.id: str = cfg["id"]
         self.name: str = cfg["name"]
+        self.is_default: bool = bool(cfg.get("is_default"))
         self.base_url: str = str(cfg["base_url"]).rstrip("/")
         self.token: str | None = cfg.get("token")
         if not self.token and self.base_url == SUPERVISOR_CORE_URL:
@@ -177,6 +178,22 @@ class HaInstance:
         except Exception as exc:
             err = str(exc) or type(exc).__name__
             logger.warning("HA %s notify.%s failed: %s", self.name, name, err)
+            return {"ok": False, "error": err}
+
+    async def call_action(self, domain: str, service: str, data: dict) -> dict:
+        """Call an HA action that targets no entity (``persistent_notification.create``).
+
+        ``{"ok": bool, "error": str|None}``; never raises.
+        """
+        url = f"{self.base_url}/api/services/{domain}/{service}"
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(url, headers=self._headers(), json=data)
+                resp.raise_for_status()
+            return {"ok": True, "error": None}
+        except Exception as exc:
+            err = str(exc) or type(exc).__name__
+            logger.warning("HA %s %s.%s failed: %s", self.name, domain, service, err)
             return {"ok": False, "error": err}
 
     async def list_notify_services(self) -> list[str]:
@@ -452,6 +469,13 @@ class HaRegistry:
 
     def get(self, instance_id: str) -> HaInstance | None:
         return self._instances.get(instance_id)
+
+    def primary(self) -> HaInstance | None:
+        """The default HA instance, else the first enabled one; None if none."""
+        for inst in self._instances.values():
+            if inst.is_default:
+                return inst
+        return next(iter(self._instances.values()), None)
 
     def entity_values(self) -> dict[str, Any]:
         """Merged `ha:<inst>:<entity>` → value across all instances."""

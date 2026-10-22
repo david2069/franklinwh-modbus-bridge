@@ -228,3 +228,55 @@ async def _insert(db: aiosqlite.Connection, gateway_id: str, c: Code, code: str,
     log = logger.warning if (severity or c.severity) == "critical" else logger.info
     log("Alert %s%s: %s", code, f" [{gateway_id}]" if gateway_id else "", message)
     return int(cur.lastrowid)
+
+
+# ── Delivery outbox (spec §11 D) ─────────────────────────────────────
+# One row per (alert, channel). Status: pending → delivered → dismissed, or
+# skipped (channel off / not configured) or failed (given up). The back-off
+# between attempts is in memory: owed rows retry at once after a restart.
+
+
+async def deliveries_to_create(db: aiosqlite.Connection, channel: str) -> list[dict[str, Any]]:
+    """Critical alerts still needing someone that have no row for ``channel`` yet."""
+    names = [c.strip() for c in _COLUMNS.split(",")]
+    async with db.execute(
+        f"SELECT {_COLUMNS} FROM alerts WHERE severity = 'critical' AND acked_ts IS NULL "
+        "AND id NOT IN (SELECT alert_id FROM alert_deliveries WHERE channel = ?) ORDER BY id",
+        (channel,),
+    ) as cur:
+        return [dict(zip(names, r, strict=True)) for r in await cur.fetchall()]
+
+
+async def add_delivery(db: aiosqlite.Connection, alert_id: int, channel: str,
+                       status: str = "pending", last_error: str | None = None) -> None:
+    await db.execute(
+        "INSERT OR IGNORE INTO alert_deliveries (alert_id, channel, status, last_error) "
+        "VALUES (?, ?, ?, ?)", (alert_id, channel, status, last_error))
+    await db.commit()
+
+
+async def deliveries_in(db: aiosqlite.Connection, channel: str,
+                        status: str) -> list[dict[str, Any]]:
+    """Rows for ``channel`` in ``status``, each with its alert's fields."""
+    names = [c.strip() for c in _COLUMNS.split(",")]
+    cols = ", ".join(f"a.{n}" for n in names)
+    async with db.execute(
+        f"SELECT {cols}, d.attempts FROM alert_deliveries d JOIN alerts a ON a.id = d.alert_id "
+        "WHERE d.channel = ? AND d.status = ? ORDER BY a.id", (channel, status),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [{**dict(zip(names, r[:-1], strict=True)), "attempts": r[-1]} for r in rows]
+
+
+async def mark_delivery(
+    db: aiosqlite.Connection, alert_id: int, channel: str, status: str, *,
+    error: str | None = None, attempted: bool = True, now: float | None = None,
+) -> None:
+    """Record an attempt's outcome. ``delivered_ts`` is set on delivery only."""
+    now = time.time() if now is None else now
+    await db.execute(
+        "UPDATE alert_deliveries SET status = ?, attempts = attempts + ?, last_error = ?, "
+        "delivered_ts = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_ts END "
+        "WHERE alert_id = ? AND channel = ?",
+        (status, 1 if attempted else 0, error, status, now, alert_id, channel))
+    await db.commit()

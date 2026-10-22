@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from franklinwh_bridge import __version__, disclaimer, workers
+from franklinwh_bridge.alert_delivery import AlertDelivery
 from franklinwh_bridge.alert_monitor import AlertMonitor
 from franklinwh_bridge.api.admin import router as admin_router
 from franklinwh_bridge.api.alerts_api import router as alerts_router
@@ -740,6 +741,8 @@ async def lifespan(app: FastAPI):
     # Opens and resolves alert conditions; watches the workers (#324 §11).
     alert_monitor = AlertMonitor(db, registry)
     app.state.alert_monitor = alert_monitor
+    # Tells HA about critical alerts; dismisses on acknowledgement (#324 §6).
+    alert_delivery = AlertDelivery(db, ha_registry)
 
     # ── Start All Gateways ────────────────────────────────────
 
@@ -1013,6 +1016,12 @@ async def lifespan(app: FastAPI):
             logger.warning("HA registry start failed: %s", exc)
 
         try:
+            # After the HA registry, so the first pass knows where HA is.
+            await alert_delivery.start()
+        except Exception as exc:
+            logger.error("Alert delivery start failed: %s", exc)
+
+        try:
             # Startup catch-up: if the Bridge was down across a gap (persisted
             # last-good-poll per gateway), record the downtime and catch up any
             # fires missed while offline. Runs after the engine has loaded entries.
@@ -1119,6 +1128,7 @@ async def lifespan(app: FastAPI):
     #    then the health checker.
     await schedule_engine.stop()
     await alert_monitor.stop()
+    await alert_delivery.stop()
     await health_checker.stop()
     await ha_registry.stop()
     solar_forecast_task.cancel()
