@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from franklinwh_bridge import alert_delivery
 from franklinwh_bridge.api.auth import require_auth, require_role
 from franklinwh_bridge.store import alerts as alert_store
 
@@ -78,3 +79,41 @@ async def ack_alert(
     if not await alert_store.ack(_db(request), alert_id, acked_by):
         raise HTTPException(404, "no such alert, or it is already acknowledged")
     return AckResult(ok=True, id=alert_id, acked_by=acked_by)
+
+
+class AlertSettings(BaseModel):
+    ha_channel: bool
+    #: True when a Home Assistant is set up to receive the notifications.
+    ha_configured: bool = False
+    #: The standing warning the settings page shows while the HA channel is off.
+    warning: str | None = None
+
+
+class AlertSettingsUpdate(BaseModel):
+    ha_channel: bool
+
+
+async def _settings(request: Request) -> AlertSettings:
+    on = await alert_delivery.ha_channel_on(_db(request))
+    ha = getattr(request.app.state, "ha_registry", None)
+    configured = bool(ha and ha.primary())
+    warning = None
+    if not on:
+        warning = "Critical alerts reach only the bridge UI."
+    elif not configured:
+        warning = "No Home Assistant is set up: critical alerts reach only the bridge UI."
+    return AlertSettings(ha_channel=on, ha_configured=configured, warning=warning)
+
+
+@router.get("/alerts/settings", response_model=AlertSettings,
+            dependencies=[Depends(require_auth)])
+async def get_alert_settings(request: Request) -> AlertSettings:
+    """Whether critical alerts also go to Home Assistant (on by default)."""
+    return await _settings(request)
+
+
+@router.put("/alerts/settings", response_model=AlertSettings, dependencies=[Depends(_ADMIN)])
+async def put_alert_settings(body: AlertSettingsUpdate, request: Request) -> AlertSettings:
+    """Switch HA notifications on or off (admin). Off never hides the bridge's modal."""
+    await alert_delivery.set_ha_channel(_db(request), body.ha_channel)
+    return await _settings(request)
