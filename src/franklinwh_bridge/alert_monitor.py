@@ -220,9 +220,10 @@ class AlertMonitor:
         open_alerts = await alert_store.list_alerts(
             self._db, open_only=True, limit=bridge_device.MAX_ALERTS)
         pub.publish_bridge_problem(bridge_device.problem_payload(summary, open_alerts))
-        if now - self._last_heartbeat >= HEARTBEAT_S:
+        # Counted only once sent: the first pass after a start runs before MQTT
+        # connects, and HA showed "unknown" for a minute (G1 0.2.37).
+        if now - self._last_heartbeat >= HEARTBEAT_S and pub.publish_bridge_heartbeat(now):
             self._last_heartbeat = now
-            pub.publish_bridge_heartbeat(now)
 
     async def _check_workers(self, now: float) -> None:
         for w, old, new in self._workers.check(now):
