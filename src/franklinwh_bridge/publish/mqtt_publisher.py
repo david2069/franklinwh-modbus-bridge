@@ -1244,13 +1244,17 @@ class MqttPublisher:
                                  self._bridge_problem, retain=True)
         self._bridge_discovery_published = True
 
-    def _enqueue_bridge(self, topic: str, payload: str) -> None:
+    def _enqueue_bridge(self, topic: str, payload: str) -> bool:
+        """Queue a bridge-device state; False if it wasn't (not connected, paused, full)."""
         # Only while connected: a reconnect re-sends the problem state, and a
         # heartbeat queued while down would be stale when it went out.
         if not self._state.connected or self._discovery_paused:
-            return
-        with contextlib.suppress(asyncio.QueueFull):
+            return False
+        try:
             self._queue.put_nowait(MqttMessage(topic=topic, payload=payload, retain=True))
+        except asyncio.QueueFull:
+            return False
+        return True
 
     def publish_bridge_problem(self, payload: dict) -> None:
         """The "Bridge problem" state, sent when it changes (retained)."""
@@ -1260,11 +1264,11 @@ class MqttPublisher:
         self._bridge_problem = text
         self._enqueue_bridge(bridge_device.problem_topic(self._topic_prefix), text)
 
-    def publish_bridge_heartbeat(self, ts: float | None = None) -> None:
-        """The "Bridge heartbeat": now, ISO 8601 UTC (retained)."""
+    def publish_bridge_heartbeat(self, ts: float | None = None) -> bool:
+        """The "Bridge heartbeat": now, ISO 8601 UTC (retained). False if not sent."""
         ts = time.time() if ts is None else ts
         stamp = datetime.fromtimestamp(ts, UTC).isoformat(timespec="seconds")
-        self._enqueue_bridge(bridge_device.heartbeat_topic(self._topic_prefix), stamp)
+        return self._enqueue_bridge(bridge_device.heartbeat_topic(self._topic_prefix), stamp)
 
     def request_discovery_republish(self) -> None:
         """Flag discovery for re-publish on the next connection cycle.

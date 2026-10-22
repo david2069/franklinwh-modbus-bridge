@@ -67,7 +67,7 @@ def _queued(pub: MqttPublisher) -> list[tuple[str, str, bool]]:
 def test_states_are_sent_on_change_and_only_while_connected():
     pub = MqttPublisher(host="x", topic_prefix="fwh_mb")
     pub.publish_bridge_problem({"problem": False})
-    pub.publish_bridge_heartbeat(T0)
+    assert pub.publish_bridge_heartbeat(T0) is False
     assert _queued(pub) == []  # not connected: nothing piles up
 
     pub._state.connected = True
@@ -168,8 +168,12 @@ class _Pub:
     def publish_bridge_problem(self, payload):
         self.problems.append(payload)
 
+    connected = True
+
     def publish_bridge_heartbeat(self, ts):
-        self.beats.append(ts)
+        if self.connected:
+            self.beats.append(ts)
+        return self.connected
 
 
 async def test_monitor_publishes_problem_and_heartbeat(db):
@@ -186,3 +190,14 @@ async def test_monitor_publishes_problem_and_heartbeat(db):
     last = pub.problems[-1]
     assert (last["problem"], last["level"], last["open"]) == (True, "critical", 1)
     assert last["alerts"][0]["gateway_id"] == "gw9"
+
+
+async def test_heartbeat_not_sent_is_retried_next_pass(db):
+    pub = _Pub()
+    pub.connected = False  # the first pass after a start: MQTT not up yet
+    mon = AlertMonitor(db, SimpleNamespace(instances={}),
+                       worker_registry=workers.WorkerRegistry(), publisher=lambda: pub)
+    await mon.check(now=T0)
+    pub.connected = True
+    await mon.check(now=T0 + 15)
+    assert pub.beats == [T0 + 15]
