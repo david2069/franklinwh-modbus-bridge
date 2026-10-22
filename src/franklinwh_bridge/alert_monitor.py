@@ -28,12 +28,14 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
 from franklinwh_bridge import workers
+from franklinwh_bridge.publish import bridge_device
 from franklinwh_bridge.store import alerts as alert_store
 
 if TYPE_CHECKING:
@@ -46,6 +48,8 @@ INTERVAL_S = 15
 WORKER_NAME = "alert_monitor"
 #: Polls without a read before live data counts as missing (then 2 min to open).
 LIVE_DATA_POLLS = 3
+#: The "Bridge heartbeat" sensor is refreshed this often (spec v1.1).
+HEARTBEAT_S = 60
 #: An INTERNAL_ERROR from a failed pass at most this often.
 INTERNAL_ERROR_EVERY_S = 3600
 
@@ -120,8 +124,12 @@ class AlertMonitor:
 
     def __init__(self, db: aiosqlite.Connection, registry: GatewayRegistry,
                  interval_s: float = INTERVAL_S,
-                 worker_registry: workers.WorkerRegistry | None = None) -> None:
+                 worker_registry: workers.WorkerRegistry | None = None,
+                 publisher: Callable[[], Any] | None = None) -> None:
         self._db = db
+        #: Returns the MQTT publisher (or None): it is replaced on reconfigure.
+        self._publisher = publisher or (lambda: None)
+        self._last_heartbeat = 0.0
         self._registry = registry
         self._interval = interval_s
         self._workers = worker_registry or workers.REGISTRY
@@ -201,6 +209,20 @@ class AlertMonitor:
                 self._debounce.pop((gw_id, code), None)
                 await self._resolve(code, gw_id, now)
         await self._check_workers(now)
+        await self._publish_bridge_sensors(now)
+
+    async def _publish_bridge_sensors(self, now: float) -> None:
+        """The bridge device's "Bridge problem" (on change) and heartbeat (60 s)."""
+        pub = self._publisher()
+        if pub is None:
+            return
+        summary = await alert_store.summary(self._db)
+        open_alerts = await alert_store.list_alerts(
+            self._db, open_only=True, limit=bridge_device.MAX_ALERTS)
+        pub.publish_bridge_problem(bridge_device.problem_payload(summary, open_alerts))
+        if now - self._last_heartbeat >= HEARTBEAT_S:
+            self._last_heartbeat = now
+            pub.publish_bridge_heartbeat(now)
 
     async def _check_workers(self, now: float) -> None:
         for w, old, new in self._workers.check(now):

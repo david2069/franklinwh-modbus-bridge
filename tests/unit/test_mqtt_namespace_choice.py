@@ -308,9 +308,13 @@ async def test_change_removes_only_this_bridges_old_entities(db, broker):
     # The scan didn't reuse our client id (#118) and only read our own topics.
     scan = broker.clients[0]
     assert scan.kw["identifier"] != "franklinwh_bridge_0a1b2c3d"
+    # Our gateway's topics, and the bridge's own device (#324).
     assert all(
-        t.startswith("homeassistant/") and f"franklinwh_{SID}_" in t for t in scan.subscribed
+        t.startswith("homeassistant/")
+        and (f"franklinwh_{SID}_" in t or "/franklinwh_bridge/" in t)
+        for t in scan.subscribed
     )
+    assert any("/franklinwh_bridge/bridge_problem/" in t for t in scan.subscribed)
 
     # Saved, recorded and audited.
     assert (await get_mqtt_config(db))["topic_prefix"] == "fwh_mb"

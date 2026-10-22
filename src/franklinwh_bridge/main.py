@@ -739,7 +739,8 @@ async def lifespan(app: FastAPI):
     health_checker = HealthChecker(registry)
     app.state.health_checker = health_checker
     # Opens and resolves alert conditions; watches the workers (#324 §11).
-    alert_monitor = AlertMonitor(db, registry)
+    alert_monitor = AlertMonitor(
+        db, registry, publisher=lambda: getattr(app.state, "mqtt_publisher", None))
     app.state.alert_monitor = alert_monitor
     # Tells HA about critical alerts; dismisses on acknowledgement (#324 §6).
     alert_delivery = AlertDelivery(db, ha_registry)
