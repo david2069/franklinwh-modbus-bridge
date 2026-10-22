@@ -7,6 +7,19 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.37 — 2026-10-22
+
+### New
+- **Alerts:** the bridge now raises an alert when a battery command is refused,
+  when the aGate stops answering, when live data stops arriving, or when one of
+  its own background tasks stops.
+- **Home Assistant notifications:** every critical alert also appears in HA's
+  notifications (the bell). Acknowledging it in the bridge removes it from HA.
+- **New device "FranklinWH Modbus Bridge"** with two sensors, **Bridge problem**
+  and **Bridge heartbeat**. See the new docs page *Alerts and health sensors*
+  for two automations that tell you if the bridge stops.
+- The alert pop-up and the notifications screen come in a later release.
+
 ## 0.2.36 — 2026-10-21
 
 ### New
