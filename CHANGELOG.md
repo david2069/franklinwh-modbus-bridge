@@ -13,6 +13,29 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.37] — 2026-10-22
+
+### Added
+
+- **Alert triggers (#324, PR #349):** COMMAND_REFUSED and WRITE_IGNORED are
+  raised when a command fails; the message says whether the aGate or the
+  bridge refused it. A new AlertMonitor (every 15 s) opens and resolves
+  GATEWAY_UNREACHABLE (5/2 min), LIVE_DATA_MISSING (2/1 min) and
+  DATA_MISSING_PARTIAL (15500-15509, 2/1 min). Conditions still open at a
+  restart are reloaded so they can resolve.
+- **Worker health (#324 §11, PR #349):** the pollers, the scheduler, the
+  health checker, log writing, the monitor and delivery beat each pass.
+  WORKER_STALLED is raised after max(4 × cadence, 30 s) without a beat, or
+  when a task crashed. `GET /api/health/workers`. Detection only; no restart.
+- **Critical alerts to Home Assistant (#324 §6, PR #350):** a persistent
+  notification `fwh_mb_alert_<id>`, retried with back-off, dismissed when
+  acknowledged in the bridge. Can be switched off (on by default); a skip is
+  recorded with its reason. `GET/PUT /api/alerts/settings`.
+- **Bridge device (#324 v1.2, PR #352):** "Bridge problem" (binary_sensor, no
+  availability topic, open alerts as attributes) and "Bridge heartbeat"
+  (every 60 s), both retained and diagnostic. They are removed by Unpublish
+  and by a namespace change. Docs: `user/alerts.md`.
+
 ## [0.2.36] — 2026-10-21
 
 ### Added
