@@ -12,6 +12,12 @@ function settingsTab() {
     mqttSaving: false,
     confirmRepublish: false,
     confirmUnpublish: false,
+    // Each open add/edit form's latest result, shown in the form (#351):
+    // {user, gateway, ha, service, group} -> {ok, msg}. A toast only after it closes.
+    formResults: {},
+    setFormResult(form, ok, msg) { this.formResults = { ...this.formResults, [form]: { ok, msg } }; },
+    clearFormResult(form) { this.formResults = { ...this.formResults, [form]: null }; },
+
     // Change MQTT namespace dialog (#87)
     nsDialog: false,
     nsInfo: null,
@@ -115,6 +121,8 @@ function settingsTab() {
     gwRestartResults: {},  // per-gateway restart result, keyed by gateway id
     gwHealthResults: {},   // per-gateway force-healthcheck result, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
+    deleteGwResult: null,  // its latest result, shown in that dialog (#351)
+    editGwResult: null,    // the Edit gateway dialog's latest result (#351)
     rating: null,          // battery power rating of the gateway being edited (#133)
     ratingMsg: '',
     ratingBusy: false,
@@ -309,6 +317,7 @@ function settingsTab() {
         name: 'Service ' + (this.services.length + 1),
         meter_number: '', account: '', ac_service: 1, rated_amps: 0,
       };
+      this.clearFormResult('service');
       this.serviceEditId = 'new';
     },
 
@@ -411,6 +420,7 @@ function settingsTab() {
       this.seasonIdx = 0;
       this.rateProblems = [];
       this.dynLive = null;
+      this.clearFormResult('service');
       this.serviceEditId = svc.id;
       if (this.isDynamicPricing) this.loadDynamicPreview();
     },
@@ -660,10 +670,14 @@ function settingsTab() {
         // sub-tab you were editing — punishing for a form you tweak in several
         // places. A new service still closes, because the next step is to edit
         // the one you just made.
-        if (isNew) this.cancelServiceEdit();
-        Alpine.store('app').toast(isNew ? 'Service added' : 'Service saved', 'info');
+        if (isNew) {
+          this.cancelServiceEdit();
+          Alpine.store('app').toast('Service added', 'info');
+        } else {
+          this.setFormResult('service', true, 'Service saved');  // the form stays open
+        }
       } else {
-        Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+        this.setFormResult('service', false, 'Save failed: ' + (data?.error || 'unknown'));
       }
     },
 
@@ -732,14 +746,15 @@ function settingsTab() {
       this.newUserPwShown = true;
     },
     async createUser() {
+      this.clearFormResult('user');
       if (!this.newUser.username.trim() || !this.newUser.password) {
-        Alpine.store('app').toast('Username and password required', 'error'); return;
+        this.setFormResult('user', false, 'Username and password required'); return;
       }
       const { expires, ...body } = this.newUser;
       if (expires) {
         body.expires_at = this.expiryFromDate(expires);
         if (body.expires_at == null || body.expires_at <= Date.now() / 1000) {
-          Alpine.store('app').toast('Expiry date must be in the future', 'error'); return;
+          this.setFormResult('user', false, 'Expiry date must be in the future'); return;
         }
       }
       const data = await fetchJSON('api/users', { method: 'POST', body: JSON.stringify(body) });
@@ -750,7 +765,7 @@ function settingsTab() {
         this.showAddUser = false;
         Alpine.store('app').toast('User created', 'info');
       } else {
-        Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
+        this.setFormResult('user', false, 'Failed: ' + (data?.error || 'unknown'));
       }
     },
     async patchUser(u, body, ok) {
@@ -888,6 +903,7 @@ function settingsTab() {
     addHa() {
       this.haEdit = { name: 'Home', base_url: '', token: '', is_default: this.haInstances.length === 0, enabled: true };
       this.haTestResult = null;
+      this.clearFormResult('ha');
       this.haEditId = 'new';
     },
 
@@ -898,6 +914,7 @@ function settingsTab() {
         managed: h.managed,
       };
       this.haTestResult = null;
+      this.clearFormResult('ha');
       this.haEditId = h.id;
     },
 
@@ -932,7 +949,7 @@ function settingsTab() {
           this.cancelHaEdit();
           Alpine.store('app').toast(isNew ? 'HA instance added' : 'HA instance saved', 'info');
         } else {
-          Alpine.store('app').toast('Save failed: ' + (data?.error || 'unknown'), 'error');
+          this.setFormResult('ha', false, 'Save failed: ' + (data?.error || 'unknown'));
         }
       } finally {
         this.haSaving = false;
@@ -1152,8 +1169,9 @@ function settingsTab() {
 
     async addGateway() {
       const g = this.newGw;
+      this.clearFormResult('gateway');
       if (!g.gateway_id || !g.name || (!g.mock && !g.host)) {
-        Alpine.store('app').toast('ID and Name are required (Host required for real gateways)', 'error');
+        this.setFormResult('gateway', false, 'ID and Name are required (Host required for real gateways)');
         return;
       }
       this.gwBusy = true;
@@ -1163,12 +1181,12 @@ function settingsTab() {
           body: JSON.stringify(g),
         });
         if (data && !data.error && data.id) {
-          Alpine.store('app').toast(`Gateway "${data.name}" added`, 'info');
           this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false, home_load_source: 'standard' };
           this.showAddGateway = false;
+          Alpine.store('app').toast(`Gateway "${data.name}" added`, 'info');  // after closing (#351)
           await this.loadGateways();
         } else {
-          Alpine.store('app').toast('Add failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
+          this.setFormResult('gateway', false, 'Add failed: ' + (data?.detail || data?.error || 'unknown'));
         }
       } finally {
         this.gwBusy = false;
@@ -1221,12 +1239,11 @@ function settingsTab() {
       try {
         const data = await fetchJSON(`api/gateways/${gwId}/restart`, { method: 'POST' });
         if (data && data.restarted) {
+          // Shown in the Edit gateway dialog it is run from (#351): no toast.
           this.gwRestartResults = { ...this.gwRestartResults, [gwId]: { ok: true, msg: 'Restarted — reconnecting…' } };
-          Alpine.store('app').toast(`Gateway ${gwId} restarted`, 'info');
         } else {
           const msg = data?.error || data?.detail || 'unknown';
           this.gwRestartResults = { ...this.gwRestartResults, [gwId]: { ok: false, msg } };
-          Alpine.store('app').toast('Restart failed: ' + msg, 'error');
         }
       } finally {
         this.gwBusy = false;
@@ -1240,12 +1257,11 @@ function settingsTab() {
       try {
         const data = await fetchJSON(`api/gateways/${gwId}/healthcheck`, { method: 'POST' });
         if (data && data.health) {
+          // Shown in the Edit gateway dialog it is run from (#351): no toast.
           this.gwHealthResults = { ...this.gwHealthResults, [gwId]: { ok: true, health: data.health } };
-          Alpine.store('app').toast(`Gateway ${gwId} health: ${data.health}`, 'info');
         } else {
           const msg = data?.error || data?.detail || 'unknown';
           this.gwHealthResults = { ...this.gwHealthResults, [gwId]: { ok: false, health: msg } };
-          Alpine.store('app').toast('Health check failed: ' + msg, 'error');
         }
       } finally {
         this.gwBusy = false;
@@ -1287,6 +1303,7 @@ function settingsTab() {
 
     // Open the styled delete-confirmation modal for a gateway.
     confirmRemoveGw(gw) {
+      this.deleteGwResult = null;
       this.deleteGwTarget = gw;
     },
 
@@ -1297,12 +1314,12 @@ function settingsTab() {
       try {
         const data = await fetchJSON(`api/gateways/${gw.id}`, { method: 'DELETE' });
         if (data && data.deleted) {
-          Alpine.store('app').toast(`Gateway "${gw.name}" removed`, 'info');
           this.deleteGwTarget = null;
           if (this.editGw?.id === gw.id) this.editGw = null;  // close the edit modal it was opened from
+          Alpine.store('app').toast(`Gateway "${gw.name}" removed`, 'info');  // after closing (#351)
           await this.loadGateways();
         } else {
-          Alpine.store('app').toast('Remove failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
+          this.deleteGwResult = { ok: false, msg: 'Remove failed: ' + (data?.detail || data?.error || 'unknown') };
         }
       } finally {
         this.gwBusy = false;
@@ -1311,6 +1328,7 @@ function settingsTab() {
 
     // ── Gateway edit (PATCH) ──────────────────────────────
     startEditGw(gw) {
+      this.editGwResult = null;
       this.editGw = {
         id: gw.id,
         name: gw.name,
@@ -1366,9 +1384,16 @@ function settingsTab() {
       this.ratingBusy = true;
       this.ratingMsg = '';
       try {
-        this.rating = await fetchJSON(
+        const res = await fetchJSON(
           `api/gateways/${encodeURIComponent(id)}/battery-rating/calibration`,
           { method: 'POST', body: JSON.stringify({ action, direction }) });
+        // fetchJSON doesn't throw: a failure is {ok:false, error}, and it was
+        // stored as the rating with nothing shown (#351).
+        if (res && res.error) {
+          this.ratingMsg = res.error;
+          return;
+        }
+        this.rating = res;
         if (action === 'finish') this.ratingMsg = 'Calibrated.';
         await this.loadRating(id);
       } catch (e) {
@@ -1640,26 +1665,28 @@ function settingsTab() {
     async detectPhases() {
       const g = this.editGw;
       if (!g) return;
+      // Results stay in the Edit gateway dialog (#351).
       const data = await fetchJSON(`api/gateways/${g.id}/detect-phases`);
       if (data && !data.error) {
         this.phaseDetect = data;
         if (data.detected) {
           g.phase = data.detected;   // pre-fill the selector with what was detected
-          Alpine.store('app').toast(`Detected phase: ${data.detected}`, 'info');
+          this.editGwResult = { ok: true, msg: `Detected phase: ${data.detected}` };
         } else {
-          Alpine.store('app').toast('No phase data yet — let the gateway poll first', 'error');
+          this.editGwResult = { ok: false, msg: 'No phase data yet — let the gateway poll first' };
         }
       } else {
-        Alpine.store('app').toast('Detect failed: ' + (data?.error || 'unknown'), 'error');
+        this.editGwResult = { ok: false, msg: 'Detect failed: ' + (data?.error || 'unknown') };
       }
     },
 
     async saveEditGw() {
       const g = this.editGw;
       if (!g || !g.name || !g.host) {
-        Alpine.store('app').toast('Name and Host are required', 'error');
+        this.editGwResult = { ok: false, msg: 'Name and Host are required' };
         return;
       }
+      this.editGwResult = null;
       this.gwBusy = true;
       try {
         const data = await fetchJSON(`api/gateways/${g.id}`, {
@@ -1677,11 +1704,11 @@ function settingsTab() {
           }),
         });
         if (data && !data.error) {
-          Alpine.store('app').toast('Gateway updated', 'info');
           this.editGw = null;
+          Alpine.store('app').toast('Gateway updated', 'info');  // after closing (#351)
           await this.loadGateways();
         } else {
-          Alpine.store('app').toast('Update failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
+          this.editGwResult = { ok: false, msg: 'Update failed: ' + (data?.detail || data?.error || 'unknown') };
         }
       } finally {
         this.gwBusy = false;
@@ -1981,8 +2008,9 @@ function settingsTab() {
 
     async createGroup() {
       const s = this.newGroup;
+      this.clearFormResult('group');
       if (!s.slug || !s.name) {
-        Alpine.store('app').toast('Slug and name are required', 'error');
+        this.setFormResult('group', false, 'Slug and name are required');
         return;
       }
       this.groupsBusy = true;
@@ -1996,15 +2024,12 @@ function settingsTab() {
           }),
         });
         if (data && !data.error && data.slug) {
-          Alpine.store('app').toast(`Group "${data.name}" created`, 'info');
           this.newGroup = { slug: '', name: '', description: '' };
           this.showCreateGroup = false;
+          Alpine.store('app').toast(`Group "${data.name}" created`, 'info');  // after closing (#351)
           await this.loadGroups();
         } else {
-          Alpine.store('app').toast(
-            'Create failed: ' + (data?.detail || data?.error || 'unknown'),
-            'error',
-          );
+          this.setFormResult('group', false, 'Create failed: ' + (data?.detail || data?.error || 'unknown'));
         }
       } finally {
         this.groupsBusy = false;
@@ -2237,8 +2262,7 @@ function settingsTab() {
           this.nsError = 'Not changed: ' + (data?.error || 'unknown');
           return;
         }
-        this.nsResult = data;
-        Alpine.store('app').toast(`MQTT namespace is now ${data.topic_prefix}`, 'info');
+        this.nsResult = data;  // the dialog's result screen says it (#351): no toast
         await this.loadMqttConfig();
         await this.loadAll();
       } finally {

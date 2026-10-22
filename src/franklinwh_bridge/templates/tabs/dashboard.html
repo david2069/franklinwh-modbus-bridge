@@ -1432,6 +1432,10 @@
         </div>
         <button @click="closeChartModal()" class="text-sm text-slate-400 hover:text-slate-200 font-bold transition px-2">✕</button>
       </div>
+      <div x-show="chartExportResult" role="status"
+           class="mx-5 mt-3 text-xs px-2 py-1 rounded border"
+           :class="chartExportResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+           x-text="chartExportResult?.msg"></div>
       <!-- Modal chart — use aspectRatio instead of flex-1 to prevent flattening -->
       <div class="p-5">
         <canvas x-ref="modalChart"></canvas>

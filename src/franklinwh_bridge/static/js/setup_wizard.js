@@ -355,7 +355,12 @@
 
       async confirmTimezone() {
         this.busy = true;
-        try { await Alpine.store('app').confirmTz(); } finally { this.busy = false; }
+        this.error = '';
+        let res;
+        try { res = await Alpine.store('app').confirmTz(null, { toast: false }); }
+        finally { this.busy = false; }
+        // A failure stays on this step, in the wizard's own error line (#351).
+        if (!res.ok) { this.error = `Timezone not confirmed: ${res.error}`; return; }
         await this.enterAccounts();
       },
 

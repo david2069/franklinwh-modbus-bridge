@@ -41,7 +41,7 @@
   <div class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak data-testid="users-card">
     <div class="flex items-center justify-between mb-1">
       <div class="card-label !mb-0">Users</div>
-      <button type="button" class="btn btn-sm btn-secondary" @click="showAddUser = !showAddUser" x-text="showAddUser ? 'Cancel' : '+ Add User'"></button>
+      <button type="button" class="btn btn-sm btn-secondary" @click="clearFormResult('user'); showAddUser = !showAddUser" x-text="showAddUser ? 'Cancel' : '+ Add User'"></button>
     </div>
     <p class="text-xs text-slate-500 mb-3">Who can sign in and what they can do. <span class="text-slate-400">admin</span> = full access; <span class="text-slate-400">user</span> = Dashboard + charge/discharge; <span class="text-slate-400">viewer</span> = Dashboard, look only; <span class="text-slate-400">api</span> = REST API only (read + battery commands, no web pages, no admin). An expiry date ends an account at the end of that day (bridge time).</p>
     <template x-if="showAddUser">
@@ -62,6 +62,10 @@
         <label class="flex flex-col gap-1 text-xs"><span class="text-slate-500">Expires (optional)</span>
           <input type="date" x-model="newUser.expires" data-testid="new-user-expires" class="form-control !py-1 !text-xs"></label>
         <button type="button" class="btn btn-sm btn-primary" data-testid="new-user-create" @click="createUser()">Create</button>
+        <div x-show="formResults.user" role="status"
+             class="w-full text-xs px-2 py-1 rounded border"
+             :class="formResults.user?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+             x-text="formResults.user?.msg"></div>
       </div>
     </template>
     <div class="space-y-2">
@@ -196,7 +200,7 @@
         <span class="text-[10px] text-slate-500" x-text="gwList.length + ' gateway' + (gwList.length !== 1 ? 's' : '')"></span>
         <button x-show="$store.app.isAdmin" @click="$store.setup.open()"
                 class="btn btn-sm btn-secondary">Run setup again</button>
-        <button @click="showAddGateway = !showAddGateway"
+        <button @click="clearFormResult('gateway'); showAddGateway = !showAddGateway"
                 class="btn btn-sm btn-secondary">
           <span x-text="showAddGateway ? 'Cancel' : '+ Add Gateway'"></span>
         </button>
@@ -264,6 +268,10 @@
         <span>Mock gateway
           <span class="text-slate-500">— simulated data, no hardware (host/port ignored; safe to run alongside real gateways)</span></span>
       </label>
+      <div x-show="formResults.gateway" role="status"
+           class="mb-2 text-xs px-2 py-1 rounded border"
+           :class="formResults.gateway?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+           x-text="formResults.gateway?.msg"></div>
       <button @click="addGateway()" :disabled="gwBusy"
               class="btn btn-sm btn-primary"
               x-text="newGw.mock ? 'Add Mock Gateway' : 'Add Gateway'">Add Gateway</button>
@@ -519,6 +527,10 @@
             </div>
           </template>
 
+          <div x-show="editGwResult" role="status"
+               class="text-xs px-2 py-1 rounded border"
+               :class="editGwResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+               x-text="editGwResult?.msg"></div>
           <div class="flex justify-end gap-2">
             <button @click="editGw = null" class="btn btn-sm btn-secondary">Cancel</button>
             <button @click="saveEditGw()" :disabled="gwBusy" class="btn btn-sm btn-primary">Save Changes</button>
@@ -603,6 +615,10 @@
           <span class="font-mono text-slate-500 ml-1" x-text="deleteGwTarget?.id"></span>
         </p>
         <p class="text-xs text-slate-500 mb-4">Its MQTT entities will be unpublished from Home Assistant. This cannot be undone.</p>
+        <div x-show="deleteGwResult" role="status"
+             class="mb-3 text-xs px-2 py-1 rounded border"
+             :class="deleteGwResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+             x-text="deleteGwResult?.msg"></div>
         <div class="flex justify-end gap-2">
           <button @click="deleteGwTarget = null" class="btn btn-sm btn-secondary">Cancel</button>
           <button @click="doRemoveGw()" :disabled="gwBusy"
@@ -1106,6 +1122,10 @@
                  :class="haTestResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
                  x-text="haTestResult?.msg"></div>
 
+            <div x-show="formResults.ha" role="status"
+                 class="text-xs px-2 py-1 rounded border"
+                 :class="formResults.ha?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+                 x-text="formResults.ha?.msg"></div>
             <div class="flex gap-2 pt-1">
               <button @click="testHa()" class="btn btn-sm btn-secondary" :disabled="haTesting">
                 <span x-text="haTesting ? 'Testing…' : 'Test Connection'"></span>
@@ -2047,6 +2067,10 @@
               </div>
             </template>
 
+            <div x-show="formResults.service" role="status"
+                 class="text-xs px-2 py-1 rounded border"
+                 :class="formResults.service?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+                 x-text="formResults.service?.msg"></div>
             <div class="flex gap-2 pt-1">
               <button @click="saveService()" class="btn btn-sm btn-primary">Save</button>
               <button @click="cancelServiceEdit()" class="btn btn-sm btn-secondary">Cancel</button>
@@ -2618,7 +2642,7 @@
       <div class="card-label !mb-0">Publishing Groups</div>
       <div class="flex items-center gap-2">
         <span class="text-[10px] text-slate-500 hidden sm:inline">Controls which entities are published via MQTT</span>
-        <button @click="showCreateGroup = !showCreateGroup"
+        <button @click="clearFormResult('group'); showCreateGroup = !showCreateGroup"
                 class="btn btn-sm btn-secondary">
           <span x-text="showCreateGroup ? 'Cancel' : '+ New Group'"></span>
         </button>
@@ -2645,6 +2669,10 @@
                  class="form-control !py-1 !text-xs w-full">
         </div>
       </div>
+      <div x-show="formResults.group" role="status"
+           class="mb-2 text-xs px-2 py-1 rounded border"
+           :class="formResults.group?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+           x-text="formResults.group?.msg"></div>
       <div class="flex items-center gap-2">
         <button @click="createGroup()" :disabled="groupsBusy"
                 class="btn btn-sm btn-primary">Create</button>

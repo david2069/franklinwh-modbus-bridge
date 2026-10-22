@@ -30,7 +30,7 @@
           <button @click="resetLayout()"
                   class="p-1 rounded hover:bg-slate-700 text-slate-600 hover:text-slate-300 transition text-xs font-bold"
                   title="Reset panel sizes">↻</button>
-          <button @click="showNewDialog = true"
+          <button @click="newResult = null; showNewDialog = true"
                   class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-emerald-400 transition text-sm font-bold leading-none"
                   title="New Sequence">+</button>
         </div>
@@ -284,6 +284,9 @@
       <input type="text" x-model="newName" placeholder="sequence_name"
              class="form-control !text-sm mb-4"
              @keydown.enter="createSequence()">
+      <div x-show="newResult" role="status"
+           class="mb-3 text-xs px-2 py-1 rounded border bg-red-900/30 text-red-400 border-red-500/30"
+           x-text="newResult?.msg"></div>
       <div class="flex justify-end gap-2">
         <button @click="showNewDialog = false" class="btn btn-sm btn-secondary">Cancel</button>
         <button @click="createSequence()" class="btn btn-sm btn-primary" :disabled="!newName.trim()">Create</button>

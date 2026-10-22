@@ -412,6 +412,11 @@
             </div>
           </template>
 
+          <div x-show="$store.app.releaseResult" role="status"
+               class="mt-3 text-xs px-2 py-1.5 rounded border"
+               :class="$store.app.releaseResult?.ok ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30' : 'bg-red-900/30 text-red-400 border-red-500/30'"
+               x-text="$store.app.releaseResult?.msg"></div>
+
           <template x-if="!$store.app.isReleaseable">
             <div class="text-center py-3">
               <div class="flex items-center justify-center gap-2 mb-2">

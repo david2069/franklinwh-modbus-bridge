@@ -587,15 +587,22 @@ document.addEventListener('alpine:init', () => {
     async loadTz() {
       this.tz = await fetchJSON('api/system/timezone');
     },
-    async confirmTz(name = null) {
+    // Returns {ok, error}. ``toast: false`` from the setup wizard, which shows
+    // the result itself (#351). fetchJSON returns a truthy {ok:false} on
+    // failure, which was taken as success: "Timezone confirmed: undefined".
+    async confirmTz(name = null, { toast = true } = {}) {
       const body = name ? JSON.stringify({ timezone: name }) : JSON.stringify({});
       const res = await fetchJSON('api/system/timezone/confirm', {
         method: 'POST', body,
       });
-      if (res) {
-        this.tz = res;
-        this.toast(`Timezone confirmed: ${res.timezone}`, 'success');
+      if (!res || res.error) {
+        const error = res?.error || 'no reply';
+        if (toast) this.toast(`Timezone not confirmed: ${error}`, 'error');
+        return { ok: false, error };
       }
+      this.tz = res;
+      if (toast) this.toast(`Timezone confirmed: ${res.timezone}`, 'success');
+      return { ok: true, error: null };
     },
 
     // Theme
@@ -709,6 +716,8 @@ document.addEventListener('alpine:init', () => {
     // Release modal
     showReleaseModal: false,
     releasing: false,
+    // The release dialog's latest result, shown in the dialog (#351): {ok, msg}.
+    releaseResult: null,
 
     // Refresh interval handle
     _interval: null,
@@ -1066,16 +1075,15 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ slug: 'battery_command', value: 'Release' }),
         });
 
-        if (data && data.ok) {
-          this.toast('Control released — battery returned to native mode', 'info');
-        } else {
-          this.toast(`Release failed: ${data?.result || data?.error || 'Unknown error'}`, 'error');
-        }
+        // Shown in the dialog, which stays open (#351): no toast.
+        this.releaseResult = data && data.ok
+          ? { ok: true, msg: 'Control released — battery returned to native mode' }
+          : { ok: false, msg: `Release failed: ${data?.result || data?.error || 'Unknown error'}` };
 
         // Refresh state after short delay for registers to settle
         setTimeout(() => this.refresh(), 800);
       } catch (e) {
-        this.toast(`Release error: ${e.message}`, 'error');
+        this.releaseResult = { ok: false, msg: `Release error: ${e.message}` };
       } finally {
         this.releasing = false;
       }

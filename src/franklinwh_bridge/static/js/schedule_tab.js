@@ -294,6 +294,7 @@ function scheduleTab() {
     // nulling it mid-teardown is what threw "form.id is null" floods in Alpine.
     form: null,
     formOpen: false,
+    formResult: null,  // {ok, msg}: the editor's latest result (#351)
     // True only when the form was OPENED with enabled=false (template review).
     // Gates the enable-on-save prompt so it never fires on a deliberate disable.
     _openedDisabled: false,
@@ -1030,6 +1031,7 @@ function scheduleTab() {
 
     newEntry() {
       this.form = this._blankForm();
+      this.formResult = null;
       this.formOpen = true;
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
@@ -1118,6 +1120,7 @@ function scheduleTab() {
       }
       this._clearTrace();
       this.form = this._blankForm({ ...common, ...over });
+      this.formResult = null;
       this.formOpen = true;
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
@@ -1169,6 +1172,7 @@ function scheduleTab() {
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
+      this.formResult = null;
       this.formOpen = true;
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
@@ -1395,9 +1399,12 @@ function scheduleTab() {
 
     async saveEntry() {
       const f = this.form;
-      if (!f.name.trim()) { Alpine.store('app').toast('Name is required', 'error'); return; }
-      if (this.showWindows && !f.windows.length) { Alpine.store('app').toast('Add at least one time window', 'error'); return; }
-      if (f.trigger_type === 'once' && !f.date) { Alpine.store('app').toast('Pick a date', 'error'); return; }
+      // Results stay in the editor while it is open (#351); a toast only after it closes.
+      const fail = (msg) => { this.formResult = { ok: false, msg }; };
+      this.formResult = null;
+      if (!f.name.trim()) { fail('Name is required'); return; }
+      if (this.showWindows && !f.windows.length) { fail('Add at least one time window'); return; }
+      if (f.trigger_type === 'once' && !f.date) { fail('Pick a date'); return; }
 
       // Editing an entry that is firing RIGHT NOW → warn before we alter a live
       // battery command. The engine re-applies on save (re-dispatches if the
@@ -1481,8 +1488,8 @@ function scheduleTab() {
       }
       this.loading = false;
       if (res && !res.error) {
-        Alpine.store('app').toast(f.id ? 'Schedule updated' : 'Schedule created', 'info');
         this.closeForm();
+        Alpine.store('app').toast(f.id ? 'Schedule updated' : 'Schedule created', 'info');
         // Saved but disabled → it won't run. Offer to enable it, but ONLY when
         // the form opened disabled — i.e. a template seeded it that way for
         // review. If the user disabled it themselves, or is editing an entry
@@ -1504,7 +1511,7 @@ function scheduleTab() {
         }
         this.load();
       } else {
-        Alpine.store('app').toast(`Save failed: ${res?.error || 'unknown'}`, 'error');
+        fail(`Save failed: ${res?.error || 'unknown'}`);
       }
     },
 
@@ -1612,8 +1619,10 @@ function scheduleTab() {
 
     // import
     importOpen: false, importText: '', importReport: null, importing: false, importFileName: '',
+    importResult: null,
     openImport() {
       this.importOpen = true; this.importText = ''; this.importReport = null; this.importFileName = '';
+      this.importResult = null;
     },
     closeImport() { this.importOpen = false; },
     async onImportFile(ev) {
@@ -1622,21 +1631,24 @@ function scheduleTab() {
       this.importFileName = file.name;
       this.importText = await file.text();
       this.importReport = null;
+      this.importResult = null;
     },
     _parseImport() {
       try { return JSON.parse(this.importText); }
-      catch (e) { Alpine.store('app').toast('Invalid JSON: ' + e.message, 'error'); return null; }
+      catch (e) { this.importResult = { ok: false, msg: 'Invalid JSON: ' + e.message }; return null; }
     },
     async validateImport() {
+      this.importResult = null;
       const bundle = this._parseImport();
       if (!bundle) return;
       const r = await fetchJSON('api/schedules/import?dry_run=true', {
         method: 'POST', body: JSON.stringify(bundle),
       });
       if (r && !r.error) this.importReport = r;
-      else Alpine.store('app').toast('Validation failed: ' + (r?.error || 'unknown'), 'error');
+      else this.importResult = { ok: false, msg: 'Validation failed: ' + (r?.error || 'unknown') };
     },
     async runImport() {
+      this.importResult = null;
       const bundle = this._parseImport();
       if (!bundle) return;
       this.importing = true;
@@ -1646,11 +1658,11 @@ function scheduleTab() {
       this.importing = false;
       if (r && !r.error) {
         const skip = r.skipped && r.skipped.length ? `, ${r.skipped.length} skipped` : '';
-        Alpine.store('app').toast(`Imported ${r.created.length} (disabled)${skip}`, 'info');
         this.closeImport();
+        Alpine.store('app').toast(`Imported ${r.created.length} (disabled)${skip}`, 'info');
         this.load();
       } else {
-        Alpine.store('app').toast('Import failed: ' + (r?.error || 'unknown'), 'error');
+        this.importResult = { ok: false, msg: 'Import failed: ' + (r?.error || 'unknown') };
       }
     },
   };

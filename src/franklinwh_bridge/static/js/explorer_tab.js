@@ -676,7 +676,8 @@ function explorerTab() {
 
     // ── Export ─────────────────────────────────────────────
 
-    _downloadFile(filename, content, mimeType) {
+    // ``toast: false`` from inside a dialog, which reports in itself (#351).
+    _downloadFile(filename, content, mimeType, { toast = true } = {}) {
       const blob = new Blob([content], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -684,7 +685,7 @@ function explorerTab() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      Alpine.store('app').toast('Exported: ' + filename, 'info');
+      if (toast) Alpine.store('app').toast('Exported: ' + filename, 'info');
     },
 
     // ── SunSpec export modal (#228) ─────────────────────────
@@ -860,7 +861,10 @@ function explorerTab() {
 
     downloadExport() {
       const r = this.exp.result;
-      if (r) this._downloadFile(r.filename, r.content, r.media_type);
+      if (r) {
+        this._downloadFile(r.filename, r.content, r.media_type, { toast: false });
+        this.exp.msg = 'Exported: ' + r.filename;
+      }
     },
 
     /** Copy, then open GitHub's new-Gist page. Nothing is sent from here:
