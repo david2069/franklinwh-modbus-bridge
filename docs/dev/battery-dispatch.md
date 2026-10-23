@@ -3,8 +3,16 @@
 This page covers what the bridge does around a battery command, on top of
 franklinwh-modbus. The register writes themselves (SunSpec model 704: `WSetMod`,
 `WSet`, `WSetPct`, `WSetEna`) and their order are the library's, and are documented
-in the library's battery-dispatch sequence guide. This page links there instead of
-repeating them.
+in the library's
+[Battery Dispatch Sequence](https://github.com/david2069/franklinwh-modbus/blob/main/docs/BATTERY_DISPATCH_SEQUENCE.md)
+(franklinwh-modbus PR #113, in review). This page links there instead of repeating
+them.
+
+## Connection
+
+| Step | What the bridge does | Label | Approval | Logged |
+|---|---|---|---|---|
+| SunSpec base address | Replaces the library's SunSpec device class so the scan tries base 0 before 40000. Every model read and write, including commands, goes to 318–328, not 40318–40328. | Workaround: V12R02B60D00 also serves the whole map at base 40000, and pysunspec2's scan would bind there (in the library's own 2026-10-23 live run it did) | No approval found (released in 0.2.32) | To be checked |
 
 Versions: bridge 0.2.41, franklinwh-modbus 0.10.1. Firmware named where it matters:
 V10R01B04D00 (before 2026-10-20) and V12R02B60D00 (from 2026-10-20).
@@ -106,6 +114,7 @@ sequenceDiagram
 
 | Step | What the bridge does | Label | Approval | Logged |
 |---|---|---|---|---|
+| Earlier command | If a command was already running, the bridge reads the setpoint back and keeps it marked active only if `WSetEna` is still 1. On V12R02B60D00 a refused write changes nothing, so the earlier command keeps running. | FranklinWH limitation (library guide: [Refusal](https://github.com/david2069/franklinwh-modbus/blob/main/docs/BATTERY_DISPATCH_SEQUENCE.md#refusal-exception-3)) | — | Yes: the Activity Log |
 | Wording | A Modbus exception becomes "Rejected by the aGate (Modbus exception 3: illegal data value…). The command did not run…". | SunSpec error handling (#12041: exception 3 for an unsupported value) | — | Yes: WARNING "Battery command FAILED…" |
 | Schedules | A refusal is not retried for the rest of that window; one notification. A lost link is still retried. | Workaround (#323: a refused 18:00 discharge was resent 58 times) | No approval found | Yes: "dispatch refused: … not retrying this window" |
 | Library text | The library's "Ensure 'SPAN Modbus' is unlocked" sentence is replaced with what is known. | Workaround | Approved: owner, 2026-10-21 (no unproven claims) | No: the message is rewritten |
