@@ -68,7 +68,7 @@ sequenceDiagram
 | Watts | Clamped to the trusted rating, then sent as watts. | SunSpec (`WSet`, `WSetMod` = 1) | — | Yes: INFO "Battery command: …" |
 | Library rating | Sets the library's `RATED_MAX_CHARGE_W` / `RATED_MAX_DISCHARGE_W` to the trusted rating just before the send, under the Modbus lock. | Workaround: library ≤ 0.9.5 clamped in the wrong direction after a reconnect (#230) | No approval found | No |
 | No library timer | Calls `send_command` without `duration_s`; the bridge's own watchdog ends the command. | Workaround: the library's timer releases on its own thread, outside the bridge's lock and unaudited (#242) | No approval found | No |
-| Revert timer | Writes `WSetRvrtTms` (register 327): the command's duration, or 7200 s if it has none. | Workaround. The code says it stops the FranklinWH app overriding a dispatch; there is no recorded evidence for that. On V12 it has no effect, because `WSetEnaRvrt` (326) is 0 | No approval found | Yes: INFO "Wrote WSetRvrtTms=…s" |
+| Revert timer | Writes `WSetRvrtTms` (register 327): the command's duration, or 7200 s if it has none. | Workaround. The code says it stops the FranklinWH app overriding a dispatch; there is no recorded evidence for that. On V12 it has no effect, because `WSetEnaRvrt` (326) is 0: on 2026-10-24 at 08:46:41 AEDT the aGate read `WSetRvrtTms` 7200 and `WSetRvrtRem` 0 with `WSetEna` 1, so the timer wasn't counting | No approval found | Yes: INFO "Wrote WSetRvrtTms=…s" |
 | Read-back | Reads the setpoint back; the command counts as sent only if `WSetEna` = 1. | SunSpec | — | Yes: the result and the Activity Log |
 
 !!! warning "FranklinWH limitation: V12R02B60D00"
@@ -96,7 +96,7 @@ sequenceDiagram
     participant L as franklinwh-modbus
     participant A as aGate
     U->>B: Release (reason)
-    B->>L: reset_control_state() (fast on shutdown: no handshake wait)
+    B->>L: reset_control_state() (on shutdown: handshake skipped)
     L->>A: Library's release writes (see the library guide)
     B->>A: WSetRvrtTms = 0, WSetEnaRvrt = 0 (registers 326–327)
     B->>A: Read back WSetEna
@@ -105,7 +105,7 @@ sequenceDiagram
 
 | Step | What the bridge does | Label | Approval | Logged |
 |---|---|---|---|---|
-| Library release | Calls `reset_control_state()`. On shutdown it asks for no handshake wait, so a stop finishes inside the add-on's stop time. | See the library guide | — | Yes: INFO "Battery command released…" |
+| Library release | Calls `reset_control_state()`. On shutdown it passes `handshake_wait_s=0`, which skips the library's handshake entirely: only `WSetEna` = 0 and the setpoint zeros are sent, so a stop finishes inside the add-on's stop time. | See the library guide | — | Yes: INFO "Battery command released…" |
 | Revert registers | Writes `WSetEnaRvrt` = 0 and `WSetRvrtTms` = 0 (326 [0, 0, 0]). | Workaround: only undoes the start's revert-timer write | No approval found | Yes: INFO "Cleared revert timer…" |
 | Read-back | Released only if `WSetEna` reads 0. | SunSpec | — | Yes: WARNING "Battery release NOT verified…" |
 | Startup | A command still marked active from before a restart or crash is released at startup, with the same revert-register write. | Workaround: crash safety | No approval found | Yes: WARNING "previous session had active command…" |
@@ -150,7 +150,8 @@ decide which layer keeps them:
 
 | Step | Bridge | Library |
 |---|---|---|
-| Power limit | Clamps to the trusted rating and refuses if untrusted | Clamps to `RATED_MAX_*`, with a 5000 W fallback |
+| Power limit | Clamps to the trusted rating and refuses if untrusted. Sets the library's `RATED_MAX_*` attributes directly, not through the library's `max_charge_w` / `max_discharge_w` constructor overrides | Clamps to ±10000 W when the command is built, then to `RATED_MAX_*` (5000 W fallback) in `send_command` |
 | Time limit | Watchdog | `duration_s` timer (not used by the bridge) |
 | Percent → watts | Power % → watts (0.2.41) | `dispatch("N%")` → watts (not used by the bridge) |
-| Release | Revert registers 326–327 and read-back | Zeroes `WSet` and `WSetPct` twice, then `WSetEna` = 0 |
+| Release | Revert registers 326–327 | Zeroes `WSet` and `WSetPct` twice, then `WSetEna` = 0 |
+| Release read-back | Reads `WSetEna` back after the release | Reads back after 0.5 s and returns False unless `WSetEna` = 0 and `WSetPct` = 0 |
