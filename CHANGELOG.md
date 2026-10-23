@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.41] — 2026-10-24
+
 ### Changed
 
 - **franklinwh-modbus 0.10.1 (#323, #255):** the add-on moves from 0.9.5. Force
