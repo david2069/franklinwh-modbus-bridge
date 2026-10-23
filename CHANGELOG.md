@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Log rows named the wrong gateway:** a row's gateway was taken from
+  everything before the first colon after "Gateway ", so "Gateway demo started
+  (MOCK): …" was filed under "demo started (MOCK)". It's now taken only from
+  "Gateway <id>:", with the id a single word, and the mock start line names its
+  gateway explicitly. Affects the Logs tab's gateway filter and the export.
+
 ## [0.2.39] — 2026-10-23
 
 ### Added

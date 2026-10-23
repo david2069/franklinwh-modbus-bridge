@@ -364,7 +364,7 @@ class GatewayInstance:
         )
         logger.info(
             "Gateway %s started (MOCK): %s — synthetic data, no hardware",
-            self.gateway_id, self.config.name,
+            self.gateway_id, self.config.name, extra={"gateway_id": self.gateway_id},
         )
 
     async def _init_and_poll(self) -> None:

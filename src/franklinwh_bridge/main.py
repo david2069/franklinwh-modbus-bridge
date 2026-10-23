@@ -7,6 +7,7 @@ import collections
 import contextlib
 import logging
 import os
+import re
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -112,6 +113,9 @@ LOG_BUFFER_SIZE = 500
 LOG_PERSIST_QUEUE_MAX = 10000  # pending log rows awaiting a flush to SQLite
 LOG_FLUSH_INTERVAL_S = 5
 LOG_RETENTION_DAYS = 30  # persisted logs older than this are purged
+#: "Gateway <id>: …": the id is one token straight before the colon, so
+#: "Gateway demo started (MOCK): …" names no gateway rather than "demo started (MOCK)".
+_GATEWAY_PREFIX_RE = re.compile(r"Gateway ([A-Za-z0-9_.-]+):")
 
 
 class LogBufferHandler(logging.Handler):
@@ -136,8 +140,9 @@ class LogBufferHandler(logging.Handler):
         gw_id = getattr(record, "gateway_id", "")
         if not gw_id:
             msg = self.format(record)
-            if msg.startswith("Gateway ") and ":" in msg:
-                gw_id = msg.split(":")[0].replace("Gateway ", "").strip()
+            m = _GATEWAY_PREFIX_RE.match(msg)
+            if m:
+                gw_id = m.group(1)
         else:
             msg = self.format(record)
         entry = {
