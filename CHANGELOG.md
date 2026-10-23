@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.40] — 2026-10-24
+
 ### Fixed
 
 - **Log rows named the wrong gateway:** a row's gateway was taken from
