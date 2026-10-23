@@ -99,6 +99,32 @@ function logsTab() {
       this.loading = false;
     },
 
+    // Export (#320): the same filter the table shows, fetched server-side so
+    // it isn't limited to the 2000 lines loaded here. fetch + Blob, so it works
+    // under HA ingress.
+    async exportLogs(format) {
+      const params = new URLSearchParams({ format, ...this._rangeParams() });
+      if (this.levelFilter) params.set('level', this.levelFilter);
+      if (this.sourceFilter) params.set('source', this.sourceFilter);
+      if (this.gatewayFilter) params.set('gateway', this.gatewayFilter);
+      if (this.searchQuery) params.set('search', this.searchQuery);
+      try {
+        const resp = await fetch(`api/diagnostics/logs?${params.toString()}`,
+                                 { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const name = (resp.headers.get('Content-Disposition') || '').match(/filename=([^;]+)/);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name ? name[1] : `bridge_log.${format === 'json' ? 'json' : 'txt'}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        Alpine.store('app').toast(`Export failed: ${e.message}`, 'error');
+      }
+    },
+
     computeSummary() {
       const s = { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, CRITICAL: 0 };
       for (const entry of this.logs) {

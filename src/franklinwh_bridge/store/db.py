@@ -2299,8 +2299,12 @@ async def query_logs(
     search: str | None = None,
     limit: int = 200,
     offset: int = 0,
+    max_limit: int = 2000,
 ) -> dict:
-    """Filtered log history (newest first) + total match count for pagination."""
+    """Filtered log history (newest first) + total match count for pagination.
+
+    ``limit`` is capped at ``max_limit``: 2000 for the Logs tab, more for an export.
+    """
     db.row_factory = aiosqlite.Row
     where: list[str] = []
     params: list = []
@@ -2330,7 +2334,7 @@ async def query_logs(
     async with db.execute(
         f"SELECT ts, level, name, message, gateway_id FROM logs{clause} "  # noqa: S608
         "ORDER BY ts DESC LIMIT ? OFFSET ?",
-        [*params, max(1, min(limit, 2000)), max(0, offset)],
+        [*params, max(1, min(limit, max_limit)), max(0, offset)],
     ) as cur:
         async for row in cur:
             rows.append(dict(row))
