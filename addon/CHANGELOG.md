@@ -7,6 +7,20 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.41 — 2026-10-24
+
+### Fixed
+- **Force Discharge works again on aGate firmware V12.** The battery is now
+  commanded in watts, so a 5000 W discharge runs. V12 still refuses Force Charge
+  over Modbus; the bridge says so.
+- **A schedule the aGate refuses is not retried all evening.** You get one
+  notification, and the next window tries again.
+
+### Changed
+- **Power %** is now that share of your battery's rating, sent in watts (50 % of
+  5000 W is 2500 W). Like watts, it needs a battery rating.
+- **WSet Mode** shows Pct or Watts, as the aGate reports it.
+
 ## 0.2.40 — 2026-10-24
 
 ### Fixed
