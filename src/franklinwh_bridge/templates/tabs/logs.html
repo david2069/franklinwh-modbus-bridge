@@ -96,6 +96,20 @@
       <button @click="loadLogs()" class="px-3 py-1.5 text-xs font-medium rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition">
         Refresh
       </button>
+      <!-- Export (#320): the filter above, as a file; serials and IPs masked.
+           Admin only, as the log can name hosts and users. -->
+      <span x-show="$store.app.isAdmin" class="flex items-center gap-1.5">
+        <button @click="exportLogs('text')" data-testid="logs-export-text"
+                class="px-3 py-1.5 text-xs font-medium rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
+                title="Download the log lines this filter shows, as text. Serials and IP addresses are masked.">
+          Export text
+        </button>
+        <button @click="exportLogs('json')" data-testid="logs-export-json"
+                class="px-3 py-1.5 text-xs font-medium rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
+                title="Download the log lines this filter shows, as JSON. Serials and IP addresses are masked.">
+          Export JSON
+        </button>
+      </span>
     </div>
   </div>
 

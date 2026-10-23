@@ -207,3 +207,9 @@ def scrub_serial_patterns(s: str) -> str:
     but the serial should stay as it is.
     """
     return _SERIAL_RE.sub(SERIAL, s)
+
+
+def scrub_ip_patterns(s: str) -> str:
+    """Only the IPv4 and IPv6 patterns of :func:`scrub_patterns` (loopback kept)."""
+    s = _IPV4_RE.sub(_ip_sub, s)
+    return _IPV6_CAND_RE.sub(_ipv6_sub, s)

@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **App log export (#320):** **Export text** and **Export JSON** on the Logs tab
+  download the entries the current filters select (search, level, gateway,
+  source, time span), oldest first, up to 100,000 lines, newest kept past that.
+  Serials (and their 8-character short ids) and IP addresses are masked; loopback
+  stays. Admin only. `GET /api/diagnostics/logs?format=text|json` with the same
+  filters as `GET /api/logs`.
+
 ## [0.2.38] — 2026-10-23
 
 ### Fixed

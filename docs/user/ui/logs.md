@@ -23,6 +23,7 @@ only that level. Click it again to clear the filter.
 | Time span | Last 1h, 6h, 24h, 7 days, 30 days, All time, Custom… | Last 24h |
 | Auto | Reloads every 5 seconds while the page is open | On |
 | Refresh | Reloads now | — |
+| Export text / Export JSON | Downloads the entries the filters select (admins only) | — |
 
 **Custom…** shows From → To boxes in the bridge's timezone; press **Apply**.
 
@@ -41,7 +42,21 @@ many filters are active.
 Below the table: the number of entries, **Prev / Next** pages, and the page size
 (50, **100**, 200, 500).
 
+## Export
+
+**Export text** and **Export JSON** download the log for the current filters: search,
+level, gateway, source and time span. The file includes every matching entry, oldest first,
+up to 100,000 entries. Past that it keeps the newest. It isn't limited to the entries the
+page has loaded.
+
+Serial numbers and IP addresses are replaced with `<serial>` and `<ip>`. Nothing else is
+changed: names and other details in messages stay as logged. The file's header
+says which filters were used and how many lines were masked.
+
+Only admins see these buttons.
+
 !!! tip "Reporting a problem"
-    Don't paste raw logs into a GitHub issue. Use
+    Don't paste raw logs, or a log export, into a GitHub issue: the export masks only
+    serials and IP addresses. Use
     [Settings → Admin → Support info](settings-admin.md#support-info), which removes
     serials, addresses, names and tokens first.
