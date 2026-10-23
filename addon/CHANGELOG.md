@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.38 — 2026-10-23
+
+### Fixed
+- **Dialogs and forms:** errors and results now show inside the open dialog or
+  form and stay there, instead of a pop-up that vanished. The setup wizard no
+  longer moves on when confirming the timezone fails.
+- **Bridge heartbeat** no longer reads "unknown" for the first minute after a
+  restart.
+
 ## 0.2.37 — 2026-10-22
 
 ### New
