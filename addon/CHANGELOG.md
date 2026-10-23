@@ -7,6 +7,13 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.39 — 2026-10-23
+
+### New
+- **Export the app log:** **Export text** and **Export JSON** on the Logs page
+  download the log for the filters you've set. Serial numbers and IP addresses
+  are masked. Admins only.
+
 ## 0.2.38 — 2026-10-23
 
 ### Fixed
