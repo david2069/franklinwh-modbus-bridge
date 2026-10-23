@@ -71,14 +71,12 @@ def _controller() -> lib.FranklinWHController:
     return lib.FranklinWHController(ip_address="192.0.2.50", port=502, unit_id=1, timeout=1)
 
 
-def test_the_installed_library_writes_on_connect(fake_agate):
-    """Pins the hazard: without the guard, connect() writes mode and reserves.
-    When the pin moves past the library's fix (#230) this test should flip."""
+def test_the_installed_library_no_longer_writes_on_connect(fake_agate):
+    """franklinwh-modbus 0.9.6+ (#24 there, #239 here) dropped the test from
+    ``connect()``. The bridge's guard stays as a second line of defence."""
     c = _controller()
     c.connect()
-    written = {addr for addr, _ in fake_agate.writes}
-    assert MODE in written
-    assert (MODE, 1) in fake_agate.writes  # Emergency Backup, briefly, on a live aGate
+    assert fake_agate.writes == []
 
 
 def test_bridge_controller_connect_writes_nothing(fake_agate):

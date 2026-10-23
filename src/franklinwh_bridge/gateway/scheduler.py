@@ -60,6 +60,11 @@ _SUSTAINED = frozenset({"force_charge", "force_discharge", "force_standby"})
 # ── Dispatch verification (design PR #57 §5.1) ─────────────────────────────
 #: Wait before the next attempt after a failed send: 15 s, 30 s, then every 60 s.
 RETRY_BACKOFF_S = (15, 30, 60)
+#: A reason that starts this way is the aGate refusing the value (a Modbus
+#: exception), not a lost link: the same send would be refused again, so it is
+#: not retried this window (#323; on 2026-10-23 a refused 18:00 discharge was
+#: re-sent 58 times in an hour).
+REFUSED_PREFIX = "Rejected by the aGate"
 #: Time after a send before checking the battery is moving. Discharge reached
 #: full output within 2.1 s on the reference aGate (2026-10-09); 90 s leaves room
 #: for charge and other modes, which were not measured.
@@ -846,8 +851,9 @@ class ScheduleEngine:
                 msg = (f"window ended without a successful dispatch "
                        f"({rec['attempts']} attempt(s); last: {rec['last_reason']})")
                 await self._audit(w["id"], w["action"], tkey, "failed", msg)
-                await self._notify_owner(
-                    w, tkey, f"FAILED: {w.get('name') or w['id']} — {msg}", now)
+                if not rec.get("refused"):  # a refusal was notified when it happened
+                    await self._notify_owner(
+                        w, tkey, f"FAILED: {w.get('name') or w['id']} — {msg}", now)
             self._expired.pop(tkey, None)  # window over — next entry may re-fire
             self._gated.discard(tkey)  # gate resets; re-entry re-audits if gated
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
@@ -1244,11 +1250,25 @@ class ScheduleEngine:
         if rec is None or rec["entry_id"] != win["id"]:
             rec = {"entry_id": win["id"], "attempts": 0, "first_at": now, "win": win}
         rec["attempts"] += 1
-        delay = RETRY_BACKOFF_S[min(rec["attempts"] - 1, len(RETRY_BACKOFF_S) - 1)]
-        rec["next_at"] = now + timedelta(seconds=delay)
         rec["last_reason"] = reason
         self._retry[tkey] = rec
         self._owned.pop(tkey, None)
+        if REFUSED_PREFIX in reason:
+            # Held until the window ends: the window-end audit still records it,
+            # but the owner is told once, here.
+            rec["refused"] = True
+            rec["next_at"] = datetime.max.replace(tzinfo=now.tzinfo)
+            await self._audit(
+                win["id"], win["action"], tkey, "failed",
+                f"dispatch refused: {reason} — not retrying this window",
+            )
+            await self._notify_owner(
+                win, tkey,
+                f"FAILED: {win.get('name') or win['id']} — {reason} "
+                "Not retrying this window.", now)
+            return
+        delay = RETRY_BACKOFF_S[min(rec["attempts"] - 1, len(RETRY_BACKOFF_S) - 1)]
+        rec["next_at"] = now + timedelta(seconds=delay)
         await self._audit(
             win["id"], win["action"], tkey, "failed",
             f"dispatch failed: {reason} — attempt {rec['attempts']}, retrying in {delay}s",

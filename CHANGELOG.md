@@ -13,6 +13,36 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **franklinwh-modbus 0.10.1 (#323, #255):** the add-on moves from 0.9.5. Force
+  charge and discharge are now sent in watts (WSetMod=1 + WSet in one write; the
+  enable isn't cycled), so a 5000 W discharge runs on aGate firmware
+  V12R02B60D00, which refuses WSetPct above 10 %. A value the aGate refuses comes
+  back as "Rejected by the aGate (…)" at once, with no reconnect or resend. Also
+  from 0.9.6/0.10.0: `connect()` no longer writes the mode and reserves, an
+  over-limit request is clamped in the direction asked, and partial reads are
+  reported. V12 still refuses charging (negative WSet).
+- **Power % is a share of the trusted rating, sent in watts.** It used to go to
+  the aGate as WSetPct unchanged, which the library no longer does. 50 % of
+  5000 W is 2500 W. Like watts, a % now needs a trusted rating, and the
+  overshoot guard covers it.
+
+### Fixed
+
+- **A scheduled dispatch the aGate refuses isn't retried all window (#323).** On
+  2026-10-23 a refused 18:00 discharge was re-sent 58 times in an hour. A
+  "Rejected by the aGate" result now stops that window's attempts, with one
+  notification saying so; the next window tries again. Lost links and timeouts
+  still retry with back-off.
+- **"Dispatch this bridge did not send" names the real setpoint.** It read
+  WSetPct only, so a watts dispatch showed "WSetPct=0.0%". It now reports WSetMod
+  and WSet or WSetPct, and a change underneath our own command is judged in
+  watts when the aGate holds watts.
+- **WSet Mode read the SunSpec values the wrong way round.** It showed 0 as
+  "Off" and 1 as "Pct"; SunSpec 704 defines 0 as W_MAX_PCT and 1 as WATTS. It
+  now shows **Pct** or **Watts**, as reported.
+
 ## [0.2.40] — 2026-10-24
 
 ### Fixed

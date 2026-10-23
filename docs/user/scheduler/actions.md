@@ -39,14 +39,15 @@ or a reserve without `params.pct` is refused.
 | a number, in **watts** | that power, capped at the gateway's trusted battery rating for that direction |
 | empty | the gateway's full **trusted** rating for that direction |
 
-<!-- @b ACT-03 ;; src: publish/command_handler.py:441-454 ;; tested: tests/unit/test_battery_rating.py::test_trusted_rating_is_what_the_library_sizes_against ;; write: yes ;; b: Force power is capped at the trusted rating for that direction; the library sizes WSetPct against the trusted rating ;; test: — -->
+<!-- @b ACT-03 ;; src: publish/command_handler.py:441-454 ;; tested: tests/unit/test_battery_rating.py::test_trusted_rating_is_what_the_library_sizes_against ;; write: yes ;; b: Force power is capped at the trusted rating for that direction; the library clamps to the trusted rating ;; test: — -->
 <!-- @b ACT-04 ;; src: gateway/scheduler.py:315-329 ;; tested: tests/unit/test_battery_rating.py::test_scheduled_empty_power_is_full_trusted_rating_not_a_manual_leftover ;; write: yes ;; b: A force entry always stages its own duration, target SoC and power (0 when empty), so empty Power means the full trusted rating and no manual value leaks in ;; test: — -->
 
-- Power is in **watts or %** (the form's W / % choice). A **%** is a share of what the aGate
-  itself can do and is sent to it as WSetPct unchanged: 50 % arrives as WSetPct 50, on a
-  site with one aPower or four. It needs no battery rating, and the overshoot guard doesn't
-  apply to it. Percentages were removed in 0.2.8 and restored in 0.2.31.
-  <!-- @b ACT-05 ;; src: api/schedules_api.py:_validate_action, publish/command_handler.py (PCT_BASE_W) ;; tested: tests/unit/test_battery_rating.py::test_percent_reaches_the_agate_as_exactly_that_wsetpct ;; write: yes ;; b: params.power_pct 1-100 is accepted (not with power_w) and reaches the aGate as exactly that WSetPct ;; test: — -->
+- Power is in **watts or %** (the form's W / % choice). A **%** is that share of the
+  gateway's trusted battery rating, sent in watts: 50 % of 5000 W is 2500 W. Like watts, it
+  needs a trusted rating, and the overshoot guard applies. (Up to 0.2.40 a % was sent as
+  WSetPct unchanged; franklinwh-modbus 0.10.1 sends watts only, and firmware V12 refuses
+  WSetPct above 10 %.) Percentages were removed in 0.2.8 and restored in 0.2.31.
+  <!-- @b ACT-05 ;; src: api/schedules_api.py:_validate_action, publish/command_handler.py:_handle_battery_command ;; tested: tests/unit/test_battery_rating.py::test_percent_is_that_share_of_the_trusted_rating ;; write: yes ;; b: params.power_pct 1-100 is accepted (not with power_w) and is sent as that share of the trusted rating, in watts ;; test: — -->
 - `params.power_pct` must be 1–100, and an entry can't set both `power_w` and `power_pct`.
 - **A PATCH that changes only `params` is not checked**, so a value outside those rules can
   still be set on an existing entry through the API.
@@ -83,8 +84,8 @@ control log records *command_refused*. Before 0.2.9 a refusal could be logged *o
 
 1. Staging, always, in this order: the time limit (`duration_s`, 0 = none), the target SoC
    (0 = none), then the power (0 = full trusted rating).
-2. The setpoint (WSetEna = 1, WSetPct) in Model 704. The aGate enters remote-control
-   (VPP) mode.
+2. The setpoint in Model 704: WSetMod = 1 (watts) and WSet in one write, then WSetEna = 1
+   if it isn't already on. The aGate enters remote-control (VPP) mode.
 3. The revert timer (WSetRvrtTms): the time limit in seconds, or 7200 s when there is none.
    It keeps the FranklinWH app from overriding the dispatch. The aGate does **not** release
    by itself when it counts down; the bridge does the releasing.

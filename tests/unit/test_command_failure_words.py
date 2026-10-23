@@ -13,6 +13,7 @@ import pytest
 
 from franklinwh_bridge.publish.command_handler import CommandHandler, explain_command_failure
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 
 def test_exception_3_in_words():
@@ -44,11 +45,11 @@ async def test_failed_percent_discharge_reads_plainly(db, caplog):
     ctrl = MagicMock()
     ctrl.send_command = MagicMock(return_value=(False, "Modbus exception: 3"))
     ctrl.read_control_status = MagicMock(return_value={"wset_enabled": 0, "wset_pct": 0})
-    h = CommandHandler(ctrl, db, modbus_lock=asyncio.Lock())
+    h = CommandHandler(ctrl, db, modbus_lock=asyncio.Lock(), rating=calibrated_rating())
     await h.handle_command("battery_command_power_pct", "50")
     with caplog.at_level(logging.WARNING):
         await h.handle_command("battery_command", "Force Discharge")
     assert h.state.last_success is False
     assert "illegal data value" in h.state.last_result
     assert "did not run" in h.state.last_result
-    assert "Force Discharge 50% — Rejected by the aGate" in caplog.text
+    assert "Force Discharge 50% (2500W) — Rejected by the aGate" in caplog.text
