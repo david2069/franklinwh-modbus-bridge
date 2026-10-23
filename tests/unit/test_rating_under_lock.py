@@ -68,8 +68,9 @@ async def test_reconnect_while_waiting_for_the_lock_keeps_the_direction(db, acti
     assert ctrl.sent == [sign * TRUSTED_W]
 
 
-async def test_library_clamp_really_inverts_an_over_limit_request():
-    """Pins the hazard this guards against, in the installed library. When a
-    fixed franklinwh-modbus is adopted (#230) this test should be updated."""
+async def test_library_clamp_keeps_the_direction():
+    """franklinwh-modbus 0.9.6+ (#28 there, #230 here) clamps an over-limit
+    request to the rating in the direction asked; it used to invert it."""
     ctrl = MagicMock(RATED_MAX_CHARGE_W=5000, RATED_MAX_DISCHARGE_W=5000)
-    assert FranklinWHController._validate_power(ctrl, 8000) == -5000
+    assert FranklinWHController._validate_power(ctrl, 8000) == 5000
+    assert FranklinWHController._validate_power(ctrl, -8000) == -5000

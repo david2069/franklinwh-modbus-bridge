@@ -157,6 +157,38 @@ async def test_t6_every_attempt_fails_bounded_and_one_final_failure_at_window_en
     assert len(alerts) == 2  # the first failure + the final one, no spam
 
 
+async def test_a_refusal_is_not_retried_and_is_notified_once():
+    """2026-10-23 replay (#323): the aGate refused the 18:00 discharge, and the
+    same send was re-sent 58 times in an hour. A refusal is final this window."""
+    h = VHandler(outcomes=[False] * 100)
+    refused = ("Rejected by the aGate (Modbus exception 3: illegal data value: the "
+               "aGate refused a value it was sent). The command did not run; the "
+               "battery carries on as before.")
+
+    async def refuse(slug, value, requester=None):
+        await VHandler.handle_command(h, slug, value, requester)
+        if h.last_dispatch is not None and not h.last_dispatch.ok:
+            h.last_dispatch = DispatchResult(False, refused, h.last_dispatch.action,
+                                             h.last_dispatch.requested_w)
+
+    h.handle_command = refuse
+    eng, audits, notes = make([entry()], h, pts(T0))
+    t = T0
+    while t < datetime(2026, 6, 15, 19, 30):
+        await eng.tick(t)
+        t += timedelta(seconds=15)
+    assert len(h.sends) == 1
+    assert "not retrying this window" in results(audits, "failed")[0]["detail"]
+    await eng.tick(datetime(2026, 6, 15, 19, 31))  # window over
+    assert "window ended without a successful dispatch" in results(audits, "failed")[-1]["detail"]
+    alerts = [n for n in notes if "FAILED" in n[2]]
+    assert len(alerts) == 1 and "Not retrying this window" in alerts[0][2]
+
+    # The next window tries again.
+    await eng.tick(datetime(2026, 6, 16, 18, 0, 5))
+    assert len(h.sends) == 2
+
+
 # ── T2: 10-07 replay — accepted but the battery doesn't move ────────────
 
 
@@ -413,6 +445,36 @@ async def test_setpoint_changed_underneath_ours_is_logged_once(db):
         await h.observe_sample(_Sample(now + k, wset_enabled=1, wset_pct=30.0))
     events = [r[0] for r in await _rows(db, "SELECT event FROM control_log")]
     assert events.count("external_change") == 1
+
+
+async def test_external_dispatch_in_watts_names_wset(db):
+    """2026-10-23 (#323): another tool sent 5000 W with WSetMod=1/WSet; the log
+    said WSetPct=0.0%. It now names the setpoint the aGate holds."""
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
+    t = 1_000_000.0
+    await h.observe_sample(_Sample(t, wset_enabled=1, wset_mode=1, wset_watts=5000.0,
+                                   wset_pct=0.0, battery_power_w=5000))
+    rows = await _rows(db, "SELECT event, detail FROM control_log ORDER BY id")
+    assert rows[0][0] == "external_dispatch_started"
+    assert rows[0][1].startswith("WSetEna=1, WSetMod=Watts, WSet=5000.0 W")
+
+
+async def test_own_watts_dispatch_is_not_a_change_underneath_ours(db):
+    """0.10.1 sends watts, so WSetPct reads 0 while ours runs: compare WSet."""
+    import time as _t
+    h = CommandHandler(controller(), db, rating=calibrated_rating())
+    await h.handle_command("battery_command_power", "2000")
+    await h.handle_command("battery_command", "Force Discharge")
+    now = _t.time()
+    for k in (60, 70):  # ours: hardware WSet + = discharge
+        await h.observe_sample(_Sample(now + k, wset_enabled=1, wset_mode=1,
+                                       wset_watts=2000.0, wset_pct=0.0))
+    events = [r[0] for r in await _rows(db, "SELECT event FROM control_log")]
+    assert "external_change" not in events
+    await h.observe_sample(_Sample(now + 80, wset_enabled=1, wset_mode=1,
+                                   wset_watts=500.0, wset_pct=0.0))
+    rows = await _rows(db, "SELECT detail FROM control_log WHERE event='external_change'")
+    assert len(rows) == 1 and "WSet=500.0 W" in rows[0][0] and "sent 2000 W" in rows[0][0]
 
 
 async def test_sequencer_needs_control_and_records_who_ran_it(tmp_path, monkeypatch):

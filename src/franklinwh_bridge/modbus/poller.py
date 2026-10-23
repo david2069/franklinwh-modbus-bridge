@@ -547,23 +547,13 @@ class ModbusPoller:
             if points.get("battery_state") == "Idle":
                 points["battery_state"] = "Standby"
 
-            # Derive human-readable text for M704 WSetMod enum.
-            # SunSpec 704 WSetMod: 0=Off, 1=Pct of WMax (used by bridge).
-            # NOTE: The library writes WSetMod=0 during send_command (library
-            # quirk), but uses WSetPct for Pct-mode control.  We infer the
-            # effective mode from WSetEna + WSetPct so the UI reflects reality.
-            _WSET_MOD_MAP = {0: "Off", 1: "Pct"}
+            # M704 WSetMod as the aGate reports it (SunSpec 704 symbols):
+            # 0 = W_MAX_PCT (WSetPct carries the setpoint), 1 = WATTS (WSet does).
+            # franklinwh-modbus 0.10.1+ sends watts, so 1 while it dispatches.
+            _WSET_MOD_MAP = {0: "Pct", 1: "Watts"}
             wm = points.get("wset_mode")
-            wset_ena = points.get("wset_enabled")
-            wset_pct = points.get("wset_pct")
-            if wset_ena and wset_pct:
-                # Active Pct-mode command — WSetMod register may read 0 but
-                # the aGate is effectively in Pct mode.
-                points["wset_mode_name"] = "Pct"
-            elif wm is not None:
-                points["wset_mode_name"] = _WSET_MOD_MAP.get(
-                    wm, f"Unknown ({wm})"
-                )
+            if wm is not None:
+                points["wset_mode_name"] = _WSET_MOD_MAP.get(wm, f"Unknown ({wm})")
 
             # Guard against Modbus 0xFFFF register corruption in extension values
             self._sanitize_extension_values(points)

@@ -23,7 +23,7 @@ Time-of-Use, and release from the bridge when the app shows *VPP Mode*.
 | Control | Range | What it does |
 |---|---|---|
 | **Command** | *Not Active*, *Force Charge*, *Force Discharge*, *Force Standby*, *Release* | Sends the command at once. |
-| **Power** (W / %) | **W**: 0 up to the slider maximum, steps of 100 W. **%**: 0–100, steps of 5 | The power for force charge or discharge. In watts, 0 means "the battery's full rating". In %, the share of what the aGate can do, sent as WSetPct unchanged. |
+| **Power** (W / %) | **W**: 0 up to the slider maximum, steps of 100 W. **%**: 0–100, steps of 5 | The power for force charge or discharge. In watts, 0 means "the battery's full rating". In %, that share of the battery rating, sent in watts. |
 | **Max Charge / Max Discharge** | — | Sets Power to the gateway's **trusted** charge or discharge rating. Greyed out until that rating is trusted. |
 | **Duration** | 0–7200 s (2 h), steps of 60 s | How long the command runs before the bridge stops it. 0 = *No limit*: it runs until released or until the target SoC. |
 | **Target SoC** | 0–100 %, steps of 5 | Stops the command when the battery reaches this SoC. 0 = *Disabled*. |
@@ -52,9 +52,9 @@ re-sends that command at the new power.
 
 ### Power is in watts, sized against the battery rating
 
-Force commands are sized against the **battery rating**. The aGate is commanded with a
-percentage of a rating the bridge supplies: the aGate's **nameplate** rating from SunSpec
-Model 702, as reported (since 0.2.20), or the rating you calibrated. The bridge never
+Force commands are sized against the **battery rating**. The aGate is commanded in watts
+(WSetMod = 1, WSet), capped at a rating the bridge supplies: the aGate's **nameplate**
+rating from SunSpec Model 702, as reported (since 0.2.20), or the rating you calibrated. The bridge never
 assumes 5000 W: if the aGate reports no rating, force commands are refused.
 
 There is a guard, from a site with several aPowers where "100 %" ran at 20 kW: if the
@@ -62,10 +62,10 @@ battery is seen well above the rating, the bridge stops using it until you calib
 
 So:
 
-- **Power in W or %.** The **W / %** switch next to Power picks the unit. A **%** is a share
-  of what the aGate itself can do and is sent to it as WSetPct unchanged (50 % arrives as
-  WSetPct 50), so it works without a battery rating, with one aPower or several. Watts are
-  sized against the battery rating as below. Home Assistant has both: *Command Power* (W)
+- **Power in W or %.** The **W / %** switch next to Power picks the unit. A **%** is that
+  share of the battery rating, sent in watts (50 % of 5000 W is 2500 W), so like watts it
+  needs a rating. Up to 0.2.40 a % was sent as WSetPct unchanged; the library now sends
+  watts only, and firmware V12 refuses WSetPct above 10 %. Home Assistant has both: *Command Power* (W)
   and *Command Power %*.
 - **Force Charge and Force Discharge are refused when the rating for that direction is
   unknown or contradicted.** The command log and toast show *"Refused Force Charge: … Calibrate it:

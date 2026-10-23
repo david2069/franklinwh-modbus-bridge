@@ -121,11 +121,6 @@ SOC_CHECK_INTERVAL_S = 5  # Check SoC every N seconds in watchdog loop
 OVERSHOOT_CHECK_AFTER_S = 20
 OVERSHOOT_FACTOR = 1.25
 OVERSHOOT_SLACK_W = 500
-#: Power % (restored, owner 2026-10-19): passed through to the aGate as WSetPct
-#: exactly. The library turns watts into WSetPct as watts / rating * 100, so a
-#: % command hands it this rating and the matching watts (+1 W below 100 %, so
-#: the library's float maths and int() can't round 29 % down to 28 %).
-PCT_BASE_W = 10000
 
 OPERATING_MODES = {
     "Emergency Backup": 1,
@@ -154,6 +149,25 @@ _COMMAND_LABELS = {
     "self_reserve_pct": "Self-consumption reserve (%)",
     "tou_reserve_pct": "TOU reserve (%)",
 }
+
+
+def _setpoint_text(hw: dict | None) -> str:
+    """The M704 setpoint as the aGate reports it, in the form it holds it.
+
+    WSetMod 1 (WATTS) means WSet carries the power; 0 (W_MAX_PCT) means WSetPct.
+    franklinwh-modbus 0.10.1+ sends watts, so WSetPct then reads 0.
+    """
+    hw = hw or {}
+    parts = [f"WSetEna={hw.get('wset_enabled')}"]
+    mode = hw.get("wset_mode")
+    if mode is not None and int(mode) == 1:
+        parts += ["WSetMod=Watts", f"WSet={hw.get('wset_watts')} W"]
+    elif mode is not None and int(mode) == 0:
+        parts += ["WSetMod=Pct", f"WSetPct={hw.get('wset_pct')}%"]
+    else:
+        parts += [f"WSetMod={mode}", f"WSet={hw.get('wset_watts')} W",
+                  f"WSetPct={hw.get('wset_pct')}%"]
+    return ", ".join(parts)
 
 
 @dataclass
@@ -237,6 +251,8 @@ class CommandHandler:
         # What this bridge last asked the gateway for, to tell our own dispatch
         # from one sent by something else (another app, a CLI, the cloud).
         self._sent_pct: float | None = None
+        #: What we sent, as the hardware holds it in WSet: + discharge, - charge.
+        self._sent_w: float | None = None
         self._last_change_ts: float = 0.0
         self._external: dict | None = None
         self._external_change: bool = False
@@ -496,16 +512,6 @@ class CommandHandler:
         max_w = 0
         if base == "Standby":
             watts = 0
-        elif base in ("Charge", "Discharge") and self._command_power_pct > 0:
-            # Power %: WSetPct passed through exactly. It is a share of what the
-            # aGate itself can do, so no bridge rating is involved (the cause of
-            # #133 was converting % through a rating that wasn't the aGate's).
-            pct = self._command_power_pct
-            max_w = PCT_BASE_W
-            rated_attr = "RATED_MAX_CHARGE_W" if base == "Charge" else "RATED_MAX_DISCHARGE_W"
-            watts = PCT_BASE_W * pct // 100 + (1 if pct < 100 else 0)
-            if base == "Discharge":
-                watts = -watts
         elif base in ("Charge", "Discharge"):
             decision = self.rating.decision("charge" if base == "Charge" else "discharge")
             if not decision.trusted:
@@ -517,11 +523,16 @@ class CommandHandler:
                     "command_refused", detail=self._state.last_result, by=self._requester)
                 return
             max_w = int(decision.rating_w)
-            # The library turns watts into WSetPct against its own rating, so it
-            # is given the trusted one (set under the Modbus lock, just before
-            # the send: see below).
+            # The library clamps to its own rating, so it is given the trusted
+            # one (set under the Modbus lock, just before the send: see below).
             rated_attr = "RATED_MAX_CHARGE_W" if base == "Charge" else "RATED_MAX_DISCHARGE_W"
-            watts = min(self._command_power_w or max_w, max_w)
+            if self._command_power_pct > 0:
+                # Power %: a share of the trusted rating. franklinwh-modbus
+                # 0.10.1+ sends watts (WSetMod=1, WSet) and has no WSetPct path,
+                # so a % can't be passed through as WSetPct any more.
+                watts = round(max_w * self._command_power_pct / 100)
+            else:
+                watts = min(self._command_power_w or max_w, max_w)
             if base == "Discharge":
                 watts = -watts
         else:
@@ -532,11 +543,11 @@ class CommandHandler:
             return
 
         display_action = f"Force {base}"  # canonical, prefixed label
-        # A % command records 0 W and says the % (its watts are only the
-        # library's carrier for WSetPct, not a power anyone asked for).
+        # A % command is sent as watts of the trusted rating; the label keeps
+        # the % that was asked for, with the watts it became.
         pct_cmd = self._command_power_pct if base in ("Charge", "Discharge") else 0
-        report_w = 0 if pct_cmd else watts
-        power_label = f"{pct_cmd}%" if pct_cmd else f"{abs(watts)}W"
+        report_w = watts
+        power_label = f"{pct_cmd}% ({abs(watts)}W)" if pct_cmd else f"{abs(watts)}W"
 
         # Capture the prior dispatch so we can log a "superseded" event when a
         # new command replaces a *different* active one (not just a power tweak).
@@ -605,8 +616,7 @@ class CommandHandler:
         hw = await self._read_hw_state()
         if success and hw is not None and hw.get("wset_enabled") not in (None, 1):
             success = False
-            msg = (f"setpoint not enabled after send "
-                   f"(WSetEna={hw.get('wset_enabled')}, WSetPct={hw.get('wset_pct')})")
+            msg = f"setpoint not enabled after send ({_setpoint_text(hw)})"
 
         if not success:
             await self._dispatch_failed(display_action, report_w, msg, hw, prev_active,
@@ -623,7 +633,10 @@ class CommandHandler:
         self._last_dispatch = DispatchResult(
             ok=True, reason=msg, action=display_action, requested_w=report_w,
             dispatch_id=self._active_dispatch_id, hw=hw, ts=time.time())
-        # Hardware WSetPct: + discharge, - charge (BatteryCommand: - discharge).
+        # Hardware WSet/WSetPct: + discharge, - charge (BatteryCommand: - discharge).
+        # franklinwh-modbus 0.10.1+ sends watts (WSetMod=1, WSet), even for a %
+        # command, whose watts come from the rating.
+        self._sent_w = float(-watts)
         if pct_cmd:
             self._sent_pct = float(pct_cmd if watts < 0 else -pct_cmd)
         else:
@@ -635,7 +648,7 @@ class CommandHandler:
 
         self._state.active = True
         self._state.action = display_action
-        self._state.power_w = 0 if pct_cmd else abs(watts)
+        self._state.power_w = abs(watts)
         self._state.power_pct = pct_cmd
         self._state.started_at = time.time()
         # The dispatch path (M704) is not the one the SPAN sentence is attached
@@ -686,14 +699,18 @@ class CommandHandler:
     EXTERNAL_SETTLE_S = 30.0
     #: WSetPct difference (percentage points) that counts as a different setpoint.
     EXTERNAL_PCT_TOLERANCE = 2.0
+    #: WSet difference that counts as a different setpoint: 2 % of the rating,
+    #: at least this many watts.
+    EXTERNAL_W_TOLERANCE = 100.0
 
     async def observe_sample(self, sample: Any) -> None:
         """Notice a battery dispatch this bridge did not send.
 
         On 2026-10-12 a 1500 W dispatch from another tool ran for about a
         minute (20:40) and this bridge logged nothing; only the undocumented
-        register watch noticed. Compares each poll's WSetEna/WSetPct with what
-        we sent, and logs the start, end, or a change made underneath ours.
+        register watch noticed. Compares each poll's setpoint with what we sent,
+        in the form the aGate holds it (WSetMod 1: WSet watts; 0: WSetPct), and
+        logs the start, end, or a change made underneath ours.
         """
         pts = getattr(sample, "points", None) or {}
         try:
@@ -704,17 +721,19 @@ class CommandHandler:
         ts = float(getattr(sample, "ts", 0) or 0)
         if ena is None or ts - self._last_change_ts < self.EXTERNAL_SETTLE_S:
             return
-        hw = {"wset_enabled": ena, "wset_pct": pct}
+        mode, wset = pts.get("wset_mode"), pts.get("wset_watts")
+        hw = {"wset_enabled": ena, "wset_mode": mode, "wset_watts": wset, "wset_pct": pct}
+        setpoint = _setpoint_text(hw)
         if int(ena) == 1 and not self._state.active:
             if self._external is None:
-                self._external = {"since": ts, "pct": pct}
+                self._external = {"since": ts, "pct": pct, "watts": wset}
                 logger.warning(
                     "Gateway %s: battery dispatch detected that this bridge did not send "
-                    "(WSetEna=1, WSetPct=%s%%, battery %s W) — another tool, the app or the cloud",
-                    self._gateway_id, pct, pts.get("battery_power_w"))
+                    "(%s, battery %s W) — another tool, the app or the cloud",
+                    self._gateway_id, setpoint, pts.get("battery_power_w"))
                 await self._log_event(
                     "external_dispatch_started", power_w=int(abs(pts.get("battery_power_w") or 0)),
-                    detail=f"WSetPct={pct}% — not sent by this bridge", hw_state=hw, by="external")
+                    detail=f"{setpoint} — not sent by this bridge", hw_state=hw, by="external")
             return
         if int(ena) == 0 and self._external is not None:
             dur = ts - self._external["since"]
@@ -724,18 +743,26 @@ class CommandHandler:
                 "external_dispatch_ended", detail=f"after {dur:.0f}s", hw_state=hw, by="external")
             self._external = None
             return
-        if (int(ena) == 1 and self._state.active and self._sent_pct is not None
-                and pct is not None):
-            changed = abs(float(pct) - self._sent_pct) > self.EXTERNAL_PCT_TOLERANCE
+        changed, sent = None, ""
+        if int(ena) == 1 and self._state.active:
+            if mode is not None and int(mode) == 1:
+                if wset is not None and self._sent_w is not None:
+                    rated = max(self._max_charge_w or 0, self._max_discharge_w or 0)
+                    tol = max(self.EXTERNAL_W_TOLERANCE, 0.02 * rated)
+                    changed = abs(float(wset) - self._sent_w) > tol
+                    sent = f"sent {self._sent_w:.0f} W"
+            elif pct is not None and self._sent_pct is not None:
+                changed = abs(float(pct) - self._sent_pct) > self.EXTERNAL_PCT_TOLERANCE
+                sent = f"sent {self._sent_pct:.0f}%"
+        if changed is not None:
             if changed and not self._external_change:
                 self._external_change = True
                 logger.warning(
-                    "Gateway %s: battery setpoint changed outside this bridge "
-                    "(WSetPct=%s%%, sent %.0f%%)", self._gateway_id, pct, self._sent_pct)
+                    "Gateway %s: battery setpoint changed outside this bridge (%s, %s)",
+                    self._gateway_id, setpoint, sent)
                 await self._log_event(
                     "external_change", action=self._state.action,
-                    detail=f"WSetPct={pct}% (sent {self._sent_pct:.0f}%)",
-                    hw_state=hw, by="external")
+                    detail=f"{setpoint} ({sent})", hw_state=hw, by="external")
             elif not changed:
                 self._external_change = False
 
@@ -830,6 +857,7 @@ class CommandHandler:
             self._active_dispatch_id = None
 
         self._sent_pct = None
+        self._sent_w = None
         self._last_change_ts = time.time()
 
         # Clear target SoC so it doesn't poison the next command.

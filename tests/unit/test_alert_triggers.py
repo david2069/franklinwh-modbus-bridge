@@ -18,6 +18,7 @@ from franklinwh_bridge.api.health import health_workers
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store.db import init_db
+from tests.conftest import calibrated_rating
 
 T0 = 1_792_536_000.0
 
@@ -40,7 +41,8 @@ async def test_agate_rejection_raises_command_refused_and_merges(db):
     ctrl = MagicMock()
     ctrl.send_command = MagicMock(return_value=(False, "Modbus exception: 3"))
     ctrl.read_control_status = MagicMock(return_value={"wset_enabled": 0, "wset_pct": 0})
-    h = CommandHandler(ctrl, db, modbus_lock=asyncio.Lock(), gateway_id="gw1")
+    h = CommandHandler(ctrl, db, modbus_lock=asyncio.Lock(), gateway_id="gw1",
+                       rating=calibrated_rating("gw1"))
     await h.handle_command("battery_command_power_pct", "50")
     await h.handle_command("battery_command", "Force Discharge", requester="schedule:s1")
     await h.handle_command("battery_command", "Force Discharge", requester="schedule:s1")
