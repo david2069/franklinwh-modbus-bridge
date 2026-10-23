@@ -7,6 +7,12 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.40 — 2026-10-24
+
+### Fixed
+- **Logs:** some lines were filed under the wrong gateway, so the gateway filter
+  and the export showed them wrongly.
+
 ## 0.2.39 — 2026-10-23
 
 ### New
