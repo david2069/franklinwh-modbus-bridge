@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.39] — 2026-10-23
+
 ### Added
 
 - **App log export (#320):** **Export text** and **Export JSON** on the Logs tab
