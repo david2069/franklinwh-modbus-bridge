@@ -13,6 +13,23 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.38] — 2026-10-23
+
+### Fixed
+
+- **Results inside dialogs and forms (#351, PR #355):** while a dialog or an
+  inline add/edit form is open, the result of an action in it shows inside it
+  (`role=status`) and stays until the next action; a toast only after it
+  closes. Covers release control, chart and SunSpec export, the schedule
+  editor and import, edit and remove gateway, the MQTT namespace, the setup
+  wizard's timezone step, new sequence, and the user, gateway, HA instance,
+  service and group forms. A failed timezone confirmation in the setup wizard
+  no longer reports "Timezone confirmed: undefined" and moves on; a failed
+  calibration and a failed new sequence now show their error.
+- **Bridge heartbeat after a restart (#324, PR #354):** a beat counts only once
+  it is sent, so the sensor no longer reads "unknown" for about 60 s after a
+  start.
+
 ## [0.2.37] — 2026-10-22
 
 ### Added
