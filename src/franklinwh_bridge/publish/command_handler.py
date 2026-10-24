@@ -437,7 +437,7 @@ class CommandHandler:
                     resent = True
                     await self._handle_battery_command(self._state.action)
             elif slug == "battery_command_power_pct":
-                # % of what this aGate can do: sent as WSetPct unchanged.
+                # % of what this aGate can do: sent as watts (see _battery_command).
                 self._command_power_pct = max(0, min(int(float(payload)), 100))
                 self._command_power_w = 0  # pct takes precedence, clear watts
                 staged = f"Staged power {self._command_power_pct}%"
@@ -529,8 +529,15 @@ class CommandHandler:
             if self._command_power_pct > 0:
                 # Power %: a share of the trusted rating. franklinwh-modbus
                 # 0.10.1+ sends watts (WSetMod=1, WSet) and has no WSetPct path,
-                # so a % can't be passed through as WSetPct any more.
+                # so a % can't be passed through as WSetPct any more. Approved
+                # workaround (owner, 2026-10-24), logged on every use; V12's
+                # WSetPct limit is tracked in franklinwh-modbus#92.
                 watts = round(max_w * self._command_power_pct / 100)
+                logger.info(
+                    "Workaround: Power %d%% sent as %dW through WSet, not WSetPct "
+                    "(V12 refuses WSetPct above 10%% and below 0; approved "
+                    "2026-10-24; franklinwh-modbus#92)",
+                    self._command_power_pct, watts)
             else:
                 watts = min(self._command_power_w or max_w, max_w)
             if base == "Discharge":
