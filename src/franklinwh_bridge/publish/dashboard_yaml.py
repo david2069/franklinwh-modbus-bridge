@@ -11,6 +11,12 @@ would sweep their entities in. A row is ours only when its device carries an
 ``["mqtt", <identifier>]`` this publisher currently announces, and its
 unique_id starts ``<topic_prefix>_<short_id>_`` for that device.
 
+Stopgap (#368): on the shared ``franklinwh`` prefix FWHAI announces the same
+device identifier and unique_ids, so HA keeps one registry row for both and the
+checks above pass for its entities too. A row is listed only when its entity id
+is one the bridge itself would create (HA's ``_2``, ``_3`` allowed); an entity
+renamed in HA is left out.
+
 Output is plain core ``entities`` cards (no custom cards, no theme line), the
 same shape the FWHAI integration ships:
 
@@ -28,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES, EntityDef
+from franklinwh_bridge.publish.mqtt_publisher import _slug
 
 TITLE = "Modbus Bridge"
 DIAGNOSTICS = "Diagnostics"
@@ -176,6 +183,11 @@ def select_ours(
             # "Diagnostics" put 155 entities in the card instead of ours.
             continue
         entity = dev.defs[index]
+        if not _is_our_entity_id(eid, entity, dev, topic_prefix, matched[ha_dev][1]):
+            # Stopgap (#368): on the shared franklinwh prefix FWHAI's entities
+            # carry our unique_ids, so only an id the bridge itself would
+            # create (HA's _2, _3 allowed) is listed.
+            continue
         group = group_for(entity)
         if group == DIAGNOSTICS and not include_diagnostics:
             continue
@@ -193,6 +205,21 @@ def select_ours(
                 groups.append((title, ids))
         out.append(DeviceCards(device=dev, ha_device_id=ha_dev, name=name, groups=groups))
     return out
+
+
+_SUFFIX = re.compile(r"_\d+$")
+
+
+def _is_our_entity_id(
+    eid: str, entity: EntityDef, dev: OurDevice, topic_prefix: str, ha_name: str
+) -> bool:
+    """Whether ``eid`` is an id the bridge itself would create: a device part
+    (``<prefix>_<sid>`` or the device's name) then the entity's slug or name,
+    with HA's ``_2``, ``_3`` suffix allowed."""
+    obj = _SUFFIX.sub("", eid.split(".", 1)[-1])
+    heads = {f"{topic_prefix}_{dev.short_id}", _slug(dev.name), _slug(ha_name)}
+    tails = {entity.slug, _slug(entity.name)}
+    return any(obj == f"{h}_{t}" for h in heads for t in tails)
 
 
 _PLAIN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ .()&/—\-]*$")
