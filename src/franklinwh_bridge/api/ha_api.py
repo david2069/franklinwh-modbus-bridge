@@ -19,7 +19,11 @@ from pydantic import BaseModel, Field
 
 from franklinwh_bridge.config.supervisor import LOCAL_HA_ID, is_supervisor_instance
 from franklinwh_bridge.gateway.ha import HaInstance
-from franklinwh_bridge.publish.dashboard_yaml import DashboardError, build_dashboard
+from franklinwh_bridge.publish.dashboard_yaml import (
+    DashboardError,
+    build_dashboard,
+    build_entity_map,
+)
 from franklinwh_bridge.store.db import (
     create_ha_instance,
     delete_ha_instance,
@@ -315,3 +319,19 @@ async def dashboard_yaml(
     except DashboardError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
     return {**out, "instance": {"id": inst.id, "name": inst.name}}
+
+
+@router.get("/bridge-entities")
+async def bridge_entities(request: Request, instance: str | None = None):
+    """This bridge's published entities and what HA calls them: entity id,
+    diagnostic or not, the bridge dashboard's label, and whether the id is the
+    bridge's own form. Read from HA's registries, like the dashboard card."""
+    publisher = getattr(request.app.state, "mqtt_publisher", None)
+    if publisher is None:
+        raise HTTPException(status_code=503, detail="MQTT publisher not running")
+    inst = await _dashboard_instance(request, instance)
+    try:
+        rows = await build_entity_map(inst, publisher)
+    except DashboardError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    return {"entities": rows, "instance": {"id": inst.id, "name": inst.name}}

@@ -21,6 +21,7 @@ function haEntitiesTab() {
       open: false, layout: 'grouped', diagnostics: false, instance: '',
       yaml: '', count: 0, published: 0, source: '', error: '', loading: false, copyMsg: '',
     },
+    ours: { open: false, loading: false, error: '', rows: [], source: '' },
 
     /** Topic presets — each is a synonym set, because the same concept is named
      *  differently by every integration (pv / solar / enphase / envoy all mean
@@ -133,6 +134,34 @@ function haEntitiesTab() {
       } else {
         Alpine.store('app').toast('Failed: ' + (data?.error || 'unknown'), 'error');
       }
+    },
+
+    // ── This bridge's entities in HA: id, diagnostic, dashboard label ──
+    async toggleOurs() {
+      this.ours.open = !this.ours.open;
+      if (this.ours.open) await this.loadOurs();
+    },
+
+    async loadOurs() {
+      const o = this.ours;
+      o.loading = true;
+      o.error = '';
+      try {
+        const data = await fetchJSON('api/ha/bridge-entities');
+        if (data && Array.isArray(data.entities)) {
+          o.rows = data.entities;
+          o.source = data.instance ? data.instance.name : '';
+        } else {
+          o.rows = [];
+          o.error = (data && data.error) || 'No entities returned.';
+        }
+      } finally {
+        o.loading = false;
+      }
+    },
+
+    oursCount(test) {
+      return this.ours.rows.filter(test).length;
     },
 
     // ── Dashboard card YAML (#86) ──────────────────────────────
