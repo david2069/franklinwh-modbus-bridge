@@ -365,3 +365,47 @@ async def test_reports_published_vs_found():
     out = await build_dashboard(_FakeInst(*_registries()), pub, include_diagnostics=True)
     assert out["published_count"] == len(pub.entities)
     assert out["entity_count"] <= out["published_count"]
+
+
+# ── entity map (what HA calls each published entity) ─────────────────
+
+
+async def test_entity_map_lists_every_published_entity_with_its_ha_id():
+    from franklinwh_bridge.publish.dashboard_yaml import build_entity_map
+
+    pub = _publisher()
+    devices, entities = _registries()
+    p = f"franklinwh_{SID}_"
+    entities += [
+        # Left over from FWHAI: the bridge's unique_id, FWHAI's entity id.
+        _ent("sensor.fhp_total_capacity", p + "total_capacity_kwh"),
+        _ent(f"sensor.franklinwh_{SID}_grid_current_a_2", p + "grid_current_a"),
+        _ent("sensor.agate_home_frequency", p + "grid_frequency_hz"),
+    ]
+    rows = {r["slug"]: r for r in await build_entity_map(_FakeInst(devices, entities), pub)}
+    assert len(rows) == len(pub.entities)
+    cap = rows["total_capacity_kwh"]
+    assert cap["entity_id"] == "sensor.fhp_total_capacity"
+    assert cap["other_id"] is True and cap["dashboard_label"] == "Rated"
+    # Renamed in HA: also not the bridge's own form.
+    assert rows["battery_power_kw"]["other_id"] is True
+    assert rows["battery_power_kw"]["dashboard_label"] == "DC Power"
+    # <prefix>_<sid>_<slug> with HA's _2, and <device name>_<entity name>: own form.
+    assert rows["grid_current_a"]["other_id"] is False
+    assert rows["grid_frequency_hz"]["other_id"] is False
+    inv = rows["inverter_state"]
+    assert inv["diagnostic"] is True and inv["dashboard_label"] == "Inverter"
+    assert rows["battery_soh"]["disabled"] is True
+    # Published but HA has no row for it.
+    missing = [r for r in rows.values() if r["entity_id"] is None]
+    assert missing and all(r["other_id"] is False for r in missing)
+    # Foreign device rows never count, even with the same unique_id.
+    assert rows["battery_soc"]["entity_id"] == "sensor.state_of_charge"
+
+
+async def test_bridge_entities_route(client):
+    r = await client.get("/api/ha/bridge-entities")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["instance"]["name"] == "Home HA"
+    assert any(e["slug"] == "battery_soc" for e in body["entities"])

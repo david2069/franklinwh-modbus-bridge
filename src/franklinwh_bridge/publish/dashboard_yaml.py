@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES, EntityDef
+from franklinwh_bridge.publish.mqtt_publisher import _slug
 
 TITLE = "Modbus Bridge"
 DIAGNOSTICS = "Diagnostics"
@@ -193,6 +194,110 @@ def select_ours(
                 groups.append((title, ids))
         out.append(DeviceCards(device=dev, ha_device_id=ha_dev, name=name, groups=groups))
     return out
+
+
+#: The bridge dashboard's label for an entity, where it differs from or helps
+#: find the HA name (dashboard.html). Grid status (701.DERMode) isn't published.
+DASHBOARD_LABELS = {
+    "battery_soc": "SoC",
+    "battery_soh": "SoH",
+    "battery_power_kw": "DC Power",
+    "battery_health": "Status",
+    "total_capacity_kwh": "Rated",
+    "available_capacity_kwh": "Available",
+    "max_charge_rate_kw": "Max Charge",
+    "max_discharge_rate_kw": "Max Discharge",
+    "grid_voltage_v": "Voltage",
+    "grid_current_a": "Current",
+    "grid_frequency_hz": "Frequency",
+    "grid_apparent_power_va": "Apparent",
+    "grid_reactive_power_var": "Reactive",
+    "grid_power_factor": "Power Factor",
+    "ambient_temp_c": "Ambient",
+    "cabinet_temp_c": "Cabinet",
+    "inverter_state": "Inverter",
+    "pv_proximal_kw": "Proximal",
+    "pv_remote1_kw": "Remote 1 (APbox)",
+    "pv_remote2_kw": "Remote 2",
+    "pv_energy_total_kwh": "Solar PV Total",
+    "operating_mode_sensor": "Mode",
+    "active_reserve_pct": "Active reserve",
+}
+
+_SUFFIX = re.compile(r"_\d+$")
+
+
+def _own_id(eid: str, entity: EntityDef, heads: set[str]) -> bool:
+    """Whether ``eid`` has the form the bridge's own discovery gives it: a
+    device part, then the entity's slug or name (HA's ``_2``, ``_3`` allowed)."""
+    obj = _SUFFIX.sub("", eid.split(".", 1)[-1])
+    return any(obj in (f"{h}_{entity.slug}", f"{h}_{_slug(entity.name)}") for h in heads)
+
+
+def entity_map(
+    device_rows: list[dict],
+    entity_rows: list[dict],
+    ours: list[OurDevice],
+    topic_prefix: str,
+) -> list[dict]:
+    """Every entity the bridge publishes, with what HA calls it.
+
+    One row per published entity per device: its HA entity id (None when HA
+    has no row for it), where HA shows it (diagnostic or not), the bridge
+    dashboard's label, and ``other_id`` when the id isn't the bridge's own
+    form (renamed in HA, or left over from an earlier integration).
+    """
+    by_ident = {d.identifier: d for d in ours}
+    ha_dev_of: dict[str, tuple[str, str]] = {}  # identifier -> (HA device_id, HA name)
+    for row in device_rows or []:
+        for pair in row.get("identifiers") or []:
+            if isinstance(pair, (list, tuple)) and len(pair) == 2 and pair[0] == "mqtt" \
+                    and pair[1] in by_ident:
+                ha_dev_of[pair[1]] = (row.get("id"), row.get("name") or "")
+    out: list[dict] = []
+    for dev in ours:
+        ha_dev, ha_name = ha_dev_of.get(dev.identifier, (None, ""))
+        head = f"{topic_prefix}_{dev.short_id}_"
+        ids = {
+            str(r.get("unique_id"))[len(head):]: r
+            for r in entity_rows or []
+            if r.get("platform") == "mqtt" and ha_dev and r.get("device_id") == ha_dev
+            and str(r.get("unique_id") or "").startswith(head)
+        }
+        heads = {f"{topic_prefix}_{dev.short_id}", _slug(dev.name)} | (
+            {_slug(ha_name)} if ha_name else set())
+        for e in dev.defs:
+            row = ids.get(e.slug)
+            eid = row.get("entity_id") if row else None
+            out.append({
+                "device": dev.name,
+                "slug": e.slug,
+                "name": e.name,
+                "entity_id": eid,
+                "disabled": bool(row and row.get("disabled_by")),
+                "diagnostic": e.entity_category in ("diagnostic", "config"),
+                "group": group_for(e),
+                "dashboard_label": DASHBOARD_LABELS.get(e.slug),
+                "other_id": bool(eid) and not _own_id(eid, e, heads),
+            })
+    return out
+
+
+async def build_entity_map(inst: Any, publisher: Any) -> list[dict]:
+    """Read HA's registries over ``inst.ws_call`` and map our entities."""
+    ours = our_devices(publisher)
+    if not ours:
+        raise DashboardError(409, "The bridge isn't publishing any gateway to MQTT yet.")
+    try:
+        device_rows = await inst.ws_call({"type": "config/device_registry/list"})
+        entity_rows = await inst.ws_call({"type": "config/entity_registry/list"})
+    except Exception as exc:
+        raise DashboardError(
+            503,
+            f"Couldn't read the device/entity registry from Home Assistant "
+            f"'{inst.name}': {str(exc) or type(exc).__name__}.",
+        ) from exc
+    return entity_map(device_rows or [], entity_rows or [], ours, publisher.topic_prefix)
 
 
 _PLAIN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ .()&/—\-]*$")
