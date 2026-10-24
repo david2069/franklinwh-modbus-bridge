@@ -226,6 +226,19 @@ async def test_percent_is_that_share_of_the_trusted_rating(ctrl, db, pct):
     assert h.state.power_pct == pct and h.state.power_w == round(5000 * pct / 100)
 
 
+async def test_percent_to_watts_workaround_is_logged_each_use(ctrl, db, caplog):
+    """Owner 2026-10-24: approved workaround, logged every time it runs."""
+    h = CommandHandler(ctrl, db, rating=calibrated_rating(discharge_w=5000))
+    await h.handle_command("battery_command_power_pct", "50")
+    with caplog.at_level("INFO", logger=ch.logger.name):
+        await h.handle_command("battery_command", "Force Discharge")
+        await h.handle_command("battery_command", "Force Discharge")
+    lines = [r.getMessage() for r in caplog.records if "Workaround: Power" in r.getMessage()]
+    assert lines == [lines[0]] * 2
+    assert "Power 50% sent as 2500W through WSet, not WSetPct" in lines[0]
+    assert "franklinwh-modbus#92" in lines[0]
+
+
 async def test_percent_without_a_trusted_rating_is_refused(ctrl, db):
     h = CommandHandler(ctrl, db, rating=BatteryRating("g"))  # no rating at all
     await h.handle_command("battery_command_power_pct", "50")
