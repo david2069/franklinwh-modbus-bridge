@@ -64,18 +64,17 @@ def _registries(prefix: str = "franklinwh") -> tuple[list[dict], list[dict]]:
     ]
     p = f"{prefix}_{SID}_"
     entities = [
-        _ent("sensor.agate_home_battery_soc", p + "battery_soc"),
-        _ent("sensor.agate_home_grid_power_kw", p + "grid_power_kw"),
-        # User-renamed: not an id the bridge creates, so left out (#368).
-        # HA's _2 suffix is allowed.
+        _ent("sensor.state_of_charge", p + "battery_soc"),
+        _ent("sensor.grid_power", p + "grid_power_kw"),
+        # User-renamed, and HA's _2 suffix: used verbatim.
         _ent("sensor.my_battery_power", p + "battery_power_kw"),
-        _ent("select.agate_home_operating_mode_2", p + "operating_mode"),
-        _ent("sensor.agate_home_grid_voltage_v", p + "grid_voltage_v"),
+        _ent("select.operating_mode_2", p + "operating_mode"),
+        _ent("sensor.grid_voltage", p + "grid_voltage_v"),
         # operating_mode_sensor shares a prefix with operating_mode; exact slug.
-        _ent("sensor.agate_home_operating_mode_sensor", p + "operating_mode_sensor"),
-        _ent("sensor.agate_home_inverter_state", p + "inverter_state"),
+        _ent("sensor.operating_mode", p + "operating_mode_sensor"),
+        _ent("sensor.inverter_state", p + "inverter_state"),
         _ent("sensor.unknown_thing", p + "some_future_slug"),
-        _ent("sensor.agate_home_solar_power_kw", p + "solar_power_kw"),
+        _ent("sensor.solar_power", p + "solar_power_kw"),
         _ent("sensor.disabled_one", p + "battery_soh", disabled_by="user"),
         # Foreign rows: identical unique_ids, different device.
         _ent("sensor.fwhai_soc", p + "battery_soc", device="dev_foreign"),
@@ -126,19 +125,18 @@ async def test_grouped_layout_order_and_foreign_excluded():
         assert c["state_color"] is True
     by_title = {c["title"]: [r["entity"] for r in c["entities"]] for c in doc["cards"]}
     # BRIDGE_ENTITIES order within a group: grid_power_kw precedes solar_power_kw.
-    assert by_title["Modbus Bridge — Power & Energy"] == [
-        "sensor.agate_home_grid_power_kw",
-        "sensor.agate_home_solar_power_kw",
+    assert by_title["Modbus Bridge — Power & Energy"] == ["sensor.grid_power", "sensor.solar_power"]
+    # battery_soc precedes battery_power_kw; renamed id used verbatim.
+    assert by_title["Modbus Bridge — Battery"] == [
+        "sensor.state_of_charge",
+        "sensor.my_battery_power",
     ]
-    # A renamed id isn't one the bridge creates (#368 stopgap).
-    assert by_title["Modbus Bridge — Battery"] == ["sensor.agate_home_battery_soc"]
-    assert by_title["Modbus Bridge — Controls"] == ["select.agate_home_operating_mode_2"]
-    assert by_title["Modbus Bridge — Status"] == ["sensor.agate_home_grid_voltage_v"]
+    assert by_title["Modbus Bridge — Controls"] == ["select.operating_mode_2"]
+    assert by_title["Modbus Bridge — Status"] == ["sensor.grid_voltage"]
     ids = _ids(out["yaml"])
     assert not {"sensor.fwhai_soc", "sensor.fwhai_grid", "sensor.template_soc"} & set(ids)
     assert "sensor.disabled_one" not in ids
-    assert "sensor.my_battery_power" not in ids
-    assert out["entity_count"] == 5
+    assert out["entity_count"] == 6
     assert out["devices"][0]["ha_device_id"] == "dev_ours"
     assert "theme" not in out["yaml"]
     assert "custom:" not in out["yaml"]
@@ -152,7 +150,7 @@ async def test_diagnostics_toggle_includes_only_our_diagnostics():
     diag = [r["entity"] for r in last["entities"]]
     # Known diagnostics in BRIDGE_ENTITIES order. A slug this bridge doesn't
     # publish is another producer's entity on the merged device: left out.
-    assert diag == ["sensor.agate_home_inverter_state", "sensor.agate_home_operating_mode_sensor"]
+    assert diag == ["sensor.inverter_state", "sensor.operating_mode"]
     assert "sensor.unknown_thing" not in out["yaml"]
 
 
@@ -163,11 +161,12 @@ async def test_single_layout():
     assert doc["title"] == "Modbus Bridge"
     assert doc["show_header_toggle"] is False and doc["state_color"] is True
     assert [r["entity"] for r in doc["entities"]] == [
-        "sensor.agate_home_grid_power_kw",
-        "sensor.agate_home_solar_power_kw",
-        "sensor.agate_home_battery_soc",
-        "select.agate_home_operating_mode_2",
-        "sensor.agate_home_grid_voltage_v",
+        "sensor.grid_power",
+        "sensor.solar_power",
+        "sensor.state_of_charge",
+        "sensor.my_battery_power",
+        "select.operating_mode_2",
+        "sensor.grid_voltage",
     ]
 
 
@@ -182,7 +181,7 @@ async def test_output_is_deterministic_and_matches_fwhai_shape():
         "    show_header_toggle: false\n"
         "    state_color: true\n"
         "    entities:\n"
-        "      - entity: sensor.agate_home_grid_power_kw\n"
+        "      - entity: sensor.grid_power\n"
     )
 
 
@@ -194,7 +193,7 @@ async def test_custom_namespace():
     entities.append(_ent("sensor.old_soc", f"franklinwh_{SID}_battery_soc"))
     out = await build_dashboard(_FakeInst(devices, entities), pub)
     ids = _ids(out["yaml"])
-    assert "sensor.agate_home_battery_soc" in ids
+    assert "sensor.state_of_charge" in ids
     assert "sensor.old_soc" not in ids
     assert out["devices"][0]["identifier"] == f"fwh_mb_modbus_{SERIAL}"
 
@@ -234,8 +233,7 @@ async def test_multi_device_titles_name_the_device():
             "identifiers": [["mqtt", shed_ident]],
         }
     )
-    entities.append(_ent("sensor.franklinwh_shed_gw_battery_soc",
-                         "franklinwh_shed_gw_battery_soc", device="dev_shed"))
+    entities.append(_ent("sensor.shed_soc", "franklinwh_shed_gw_battery_soc", device="dev_shed"))
     ours = our_devices(pub)
     assert [d.identifier for d in ours] == [f"franklinwh_modbus_{SERIAL}", shed_ident]
     cards = select_ours(devices, entities, ours, "franklinwh")
@@ -280,14 +278,14 @@ async def test_route_returns_yaml(client):
     body = r.json()
     assert body["layout"] == "grouped"
     assert body["instance"] == {"id": client.inst_id, "name": "Home HA"}
-    assert body["entity_count"] == 5
+    assert body["entity_count"] == 6
     assert body["yaml"].startswith("type: vertical-stack")
 
     r = await client.get(
         f"/api/ha/dashboard-yaml?instance={client.inst_id}&layout=single&diagnostics=true"
     )
     assert r.status_code == 200
-    assert r.json()["entity_count"] == 7
+    assert r.json()["entity_count"] == 8
     assert r.json()["yaml"].startswith("type: entities")
 
 
@@ -358,8 +356,8 @@ async def test_only_entities_this_publisher_currently_publishes():
     pub._entities = [e for e in pub._entities if e.slug != "inverter_state"]
     out = await build_dashboard(_FakeInst(*_registries()), pub,
                                 layout="single", include_diagnostics=True)
-    assert "sensor.agate_home_inverter_state" not in out["yaml"]
-    assert "sensor.agate_home_battery_soc" in out["yaml"]
+    assert "sensor.inverter_state" not in out["yaml"]
+    assert "sensor.state_of_charge" in out["yaml"]
 
 
 async def test_reports_published_vs_found():
@@ -367,23 +365,3 @@ async def test_reports_published_vs_found():
     out = await build_dashboard(_FakeInst(*_registries()), pub, include_diagnostics=True)
     assert out["published_count"] == len(pub.entities)
     assert out["entity_count"] <= out["published_count"]
-
-
-async def test_other_producers_ids_with_our_unique_ids_are_left_out():
-    """#368 stopgap. On the shared franklinwh prefix FWHAI's entities carry our
-    unique_ids and slugs (owner's HA Live, 2026-10-24). Only an id the bridge
-    itself would create is listed: <prefix>_<sid> or the device name, then the
-    slug or entity name, with HA's _2, _3 allowed."""
-    devices, _ = _registries()
-    p = f"franklinwh_{SID}_"
-    entities = [
-        _ent("sensor.fhp_grid_power", p + "grid_power_kw"),
-        _ent("sensor.franklinwh_agate_x_01_au_0001_solar_power", p + "solar_power_kw"),
-        _ent(f"sensor.franklinwh_{SID}_battery_soc", p + "battery_soc"),
-        _ent("sensor.agate_home_grid_voltage_v_3", p + "grid_voltage_v"),
-    ]
-    out = await build_dashboard(_FakeInst(devices, entities), _publisher(), layout="single")
-    assert _ids(out["yaml"]) == [
-        f"sensor.franklinwh_{SID}_battery_soc",
-        "sensor.agate_home_grid_voltage_v_3",
-    ]

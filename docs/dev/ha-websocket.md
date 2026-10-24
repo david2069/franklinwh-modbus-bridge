@@ -152,5 +152,5 @@ Each call is best-effort and logged in the schedule's Activity Log (*ha_action* 
 | Feature | What it reads |
 |---|---|
 | **Use Home Assistant's location** (Settings → Site & Gateways) | A one-off WebSocket `get_config` for the latitude and longitude (`POST /api/solar/location/from-ha`) |
-| Dashboard card YAML (`GET /api/ha/dashboard-yaml`) | A one-off WebSocket `config/entity_registry/list`, so `_2` suffixes come out right; renamed entities are left out (#368) |
+| Dashboard card YAML (`GET /api/ha/dashboard-yaml`) | A one-off WebSocket `config/entity_registry/list`, so renamed entities come out right |
 | Home Assistant price entities (dynamic pricing) | Exposed sensors, named by their `ha:<instance>:<entity>` id |

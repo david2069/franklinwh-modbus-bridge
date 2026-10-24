@@ -56,9 +56,8 @@ Home Assistant dashboard card listing this bridge's entities.
 | Include diagnostics | Adds the diagnostic entities. |
 | Instance | Which Home Assistant to read (only with several). |
 
-The entity IDs come from that Home Assistant's own registry, so `_2` suffixes come out
-right. Only IDs the bridge itself creates are listed, so an entity renamed in Home Assistant
-is left out (#368). In Home Assistant: edit a dashboard → **Add card** →
+The entity IDs come from that Home Assistant's own registry, so renamed entities and
+`_2` suffixes come out right. In Home Assistant: edit a dashboard → **Add card** →
 **Manual**, and paste. **Copy** puts the YAML on the clipboard.
 
 !!! note
