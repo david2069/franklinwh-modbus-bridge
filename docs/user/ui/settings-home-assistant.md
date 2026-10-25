@@ -181,7 +181,11 @@ The built-in groups (marked *(default)*):
 
 - The **Enabled** switch turns a group on or off. **Disabling a group removes its entities
   from Home Assistant.** An entity in several groups stays published while any of its
-  groups is enabled.
+  groups is enabled. The switch asks for confirmation first, because the change reaches
+  Home Assistant at once.
+- Every change that adds or removes entities (a switch, members, a new or deleted group,
+  a promoted point) writes one line to the app log, with the group, the change and the
+  user, e.g. `Publishing groups: group 'battery' enabled → disabled (by admin)`.
 - Click a group row to list its members. Tick or untick entities to add or remove them;
   **Filter entities…** searches.
 - **+ New Group**: Slug (lowercase, 2–63 characters, letters, digits and underscores),
