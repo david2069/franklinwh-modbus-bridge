@@ -6,12 +6,14 @@ catalog of all available entity definitions for the Settings UI.
 
 from __future__ import annotations
 
+import logging
 import re
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.api.auth import get_current_user
 from franklinwh_bridge.publish.entities import BRIDGE_ENTITIES
 from franklinwh_bridge.store.db import (
     add_group_member,
@@ -29,7 +31,16 @@ from franklinwh_bridge.store.db import (
     update_publishing_group,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/groups", tags=["groups"])
+
+_CURRENT_USER = Depends(get_current_user)  # hoisted: Depends() in a default trips B008
+
+
+def _audit(user: dict | None, what: str) -> None:
+    """One app-log line per change that adds or removes HA entities (#296 item 39)."""
+    logger.info("Publishing groups: %s (by %s)", what, (user or {}).get("username") or "unknown")
 
 SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,62}$")
 
@@ -113,7 +124,7 @@ async def list_disabled(request: Request):
 
 
 @router.post("", status_code=201)
-async def create_group(body: GroupCreate, request: Request):
+async def create_group(body: GroupCreate, request: Request, user: dict | None = _CURRENT_USER):
     """Create a new custom publishing group."""
     if not SLUG_PATTERN.match(body.slug):
         raise HTTPException(
@@ -134,6 +145,8 @@ async def create_group(body: GroupCreate, request: Request):
         members=body.members,
     )
     await _sync_publisher(request)
+    _audit(user, f"group '{body.slug}' created, enabled={body.enabled}, "
+                 f"{len(body.members)} members")
     return group
 
 
@@ -148,7 +161,9 @@ async def get_group(slug: str, request: Request):
 
 
 @router.patch("/{slug}")
-async def patch_group(slug: str, body: GroupUpdate, request: Request):
+async def patch_group(
+    slug: str, body: GroupUpdate, request: Request, user: dict | None = _CURRENT_USER
+):
     """Update name, description, or enabled state of a group."""
     db: aiosqlite.Connection = request.app.state.db
     existing = await get_publishing_group(db, slug)
@@ -158,11 +173,14 @@ async def patch_group(slug: str, body: GroupUpdate, request: Request):
         db, slug, name=body.name, description=body.description, enabled=body.enabled
     )
     await _sync_publisher(request)
+    if body.enabled is not None and bool(body.enabled) != bool(existing.get("enabled")):
+        _audit(user, f"group '{slug}' {'enabled' if existing.get('enabled') else 'disabled'}"
+                     f" → {'enabled' if body.enabled else 'disabled'}")
     return updated
 
 
 @router.delete("/{slug}")
-async def delete_group(slug: str, request: Request):
+async def delete_group(slug: str, request: Request, user: dict | None = _CURRENT_USER):
     """Delete a custom group. Default groups cannot be deleted."""
     db: aiosqlite.Connection = request.app.state.db
     try:
@@ -172,6 +190,7 @@ async def delete_group(slug: str, request: Request):
     if not ok:
         raise HTTPException(404, f"Group '{slug}' not found")
     await _sync_publisher(request)
+    _audit(user, f"group '{slug}' deleted")
     return {"deleted": True}
 
 
@@ -189,19 +208,28 @@ async def list_members(slug: str, request: Request):
 
 
 @router.put("/{slug}/members")
-async def replace_members(slug: str, body: MemberUpdate, request: Request):
+async def replace_members(
+    slug: str, body: MemberUpdate, request: Request, user: dict | None = _CURRENT_USER
+):
     """Replace all members of a group."""
     db: aiosqlite.Connection = request.app.state.db
     group = await get_publishing_group(db, slug)
     if group is None:
         raise HTTPException(404, f"Group '{slug}' not found")
+    old = set(group.get("members") or [])
     members = await set_group_members(db, slug, body.members)
     await _sync_publisher(request)
+    added, removed = sorted(set(members) - old), sorted(old - set(members))
+    if added or removed:
+        _audit(user, f"group '{slug}' members: added {added or 'none'}, "
+                     f"removed {removed or 'none'}")
     return {"members": members}
 
 
 @router.post("/{slug}/members")
-async def add_member(slug: str, body: SingleMember, request: Request):
+async def add_member(
+    slug: str, body: SingleMember, request: Request, user: dict | None = _CURRENT_USER
+):
     """Add an entity to a group."""
     db: aiosqlite.Connection = request.app.state.db
     group = await get_publishing_group(db, slug)
@@ -210,11 +238,14 @@ async def add_member(slug: str, body: SingleMember, request: Request):
     await add_group_member(db, slug, body.entity_slug)
     members = await get_group_members(db, slug)
     await _sync_publisher(request)
+    _audit(user, f"group '{slug}' member added: {body.entity_slug}")
     return {"members": members}
 
 
 @router.delete("/{slug}/members/{entity_slug}")
-async def delete_member(slug: str, entity_slug: str, request: Request):
+async def delete_member(
+    slug: str, entity_slug: str, request: Request, user: dict | None = _CURRENT_USER
+):
     """Remove an entity from a group."""
     db: aiosqlite.Connection = request.app.state.db
     group = await get_publishing_group(db, slug)
@@ -223,6 +254,7 @@ async def delete_member(slug: str, entity_slug: str, request: Request):
     await remove_group_member(db, slug, entity_slug)
     members = await get_group_members(db, slug)
     await _sync_publisher(request)
+    _audit(user, f"group '{slug}' member removed: {entity_slug}")
     return {"members": members}
 
 
@@ -238,20 +270,26 @@ async def list_group_points(slug: str, request: Request):
 
 
 @router.post("/{slug}/points", status_code=201)
-async def add_group_point(slug: str, body: PointMember, request: Request):
+async def add_group_point(
+    slug: str, body: PointMember, request: Request, user: dict | None = _CURRENT_USER
+):
     """Promote a catalog point ("model.point") into a group."""
     db: aiosqlite.Connection = request.app.state.db
     if await get_publishing_group(db, slug) is None:
         raise HTTPException(404, f"Group '{slug}' not found")
     await add_group_point_member(db, slug, body.ref, body.disp_name, body.disp_unit)
     await _sync_publisher(request)
+    _audit(user, f"group '{slug}' point promoted: {body.ref}")
     return {"added": body.ref}
 
 
 @router.delete("/{slug}/points")
-async def remove_group_point(slug: str, request: Request, ref: str):
+async def remove_group_point(
+    slug: str, request: Request, ref: str, user: dict | None = _CURRENT_USER
+):
     """Remove a promoted point from a group (ref as ?ref=model.point)."""
     db: aiosqlite.Connection = request.app.state.db
     await remove_group_point_member(db, slug, ref)
     await _sync_publisher(request)
+    _audit(user, f"group '{slug}' point removed: {ref}")
     return {"removed": ref}

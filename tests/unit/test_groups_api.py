@@ -183,10 +183,17 @@ async def test_member_management(client):
     assert "grid_power_kw" not in resp.json()["members"]
 
 
-async def test_disable_group_and_roundtrip(client):
+async def test_disable_group_and_roundtrip(client, caplog):
     """Disabling a group marks its exclusive entities as disabled; full round-trip."""
     # Disable battery → its entities become disabled
-    await client.patch("/api/groups/battery", json={"enabled": False})
+    with caplog.at_level("INFO", logger="franklinwh_bridge.api.groups_api"):
+        await client.patch("/api/groups/battery", json={"enabled": False})
+        await client.patch("/api/groups/battery", json={"name": "Battery"})  # no switch
+    # Each switch is logged with group, old → new and who (#296 item 39).
+    msgs = [r.getMessage() for r in caplog.records]
+    audit = [m for m in msgs if m.startswith("Publishing groups:")]
+    assert len(audit) == 1
+    assert "group 'battery' enabled → disabled (by " in audit[0]
     resp = await client.get("/api/groups/disabled")
     disabled = resp.json()["disabled_slugs"]
     assert "battery_soc" in disabled

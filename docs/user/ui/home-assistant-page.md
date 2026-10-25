@@ -29,7 +29,7 @@ entity seems to be missing in Home Assistant. It is usually one of these:
 
 | Note | What it means | What to do |
 |---|---|---|
-| **Diagnostic** (Shown in HA) | Home Assistant lists it in the device page's **Diagnostic** section, not with the sensors. The [dashboard card](#dashboard-card) leaves it out unless **Include diagnostics** is ticked. Grid connection and inverter state are diagnostic today. | Open the device's Diagnostic section, or tick Include diagnostics. |
+| **Diagnostic** (Shown in HA) | Home Assistant lists it in the device page's **Diagnostic** section, not with the sensors. The [dashboard card](#dashboard-card) leaves it out unless **Include diagnostics** is ticked. Grid connection and inverter state are not diagnostic: they show with the sensors. | Open the device's Diagnostic section, or tick Include diagnostics. |
 | A **Bridge dashboard** label | The bridge dashboard's label isn't Home Assistant's name. For example "DC Power" is **Battery Power**, and "Rated" is **Total Capacity**. | Search Home Assistant for the name in the HA entity column. |
 | **Other id** | Home Assistant kept an entity ID from an earlier integration (for example `sensor.fhp_battery_power`), or you renamed it. It is still this bridge's entity: Home Assistant matches entities by unique ID, not by entity ID. | Optional: Home Assistant → **Settings → Entities** → the entity → settings → **Entity ID**. Automations that use the old ID need the new one. |
 | **Not in HA** | The bridge publishes it, but Home Assistant's registry has no entry for it yet. | Check MQTT is connected, then Settings → Home Assistant → Republish. |

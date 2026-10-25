@@ -1928,6 +1928,20 @@ function settingsTab() {
     },
 
     async toggleGroup(slug, enabled) {
+      // A switch changes HA at once, so ask first (#296 item 39). The server
+      // logs each change with the group, old → new state and the user.
+      const g = (this.groups || []).find(x => x.slug === slug) || { name: slug, member_count: 0 };
+      const ok = await Alpine.store('app').confirm(enabled ? {
+        title: 'Publish this group?',
+        message: `"${g.name}" has ${g.member_count} entities. They are published to Home Assistant now.`,
+        confirmLabel: 'Publish',
+      } : {
+        title: 'Remove this group from Home Assistant?',
+        message: `"${g.name}" has ${g.member_count} entities. Those not in another enabled group `
+          + 'are removed from Home Assistant now. Switching it back on publishes them again.',
+        confirmLabel: 'Remove', danger: true,
+      });
+      if (!ok) return;
       this.groupsBusy = true;
       try {
         const data = await fetchJSON(`api/groups/${slug}`, {
