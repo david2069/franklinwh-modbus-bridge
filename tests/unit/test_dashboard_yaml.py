@@ -132,11 +132,11 @@ async def test_grouped_layout_order_and_foreign_excluded():
         "sensor.my_battery_power",
     ]
     assert by_title["Modbus Bridge — Controls"] == ["select.operating_mode_2"]
-    assert by_title["Modbus Bridge — Status"] == ["sensor.grid_voltage"]
+    assert by_title["Modbus Bridge — Status"] == ["sensor.grid_voltage", "sensor.inverter_state"]
     ids = _ids(out["yaml"])
     assert not {"sensor.fwhai_soc", "sensor.fwhai_grid", "sensor.template_soc"} & set(ids)
     assert "sensor.disabled_one" not in ids
-    assert out["entity_count"] == 6
+    assert out["entity_count"] == 7
     assert out["devices"][0]["ha_device_id"] == "dev_ours"
     assert "theme" not in out["yaml"]
     assert "custom:" not in out["yaml"]
@@ -150,7 +150,7 @@ async def test_diagnostics_toggle_includes_only_our_diagnostics():
     diag = [r["entity"] for r in last["entities"]]
     # Known diagnostics in BRIDGE_ENTITIES order. A slug this bridge doesn't
     # publish is another producer's entity on the merged device: left out.
-    assert diag == ["sensor.inverter_state", "sensor.operating_mode"]
+    assert diag == ["sensor.operating_mode"]  # inverter_state is core status (#296 38)
     assert "sensor.unknown_thing" not in out["yaml"]
 
 
@@ -167,6 +167,7 @@ async def test_single_layout():
         "sensor.my_battery_power",
         "select.operating_mode_2",
         "sensor.grid_voltage",
+        "sensor.inverter_state",
     ]
 
 
@@ -278,7 +279,7 @@ async def test_route_returns_yaml(client):
     body = r.json()
     assert body["layout"] == "grouped"
     assert body["instance"] == {"id": client.inst_id, "name": "Home HA"}
-    assert body["entity_count"] == 6
+    assert body["entity_count"] == 7
     assert body["yaml"].startswith("type: vertical-stack")
 
     r = await client.get(
@@ -394,7 +395,7 @@ async def test_entity_map_lists_every_published_entity_with_its_ha_id():
     assert rows["grid_current_a"]["other_id"] is False
     assert rows["grid_frequency_hz"]["other_id"] is False
     inv = rows["inverter_state"]
-    assert inv["diagnostic"] is True and inv["dashboard_label"] == "Inverter"
+    assert inv["diagnostic"] is False and inv["dashboard_label"] == "Inverter"
     assert rows["battery_soh"]["disabled"] is True
     # Published but HA has no row for it.
     missing = [r for r in rows.values() if r["entity_id"] is None]

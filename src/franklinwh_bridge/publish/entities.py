@@ -401,7 +401,7 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_group="status",
         stat_key="connection_state",
         icon="mdi:transmission-tower-import",
-        entity_category="diagnostic",
+        # Core status: not diagnostic, so HA shows it with the sensors (#296 item 38).
         source="701.ConnSt",
     ),
     EntityDef(
@@ -411,7 +411,6 @@ BRIDGE_ENTITIES: list[EntityDef] = [
         state_group="status",
         stat_key="inverter_state",
         icon="mdi:power-settings",
-        entity_category="diagnostic",
         source="701.InvSt",
     ),
     EntityDef(
