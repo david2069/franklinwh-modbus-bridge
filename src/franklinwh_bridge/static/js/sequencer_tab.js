@@ -35,6 +35,7 @@ function sequencerTab() {
 
     // Resizable panel dimensions
     listWidth: SEQUENCER_DEFAULTS.listWidth,
+    listCollapsed: false,  // sequence list folded to a strip: room for the editor on small screens
     syntaxRefHeight: SEQUENCER_DEFAULTS.syntaxRefHeight,
     outputFlex: SEQUENCER_DEFAULTS.outputFlex,
     resizing: null,
@@ -99,16 +100,25 @@ function sequencerTab() {
           if (saved.listWidth) this.listWidth = saved.listWidth;
           if (saved.syntaxRefHeight) this.syntaxRefHeight = saved.syntaxRefHeight;
           if (saved.outputFlex) this.outputFlex = saved.outputFlex;
+          if (typeof saved.listCollapsed === 'boolean') this.listCollapsed = saved.listCollapsed;
         }
       } catch (_) {}
     },
 
     _saveLayout() {
-      localStorage.setItem(SEQUENCER_LAYOUT_KEY, JSON.stringify({
-        listWidth: this.listWidth,
-        syntaxRefHeight: this.syntaxRefHeight,
-        outputFlex: this.outputFlex,
-      }));
+      try {
+        localStorage.setItem(SEQUENCER_LAYOUT_KEY, JSON.stringify({
+          listWidth: this.listWidth,
+          syntaxRefHeight: this.syntaxRefHeight,
+          outputFlex: this.outputFlex,
+          listCollapsed: this.listCollapsed,
+        }));
+      } catch (_) {}
+    },
+
+    toggleList() {
+      this.listCollapsed = !this.listCollapsed;
+      this._saveLayout();
     },
 
     resetLayout() {
@@ -208,6 +218,8 @@ function sequencerTab() {
       this.editorDirty = false;
       this.validationError = null;
       this.renameMode = false;
+      // Small screens: fold the list once a sequence is picked, so the editor fits.
+      if (window.innerWidth < 768) this.listCollapsed = true;
 
       const data = await fetchJSON('api/sequences/' + name);
       if (data && data.raw) {

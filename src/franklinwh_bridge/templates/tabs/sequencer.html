@@ -20,13 +20,23 @@
   <div x-show="!loading" class="flex" style="height: calc(100vh - 160px);">
 
     <!-- ══ LEFT: Sequence List ═══════════════════════════════ -->
-    <div class="flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden"
-         :style="`width: ${listWidth}px`">
+    <!-- Folded: a strip that opens the list again. -->
+    <button x-show="listCollapsed" x-cloak type="button" @click="toggleList()"
+            class="flex-shrink-0 w-8 flex flex-col items-center gap-2 py-2 border border-white/[0.08] rounded-lg bg-slate-800/30 text-slate-400 hover:text-slate-200"
+            title="Show the sequence list" aria-label="Show the sequence list">
+      <span class="text-sm leading-none">&rsaquo;</span>
+      <span class="text-[10px] uppercase tracking-wide" style="writing-mode: vertical-rl">Sequences</span>
+    </button>
+    <div x-show="!listCollapsed" class="flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden"
+         :style="`width: ${listWidth}px; max-width: 70vw`">
 
       <!-- Header + New button -->
       <div class="flex items-center justify-between px-3 py-2.5 border-b border-white/[0.06]">
         <span class="text-xs font-semibold uppercase text-slate-500 tracking-wider">Sequences</span>
         <div class="flex items-center gap-1">
+          <button type="button" @click="toggleList()"
+                  class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition text-sm leading-none"
+                  title="Hide the sequence list" aria-label="Hide the sequence list">&lsaquo;</button>
           <button @click="resetLayout()"
                   class="p-1 rounded hover:bg-slate-700 text-slate-600 hover:text-slate-300 transition text-xs font-bold"
                   title="Reset panel sizes">↻</button>
@@ -97,7 +107,7 @@
     </div>
 
     <!-- ── Resize handle: list ↔ editor ──────────────────── -->
-    <div class="resize-handle w-2"
+    <div x-show="!listCollapsed" class="resize-handle w-2"
          :class="resizing === 'list' && 'active'"
          @mousedown.prevent="startResize('list', $event)">
       <div class="resize-handle-dots"></div>
@@ -230,11 +240,12 @@
         </div>
         <!-- Points grid -->
         <div x-show="expanded" x-transition.duration.150ms class="px-3 py-2">
-          <div class="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
             <template x-for="pt in activePoints" :key="pt.key">
-              <div class="bg-slate-900/50 rounded border border-white/[0.04] px-2 py-1">
+              <div class="min-w-0 bg-slate-900/50 rounded border border-white/[0.04] px-2 py-1" :title="pt.label + ': ' + pt.value">
                 <div class="text-[9px] text-slate-500 truncate" x-text="pt.label"></div>
-                <div class="text-xs font-mono font-semibold" :class="pt.colorClass" x-text="pt.value"></div>
+                <!-- truncate: a long value ("Discharging") stays in its own tile -->
+                <div class="text-xs font-mono font-semibold truncate" :class="pt.colorClass" x-text="pt.value"></div>
                 <div x-show="$store.app.showSources && pt.source" class="text-[8px] font-mono text-slate-600" x-text="pt.source"></div>
               </div>
             </template>
