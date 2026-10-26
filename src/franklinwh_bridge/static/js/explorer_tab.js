@@ -103,6 +103,7 @@ function explorerTab() {
 
     // Resizable panel dimensions
     treeWidth: EXPLORER_DEFAULTS.treeWidth,
+    treeCollapsed: false,  // model list folded to a strip: room for the points on small screens
     extHeight: EXPLORER_DEFAULTS.extHeight,
     resizing: null,
     _startX: 0,
@@ -198,17 +199,26 @@ function explorerTab() {
           if (saved.extHeight) this.extHeight = saved.extHeight;
           if (typeof saved.hideEmptyModels === 'boolean') this.hideEmptyModels = saved.hideEmptyModels;
           if (typeof saved.showExtCard === 'boolean') this.showExtCard = saved.showExtCard;
+          if (typeof saved.treeCollapsed === 'boolean') this.treeCollapsed = saved.treeCollapsed;
         }
       } catch (_) {}
     },
 
     _saveLayout() {
-      localStorage.setItem(EXPLORER_LAYOUT_KEY, JSON.stringify({
-        treeWidth: this.treeWidth,
-        extHeight: this.extHeight,
-        hideEmptyModels: this.hideEmptyModels,
-        showExtCard: this.showExtCard,
-      }));
+      try {
+        localStorage.setItem(EXPLORER_LAYOUT_KEY, JSON.stringify({
+          treeWidth: this.treeWidth,
+          extHeight: this.extHeight,
+          hideEmptyModels: this.hideEmptyModels,
+          showExtCard: this.showExtCard,
+          treeCollapsed: this.treeCollapsed,
+        }));
+      } catch (_) {}
+    },
+
+    toggleTree() {
+      this.treeCollapsed = !this.treeCollapsed;
+      this._saveLayout();
     },
 
     resetLayout() {
@@ -258,6 +268,8 @@ function explorerTab() {
 
     selectModel(modelId) {
       this.selectedModelId = modelId;
+      // Small screens: fold the list once a model is picked, so the points fit.
+      if (window.innerWidth < 768) this.treeCollapsed = true;
     },
 
     _reselectIfStale() {

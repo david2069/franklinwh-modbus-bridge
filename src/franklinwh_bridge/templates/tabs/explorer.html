@@ -84,13 +84,24 @@
   <div x-show="$store.app.explorerSection === 'models'" class="flex flex-1 min-h-0">
 
     <!-- ══ LEFT: Model Tree ═══════════════════════════════ -->
-    <div class="flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden"
-         :style="`width: ${treeWidth}px`">
+    <!-- Folded: a strip that opens the list again. -->
+    <button x-show="treeCollapsed" x-cloak type="button" @click="toggleTree()"
+            class="flex-shrink-0 w-8 flex flex-col items-center gap-2 py-2 border border-white/[0.08] rounded-lg bg-slate-800/30 text-slate-400 hover:text-slate-200"
+            title="Show the model list" aria-label="Show the model list">
+      <span class="text-sm leading-none">&rsaquo;</span>
+      <span class="text-[10px] uppercase tracking-wide" style="writing-mode: vertical-rl">Models</span>
+    </button>
+    <div x-show="!treeCollapsed" class="flex-shrink-0 flex flex-col border border-white/[0.08] rounded-lg bg-slate-800/30 overflow-hidden"
+         :style="`width: ${treeWidth}px; max-width: 70vw`">
 
       <!-- Search -->
       <div class="p-2 border-b border-white/[0.06] space-y-1.5">
-        <input type="text" x-model="filter" placeholder="Filter models/points..."
-               class="form-control !py-1.5 !text-xs" @input.debounce.200ms="">
+        <div class="flex items-center gap-1.5">
+          <input type="text" x-model="filter" placeholder="Filter models/points..."
+                 class="form-control !py-1.5 !text-xs flex-1 min-w-0" @input.debounce.200ms="">
+          <button type="button" @click="toggleTree()" class="px-1.5 text-slate-400 hover:text-slate-200 text-sm"
+                  title="Hide the model list" aria-label="Hide the model list">&lsaquo;</button>
+        </div>
         <label class="flex items-center gap-1.5 text-[10px] text-slate-500 cursor-pointer">
           <input type="checkbox" x-model="hideEmptyModels" @change="_saveLayout()" class="rounded">
           <span>Hide unpolled models (no live values)</span>
@@ -116,7 +127,7 @@
     </div>
 
     <!-- ── Resize handle: tree ↔ detail ──────────────────── -->
-    <div class="resize-handle w-2"
+    <div x-show="!treeCollapsed" class="resize-handle w-2"
          :class="resizing === 'tree' && 'active'"
          @mousedown.prevent="startResize('tree', $event)">
       <div class="resize-handle-dots"></div>
