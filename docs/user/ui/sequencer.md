@@ -22,6 +22,8 @@ aGate's control registers.
 **Sequences** (left): the saved sequences, with their step count.
 
 - **+** creates a new sequence (give it a name).
+- **Import** brings in a sequence from GitHub, a link or pasted text. See
+  [Importing a sequence](#importing-a-sequence).
 - **↻** resets the panel sizes.
 - **Syntax Ref** shows the step keys:
 
@@ -54,6 +56,33 @@ batteries, Model 714 points take a port suffix: `714.DCW_1`, `714.DCW_2` (`714.D
 
 A **Live Points** strip (same as on the [Dashboard](dashboard.md#live-points)) shows values
 while you work, and **Output** shows each step's result. **Clear** empties the output.
+
+## Importing a sequence
+
+**Import** (next to **+**) opens a dialog with three sources:
+
+| Source | What it does |
+|---|---|
+| GitHub samples | Lists the sample sequences of the bridge's latest version on GitHub. Each is marked **new**, **changed** or **same as yours**. Your install already has the samples of its own version, so this matters after a newer version is out. |
+| Link | Fetches a sequence from an `https://` link (up to 256 KB). A GitHub page link (`github.com/…/blob/…`) is fetched as the raw file. |
+| Paste | Checks sequence JSON you paste. |
+
+Picking a sample, **Fetch** or **Check** shows a read-only preview: each step, its reads
+and waits, and its register writes in amber. A sequence with no writes says
+*Read-only: no writes*. A sequence that isn't a list of steps (or
+`{"steps": […], "cleanup": […]}`) shows why, in the dialog.
+
+Give it a name (letters, digits, `_` and `-`) and **Save**. If the name is taken the
+dialog says so and offers **Replace**. The saved sequence opens in the editor.
+
+![Import dialog with a sample previewed](../../images/ui/sequencer-import.png)
+
+!!! note "Importing never runs anything"
+    It only saves the file. Running it is the same as any sequence: **Execute** in the
+    editor. Read a sequence's writes before you run it, above all one from a link.
+
+Importing needs the **control** permission, as running does. Each import is written to
+the bridge log with its name, where it came from and who imported it.
 
 A quick version, without saved sequences, is the **Modbus Sequencer** tab under the
 Dashboard's [Power History](dashboard.md#modbus-sequencer-tab).

@@ -30,6 +30,9 @@
           <button @click="resetLayout()"
                   class="p-1 rounded hover:bg-slate-700 text-slate-600 hover:text-slate-300 transition text-xs font-bold"
                   title="Reset panel sizes">↻</button>
+          <button @click="openImport()"
+                  class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-sky-400 transition text-[10px] font-semibold"
+                  title="Import a sequence from GitHub, a link or pasted text">Import</button>
           <button @click="newResult = null; showNewDialog = true"
                   class="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-emerald-400 transition text-sm font-bold leading-none"
                   title="New Sequence">+</button>
@@ -292,6 +295,116 @@
         <button @click="createSequence()" class="btn btn-sm btn-primary" :disabled="!newName.trim()">Create</button>
       </div>
     </div>
+  </div>
+
+  <!-- Import Dialog (#294): fetch or paste, check, preview, save. Never runs. -->
+  <div x-show="showImport" x-cloak
+       class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+       @keydown.escape.window="showImport = false">
+    <div class="absolute inset-0 bg-black/60" @click="showImport = false"></div>
+    <template x-if="imp">
+    <div class="relative bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl w-full max-w-2xl p-5 flex flex-col"
+         style="max-height: 90vh;" x-transition>
+      <h3 class="text-sm font-semibold text-slate-200 mb-3">Import Sequence</h3>
+
+      <!-- Source -->
+      <div class="flex gap-4 border-b border-white/[0.06] mb-3 text-xs">
+        <template x-for="[key, label] in [['samples', 'GitHub samples'], ['url', 'Link'], ['paste', 'Paste']]" :key="key">
+          <button @click="imp.source = key; imp.error = null"
+                  style="margin-bottom: -1px;" class="pb-1.5 border-b-2 transition"
+                  :class="imp.source === key ? 'border-amber-400 text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-300'"
+                  x-text="label"></button>
+        </template>
+      </div>
+
+      <div class="overflow-y-auto min-h-0 flex-1 space-y-3">
+        <!-- GitHub samples -->
+        <div x-show="imp.source === 'samples'">
+          <p class="text-[11px] text-slate-500 mb-2">
+            The sample sequences in the latest version<span x-show="imp.tag" x-text="' (' + imp.tag + ')'"></span>.
+            Your install already has the samples of its own version.
+          </p>
+          <div x-show="imp.loadingSamples" class="flex items-center gap-2 text-xs text-slate-500">
+            <span class="loading-spinner !w-3 !h-3"></span> Asking GitHub…
+          </div>
+          <div x-show="imp.samples" class="max-h-48 overflow-y-auto divide-y divide-white/[0.06] border border-white/[0.06] rounded">
+            <template x-for="s in (imp.samples || [])" :key="s.name">
+              <button @click="previewSample(s)"
+                      class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-700/40 transition text-xs border-l-2"
+                      :class="imp.picked === s.name ? 'bg-amber-500/10 border-amber-400' : 'border-transparent'">
+                <span class="text-slate-300 truncate flex-1" x-text="s.name"></span>
+                <span class="text-[10px] px-1.5 rounded"
+                      :class="s.status === 'new' ? 'bg-emerald-500/15 text-emerald-400' : s.status === 'changed' ? 'bg-amber-500/15 text-amber-400' : 'text-slate-600'"
+                      x-text="s.status === 'same' ? 'same as yours' : s.status"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Link -->
+        <div x-show="imp.source === 'url'" class="flex gap-2">
+          <input type="text" x-model="imp.url" placeholder="https://github.com/…/sequence.json"
+                 class="form-control !text-xs flex-1" @keydown.enter="previewUrl()">
+          <button @click="previewUrl()" class="btn btn-sm btn-secondary" :disabled="imp.busy || !imp.url.trim()">Fetch</button>
+        </div>
+
+        <!-- Paste -->
+        <div x-show="imp.source === 'paste'" class="space-y-2">
+          <textarea x-model="imp.paste" spellcheck="false" placeholder="[ { &quot;step&quot;: &quot;…&quot; } ]"
+                    class="form-control !text-xs font-mono w-full resize-y" style="height: 8rem;"></textarea>
+          <div class="flex justify-end">
+            <button @click="previewPaste()" class="btn btn-sm btn-secondary" :disabled="imp.busy || !imp.paste.trim()">Check</button>
+          </div>
+        </div>
+
+        <div x-show="imp.busy && !imp.loadingSamples" class="flex items-center gap-2 text-xs text-slate-500">
+          <span class="loading-spinner !w-3 !h-3"></span> Checking…
+        </div>
+
+        <!-- Preview: read-only; battery writes highlighted -->
+        <div x-show="imp.preview" class="border border-white/[0.06] rounded">
+          <div class="px-3 py-1.5 border-b border-white/[0.06] text-[11px] text-slate-400 flex flex-wrap gap-x-3">
+            <span x-text="(imp.preview?.steps.length || 0) + ' steps'"></span>
+            <span x-show="imp.preview?.writes.length" class="text-amber-400"
+                  x-text="imp.preview?.writes.length + ' register write(s): it changes the aGate when run'"></span>
+            <span x-show="imp.preview && !imp.preview.writes.length" class="text-emerald-400">Read-only: no writes</span>
+          </div>
+          <div class="max-h-48 overflow-y-auto divide-y divide-white/[0.06] text-[11px]">
+            <template x-for="(st, i) in (imp.preview?.steps || [])" :key="i">
+              <div class="px-3 py-1">
+                <div class="flex gap-2">
+                  <span class="text-slate-600 w-5 text-right" x-text="i + 1"></span>
+                  <span class="text-slate-300 flex-1 truncate" x-text="(st.kind === 'cleanup' ? 'Cleanup: ' : '') + st.name"></span>
+                  <span x-show="st.reads" class="text-slate-500" x-text="st.reads + ' read(s)'"></span>
+                  <span x-show="st.wait" class="text-slate-500">wait</span>
+                </div>
+                <div x-show="st.writes.length" style="padding-left: 1.75rem;" class="font-mono text-amber-400 break-all" x-text="st.writes.join(', ')"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="imp.error" role="status"
+             class="text-xs px-2 py-1 rounded border bg-red-900/30 text-red-400 border-red-500/30"
+             x-text="imp.error"></div>
+      </div>
+
+      <!-- Name + save -->
+      <div x-show="imp.preview" class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/[0.06]">
+        <input type="text" x-model="imp.name" placeholder="sequence_name" maxlength="64"
+               @input="imp.exists = false"
+               class="form-control !text-xs flex-1" style="min-width: 10rem;">
+        <button x-show="imp.exists" @click="saveImport(true)" class="btn btn-sm btn-secondary" style="color: #f87171;" :disabled="imp.busy">Replace</button>
+        <button x-show="!imp.exists" @click="saveImport()" class="btn btn-sm btn-primary" :disabled="imp.busy || !imp.name.trim()">Save</button>
+      </div>
+      <p x-show="imp.preview" class="text-[10px] text-slate-500 mt-1.5">
+        Saving doesn't run it. Run it from the editor with Execute, as any other sequence.
+      </p>
+      <div class="flex justify-end mt-3">
+        <button @click="showImport = false" class="btn btn-sm btn-secondary">Close</button>
+      </div>
+    </div>
+    </template>
   </div>
 
 </div>

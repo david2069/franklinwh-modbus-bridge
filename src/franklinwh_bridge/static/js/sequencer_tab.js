@@ -29,6 +29,10 @@ function sequencerTab() {
     editing: false,
     seqGateway: 'default',  // target gateway: 'default', gateway_id, or 'all'
 
+    // Import dialog (#294): fetch/paste → check → preview → save. Never runs.
+    showImport: false,
+    imp: null,
+
     // Resizable panel dimensions
     listWidth: SEQUENCER_DEFAULTS.listWidth,
     syntaxRefHeight: SEQUENCER_DEFAULTS.syntaxRefHeight,
@@ -386,6 +390,94 @@ function sequencerTab() {
         const el = this.$refs.seqTabTerminal;
         if (el) el.scrollTop = el.scrollHeight;
       });
+    },
+
+    // ── Import (#294) ───────────────────────────────────────
+
+    openImport() {
+      this.imp = {
+        source: 'samples', samples: null, tag: '', loadingSamples: false,
+        url: '', paste: '', busy: false, preview: null, from: '',
+        name: '', error: null, exists: false, picked: null,
+      };
+      this.showImport = true;
+      this.loadSamples();
+    },
+
+    async loadSamples() {
+      const imp = this.imp;
+      imp.loadingSamples = true;
+      imp.error = null;
+      const data = await fetchJSON('api/sequence-import/samples');
+      imp.loadingSamples = false;
+      if (data && data.ok) {
+        imp.samples = data.samples;
+        imp.tag = data.tag;
+      } else {
+        imp.error = data?.error || 'Could not list the samples';
+      }
+    },
+
+    _nameFromUrl(url) {
+      const last = (url.split('?')[0].split('/').pop() || '').replace(/\.json$/i, '');
+      return last.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+    },
+
+    async previewImport(body, from, name) {
+      const imp = this.imp;
+      imp.busy = true;
+      imp.error = null;
+      imp.exists = false;
+      imp.preview = null;
+      const data = await fetchJSON('api/sequence-import/preview', {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      imp.busy = false;
+      if (data && data.ok) {
+        imp.preview = data;
+        imp.from = from;
+        imp.name = name;
+      } else {
+        imp.error = data?.error || 'Could not check the sequence';
+      }
+    },
+
+    previewSample(s) {
+      this.imp.picked = s.name;
+      this.previewImport({ url: s.url }, `GitHub ${this.imp.tag} ${s.name}`, s.name);
+    },
+
+    previewUrl() {
+      const url = this.imp.url.trim();
+      this.imp.picked = null;
+      if (url) this.previewImport({ url }, url, this._nameFromUrl(url));
+    },
+
+    previewPaste() {
+      this.imp.picked = null;
+      if (this.imp.paste.trim()) this.previewImport({ content: this.imp.paste }, 'paste', '');
+    },
+
+    async saveImport(overwrite = false) {
+      const imp = this.imp;
+      const name = imp.name.trim();
+      if (!name || !imp.preview) return;
+      imp.busy = true;
+      imp.error = null;
+      const data = await fetchJSON('api/sequence-import/save', {
+        method: 'POST',
+        body: JSON.stringify({ name, content: imp.preview.content, source: imp.from, overwrite }),
+      });
+      imp.busy = false;
+      if (data && data.ok) {
+        this.showImport = false;
+        await this.loadSequences();
+        await this.selectSequence(name);
+        Alpine.store('app').toast((data.replaced ? 'Replaced ' : 'Imported ') + name, 'info');
+      } else {
+        imp.exists = !!data?.exists;
+        imp.error = data?.error || 'Not saved';
+      }
     },
 
     get parsedStepCount() {
