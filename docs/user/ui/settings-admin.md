@@ -35,6 +35,25 @@ Installs upgraded from before these defaults keep Explorer and Sequencer on.
     Switching the **Sequencer** module off hides the Sequencer page, but not the
     **Modbus Sequencer** tab under the Dashboard's Power History.
 
+## Bridge
+
+**Restart bridge** restarts the whole bridge: every gateway, MQTT and the schedules. It
+asks first and names anything running, like a [gateway restart](settings-site-gateways.md#admin-actions),
+and it is recorded the same way.
+
+It works on **Docker** only: the bridge shuts down cleanly and the container's restart
+policy (`restart: unless-stopped` in `docker-compose.yml`) starts it again. Without a
+restart policy it stays stopped.
+
+| Install | Button |
+|---|---|
+| Docker | Available. |
+| Home Assistant add-on | Disabled: restart the add-on from Home Assistant. |
+| Development (`bridge run`) | Disabled: nothing would start it again. |
+
+The API is `POST /api/bridge/restart` (admin), and `GET /api/lifecycle/check` returns
+what a stop or restart would interrupt.
+
 ## Users
 
 Who can sign in and what they can do.

@@ -1004,6 +1004,13 @@ class ModbusPoller:
         return (f"registers 15500-15509 (solar, home, mode, reserves) missing for "
                 f"{EXTENSION_MISSING_RECONNECT_POLLS} polls")
 
+    def set_poll_interval(self, seconds: int) -> None:
+        """Change the interval live; the next wait uses it (no restart)."""
+        self._poll_interval = int(seconds)
+        if self._task and not self._task.done():
+            workers.register(self.worker_name, "Modbus polling", max(self._poll_interval, 60),
+                             scope=self._gateway_id, task=self._task)
+
     async def start(self) -> None:
         if self._task and not self._task.done():
             return

@@ -95,8 +95,12 @@ refuses, because one aGate can only hold one Modbus session.
 | **Publish this gateway to Home Assistant** | On | Whether this gateway gets its own device and entities in Home Assistant. **Off removes its entities from Home Assistant** (rather than leaving them unavailable). The same switch is in [Settings → Home Assistant](settings-home-assistant.md#publish-to-home-assistant). |
 | **Battery power rating** | — | See [below](#battery-power-rating). Hidden for a mock. |
 
-**Save Changes** saves. Poll interval and timeout take effect when the gateway reconnects
-(stop/start, Restart, or a bridge restart), not instantly. Everything else applies at once.
+**Save Changes** saves. The poll interval applies at once, without a reconnect. The timeout
+takes effect when the gateway reconnects (stop/start, Restart, or a bridge restart).
+Everything else applies at once.
+
+A poll interval **below 5 s** asks first: polling that often adds load on the aGate and its
+Modbus link. Every poll interval change is recorded (see [Admin actions](#admin-actions)).
 
 #### Connection & Diagnostics
 
@@ -107,7 +111,7 @@ refuses, because one aGate can only hold one Modbus session.
 | **Test** | A TCP connection test, with latency. |
 | **Diagnose** | Three checks: TCP 502 (Modbus), TCP 9000 (the aGate's local API) and a Modbus protocol read, each ✓ or ✗ with latency and a verdict. Read-only. |
 | **Force Healthcheck** | Re-checks health now instead of waiting for the next poll, and shows the result. |
-| **Restart** | Drops the Modbus connection and reconnects from scratch, without restarting the bridge. Use it for a stuck session. |
+| **Restart** | Drops the Modbus connection and reconnects from scratch, without restarting the bridge. Use it for a stuck session. It asks first (see below). |
 
 !!! note
     On a mock gateway, Test and Diagnose have nothing real to test, so their results are
@@ -177,6 +181,23 @@ A calibration needs at least 60 seconds and a peak of at least 500 W, or Finish 
 !!! note "About the screenshots"
     A mock gateway is always trusted and has no calibration section, so the rating and
     calibration panels above were rendered with example values on the demo gateway.
+
+### Admin actions
+
+Stopping a gateway (the **Enabled** switch) or restarting it asks first. The dialog names
+anything running on that gateway: a schedule entry driving the battery, or a battery
+command. A stop or restart releases an active battery command, and a schedule whose window
+is open fires again afterwards.
+
+These are recorded, each with who did it:
+
+- a poll interval change (old → new);
+- a gateway start, stop or restart;
+- a [bridge restart](settings-admin.md#bridge).
+
+Each is a line in the app log and an **Admin action** alert (`ADMIN_ACTION`, a warning) in
+`GET /api/alerts`. Warnings are not sent to Home Assistant, and the bridge has no alerts
+page yet.
 
 ## System Setup
 

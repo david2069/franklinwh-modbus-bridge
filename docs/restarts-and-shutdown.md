@@ -59,6 +59,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 | `shutdown` per gateway | `control_log` table | the command released, or "no active command", with a hardware snapshot |
 | `startup_hw_snapshot` | `control_log` | WSet state read on boot |
 | "Bridge shutting down — releasing control…" | Logs tab (`logs` table) | the INFO line |
+| "Admin action: …" and an `ADMIN_ACTION` alert | Logs tab, `alerts` table | a gateway start, stop or restart, a bridge restart from Settings (Docker), or a poll interval change, with the user |
 
 Known gaps (tracked in #45):
 

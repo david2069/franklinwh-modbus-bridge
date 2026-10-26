@@ -48,6 +48,9 @@ CODES: dict[str, Code] = {
     "RESTART_DURING_COMMAND": Code("event", "critical", "Bridge restarted during a command"),
     "EXTERNAL_SETPOINT": Code("event", "warning", "Setpoint changed by another tool"),
     "INTERNAL_ERROR": Code("event", "warning", "Internal error"),
+    # An admin changed how the bridge runs: poll interval, gateway start, stop or
+    # restart, bridge restart. Agreed with the DC bridge 2026-10-26.
+    "ADMIN_ACTION": Code("event", "warning", "Admin action"),
 }
 
 #: Repeats of the same open event within this window merge into one alert.
