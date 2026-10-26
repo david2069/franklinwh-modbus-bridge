@@ -500,6 +500,32 @@ const POINT_SOURCES = {
 // ── Main Alpine App ──────────────────────────────────────────
 document.addEventListener('alpine:init', () => {
 
+  // x-flip="open" on a dropdown menu (absolute, top-full under its button):
+  // when it opens with no room below on screen, it opens above the button
+  // instead, and either way it's capped to the space it has and scrolls.
+  Alpine.directive('flip', (el, { expression }, { evaluateLater, effect }) => {
+    const isOpen = evaluateLater(expression);
+    const reset = () => {
+      for (const p of ['top', 'bottom', 'marginTop', 'marginBottom', 'maxHeight', 'overflowY']) el.style[p] = '';
+    };
+    const place = () => {
+      reset();
+      const btn = el.parentElement.getBoundingClientRect();
+      const menu = el.getBoundingClientRect();
+      const below = window.innerHeight - btn.bottom - 8;
+      const above = btn.top - 8;
+      if (menu.height <= below) return;
+      el.style.overflowY = 'auto';
+      if (above > below) {
+        Object.assign(el.style, { top: 'auto', bottom: '100%', marginTop: '0', marginBottom: '4px' });
+        el.style.maxHeight = `${above - 4}px`;
+      } else {
+        el.style.maxHeight = `${below - 4}px`;
+      }
+    };
+    effect(() => isOpen((open) => (open ? requestAnimationFrame(place) : reset())));
+  });
+
   Alpine.store('app', {
     // Tab state
     activeTab: 'dashboard',
