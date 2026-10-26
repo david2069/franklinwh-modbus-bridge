@@ -53,6 +53,7 @@ from franklinwh_bridge.store.metrics import (
     set_raw_age_days,
     set_retention_days,
 )
+from franklinwh_bridge.support import sequence_import as si
 from franklinwh_bridge.support import sunspec_export as sx
 
 logger = logging.getLogger(__name__)
@@ -909,6 +910,15 @@ async def execute_sequence(
     return {"ok": all_ok, "output": all_output}
 
 
+_NAME_RULE = "Names may use letters, digits, _ and - only (up to 64)"
+
+
+def _check_name(name: str) -> None:
+    """A sequence name can't point outside the sequences folder."""
+    if not si.valid_name(name):
+        raise HTTPException(400, _NAME_RULE)
+
+
 @router.get("/sequences")
 async def list_sequences():
     """List saved sequence files."""
@@ -933,6 +943,7 @@ async def list_sequences():
 @router.get("/sequences/{name}")
 async def get_sequence(name: str):
     """Get a saved sequence file's content."""
+    _check_name(name)
     path = SEQUENCES_DIR / f"{name}.json"
     if not path.exists():
         raise HTTPException(404, f"Sequence '{name}' not found")
@@ -951,6 +962,8 @@ class SequenceSaveRequest(BaseModel):
 @router.put("/sequences/{name}")
 async def save_sequence(name: str, body: SequenceSaveRequest):
     """Save or update a sequence file."""
+    if not si.valid_name(name):
+        return {"ok": False, "error": _NAME_RULE}
     # Validate JSON
     try:
         json.loads(body.content)
@@ -966,6 +979,7 @@ async def save_sequence(name: str, body: SequenceSaveRequest):
 @router.delete("/sequences/{name}")
 async def delete_sequence(name: str):
     """Delete a sequence file."""
+    _check_name(name)
     path = SEQUENCES_DIR / f"{name}.json"
     if not path.exists():
         raise HTTPException(404, f"Sequence '{name}' not found")
@@ -980,6 +994,9 @@ class SequenceRenameRequest(BaseModel):
 @router.post("/sequences/{name}/rename")
 async def rename_sequence(name: str, body: SequenceRenameRequest):
     """Rename a sequence file."""
+    _check_name(name)
+    if not si.valid_name(body.new_name):
+        return {"ok": False, "error": _NAME_RULE}
     old_path = SEQUENCES_DIR / f"{name}.json"
     if not old_path.exists():
         raise HTTPException(404, f"Sequence '{name}' not found")
@@ -988,6 +1005,69 @@ async def rename_sequence(name: str, body: SequenceRenameRequest):
         return {"ok": False, "error": f"'{body.new_name}' already exists"}
     old_path.rename(new_path)
     return {"ok": True, "old_name": name, "new_name": body.new_name}
+
+
+# ── Sequence import (#294) ────────────────────────────────────
+# Under /sequence-import, not /sequences/..., so no name is shadowed.
+
+
+class SequencePreviewRequest(BaseModel):
+    url: str | None = None
+    content: str | None = None
+
+
+class SequenceImportRequest(BaseModel):
+    name: str
+    content: str
+    source: str = "paste"
+    overwrite: bool = False
+
+
+@router.get("/sequence-import/samples")
+async def sequence_samples(_user: dict = _REQUIRE_CONTROL):
+    """The latest version's sample sequences on GitHub, marked new, changed or same."""
+    try:
+        return {"ok": True, **await si.list_samples(SEQUENCES_DIR)}
+    except si.SequenceImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/sequence-import/preview")
+async def sequence_preview(body: SequencePreviewRequest, _user: dict = _REQUIRE_CONTROL):
+    """Fetch (or take pasted) sequence text and check it. Saves and runs nothing."""
+    try:
+        if body.url:
+            text = await si.fetch(body.url)
+        elif body.content:
+            text = body.content
+        else:
+            return {"ok": False, "error": "Give a link or paste a sequence"}
+        return {"ok": True, **si.check(text)}
+    except si.SequenceImportError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/sequence-import/save")
+async def sequence_import_save(body: SequenceImportRequest, _user: dict = _REQUIRE_CONTROL):
+    """Save a previewed sequence. Asks (``exists``) before replacing one."""
+    if not si.valid_name(body.name):
+        return {"ok": False, "error": _NAME_RULE}
+    try:
+        si.check(body.content)
+    except si.SequenceImportError as e:
+        return {"ok": False, "error": str(e)}
+    SEQUENCES_DIR.mkdir(parents=True, exist_ok=True)
+    path = SEQUENCES_DIR / f"{body.name}.json"
+    if path.exists() and not body.overwrite:
+        return {"ok": False, "exists": True, "error": f"'{body.name}' already exists"}
+    replaced = path.exists()
+    path.write_text(body.content)
+    logger.info(
+        "Sequencer: imported '%s' from %s%s by user:%s",
+        body.name, body.source[:200], " (replaced)" if replaced else "",
+        _user.get("username") or "?",
+    )
+    return {"ok": True, "name": body.name, "replaced": replaced}
 
 
 # ── PICS compliance endpoints ──────────────────────────────────
