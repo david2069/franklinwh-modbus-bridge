@@ -37,6 +37,21 @@
     </div>
   </div>
 
+  <!-- Bridge restart (admin): POST /api/bridge/restart. Docker only. -->
+  <div x-show="$store.app.settingsSection === 'admin'" class="card mb-4">
+    <div class="card-label">Bridge</div>
+    <p class="text-xs text-slate-500 mb-3">Restarts the whole bridge: every gateway, MQTT and the schedules. It asks first and names anything running. The restart is logged with who did it.</p>
+    <div class="flex flex-wrap items-center gap-3">
+      <button @click="restartBridge()" :disabled="!lifecycle?.bridge_restart?.available"
+              class="btn btn-sm btn-secondary">Restart bridge</button>
+      <span x-show="lifecycle && !lifecycle.bridge_restart.available" class="text-xs text-slate-500"
+            x-text="lifecycle?.bridge_restart?.reason"></span>
+    </div>
+    <div x-show="bridgeRestartResult" role="status" class="mt-2 text-xs"
+         :class="bridgeRestartResult?.ok ? 'text-emerald-400' : 'text-red-400'"
+         x-text="bridgeRestartResult?.msg"></div>
+  </div>
+
   <!-- Users (admin only) -->
   <div class="card mb-4" x-show="$store.app.settingsSection === 'admin' && ($store.app.isAdmin)" x-cloak data-testid="users-card">
     <div class="flex items-center justify-between mb-1">

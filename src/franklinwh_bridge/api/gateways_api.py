@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 import time
 from zoneinfo import ZoneInfo
 
@@ -16,12 +18,14 @@ import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from franklinwh_bridge.api.auth import require_capability
+from franklinwh_bridge.api.auth import get_current_user, require_capability, require_role
 from franklinwh_bridge.config import clock
+from franklinwh_bridge.config.environment import detect_environment
 from franklinwh_bridge.gateway import diagnostics as diagnostics_mod
 from franklinwh_bridge.gateway.net_probe import tcp_probe
 from franklinwh_bridge.gateway.phase_detect import detect_phases, phase_matches
 from franklinwh_bridge.publish.command_handler import COMMAND_SLUGS
+from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store.db import (
@@ -45,6 +49,23 @@ from franklinwh_bridge.store.db import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["gateways"])
+
+# Hoisted: Depends() in an argument default trips ruff B008.
+_CURRENT_USER = Depends(get_current_user)
+_REQUIRE_ADMIN = Depends(require_role("admin"))
+
+#: Below this the Settings page asks before saving a poll interval.
+FAST_POLL_WARN_S = 5
+
+
+async def _admin_action(request: Request, user: dict | None, gw_id: str, what: str) -> None:
+    """Record an admin action: an app-log line and an ADMIN_ACTION alert."""
+    who = (user or {}).get("username") or "unknown"
+    msg = f"{what} (by {who})"
+    logger.warning("Admin action: %s", msg)
+    db = getattr(request.app.state, "db", None)
+    if db is not None:
+        await alert_store.raise_event(db, "ADMIN_ACTION", msg, gateway_id=gw_id)
 
 # Built once at import: ruff's B008 permits Depends() in a default, but not
 # a factory call nested inside it (and rebuilding it per request is pointless).
@@ -824,7 +845,9 @@ async def get_single_gateway(gw_id: str, request: Request):
 
 
 @router.patch("/gateways/{gw_id}")
-async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
+async def patch_gateway(
+    gw_id: str, body: GatewayUpdate, request: Request, user: dict | None = _CURRENT_USER,
+):
     """Update gateway configuration."""
     db: aiosqlite.Connection = request.app.state.db
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -901,6 +924,21 @@ async def patch_gateway(gw_id: str, body: GatewayUpdate, request: Request):
         if inst is not None:
             inst.config.home_load_source = new
 
+    # Poll interval: apply live and record it. Polling faster loads the aGate.
+    if "poll_interval" in updates and before is not None:
+        old, new = before.get("poll_interval"), updates["poll_interval"]
+        if old != new:
+            registry = getattr(request.app.state, "registry", None)
+            inst = registry.get(gw_id) if registry else None
+            if inst is not None:
+                inst.config.poll_interval = new
+                if inst.poller is not None:
+                    inst.poller.set_poll_interval(new)
+            fast = " — below the recommended minimum" if new < FAST_POLL_WARN_S else ""
+            await _admin_action(
+                request, user, gw_id,
+                f"Gateway {gw_id}: poll interval {old} s → {new} s{fast}")
+
     # Keep the running instance's service link in sync so the schedule engine's
     # 'service' fan-out (SCH3) sees the change without a restart.
     if "service_id" in updates:
@@ -941,7 +979,9 @@ async def remove_gateway(gw_id: str, request: Request):
 
 
 @router.post("/gateways/{gw_id}/start")
-async def start_gateway_endpoint(gw_id: str, request: Request):
+async def start_gateway_endpoint(
+    gw_id: str, request: Request, user: dict | None = _CURRENT_USER,
+):
     """Start polling a gateway."""
     db: aiosqlite.Connection = request.app.state.db
     registry = _registry(request)
@@ -963,11 +1003,14 @@ async def start_gateway_endpoint(gw_id: str, request: Request):
     if inst is None:
         raise HTTPException(500, f"Failed to start gateway '{gw_id}'")
     await _after_gateway_started(request, gw_id)
+    await _admin_action(request, user, gw_id, f"Gateway {gw_id} started")
     return {"started": True, "gateway_id": gw_id}
 
 
 @router.post("/gateways/{gw_id}/stop")
-async def stop_gateway_endpoint(gw_id: str, request: Request):
+async def stop_gateway_endpoint(
+    gw_id: str, request: Request, user: dict | None = _CURRENT_USER,
+):
     """Stop polling a gateway and remember the stop across restarts.
 
     Sets ``autostart=0`` so the gateway is not re-started on the next app
@@ -984,11 +1027,14 @@ async def stop_gateway_endpoint(gw_id: str, request: Request):
     await update_gateway(db, gw_id, autostart=0)
     if registry.get(gw_id):
         await registry.stop_gateway(gw_id)
+    await _admin_action(request, user, gw_id, f"Gateway {gw_id} stopped")
     return {"stopped": True, "gateway_id": gw_id}
 
 
 @router.post("/gateways/{gw_id}/restart")
-async def restart_gateway_endpoint(gw_id: str, request: Request):
+async def restart_gateway_endpoint(
+    gw_id: str, request: Request, user: dict | None = _CURRENT_USER,
+):
     """Tear down and recreate a gateway's Modbus connection.
 
     Unlike /diagnose (read-only), this is the actual fix for a wedged
@@ -1012,7 +1058,68 @@ async def restart_gateway_endpoint(gw_id: str, request: Request):
     if inst is None:
         raise HTTPException(500, f"Failed to restart gateway '{gw_id}'")
     await _after_gateway_started(request, gw_id)
+    await _admin_action(request, user, gw_id, f"Gateway {gw_id} restarted")
     return {"restarted": True, "gateway_id": gw_id}
+
+
+# ── Before a stop or restart: what is running now ────────────────
+
+
+def bridge_restart_support() -> tuple[bool, str]:
+    """Whether the bridge can restart itself here, and why not.
+
+    Only on Docker, where the container's restart policy starts it again. On
+    the add-on Home Assistant's Supervisor manages it; in dev nothing would.
+    """
+    env = detect_environment()
+    if env == "docker":
+        return True, ""
+    if env == "ha_addon":
+        return False, "On the Home Assistant add-on, restart it from Home Assistant."
+    return False, "In development nothing would start the bridge again."
+
+
+@router.get("/lifecycle/check")
+async def lifecycle_check(request: Request):
+    """What a stop or restart would interrupt: each running gateway's dispatch.
+
+    A restart releases an active battery command, and a schedule whose window
+    is open fires again afterwards (docs/restarts-and-shutdown.md).
+    """
+    registry = getattr(request.app.state, "registry", None)
+    engine = getattr(request.app.state, "schedule_engine", None)
+    busy = []
+    for gid in registry.list_active() if registry else []:
+        if engine is None:
+            continue
+        try:
+            d = engine.dispatch_points(gid)
+        except Exception as exc:  # the check must not block the action
+            logger.debug("Lifecycle check: dispatch_points(%s) failed: %s", gid, exc)
+            continue
+        if d.get("dispatch_active"):
+            busy.append({
+                "gateway_id": gid,
+                "source": d.get("dispatch_source"),
+                "entry": d.get("dispatch_entry"),
+                "action": d.get("dispatch_action"),
+            })
+    can, why = bridge_restart_support()
+    return {"busy": busy, "bridge_restart": {"available": can, "reason": why},
+            "fast_poll_warn_s": FAST_POLL_WARN_S}
+
+
+@router.post("/bridge/restart")
+async def restart_bridge(request: Request, user: dict = _REQUIRE_ADMIN):
+    """Restart the whole bridge (Docker only): a graceful shutdown, then the
+    container's restart policy starts it again."""
+    can, why = bridge_restart_support()
+    if not can:
+        raise HTTPException(409, why)
+    await _admin_action(request, user, "", "Bridge restart requested")
+    # After the response is sent: SIGTERM runs the normal graceful shutdown.
+    asyncio.get_running_loop().call_later(1.0, os.kill, os.getpid(), signal.SIGTERM)
+    return {"restarting": True}
 
 
 @router.post("/gateways/{gw_id}/healthcheck")

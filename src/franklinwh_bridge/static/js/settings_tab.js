@@ -119,6 +119,8 @@ function settingsTab() {
     gwTestResults: {},     // per-gateway TCP test result, keyed by gateway id
     gwDiagResults: {},     // per-gateway diagnose result, keyed by gateway id
     gwRestartResults: {},  // per-gateway restart result, keyed by gateway id
+    lifecycle: null,       // GET api/lifecycle/check: busy gateways, bridge restart support
+    bridgeRestartResult: null,
     gwHealthResults: {},   // per-gateway force-healthcheck result, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
     deleteGwResult: null,  // its latest result, shown in that dialog (#351)
@@ -151,6 +153,7 @@ function settingsTab() {
       await this.loadSiteConfig();
       await this.loadServices();
       await this.loadGateways();
+      await this.loadLifecycle();
       await this.loadHaInstances();
       await this.loadConstants();
       await this.loadSolar();
@@ -1233,7 +1236,36 @@ function settingsTab() {
       }
     },
 
+    // ── Stop / restart warnings and the bridge restart ─────────
+    async loadLifecycle() {
+      const data = await fetchJSON('api/lifecycle/check');
+      if (data && !data.error) this.lifecycle = data;
+      return this.lifecycle;
+    },
+
+    // Ask before a stop or restart, naming what it would interrupt.
+    async _confirmLifecycle(title, label, gwId) {
+      const data = await this.loadLifecycle();
+      const busy = (data?.busy || []).filter(b => !gwId || b.gateway_id === gwId);
+      const lines = busy.map(b => b.source === 'schedule'
+        ? `${b.gateway_id}: schedule "${b.entry}" is running (${b.action}).`
+        : `${b.gateway_id}: a battery command is active.`);
+      const message = (lines.length ? lines.join(' ') + ' ' : 'Nothing is running now. ')
+        + 'A stop or restart releases an active battery command, and a schedule whose window is open fires again.';
+      return Alpine.store('app').confirm({ title, message, confirmLabel: label, danger: lines.length > 0 });
+    },
+
+    async restartBridge() {
+      if (!await this._confirmLifecycle('Restart the bridge?', 'Restart')) return;
+      this.bridgeRestartResult = null;
+      const data = await fetchJSON('api/bridge/restart', { method: 'POST' });
+      this.bridgeRestartResult = data && data.restarting
+        ? { ok: true, msg: 'Restarting — the page reconnects when the bridge is back.' }
+        : { ok: false, msg: 'Not restarted: ' + (data?.detail || data?.error || 'unknown') };
+    },
+
     async restartGw(gwId) {
+      if (!await this._confirmLifecycle(`Restart gateway ${gwId}?`, 'Restart', gwId)) return;
       this.gwBusy = true;
       this.gwRestartResults = { ...this.gwRestartResults, [gwId]: { testing: true } };
       try {
@@ -1286,6 +1318,7 @@ function settingsTab() {
     },
 
     async stopGw(gwId) {
+      if (!await this._confirmLifecycle(`Stop gateway ${gwId}?`, 'Stop', gwId)) return;
       this.gwBusy = true;
       try {
         const data = await fetchJSON(`api/gateways/${gwId}/stop`, { method: 'POST' });
@@ -1687,6 +1720,14 @@ function settingsTab() {
         return;
       }
       this.editGwResult = null;
+      const was = (this.gwList || []).find(x => x.id === g.id)?.poll_interval;
+      const warnS = this.lifecycle?.fast_poll_warn_s ?? 5;
+      if (g.poll_interval !== was && g.poll_interval < warnS && !await Alpine.store('app').confirm({
+        title: `Poll every ${g.poll_interval} s?`,
+        message: `Below ${warnS} s the bridge reads the aGate more often than recommended. `
+          + 'That adds load on the aGate and its Modbus link. The change is logged.',
+        confirmLabel: 'Save anyway', danger: true,
+      })) return;
       this.gwBusy = true;
       try {
         const data = await fetchJSON(`api/gateways/${g.id}`, {
