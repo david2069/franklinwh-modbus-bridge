@@ -13,6 +13,52 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.42] — 2026-10-27
+
+### Added
+
+- **Sequencer import (#294, PR #374):** an **Import** dialog takes a sequence
+  from the GitHub samples of the latest `vX.Y.Z` tag (each marked new, changed
+  or same as yours), an https link (10 s, 256 KB cap; GitHub page links become
+  raw links) or pasted text. It previews steps and register writes, then saves
+  under a chosen name, asking before replacing. Nothing runs on import. Each save
+  is logged. Routes: `GET /api/sequence-import/samples`,
+  `POST /api/sequence-import/preview`, `POST /api/sequence-import/save`
+  (control capability). The existing sequence routes now check names (letters,
+  digits, `_`, `-`, up to 64) on get, save, delete and rename.
+- **Admin actions (PR #375):** a poll interval change applies live, without a
+  gateway restart; below 5 s, Settings asks first. Gateway stop and restart ask
+  first, naming a running schedule entry or battery command
+  (`GET /api/lifecycle/check`). Poll interval changes, gateway start, stop and
+  restart, and bridge restarts are each a WARNING app-log line and an
+  `ADMIN_ACTION` alert naming the user. **Restart bridge** (Settings → Admin,
+  `POST /api/bridge/restart`, admin) works on Docker only; it is disabled on
+  the add-on, where HA restarts it.
+- **"This bridge's entities in Home Assistant" (#368, PR #370):** a table on the
+  Home Assistant page listing every published entity with its HA entity id,
+  where HA shows it, and a note for other ids, entities missing from HA or
+  disabled in HA. Route: `GET /api/ha/bridge-entities`.
+- **Publishing groups ask and log (#296 item 39, PR #371):** switching a group
+  asks first, naming the group and its entity count. Every change that adds or
+  removes HA entities writes one app-log line naming the group, the change and
+  the user.
+
+### Changed
+
+- **Grid connection and inverter state are normal sensors (#296 item 38,
+  PR #371):** no longer diagnostic, so HA shows them with the other sensors and
+  the dashboard card includes them. Unique ids and entity ids are unchanged.
+- **Power % workaround logged on every use (#364, PR #366):** one INFO line per
+  command names the percentage, the watts sent through WSet and the approval.
+  No behaviour change.
+- **Small screens (PR #373):** the Explorer and Sequencer lists fold to a strip
+  (on their own under 768 px once something is picked); Sequencer live-point
+  tiles are two per row and cut long values off within the tile; the
+  Preferences panel stays on screen under 640 px.
+- **Add-on image workflow (#300, PR #362):** a prebuilt image is built for
+  GHCR on `v*` tags. The add-on still builds locally until the image is public
+  and named in `addon/config.yaml`.
+
 ## [0.2.41] — 2026-10-24
 
 ### Changed

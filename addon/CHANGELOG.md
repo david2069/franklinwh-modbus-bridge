@@ -7,6 +7,27 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.42 — 2026-10-27
+
+### Added
+- **Import sequences** in the Sequencer from the GitHub samples, a link or
+  pasted text. You see the steps and writes first; nothing runs on import.
+- **This bridge's entities in Home Assistant**, on the Home Assistant page: each
+  entity's id in HA, and which are missing, disabled or have an older id.
+- **Admin actions are recorded.** Poll interval changes and gateway start, stop
+  and restart are logged with who did it.
+
+### Changed
+- **Poll interval changes apply straight away.** Below 5 seconds, you're asked
+  first.
+- **Gateway stop and restart ask first**, naming anything running.
+- **Grid connection and inverter state** show with the other sensors in Home
+  Assistant, not under Diagnostic.
+- **Publishing groups** ask before adding or removing entities in Home
+  Assistant, and each change is logged.
+- **Phones:** the Explorer and Sequencer lists fold away, live-point tiles fit,
+  and the Preferences panel stays on screen.
+
 ## 0.2.41 — 2026-10-24
 
 ### Fixed
