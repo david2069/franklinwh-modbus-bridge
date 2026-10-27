@@ -224,6 +224,9 @@ function scheduleTab() {
     auditFilter: '',
     conn: { connected: true, gateways: {}, recent_outages: [] },
     expandedId: null,
+    explainLevel: (() => {
+      try { return localStorage.getItem('fwh-explain-level') || 'medium'; } catch { return 'medium'; }
+    })(),
     // Timeline is always TODAY. The weekday picker previewed a recurrence
     // pattern, not real days, so it couldn't show what actually happened —
     // which is what the mode/SoC/dispatch overlays are for. Past/future days
@@ -760,6 +763,106 @@ function scheduleTab() {
         ).join(join);
       };
       return render(t);
+    },
+
+    // ── Plain-language explanation (min / medium / full) ─────
+    // Same levels, layout and phrasing as the Direct Connect bridge's
+    // scheduler, built from the labels the condition picker uses.
+    _opPhrase(op) {
+      return ({ '<': 'is below', '<=': 'is at most', '==': 'is', '!=': 'is not',
+        '>=': 'is at least', '>': 'is above', 'between': 'is between', 'in': 'is one of',
+        'not_in': 'is not one of', 'matchlist': 'matches one of', 'not_matchlist': 'matches none of',
+        'like': 'is like', 'not_like': 'is not like' })[op] || op;
+    },
+    _leafPhrase(leaf) {
+      let rhs;
+      if (leaf.value_kind === 'sensor') rhs = '“' + this.sensorLabel(leaf.value_sensor) + '”';
+      else if (leaf.op === 'between') rhs = `${leaf.value} and ${leaf.value2}`;
+      else rhs = Array.isArray(leaf.value) ? leaf.value.join(', ') : String(leaf.value);
+      return `${this.sensorLabel(leaf.sensor)} ${this._opPhrase(leaf.op)} ${rhs}`;
+    },
+    _condPhrase(tree) {
+      const nodes = (tree && tree.conditions) || [];
+      const join = String(tree && tree.match).toUpperCase() === 'ANY' ? ' OR ' : ' AND ';
+      return nodes.map((n) => (this.isGroup(n) ? `(${this._condPhrase(n)})` : this._leafPhrase(n)))
+        .filter(Boolean).join(join);
+    },
+    _matchWord(tree) {
+      return String(tree && tree.match).toUpperCase() === 'ANY' ? 'any' : 'all';
+    },
+    _triggerPhrase(e) {
+      const s = e.trigger_spec || {};
+      const dur = e.duration_s ? ` for ${Math.round(e.duration_s / 60)} min` : '';
+      const at = s.time_of_day ? ` at ${s.time_of_day}` : '';
+      switch (e.trigger_kind) {
+        case 'daily': return `Every day${at}${dur}`;
+        case 'weekly': return `Every ${(s.days_of_week || []).map((i) => WEEKDAYS[i]).join(', ')}${at}${dur}`;
+        case 'interval': return `Every ${Math.round((s.every_seconds || 0) / 60)} min${dur}`;
+        case 'monthly': {
+          const mos = (s.months || []).map((m) => MONTH_LABELS[m - 1]);
+          return `On day ${s.day || 1} of ${mos.length ? mos.join(', ') : 'every month'}${at}${dur}`;
+        }
+        case 'cron': return `On cron “${s.expr || ''}”${dur}`;
+        case 'oneoff': return `Once at ${(s.fire_at || '').replace('T', ' ')}${dur}`;
+        case 'always': return 'Whenever the conditions hold';
+        default: {
+          const w = e.when_spec || {};
+          const wins = (w.windows || []).map((x) => `${x.start} to ${x.end}`).join(', ') || 'no window';
+          return `${this.daysLabel(w)} from ${wins}`;
+        }
+      }
+    },
+    _actionPhrase(e) {
+      const p = e.params || {};
+      const out = [];
+      const power = p.power_pct != null ? `${p.power_pct}% power`
+        : (p.power_w != null ? `${p.power_w / 1000} kW` : 'full power');
+      switch (e.action) {
+        case 'force_charge': out.push(`force charge at ${power}`); break;
+        case 'force_discharge': out.push(`force discharge at ${power}`); break;
+        case 'force_standby': out.push('hold the battery in standby'); break;
+        case 'release': out.push('release the battery'); break;
+        case 'reserve_self': out.push(`set the self-consumption reserve to ${p.pct}%`); break;
+        case 'reserve_tou': out.push(`set the TOU reserve to ${p.pct}%`); break;
+        case 'mode': out.push(`set the operating mode to ${p.mode}`); break;
+        case 'none': break;
+        default: if (e.action) out.push(this.actionMeta(e.action).label);
+      }
+      for (const a of (e.ha_actions || [])) {
+        const when = a.when === 'exit' ? ' when it ends' : (a.when === 'both' ? ' when it starts and ends' : '');
+        if (a.kind === 'notify') out.push(`send a Home Assistant notification${when}`);
+        else out.push(`${(a.service || 'call').replace(/_/g, ' ')} “${a.entity_id || 'an entity'}”${when}`);
+      }
+      return out.length ? out.join(', then ') : 'take no gateway action';
+    },
+    /** The explanation at a verbosity level: 'min' | 'medium' | 'full'. */
+    explain(e, level) {
+      const trig = this._triggerPhrase(e);
+      const act = this._actionPhrase(e);
+      const conds = this._condPhrase(e.entry_conditions);
+      const exits = this._condPhrase(e.exit_conditions);
+      if (level === 'min') return `${trig} → ${act}.`;
+      if (level === 'medium') {
+        // "Every day…" reads "when every day…"; a weekday or date keeps its capital.
+        const lead = /^(Every|On|Once|Whenever)\b/.test(trig) ? trig.charAt(0).toLowerCase() + trig.slice(1) : trig;
+        let t = `When ${lead}`;
+        if (conds) t += `, and only if ${conds}`;
+        t += `, ${act}.`;
+        if (exits) t += ` End early when ${exits}.`;
+        return t;
+      }
+      const lines = [`WHEN   ${trig}.`];
+      lines.push(conds ? `IF     ${conds} (${this._matchWord(e.entry_conditions)} must hold).`
+        : 'IF     no extra conditions — fires whenever the schedule is due.');
+      lines.push(`DO     ${act}.`);
+      if (exits) lines.push(`UNTIL  it ends early when ${exits} (${this._matchWord(e.exit_conditions)}).`);
+      lines.push(`ON     ${this.targetLabel(e)}.`);
+      if (e.entry_hold_s) lines.push(`HOLD   conditions must stay true for ${e.entry_hold_s}s before firing.`);
+      return lines.join('\n');
+    },
+    setExplainLevel(lv) {
+      this.explainLevel = lv;
+      try { localStorage.setItem('fwh-explain-level', lv); } catch { /* private mode */ }
     },
 
     triggerText(e) {

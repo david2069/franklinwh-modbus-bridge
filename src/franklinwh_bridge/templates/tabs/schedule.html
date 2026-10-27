@@ -433,7 +433,7 @@
                       <button class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06] flex items-center gap-2"
                               @click="toggleExpand(e.id); open = false">
                         <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 11v5M12 8h.01"/></svg>
-                        <span x-text="expandedId === e.id ? 'Hide details' : 'Details'"></span>
+                        <span x-text="expandedId === e.id ? 'Hide explanation' : 'Explain / details'"></span>
                       </button>
                       <button class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06] flex items-center gap-2"
                               @click="copyEntry(e); open = false">
@@ -468,6 +468,18 @@
           <div class="flex items-center justify-between">
             <div class="font-medium text-sm" x-text="expandedEntry.name"></div>
             <button class="text-slate-500 hover:text-slate-300" @click="expandedId = null">✕</button>
+          </div>
+          <!-- Plain-language explanation: min / medium / full, as the Direct Connect bridge -->
+          <div class="rounded border border-white/[0.06] bg-slate-900/40 p-2 space-y-2">
+            <div class="flex items-center gap-1" role="group" aria-label="Explanation detail">
+              <template x-for="lv in [['min','Min'],['medium','Medium'],['full','Full']]" :key="lv[0]">
+                <button type="button" @click="setExplainLevel(lv[0])" x-text="lv[1]" :aria-pressed="explainLevel === lv[0]"
+                        class="px-2 py-0.5 text-[11px] rounded border transition"
+                        :class="explainLevel === lv[0] ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400' : 'border-slate-600/40 text-slate-500 hover:text-slate-300'"></button>
+              </template>
+            </div>
+            <div class="text-slate-300 font-mono text-[11px] whitespace-pre-wrap break-words"
+                 x-text="explain(expandedEntry, explainLevel)"></div>
           </div>
           <div><span class="text-slate-500 w-24 inline-block">Trigger</span> <span class="text-slate-300" x-text="triggerText(expandedEntry)"></span></div>
           <div><span class="text-slate-500 w-24 inline-block">Entry gate</span> <span class="text-slate-300 font-mono" x-text="treeText(expandedEntry.entry_conditions)"></span></div>
