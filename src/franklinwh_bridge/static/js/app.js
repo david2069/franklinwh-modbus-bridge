@@ -526,6 +526,41 @@ document.addEventListener('alpine:init', () => {
     effect(() => isOpen((open) => (open ? requestAnimationFrame(place) : reset())));
   });
 
+  // x-data="dialogSize('<key>')" on a dialog panel: Default / Medium / Full
+  // buttons snap it to a size, and its corner drags to any size in between.
+  // The chosen size is remembered per browser; a drag lasts until the next snap.
+  const DIALOG_SIZES = {
+    default: { width: '42rem', height: '' },
+    medium: { width: '64rem', height: '80vh' },
+    full: { width: 'calc(100vw - 2rem)', height: 'calc(100vh - 2rem)' },
+  };
+  Alpine.data('dialogSize', (key) => {
+    // The element stays out of the reactive data: Alpine's proxy breaks style writes.
+    let panel = null;
+    return {
+      size: (() => {
+        try { return DIALOG_SIZES[localStorage.getItem(key)] ? localStorage.getItem(key) : 'default'; }
+        catch { return 'default'; }
+      })(),
+      init() { panel = this.$el; this.applySize(); },
+      setSize(s) {
+        this.size = s;
+        try { localStorage.setItem(key, s); } catch { /* private mode */ }
+        this.applySize();
+      },
+      applySize() {
+        Object.assign(panel.style, DIALOG_SIZES[this.size], {
+          maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100vh - 2rem)', resize: 'both',
+        });
+      },
+      // A text box in the dialog grows with what's typed (it can still be dragged).
+      fitTextarea(el) {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight + 2}px`;
+      },
+    };
+  });
+
   Alpine.store('app', {
     // Tab state
     activeTab: 'dashboard',
