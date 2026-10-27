@@ -531,8 +531,8 @@ document.addEventListener('alpine:init', () => {
   // The chosen size is remembered per browser; a drag lasts until the next snap.
   const DIALOG_SIZES = {
     default: { width: '42rem', height: '' },
-    medium: { width: '64rem', height: '80vh' },
-    full: { width: 'calc(100vw - 2rem)', height: 'calc(100vh - 2rem)' },
+    medium: { width: '64rem', height: '80dvh' },
+    full: { width: 'calc(100vw - 2rem)', height: 'calc(100dvh - 2rem)' },
   };
   Alpine.data('dialogSize', (key) => {
     // The element stays out of the reactive data: Alpine's proxy breaks style writes.
@@ -550,11 +550,13 @@ document.addEventListener('alpine:init', () => {
       },
       applySize() {
         Object.assign(panel.style, DIALOG_SIZES[this.size], {
-          maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100vh - 2rem)', resize: 'both',
+          maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)', resize: 'both',
         });
       },
       // A text box in the dialog grows with what's typed (it can still be dragged).
+      // Skipped while hidden: a hidden box measures 0 and would be set 2px tall.
       fitTextarea(el) {
+        if (el.offsetParent === null) return;
         el.style.height = 'auto';
         el.style.height = `${el.scrollHeight + 2}px`;
       },
