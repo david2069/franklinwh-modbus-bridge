@@ -94,7 +94,7 @@ What happens once it is enabled:
 | ▶ (Run now) | Shown when the entry is not active. Sends the action immediately. See [Run now](outcomes.md#run-now-and-stop). |
 | ■ (Stop) | Shown while the entry is active. Ends this run; the entry fires again at its next window. |
 | ⋯ → **Disable / Enable** | Turns the entry off or on. Disabling releases a run it owns (see the [warnings](exit-and-conflicts.md#how-a-run-ends)). |
-| ⋯ → **Details** | Shows the trigger, gate, exit criteria, release policy and missed policy. |
+| ⋯ → **Explain / details** | Explains the entry in plain words, then shows the trigger, gate, exit criteria, release policy and missed policy. See [Explanation](#explanation). |
 | ⋯ → **Duplicate** | Copies the entry. The copy starts **disabled**. |
 | ⋯ → **Export** | Downloads this entry as JSON. |
 | ⋯ → **Delete** | Removes the entry. |
@@ -107,6 +107,22 @@ The list shows **Enabled only** by default. Use the selector above the table for
 all entries.
 
 ![Details for an entry](../../images/scheduler/details-trigger.png)
+
+### Explanation
+
+**Explain / details** opens with the entry in plain words. **Min** gives one line, **Medium**
+one sentence, and **Full** a line each for WHEN, IF, DO, UNTIL (exit conditions), ON (the
+target) and HOLD (the hold-for time). The level you pick is remembered in that browser. The
+wording matches the Direct Connect bridge's scheduler, for example:
+
+```text
+WHEN   Every day at 16:00 for 300 min.
+IF     Battery SOC (%) is between 10 and 40 (all must hold).
+DO     force charge at 5 kW.
+UNTIL  it ends early when Battery SOC (%) is at least 50 (any).
+ON     Demo.
+HOLD   conditions must stay true for 30s before firing.
+```
 
 ### Templates, export and import
 
