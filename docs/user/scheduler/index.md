@@ -47,6 +47,11 @@ This walkthrough charges the battery to 90 % on weekday afternoons, but only if 
 
     ![The empty New Entry dialog](../../images/scheduler/new-entry-dialog.png)
 
+    **Default**, **Medium** and **Full** at the top right size the dialog, and its bottom-right
+    corner drags to any size in between. The size you pick is remembered in that browser. The
+    notification message box can be dragged taller and grows as you type. The Import dialog
+    works the same way.
+
 2. **Name:** `Evening top-up`.
 3. **Trigger Type:** leave **Recurring windows**. Tick **Mon–Fri** under **Days** (none ticked
    means every day). Set the time window to `16:00 → 17:00`.
