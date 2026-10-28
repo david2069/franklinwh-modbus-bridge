@@ -7,6 +7,23 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.44 — 2026-10-28
+
+### Added
+- **Hide anything on the top bar**: every item has a switch in the gear menu.
+- **Top-bar icons with live values** for Grid, Solar, Load and Battery; hover
+  for what each one is.
+- **Drag the condition sensor column wider** in the schedule editor; the
+  browser remembers the width.
+
+### Changed
+- **One clock**, in the bridge's timezone only.
+- **Colours mean the same everywhere**: red is critical (SoC at or below 5%),
+  amber is a warning (SoC at or below the reserve, grid off, a command
+  running), orange is energy drawn, green active, grey inactive. See the new
+  Colours page in the docs.
+- **Home Assistant entities show by friendly name** in schedules.
+
 ## 0.2.43 — 2026-10-28
 
 ### Added

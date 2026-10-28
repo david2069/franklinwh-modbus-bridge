@@ -13,6 +13,47 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.44] — 2026-10-28
+
+### Added
+
+- **Every top-bar item can be hidden (PR #383):** Topbar Preferences gains a
+  Left section (sidebar button, page title, gateway picker) and Right now lists
+  Connection, Data quality, Clock and User with Release, SunSpec, Theme and
+  Refresh. Only the gear stays. Right items now really reorder (the arrows had
+  no effect). Saved preferences keep their choices.
+- **Top-bar icons with live values (PR #384):** Grid, Solar, Load and Battery
+  show an icon (drawn for this project) and the value (kW, or SoC %), with hover
+  text saying what each is. New store getter `batteryLevel`.
+- **Condition sensor column can be dragged wider (PR #386):** one shared width
+  for every condition sensor field; only wider than the 13rem default, only as
+  far as the row has room; remembered per browser. The field shows the full
+  name, cutting the start when it doesn't fit.
+- **Colour rule documented:** `docs/user/ui/colours.md`.
+
+### Changed
+
+- **One clock, bridge time only (PR #383):** the "your time …" line is gone from
+  the top bar, hover titles, chart tooltips and the `/user` footer.
+- **Colour rule (PRs #384, #385):** red = critical only, amber = warning,
+  orange = energy drawn, green = active, grey = inactive.
+  - Battery SoC: red at or below 5%, amber at or below the active reserve,
+    otherwise green (top bar, Dashboard ring, `/user` ring; was 80/30/15).
+  - Grid importing: orange (was red). Battery discharging: orange (was amber).
+    Solar producing: green (was the solar amber).
+  - Grid not connected and an active command (Release): amber (were red).
+    Disconnected stays red.
+- **Friendly names (PR #386):** HA Action entities are listed by friendly name
+  (id in the hover; same-name entities keep their ids). Explain, the entry's
+  condition summary, Monitor lines and the Activity Log show names instead of
+  ids; stored text keeps the ids.
+- **Docs:** the top-bar page brought up to date; three screenshots redone.
+
+### Fixed
+
+- **CHANGELOG 0.2.43 (PR #387):** the Power % line cites PR #366, documented in
+  PR #364 (#364 is a PR, not an issue).
+
 ## [0.2.43] — 2026-10-28
 
 ### Added
