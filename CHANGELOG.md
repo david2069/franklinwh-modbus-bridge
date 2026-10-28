@@ -79,7 +79,7 @@ lands, not backfilled later.
 - **Grid connection and inverter state are normal sensors (#296 item 38,
   PR #371):** no longer diagnostic, so HA shows them with the other sensors and
   the dashboard card includes them. Unique ids and entity ids are unchanged.
-- **Power % workaround logged on every use (#364, PR #366):** one INFO line per
+- **Power % workaround logged on every use (PR #366; documented in PR #364):** one INFO line per
   command names the percentage, the watts sent through WSet and the approval.
   No behaviour change.
 - **Small screens (PR #373):** the Explorer and Sequencer lists fold to a strip
