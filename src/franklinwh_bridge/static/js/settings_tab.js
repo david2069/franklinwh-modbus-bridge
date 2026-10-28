@@ -122,6 +122,7 @@ function settingsTab() {
     lifecycle: null,       // GET api/lifecycle/check: busy gateways, bridge restart support
     bridgeRestartResult: null,
     gwHealthResults: {},   // per-gateway force-healthcheck result, keyed by gateway id
+    gwPollResults: {},     // per-gateway stop/start result from the Edit dialog, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
     deleteGwResult: null,  // its latest result, shown in that dialog (#351)
     editGwResult: null,    // the Edit gateway dialog's latest result (#351)
@@ -1301,15 +1302,21 @@ function settingsTab() {
       }
     },
 
-    async startGw(gwId) {
+    // Live row for a gateway (the Edit dialog's copy doesn't track polling).
+    gwRow(gwId) {
+      return this.gwList.find(g => g.id === gwId) || null;
+    },
+
+    // inDialog: run from the Edit gateway dialog, so the result shows there, not as a toast (#351).
+    async startGw(gwId, inDialog = false) {
       this.gwBusy = true;
+      if (inDialog) this.gwPollResults = { ...this.gwPollResults, [gwId]: { testing: true, msg: 'Starting…' } };
       try {
         const data = await fetchJSON(`api/gateways/${gwId}/start`, { method: 'POST' });
-        if (data && data.started) {
-          Alpine.store('app').toast(`Gateway ${gwId} started`, 'info');
-        } else {
-          Alpine.store('app').toast('Start failed: ' + (data?.error || data?.detail || 'unknown'), 'error');
-        }
+        const ok = !!(data && data.started);
+        const msg = ok ? `Gateway ${gwId} started` : 'Start failed: ' + (data?.error || data?.detail || 'unknown');
+        if (inDialog) this.gwPollResults = { ...this.gwPollResults, [gwId]: { ok, msg } };
+        else Alpine.store('app').toast(msg, ok ? 'info' : 'error');
       } finally {
         this.gwBusy = false;
         // Always resync — the row may have been stale (e.g. already running/stopped).
@@ -1317,16 +1324,16 @@ function settingsTab() {
       }
     },
 
-    async stopGw(gwId) {
+    async stopGw(gwId, inDialog = false) {
       if (!await this._confirmLifecycle(`Stop gateway ${gwId}?`, 'Stop', gwId)) return;
       this.gwBusy = true;
+      if (inDialog) this.gwPollResults = { ...this.gwPollResults, [gwId]: { testing: true, msg: 'Stopping…' } };
       try {
         const data = await fetchJSON(`api/gateways/${gwId}/stop`, { method: 'POST' });
-        if (data && data.stopped) {
-          Alpine.store('app').toast(`Gateway ${gwId} stopped`, 'info');
-        } else {
-          Alpine.store('app').toast('Stop failed: ' + (data?.error || data?.detail || 'unknown'), 'error');
-        }
+        const ok = !!(data && data.stopped);
+        const msg = ok ? `Gateway ${gwId} stopped` : 'Stop failed: ' + (data?.error || data?.detail || 'unknown');
+        if (inDialog) this.gwPollResults = { ...this.gwPollResults, [gwId]: { ok, msg } };
+        else Alpine.store('app').toast(msg, ok ? 'info' : 'error');
       } finally {
         this.gwBusy = false;
         // Always resync — the row may have been stale (e.g. already stopped).

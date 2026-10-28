@@ -112,6 +112,7 @@ Modbus link. Every poll interval change is recorded (see [Admin actions](#admin-
 | **Diagnose** | Three checks: TCP 502 (Modbus), TCP 9000 (the aGate's local API) and a Modbus protocol read, each ✓ or ✗ with latency and a verdict. Read-only. |
 | **Force Healthcheck** | Re-checks health now instead of waiting for the next poll, and shows the result. |
 | **Restart** | Drops the Modbus connection and reconnects from scratch, without restarting the bridge. Use it for a stuck session. It asks first (see below). |
+| **Stop polling** / **Start polling** | The same as the gateway's switch in the list: Stop polling stops polling, closes the Modbus connection and keeps the gateway stopped across bridge restarts. It asks first (see below). Start polling starts it again. The result shows in the dialog. |
 
 !!! note
     On a mock gateway, Test and Diagnose have nothing real to test, so their results are
