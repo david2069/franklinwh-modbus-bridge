@@ -691,6 +691,20 @@ class ScheduleEngine:
                 return {"status": "stopped", "released": released}
             return {"status": "not_active" if entry is not None else "not_found", "released": []}
 
+    async def note_release(self, gw_id: str, owner: str | None, by: str, result: str) -> None:
+        """Record a Release sent outside the scheduler (the top bar's Release
+        button, the API) in the Activity Log of the entry whose command it ended.
+        ``owner`` is who sent that command; only ``schedule:<entry id>`` counts."""
+        if not owner or not owner.startswith("schedule:"):
+            return
+        schedule_id = owner.split(":", 1)[1]
+        entry = next((e for e in self._entries if e.get("id") == schedule_id), None)
+        name = by.split(":", 1)[1] if by.startswith("user:") else by
+        await self._audit(
+            schedule_id, entry.get("action", "") if entry else "", ("gateway", gw_id, gw_id),
+            "released", f"released by {name} — {result}",
+        )
+
     async def start(self) -> None:
         await self.load()
         self._task = asyncio.create_task(self._loop())

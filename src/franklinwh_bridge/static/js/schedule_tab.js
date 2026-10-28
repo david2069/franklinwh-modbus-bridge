@@ -514,7 +514,7 @@ function scheduleTab() {
         missed: 'text-red-300', failed: 'text-red-300',
         exit_condition_met: 'text-cyan-300', duration_elapsed: 'text-slate-400',
         release: 'text-slate-400', ok: 'text-emerald-300', ha_action: 'text-emerald-300',
-        stopped: 'text-red-300',
+        stopped: 'text-red-300', released: 'text-slate-400',
         // config-change (CRUD) rows
         created: 'text-emerald-300', enabled: 'text-emerald-300',
         updated: 'text-sky-300', disabled: 'text-amber-300', deleted: 'text-red-300',
@@ -803,7 +803,7 @@ function scheduleTab() {
     get actualSpans() {
       if (!this.linkIsForToday) return [];
       const base = this._midnightTs || (Date.now() / 1000 - (this.timeline.now_min || 0) * 60);
-      const ENDS = new Set(['exit_condition_met', 'duration_elapsed', 'stopped', 'missed']);
+      const ENDS = new Set(['exit_condition_met', 'duration_elapsed', 'stopped', 'released', 'missed']);
       const rows = (this.auditAll || [])
         .filter((e) => e.ts >= base)
         .sort((a, b) => a.ts - b.ts);

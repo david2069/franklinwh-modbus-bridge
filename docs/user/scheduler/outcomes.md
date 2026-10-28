@@ -27,6 +27,7 @@ notifications. Also the two buttons that act outside the schedule: **Run now** a
 | exit_condition_met | exit conditions ended the run |
 | expired | the command ended inside the window (time limit, target SoC, external release, overshoot) |
 | stopped | you pressed Stop |
+| released | someone released the entry's command outside the scheduler: the top bar's **Release** button, or the API ("released by <user> — Released"). A scheduled run released this way can also show *expired* when the scheduler next checks it |
 | executed | Run now |
 | missed, late_fired | catch-up after an outage or restart |
 | verified, unverifiable, not_effective, reasserted | dispatch supervision |
