@@ -60,14 +60,17 @@
 
   <!-- Centre: System status indicators (order + visibility driven by topbarPrefs).
        Shown at every width (#82, #262). Each is an icon and its live value
-       (owner, 2026-10-28); the icon keeps the colour the dot had, so a red
-       Grid still says the aGate is islanded. Icons drawn for this project. -->
+       (owner, 2026-10-28). The icon's colour is its state, grey when inactive;
+       a red Grid still says the aGate is not grid-connected. The hover text
+       says what each one is. Icons drawn for this project. -->
   <div class="items-center gap-3 text-xs font-semibold tabular-nums"
        :class="$store.app.phoneNav ? 'flex order-last' : 'flex'">
     <!-- Grid -->
     <div x-show="$store.app.tbShow('center', 'grid')" :style="$store.app.tbOrder('center', 'grid')"
          data-testid="topbar-grid" class="flex items-center gap-1"
-         :title="'Grid: ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected')">
+         :title="'Grid power: ' + fmt.kw($store.app.gridPowerW) + ' kW, '
+                + ($store.app.gridPowerW > 0 ? 'importing' : ($store.app.gridPowerW < 0 ? 'exporting' : 'neutral'))
+                + '. Grid ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected') + '.'">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
            :class="$store.app.points.connection_state === 'Connected' ? 'text-emerald-400' : 'text-red-400'">
         <path d="M12 2 7 22M12 2l5 20M4 6h16M6.5 10h11M4 6v2M20 6v2M6.5 10v2M17.5 10v2M10 10l5.4 5.5M14 10l-5.4 5.5M8.6 15.5h6.8M7 22h10"/>
@@ -77,9 +80,9 @@
     <!-- Solar -->
     <div x-show="$store.app.tbShow('center', 'solar')" :style="$store.app.tbOrder('center', 'solar')"
          data-testid="topbar-solar" class="flex items-center gap-1"
-         :title="'Solar: ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating')">
+         :title="'Solar power: ' + fmt.kw($store.app.solarPowerW) + ' kW, ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating') + '.'">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-           :class="($store.app.solarPowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-red-400'">
+           :class="($store.app.solarPowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
         <path d="M6 3h12l3 11H3z"/><path d="M10 3 9 14M14 3l1 11M4.5 8.5h15M12 14v7M8 21h8"/>
       </svg>
       <span class="text-slate-300" x-text="fmt.kw($store.app.solarPowerW) + ' kW'"></span>
@@ -87,9 +90,9 @@
     <!-- Load -->
     <div x-show="$store.app.tbShow('center', 'load')" :style="$store.app.tbOrder('center', 'load')"
          data-testid="topbar-load" class="flex items-center gap-1"
-         :title="'Load: ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none')">
+         :title="'Home load: ' + fmt.kw($store.app.homePowerW) + ' kW, ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none') + '.'">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-           :class="($store.app.homePowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-600'">
+           :class="($store.app.homePowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
         <path d="M3 11 12 3l9 8"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>
       </svg>
       <span class="text-slate-300" x-text="fmt.kw($store.app.homePowerW) + ' kW'"></span>
@@ -97,7 +100,7 @@
     <!-- Battery: state of charge; colour and tooltip give the state -->
     <div x-show="$store.app.tbShow('center', 'battery')" :style="$store.app.tbOrder('center', 'battery')"
          data-testid="topbar-battery" class="flex items-center gap-1"
-         :title="'Battery: ' + ($store.app.points.battery_state || 'Standby')">
+         :title="'Battery state of charge: ' + fmt.pct($store.app.batterySoc) + ', ' + ($store.app.points.battery_state || 'Standby').toLowerCase() + '.'">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
            :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
                    $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-500'">
