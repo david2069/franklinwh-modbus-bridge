@@ -7,6 +7,20 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.43 — 2026-10-28
+
+### Added
+- **Scheduler Monitor** on the Schedule tab: watch every check of every enabled
+  entry live, with the condition that's blocking it and the sensor's value.
+- **Explain an entry** in plain words (⋯ → Explain / details), short or in full.
+
+### Changed
+- **Dropdowns on the dashboard open upwards** when there's no room below, so
+  every option shows on an iPad.
+- **Schedule dialogs size to Default, Medium or Full**, fit the visible screen
+  on iPhone and iPad, and the notification message box grows as you type.
+- **Long sequence names wrap** in the Sequencer header.
+
 ## 0.2.42 — 2026-10-27
 
 ### Added
