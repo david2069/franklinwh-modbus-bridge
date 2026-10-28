@@ -2135,6 +2135,8 @@ function settingsTab() {
       // belong to a different device are worse than no rows at all.
       this.mqttGatewayPoints = null;
       if (!g) return;
+      // A stopped gateway's points answer 404: it has no values to show.
+      if (this.gwRow(g.gateway_id)?.polling === false) return;
       const data = await fetchJSON(`api/gateways/${encodeURIComponent(g.gateway_id)}/points`);
       if (data && data.points) this.mqttGatewayPoints = data.points;
     },
