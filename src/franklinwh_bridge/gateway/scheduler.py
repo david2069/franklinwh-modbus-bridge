@@ -26,6 +26,7 @@ import contextlib
 import inspect
 import logging
 import re
+from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -60,6 +61,9 @@ _SUSTAINED = frozenset({"force_charge", "force_discharge", "force_standby"})
 # ── Dispatch verification (design PR #57 §5.1) ─────────────────────────────
 #: Wait before the next attempt after a failed send: 15 s, 30 s, then every 60 s.
 RETRY_BACKOFF_S = (15, 30, 60)
+
+#: Lines the debug monitor keeps in memory (one per enabled entry per tick).
+MONITOR_MAX = 500
 #: A reason that starts this way is the aGate refusing the value (a Modbus
 #: exception), not a lost link: the same send would be refused again, so it is
 #: not retried this window (#323; on 2026-10-23 a refused 18:00 discharge was
@@ -282,6 +286,22 @@ def _condition_reason(prefix: str, trace: list[dict]) -> str:
     return f"{prefix}: " + "; ".join(fails[:4]) if fails else prefix
 
 
+def _monitor_conds(kind: str, trace: list[dict]) -> list[dict]:
+    """Condition-trace leaves for a monitor line: what was tested, and the value."""
+    return [
+        {
+            "kind": kind,
+            "sensor": t.get("sensor"),
+            "op": t.get("op"),
+            "value": t.get("value"),
+            "value2": t.get("value2"),
+            "live_value": t.get("live_value"),
+            "result": bool(t.get("result")),
+        }
+        for t in trace
+    ]
+
+
 def _action_summary(action: str, params: dict) -> str:
     """Human one-liner for an action + its resolved power/pct, e.g.
     ``Force Discharge @ 100%`` / ``Force Charge @ 1000W`` / ``Self-Reserve 20%``."""
@@ -456,6 +476,13 @@ class ScheduleEngine:
         # Failed sustained dispatches waiting for a retry, per target:
         # {entry_id, attempts, next_at, first_at, last_reason, win}.
         self._retry: dict[tuple, dict] = {}
+        # Debug monitor: what each enabled entry did on each tick, in memory
+        # only (lost on restart). The Activity Log records decisions; this
+        # records every evaluation, so "why didn't it fire?" can be watched.
+        self._monitor: deque[dict] = deque(maxlen=MONITOR_MAX)
+        self._monitor_seq = 0
+        # tkey -> id of the entry that won the target on this tick (or None).
+        self._tick_win: dict[tuple, str | None] = {}
 
     # ---- lifecycle ----
 
@@ -711,6 +738,8 @@ class ScheduleEngine:
         # Fresh per-tick snapshot cache: each gateway's points are read at most
         # once per tick and shared by every condition-tree evaluation.
         self._snap_cache = {}
+        self._tick_win = {}
+        watched: list[tuple[tuple, list[dict]]] = []
         # Drive the connectivity monitor's staleness check (never let it break a
         # tick — recovery/catch-up is best-effort relative to dispatch).
         if self._connectivity is not None:
@@ -735,13 +764,19 @@ class ScheduleEngine:
             for gw_id, h in self._resolver(ttype, tid):
                 tkey = (ttype, tid, gw_id)
                 seen.add(tkey)
-                await self._reconcile(tkey, h, await self._battery_winner(battery, tkey, now), now)
+                win = await self._battery_winner(battery, tkey, now)
+                self._tick_win[tkey] = win["id"] if win else None
+                watched.append((tkey, battery))
+                await self._reconcile(tkey, h, win, now)
                 for e in ha_only:
                     # Same gw_id in slot 2 so the audit target still resolves to
                     # the gateway's name; the entry id only isolates the state.
                     hkey = (ttype, f"{tid}#{e['id']}", gw_id)
                     seen.add(hkey)
-                    await self._reconcile(hkey, h, e if entry_active(e, now) else None, now)
+                    active = entry_active(e, now)
+                    self._tick_win[hkey] = e["id"] if active else None
+                    watched.append((hkey, [e]))
+                    await self._reconcile(hkey, h, e if active else None, now)
 
         # A target/gateway we used to own but whose entries are now gone (or that
         # left a fan-out group) → release it. Re-resolve the handler by gw_id.
@@ -762,6 +797,100 @@ class ScheduleEngine:
                 self._exit_entry.pop(tkey, None)
                 self._last_win.pop(tkey, None)
                 self._skipped = {m for m in self._skipped if m[0] != tkey}
+
+        self._record_monitor(watched, now)
+
+    # ---- debug monitor ----
+
+    def _record_monitor(self, watched: list[tuple[tuple, list[dict]]], now: datetime) -> None:
+        """Add one monitor line per watched (target, entry) for this tick."""
+        for tkey, entries in watched:
+            for e in entries:
+                try:
+                    state, detail, conds = self._monitor_state(tkey, e, now)
+                except Exception as exc:  # the monitor must never break a tick
+                    state, detail, conds = "error", f"monitor: {exc}", []
+                self._monitor_seq += 1
+                self._monitor.append({
+                    "seq": self._monitor_seq,
+                    "ts": now.timestamp(),
+                    "entry_id": e["id"],
+                    "name": e.get("name") or e["id"],
+                    "target": self._target_label(tkey),
+                    "state": state,
+                    "detail": detail,
+                    "conditions": conds,
+                })
+
+    def _monitor_state(self, tkey: tuple, e: dict, now: datetime) -> tuple[str, str, list[dict]]:
+        """Where an entry stands on a target after this tick's reconcile."""
+        if not entry_active(e, now):
+            return "idle", "not active now (outside its window or not due)", []
+        win_id = self._tick_win.get(tkey)
+        if win_id != e["id"]:
+            other = next((x for x in self._entries if x["id"] == win_id), None)
+            held = (other.get("name") or win_id) if other else win_id
+            # Say first whether it could have run at all: an entry whose own
+            # gate fails is blocked, whoever holds the gateway.
+            tree = e.get("entry_conditions")
+            if tree is not None:
+                ok, trace = eval_conditions(tree, self._snapshot(tkey[2], now))
+                if not ok:
+                    return "blocked", _condition_reason(
+                        "entry conditions fail", trace
+                    ) + f"; gateway held by '{held}'", _monitor_conds("entry", trace)
+            return "skipped", f"gateway held by '{held}'", []
+        snap = self._snapshot(tkey[2], now)
+        own = self._owned.get(tkey)
+        if own and own.get("entry_id") == e["id"]:
+            detail = (
+                "active (HA actions only)" if e.get("action") == "none"
+                else f"running {own.get('display') or own.get('action')}"
+            )
+            exit_tree = e.get("exit_conditions")
+            if exit_tree is None:
+                return "running", detail, []
+            met, trace = eval_conditions(exit_tree, snap)
+            fails = "; ".join(_leaf_str(t) for t in trace if not t.get("result"))
+            return "running", detail + (
+                " — exit conditions met" if met else f" — exit not met: {fails}"
+            ), _monitor_conds("exit", trace)
+        if self._expired.get(tkey) == e["id"]:
+            return "done", "finished for this window; fires again next window", []
+        if tkey in self._deferred:
+            return "deferred", "gateway under manual control", []
+        retry = self._retry.get(tkey)
+        if retry is not None and retry.get("entry_id") == e["id"]:
+            nxt = retry["next_at"].strftime("%H:%M:%S")
+            return "retrying", (
+                f"{retry['attempts']} failed attempt(s), last: {retry['last_reason']}; "
+                f"next try {nxt}"
+            ), []
+        tree = e.get("entry_conditions")
+        conds: list[dict] = []
+        if tree is not None:
+            ok, trace = eval_conditions(tree, snap)
+            conds = _monitor_conds("entry", trace)
+            if not ok:
+                return "blocked", _condition_reason("entry conditions fail", trace), conds
+        dwell = self._dwell_since.get(tkey)
+        hold_s = int(e.get("entry_hold_s") or 0)
+        if dwell is not None and dwell[0] == e["id"] and hold_s > 0:
+            left = max(0, hold_s - int((now - dwell[1]).total_seconds()))
+            return "holding", f"conditions met — {left}s left of {hold_s}s hold", conds
+        return "ready", "conditions met — fires on the next tick", conds
+
+    @property
+    def tick_s(self) -> int:
+        """Seconds between scheduler ticks."""
+        return self._tick_s
+
+    def monitor(self, entry_id: str | None = None, since: int = 0) -> list[dict]:
+        """Monitor lines newer than ``since`` (a seq), oldest first."""
+        return [
+            m for m in self._monitor
+            if m["seq"] > since and (entry_id is None or m["entry_id"] == entry_id)
+        ]
 
     async def _battery_winner(
         self, entries: list[dict], tkey: tuple, now: datetime

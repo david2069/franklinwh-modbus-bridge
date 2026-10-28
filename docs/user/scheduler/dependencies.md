@@ -62,6 +62,34 @@ The scheduler does not use MQTT. MQTT is only how the bridge's own entities reac
 
 ## Troubleshooting
 
+### Watch the scheduler with the Monitor
+
+The **Monitor** panel on the Schedule tab, above the Activity Log, shows what the scheduler
+found for each enabled entry on every check (every 15 seconds), newest first. Open it with
+**▸ Monitor**. The Activity Log records only decisions, once each; the Monitor shows every
+check, so you can watch a condition approach its value or see why an entry is waiting.
+
+| State | Meaning |
+|---|---|
+| **idle** | The entry is not active now: outside its window, or its trigger is not due. |
+| **blocked** | An entry condition fails. The line names the condition and the live value, for example `battery.soc_pct > 50 (live=42.1)`. |
+| **holding** | Its conditions are met and it is waiting out its hold time; the line shows the seconds left. |
+| **ready** | Its conditions are met; it fires on the next check. |
+| **running** | It holds the gateway. With exit conditions, the line shows the ones not yet met and their live values. |
+| **skipped** | Another entry holds the gateway; the line names it. |
+| **deferred** | The gateway is under manual control and the entry is set to defer. |
+| **retrying** | A send failed; the line shows the attempts, the last reason and the next try. |
+| **done** | It finished for this window (an exit condition, a stop or a watchdog) and fires again next window. |
+
+Pick an entry to see only its lines. **Pause** stops the updates, **Clear** empties the view
+and **Copy** copies the lines shown. Hovering over a line shows each condition tested, its live
+value and whether it passed.
+
+The bridge keeps the last 500 lines in memory only. They are not saved, and a restart clears
+them. The same lines are at `GET /api/scheduler/monitor` (`entry_id` and `since` are optional).
+
+<!-- @b DEP-MON ;; src: gateway/scheduler.py _record_monitor/_monitor_state, api/scheduler_api.py scheduler_monitor ;; tested: tests/unit/test_scheduler_monitor.py ;; write: no ;; b: One in-memory monitor line per enabled entry per tick, capped at 500 ;; test: — -->
+
 ### A condition is always false
 
 | Cause | How to tell | Fix |

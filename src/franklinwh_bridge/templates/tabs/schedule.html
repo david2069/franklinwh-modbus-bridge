@@ -496,6 +496,62 @@
     </div>
   </div>
 
+  <!-- Monitor: every evaluation of every enabled entry, live. The Activity Log
+       below records decisions only; this answers "why hasn't it fired?". -->
+  <div class="card mt-4">
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <button type="button" class="card-label !mb-0 flex items-center gap-1 hover:text-slate-200" @click="toggleMonitor()"
+              :aria-expanded="mon.open">
+        <span x-text="mon.open ? '▾' : '▸'"></span> Monitor
+        <span class="normal-case text-slate-500" x-show="mon.open && !mon.paused">· live</span>
+        <span class="normal-case text-amber-400" x-show="mon.open && mon.paused">· paused</span>
+      </button>
+      <div x-show="mon.open" class="flex items-center gap-1.5 flex-wrap">
+        <select class="form-control !py-0.5 !text-xs w-40" :value="mon.entry" @change="setMonitorEntry($event.target.value)"
+                aria-label="Monitor entry">
+          <option value="">All enabled entries</option>
+          <template x-for="s in schedules.filter(x => x.enabled)" :key="s.id">
+            <option :value="s.id" x-text="s.name" :selected="mon.entry === s.id"></option>
+          </template>
+        </select>
+        <button type="button" class="text-[10px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200"
+                @click="mon.paused = !mon.paused" x-text="mon.paused ? 'Resume' : 'Pause'"></button>
+        <button type="button" class="text-[10px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200"
+                @click="clearMonitor()">Clear</button>
+        <button type="button" class="text-[10px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200"
+                @click="copyMonitor()" :disabled="!mon.lines.length">Copy</button>
+      </div>
+    </div>
+    <div x-show="mon.open" class="mt-3">
+      <div class="text-[11px] text-slate-500 mb-2">
+        What the scheduler found for each enabled entry on every check (every 15 s), newest first.
+        Kept in the bridge's memory only: the last <span x-text="mon.max"></span> lines, cleared by a restart.
+        <span class="text-cyan-400" x-show="mon.msg" x-text="mon.msg"></span>
+      </div>
+      <div x-show="mon.lines.length === 0" class="text-center py-4 text-slate-500 text-xs">
+        No lines yet. The next check adds one per enabled entry.
+      </div>
+      <div x-show="mon.lines.length" class="space-y-0.5 max-h-64 overflow-y-auto">
+        <template x-for="m in mon.lines" :key="m.seq">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-x-2 text-xs border-b border-white/[0.03] py-1">
+            <div class="flex items-center gap-2 sm:contents">
+              <span class="font-mono text-slate-500 w-20 lg:w-32 shrink-0" :title="fmt.at(m.ts)">
+                <span class="lg:hidden" x-text="fmt.short(m.ts)"></span>
+                <span class="hidden lg:inline" x-text="fmtTs(m.ts)"></span>
+              </span>
+              <span class="order-last sm:order-none w-auto sm:w-28 uppercase text-[10px] font-semibold shrink-0"
+                    :class="monClass(m.state)" x-text="m.state"></span>
+              <span class="sm:w-36 truncate text-slate-300 sm:shrink-0" x-text="m.name"></span>
+            </div>
+            <span class="hidden lg:block w-32 truncate shrink-0 text-slate-400" :title="m.target" x-text="m.target"></span>
+            <span class="flex-1 text-slate-500 break-words" x-text="m.detail"
+                  :title="(m.conditions || []).map(c => `${c.kind}: ${c.sensor} ${c.op} ${c.value}${c.value2 != null ? '..' + c.value2 : ''} → ${c.live_value} ${c.result ? '✓' : '✗'}`).join('\n')"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <!-- Activity Log -->
   <div class="card mt-4">
     <div class="flex items-center justify-between mb-3">

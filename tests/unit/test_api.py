@@ -179,6 +179,15 @@ async def test_scheduler_evaluate_endpoint(client):
     assert data["per_condition"][0]["result"] is True
 
 
+async def test_scheduler_monitor_endpoint(client):
+    resp = await client.get("/api/scheduler/monitor?since=0")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["lines"] == [] or "state" in data["lines"][0]
+    assert data["max"] == 500
+    assert data["tick_s"] == 15
+
+
 async def test_scheduler_evaluate_fails_closed_on_missing_sensor(client):
     body = {"match": "ALL", "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 50}]}
     resp = await client.post("/api/scheduler/evaluate", json=body)
