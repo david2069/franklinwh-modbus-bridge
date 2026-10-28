@@ -13,6 +13,37 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.43] — 2026-10-28
+
+### Added
+
+- **Scheduler Monitor (PR #381):** after each scheduler tick, one line per
+  enabled entry goes to an in-memory buffer (last 500, lost on restart): idle,
+  blocked (failing condition with its live value), holding (seconds left),
+  ready, running (exit conditions not yet met), skipped (which entry holds the
+  gateway), deferred, retrying or done. Route: `GET /api/scheduler/monitor`
+  (`entry_id`, `since`). The Schedule tab has a collapsed **Monitor** panel,
+  polled every 5 s while open, with an entry filter, Pause, Clear and Copy. The
+  Activity Log is unchanged.
+- **Explain an entry (PR #379):** **⋯ → Explain / details** describes an entry in
+  plain words at Min, Medium or Full (WHEN / IF / DO / UNTIL / ON / HOLD), with
+  the same wording as the Direct Connect bridge. The level is remembered per
+  browser.
+
+### Changed
+
+- **Dashboard dropdowns open upwards (PR #377)** when there's no room below, and
+  are capped to the space there is, so iPad menus such as Events History show
+  every option.
+- **Schedule dialogs size to Default, Medium or Full (PR #378)** and drag to any
+  size in between; the choice is remembered per browser. The notification
+  message box grows as you type. The Sequencer header is on two lines, so long
+  names wrap.
+- **Schedule follow-ups (PR #380):** the notification message box is no longer
+  2 px tall after switching an HA action to Notify; dialog heights use the
+  visible screen height (`dvh`), so Full fits on iPhone and iPad Safari; Explain
+  reads "when it starts and when it ends".
+
 ## [0.2.42] — 2026-10-27
 
 ### Added
