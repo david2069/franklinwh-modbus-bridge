@@ -59,46 +59,63 @@
   </div>
 
   <!-- Centre: System status indicators (order + visibility driven by topbarPrefs).
-       Shown from md up (#82): at xl only, a zoomed-in or medium window dropped
-       them silently, including the red Grid dot that says the aGate is
-       islanded. Below xl the labels give way and each dot keeps a tooltip. -->
-  <div class="items-center gap-2 xl:gap-3 text-[10px] font-semibold uppercase tracking-wider"
+       Shown at every width (#82, #262). Each is an icon and its live value
+       (owner, 2026-10-28). The icon's colour is its state, grey when inactive;
+       red is kept for critical. Grid not connected is amber. The hover text
+       says what each one is. Icons drawn for this project. -->
+  <div class="items-center gap-3 text-xs font-semibold tabular-nums"
        :class="$store.app.phoneNav ? 'flex order-last' : 'flex'">
     <!-- Grid -->
     <div x-show="$store.app.tbShow('center', 'grid')" :style="$store.app.tbOrder('center', 'grid')"
-         class="flex items-center gap-1.5"
-         :title="'Grid: ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected')">
-      <span class="text-slate-500">Grid</span>
-      <span class="w-1.5 h-1.5 rounded-full"
-            :class="$store.app.points.connection_state === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'"></span>
+         data-testid="topbar-grid" class="flex items-center gap-1"
+         :title="'Grid power: ' + fmt.kw($store.app.gridPowerW) + ' kW, '
+                + ($store.app.gridPowerW > 0 ? 'importing' : ($store.app.gridPowerW < 0 ? 'exporting' : 'neutral'))
+                + '. Grid ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected') + '.'">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+           :class="$store.app.points.connection_state === 'Connected' ? 'text-emerald-400' : 'text-amber-400'">
+        <path d="M12 2 7 22M12 2l5 20M4 6h16M6.5 10h11M4 6v2M20 6v2M6.5 10v2M17.5 10v2M10 10l5.4 5.5M14 10l-5.4 5.5M8.6 15.5h6.8M7 22h10"/>
+      </svg>
+      <span class="text-slate-300" x-text="fmt.kw($store.app.gridPowerW) + ' kW'"></span>
     </div>
     <!-- Solar -->
     <div x-show="$store.app.tbShow('center', 'solar')" :style="$store.app.tbOrder('center', 'solar')"
-         class="flex items-center gap-1.5"
-         :title="'Solar: ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating')">
-      <span class="text-slate-500">Solar</span>
-      <span class="w-1.5 h-1.5 rounded-full"
-            :class="($store.app.solarPowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-red-400'"></span>
+         data-testid="topbar-solar" class="flex items-center gap-1"
+         :title="'Solar power: ' + fmt.kw($store.app.solarPowerW) + ' kW, ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating') + '.'">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+           :class="($store.app.solarPowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
+        <path d="M6 3h12l3 11H3z"/><path d="M10 3 9 14M14 3l1 11M4.5 8.5h15M12 14v7M8 21h8"/>
+      </svg>
+      <span class="text-slate-300" x-text="fmt.kw($store.app.solarPowerW) + ' kW'"></span>
     </div>
     <!-- Load -->
     <div x-show="$store.app.tbShow('center', 'load')" :style="$store.app.tbOrder('center', 'load')"
-         class="flex items-center gap-1.5"
-         :title="'Load: ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none')">
-      <span class="text-slate-500">Load</span>
-      <span class="w-1.5 h-1.5 rounded-full"
-            :class="($store.app.homePowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-slate-600'"></span>
+         data-testid="topbar-load" class="flex items-center gap-1"
+         :title="'Home load: ' + fmt.kw($store.app.homePowerW) + ' kW, ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none') + '.'">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+           :class="($store.app.homePowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
+        <path d="M3 11 12 3l9 8"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>
+      </svg>
+      <span class="text-slate-300" x-text="fmt.kw($store.app.homePowerW) + ' kW'"></span>
     </div>
-    <!-- Battery -->
+    <!-- Battery: state of charge. Red at or below 5% (critical), amber at or
+         below the active reserve; otherwise the state's colour. -->
     <div x-show="$store.app.tbShow('center', 'battery')" :style="$store.app.tbOrder('center', 'battery')"
-         class="flex items-center gap-1.5"
-         :title="'Battery: ' + ($store.app.points.battery_state || 'Standby')">
-      <span class="inline"
-            :class="$store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
-                    $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-500'"
-            x-text="$store.app.points.battery_state || 'Standby'"></span>
-      <span class="w-1.5 h-1.5 rounded-full"
-            :class="$store.app.points.battery_state === 'Charging' ? 'bg-emerald-400' :
-                    $store.app.points.battery_state === 'Discharging' ? 'bg-orange-400' : 'bg-slate-600'"></span>
+         data-testid="topbar-battery" class="flex items-center gap-1"
+         :title="'Battery state of charge: ' + fmt.pct($store.app.batterySoc) + ', ' + ($store.app.points.battery_state || 'Standby').toLowerCase() + '.'
+                + ($store.app.batteryLevel === 'critical' ? ' Critical: at or below 5%.'
+                   : $store.app.batteryLevel === 'low' ? ' At or below the active reserve (' + fmt.pct($store.app.points.active_reserve_pct) + ').' : '')">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+           :class="$store.app.batteryLevel === 'critical' ? 'text-red-400' :
+                   $store.app.batteryLevel === 'low' ? 'text-amber-400' :
+                   $store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
+                   $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-500'">
+        <rect x="7" y="4" width="10" height="17" rx="2"/><path d="M10 2h4M10 13h4M10 16.5h4"/>
+      </svg>
+      <span :class="$store.app.batteryLevel === 'critical' ? 'text-red-400' :
+                    $store.app.batteryLevel === 'low' ? 'text-amber-400' :
+                    $store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
+                    $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-300'"
+            x-text="fmt.pct($store.app.batterySoc)"></span>
       <span x-show="$store.app.forcedDispatch" x-cloak
             class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
                    bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse"
@@ -142,16 +159,17 @@
             ? (fmt.clock($store.app.lastPollTs) + ($store.app.lastPollTs ? ' ' + fmt.tz() : ''))
             : 'No gateway yet'"></span>
 
-    <!-- Release control button -->
+    <!-- Release control button: amber while a command is active (red is
+         kept for critical; owner, 2026-10-28) -->
     <button x-show="$store.app.tbShow('right', 'release')" :style="$store.app.tbOrder('right', 'release')"
             @click="$store.app.releaseResult = null; $store.app.showReleaseModal = true"
             class="relative flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-all duration-200"
             :class="$store.app.isReleaseable
-              ? 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 hover:border-red-400'
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30'
               : 'bg-slate-700/50 text-slate-500 border border-slate-600/30 hover:bg-slate-700 hover:text-slate-400'"
             :title="$store.app.isReleaseable ? 'Active control — click to review' : 'No active control'">
       <span x-show="$store.app.isReleaseable"
-            class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>
+            class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
       <span>Release</span>
     </button>
 

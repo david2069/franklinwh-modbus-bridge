@@ -1163,6 +1163,15 @@ document.addEventListener('alpine:init', () => {
     get solarPowerW() { return this.points.total_solar ?? null; },
     get homePowerW() { return this.points.home_load_ext ?? null; },
     get batterySoc() { return this.points.soc ?? null; },
+    // SoC level (owner, 2026-10-28): red is critical, at or below 5%; amber is
+    // at or below the active reserve; otherwise null.
+    get batteryLevel() {
+      const soc = this.points.soc, reserve = this.points.active_reserve_pct;
+      if (soc == null) return null;
+      if (soc <= 5) return 'critical';
+      if (reserve != null && soc <= reserve) return 'low';
+      return null;
+    },
     get acTypeCode() { return this.points.ac_type_code ?? 0; },
     get acTypeName() {
       const names = { 0: 'Single Phase', 1: 'Split Phase', 2: 'Three Phase' };
