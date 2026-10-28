@@ -111,8 +111,11 @@ Keep all battery entries for one gateway on the same target type.
 ## Who sent what (requester)
 
 Every battery command records who asked for it. Scheduled commands carry
-`schedule:<entry id>`; Run now and late fires carry the same; the Controls tab and the REST
-API carry `user:<account>`; Home Assistant / MQTT commands carry `mqtt`. You see it in **Logs → control log** ("— by schedule:sch_1a2b3c4d") and
-in the dispatch record. The engine does not use it to decide ownership: ownership lives in
-the engine's memory and is lost on restart.
+`schedule:<entry id>`, and so do the scheduler's own releases and mode changes (window exit,
+exit conditions, Stop); Run now and late fires carry the same; the Controls tab, the top
+bar's Release and the REST API carry `user:<account>`; Home Assistant / MQTT commands carry
+`mqtt`. You see it in **Logs → control log** ("— by schedule:sch_1a2b3c4d"), in **Logs →
+Battery-control writes** and in the dispatch record. Arbitration does not use it:
+ownership lives in the engine's memory and is lost on restart. A Run now uses it to tell
+when another command has replaced it.
 <!-- @b PRI-14 ;; src: gateway/scheduler.py:1208-1230, publish/command_handler.py:314-330, publish/command_handler.py:530-532, api/gateways_api.py:1206, publish/mqtt_publisher.py:881 ;; tested: tests/unit/test_dispatch_verification.py::test_command_records_who_sent_it ;; write: no ;; b: Scheduled, Run now and late-fire sends carry requester schedule:<id>, recorded on the control log and dispatch_outcomes; arbitration does not read it ;; test: — -->

@@ -267,7 +267,7 @@ async def _audit_crud(
         logger.debug("Schedule CRUD audit failed: %s", exc)
 
 
-def _decorate(entry: dict, now: datetime) -> dict:
+def _decorate(entry: dict, now: datetime, run_now: set[str] | None = None) -> dict:
     """Add live previews (active-now, next-fire) to an entry for the UI.
 
     Trigger (v2) entries are previewed via the fire-based helpers; legacy
@@ -284,6 +284,8 @@ def _decorate(entry: dict, now: datetime) -> dict:
     else:
         nf = next_fire(entry.get("when_spec", {}), now)
     entry["active_now"] = entry.get("enabled", False) and entry_active(entry, now)
+    # A Run now still running, outside the entry's window: Stop ends it too.
+    entry["run_now"] = entry.get("id") in (run_now or set())
     entry["next_fire"] = nf.isoformat() if nf else None
     return entry
 
@@ -296,7 +298,9 @@ async def list_schedules(request: Request):
     """List all schedule entries with active-now / next-fire previews."""
     db: aiosqlite.Connection = request.app.state.db
     now = datetime.now()
-    rows = [_decorate(e, now) for e in await get_schedules(db)]
+    engine = getattr(request.app.state, "schedule_engine", None)
+    running = engine.run_now_ids if engine is not None else set()
+    rows = [_decorate(e, now, running) for e in await get_schedules(db)]
     return {"schedules": rows}
 
 
