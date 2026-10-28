@@ -978,6 +978,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     async refresh() {
+      // Gateway list first: the points request below depends on whether the
+      // active gateway is polling, and on which gateway is active.
+      const gwData = await fetchJSON('api/gateways', { background: true });
+      if (gwData && gwData.gateways) {
+        this.gatewayList = gwData.gateways;
+        this.autoSelectGateway();
+      }
+
       // Fetch points from the active gateway (or site aggregator)
       const gw = this.activeGateway;
       let pointsUrl;
@@ -989,7 +997,11 @@ document.addEventListener('alpine:init', () => {
         pointsUrl = 'api/points';
       }
 
-      const data = await fetchJSON(pointsUrl, { background: true });
+      // A stopped gateway has no instance, so its points answer 404 on every
+      // refresh. Skip the request; the outcome (not connected) is the same.
+      const row = this.gatewayList.find(g => g.id === gw);
+      const stopped = gw !== 'site' && gw !== 'default' && row && row.polling === false;
+      const data = stopped ? null : await fetchJSON(pointsUrl, { background: true });
       if (data && !data.error) {
         this.points = data.points || {};
         this.quality = data.quality ?? null;
@@ -1009,13 +1021,6 @@ document.addEventListener('alpine:init', () => {
       const stats = await fetchJSON('api/stats', { background: true });
       if (stats && !stats.error) {
         this.bridgeStats = stats;
-      }
-
-      // Refresh gateway list periodically
-      const gwData = await fetchJSON('api/gateways', { background: true });
-      if (gwData && gwData.gateways) {
-        this.gatewayList = gwData.gateways;
-        this.autoSelectGateway();
       }
     },
 
