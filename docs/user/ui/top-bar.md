@@ -11,7 +11,7 @@ From left to right:
 | **◀ / ▶** | Collapses or expands the sidebar. |
 | **Page title** | The page you are on. |
 | **Gateway selector** | Which gateway the page shows. Only appears when there is more than one gateway. |
-| **Status dots** | Grid, Solar, Load and Battery, live. |
+| **Grid / Solar / Load / Battery** | An icon and the live value for each. |
 | **Connected / Disconnected** | Whether the browser's last data request to the bridge succeeded. |
 | **Quality badge** | Only appears when the data is `stale` or bad. Hidden while it is fine. |
 | **Clock** | Time of the last poll, in the **bridge's** timezone. |
@@ -21,6 +21,8 @@ From left to right:
 | **Theme** | Switches dark / light. |
 | **Refresh** | Fetches live data now, without waiting for the next 10-second refresh. |
 | **⚙ (gear)** | Top bar preferences: which items show, and in what order. |
+
+Every item except the gear can be hidden; see [Top bar preferences](#top-bar-preferences).
 
 ## Gateway selector
 
@@ -41,31 +43,36 @@ your choice for the rest of the session.
 The selection changes the Dashboard cards, Power History, Events and the Energy Flow card.
 It does **not** change the [simple dashboard](user-dashboard.md).
 
-## Status dots
+## Grid, Solar, Load and Battery
 
-| Dot | Green / lit when | Tooltip |
-|---|---|---|
-| **Grid** | The aGate reports the grid as connected | "Grid: connected / not connected". A red Grid dot means the aGate is **islanded** (off-grid). |
-| **Solar** | Solar power is above 0 W | "generating / not generating" |
-| **Load** | Home load is above 0 W | "consuming / none" |
-| **Battery** | The label is the battery's own state: *Charging*, *Discharging* or *Standby* | — |
+Each shows an icon and its live value. The icon's colour is its state, following the
+[colour rule](colours.md). Hover over one to see what it is and its state.
+
+| Item | Shows | Colour | Hover text, for example |
+|---|---|---|---|
+| **Grid** | Grid power, kW | Green when the aGate reports the grid as connected; **amber** when it isn't (the aGate is islanded). | "Grid power: 0.24 kW, importing. Grid connected." |
+| **Solar** | Solar power, kW | Green when generating, grey when not. | "Solar power: 0.00 kW, not generating." |
+| **Load** | Home load, kW | Green when there is load, grey when there isn't. | "Home load: 0.98 kW, consuming." |
+| **Battery** | State of charge, % | **Red** at or below 5%; **amber** at or below the active reserve; otherwise green when charging, orange when discharging and grey on standby. | "Battery state of charge: 31%, discharging." It adds "At or below the active reserve (20%)." or "Critical: at or below 5%." |
 
 When you have sent a force command (from the Dashboard, the simple dashboard or a
-schedule), an orange **Forced** badge appears next to the battery state. This is
-different from the battery's normal charging and discharging.
+schedule), an amber **Forced** badge appears next to the battery. This is different from
+the battery's normal charging and discharging.
+
+On a touch screen such as an iPad there is no hover, so the hover text doesn't show.
 
 Nothing in the top bar is hidden because the window is narrow. When it doesn't fit on one
 line it wraps onto a second (and on a phone a third): page title and gateway first, then the
 connection, time and buttons, then the Grid / Solar / Load / battery indicators.
 
-The time shows the bridge's timezone, for example `20:18 NZDT`. If your device is in a
-different timezone, a second labelled line gives your local time too.
+The clock shows one time, in the bridge's timezone, for example `20:18 AEDT`. Hover over it
+for the full date and time of the last poll.
 
 ## Release
 
 ![Battery Control State dialog](../../images/ui/release-modal.png)
 
-The **Release** button gets a red dot when a battery command is active. Click it to see the
+The **Release** button turns amber, with an amber dot, when a battery command is active. Click it to see the
 control state, read straight from the aGate and from the bridge.
 
 **M704 Hardware Registers** (the aGate's own control registers):
@@ -118,11 +125,13 @@ Shows who is signed in and their role. **Sign out** ends this login.
 
 ![Top bar preferences](../../images/ui/topbar-preferences.png)
 
-The gear opens **Topbar Preferences**:
+The gear opens **Topbar Preferences**, in three sections:
 
+- **Left**: Sidebar button, Page title, Gateway picker.
 - **Centre Indicators**: Grid, Solar, Load, Battery.
-- **Right Buttons**: Release, SunSpec, Theme, Refresh.
+- **Right**: Connection, Data quality, Clock, Release, SunSpec, User, Theme, Refresh.
 
-Untick an item to hide it. Use **↑ / ↓** to change the order. **Reset** restores the
-defaults (everything shown, in the order above). These preferences are stored in this
-browser only.
+Untick an item to hide it; you can hide everything. The gear itself always stays, so you can
+turn items back on. *Logged out — log in* still appears when your login has ended. Use
+**↑ / ↓** to change the order of the Centre and Right items. **Reset** restores the defaults
+(everything shown, in the order above). These preferences are stored in this browser only.

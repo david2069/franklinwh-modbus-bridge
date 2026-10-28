@@ -66,12 +66,13 @@
     el.style.color = colour || 'var(--text)';
     if (subId) $(subId).textContent = sub || '';
   }
-  function socColour(soc) {
+  // Same rule as the main UI (docs/user/ui/colours.md): red <= 5%,
+  // amber <= active reserve, otherwise green.
+  function socColour(soc, reserve) {
     if (soc == null) return 'var(--muted)';
-    if (soc >= 80) return 'var(--ok)';
-    if (soc >= 30) return 'var(--accent)';
-    if (soc >= 15) return 'var(--warn)';
-    return 'var(--danger)';
+    if (soc <= 5) return 'var(--danger)';
+    if (reserve != null && soc <= reserve) return 'var(--warn)';
+    return 'var(--ok)';
   }
 
   // ── Render ──────────────────────────────────────────────────
@@ -84,7 +85,7 @@
     if (soc != null && !isNaN(soc)) {
       const pct = Math.min(100, Math.max(0, soc)) / 100;
       arc.style.strokeDashoffset = String(RING_C * (1 - pct));
-      arc.style.stroke = socColour(soc);
+      arc.style.stroke = socColour(soc, pts.active_reserve_pct);
       $('socVal').textContent = Math.round(soc);
     } else {
       arc.style.strokeDashoffset = String(RING_C);
@@ -97,8 +98,8 @@
       const p = fmtPower(bw);
       if (bw > 25) {
         $('battState').innerHTML = `Discharging · ${p.val} ${p.unit}`;
-        $('battState').style.color = 'var(--warn)';
-        setPower('battVal', 'battSub', bw, 'Discharging', 'var(--warn)');
+        $('battState').style.color = 'var(--draw)';
+        setPower('battVal', 'battSub', bw, 'Discharging', 'var(--draw)');
       } else if (bw < -25) {
         $('battState').innerHTML = `Charging · ${p.val} ${p.unit}`;
         $('battState').style.color = 'var(--ok)';
@@ -116,12 +117,12 @@
     // Solar (production, always ≥0)
     const sw = pts.total_solar;
     setPower('solarVal', 'solarSub', sw, sw > 25 ? 'Producing' : 'Idle',
-      sw > 25 ? 'var(--solar)' : 'var(--muted)');
+      sw > 25 ? 'var(--ok)' : 'var(--muted)');
 
-    // Grid: +import (danger) / −export (ok)
+    // Grid: +import (orange; red is critical only) / −export (ok)
     const gw = pts.grid_power_w;
     if (gw != null && !isNaN(gw)) {
-      if (gw > 25) setPower('gridVal', 'gridSub', gw, 'Importing', 'var(--danger)');
+      if (gw > 25) setPower('gridVal', 'gridSub', gw, 'Importing', 'var(--draw)');
       else if (gw < -25) setPower('gridVal', 'gridSub', gw, 'Exporting', 'var(--ok)');
       else setPower('gridVal', 'gridSub', 0, 'No flow', 'var(--muted)');
     } else {
