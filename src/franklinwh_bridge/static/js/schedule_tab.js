@@ -829,7 +829,7 @@ function scheduleTab() {
         default: if (e.action) out.push(this.actionMeta(e.action).label);
       }
       for (const a of (e.ha_actions || [])) {
-        const when = a.when === 'exit' ? ' when it ends' : (a.when === 'both' ? ' when it starts and ends' : '');
+        const when = a.when === 'exit' ? ' when it ends' : (a.when === 'both' ? ' when it starts and when it ends' : '');
         if (a.kind === 'notify') out.push(`send a Home Assistant notification${when}`);
         else out.push(`${(a.service || 'call').replace(/_/g, ' ')} “${a.entity_id || 'an entity'}”${when}`);
       }

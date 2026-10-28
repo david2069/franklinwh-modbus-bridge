@@ -1030,7 +1030,7 @@
                   <input type="text" x-model="a.title" maxlength="200" placeholder="Title (optional)"
                          class="form-control !py-1 !text-xs w-full">
                   <textarea x-model="a.message" maxlength="1000" rows="2"
-                            x-init="$nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"
+                            x-effect="a.kind === 'notify' && $nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"
                             placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
                             class="form-control !py-1 !text-xs w-full resize-y"></textarea>
                   <div class="text-[10px] text-slate-600">
