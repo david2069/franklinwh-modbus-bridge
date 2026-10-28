@@ -328,7 +328,7 @@
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.batteryPowerW, 'battery')"
                 x-text="fmt.w($store.app.batteryPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
-                :class="$store.app.batteryPowerW > 0 ? 'text-amber-400' : ($store.app.batteryPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
+                :class="$store.app.batteryPowerW > 0 ? 'text-orange-400' : ($store.app.batteryPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
                 x-text="$store.app.batteryPowerW > 0 ? 'Discharging' : ($store.app.batteryPowerW < 0 ? 'Charging' : 'Standby')"></span>
         </div>
         <div class="flex justify-between items-center">
@@ -336,7 +336,7 @@
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.gridPowerW, 'grid')"
                 x-text="fmt.w($store.app.gridPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
-                :class="$store.app.gridPowerW > 0 ? 'text-red-400' : ($store.app.gridPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
+                :class="$store.app.gridPowerW > 0 ? 'text-orange-400' : ($store.app.gridPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
                 x-text="$store.app.gridPowerW > 0 ? 'Importing' : ($store.app.gridPowerW < 0 ? 'Exporting' : 'Neutral')"></span>
         </div>
       </div>
@@ -483,7 +483,7 @@
           <svg viewBox="0 0 100 100">
             <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
             <circle class="soc-ring-fill" cx="50" cy="50" r="40"
-                    :stroke="socColour($store.app.batterySoc)"
+                    :stroke="socColour($store.app.batterySoc, $store.app.points.active_reserve_pct)"
                     :stroke-dashoffset="socRingOffset($store.app.batterySoc)"/>
           </svg>
           <div class="soc-ring-text">

@@ -50,10 +50,10 @@ so the **FranklinWH app shows "VPP Mode"** for as long as the setpoint holds.
 - This is expected. It doesn't mean the aGate has joined a VPP programme.
 - **While it holds you can't override it from the app.** Changing the mode in the app
   doesn't end it.
-- The bridge shows the same state: the **Release** button in the top bar has a red dot,
+- The bridge shows the same state: the **Release** button in the top bar turns amber, with an amber dot,
   and the Battery Control card shows the active command.
 
-![Top bar: Release with a red dot while a command is active](../images/ha/dispatch-topbar-release.png)
+![Top bar: Release amber while a command is active](../images/ha/dispatch-topbar-release.png)
 
 ![Battery Control with Force Charge active](../images/ha/dispatch-battery-control-active.png)
 
@@ -64,7 +64,7 @@ the aGate has dropped the setpoint.
 
 | Where | How |
 |---|---|
-| **Top bar → Release** | Click **Release** (red dot = active control). The *Battery Control State* dialog shows the aGate's control registers and the bridge's command. Click **Force Release**. |
+| **Top bar → Release** | Click **Release** (amber = active control). The *Battery Control State* dialog shows the aGate's control registers and the bridge's command. Click **Force Release**. |
 | **Dashboard → Battery Control** | Set **Command** to **Release** (or *Not Active*). It is sent at once. |
 | **Schedule** | On an active entry, **■ Stop** ends that run. |
 | **Simple dashboard** (`/user`) | **Stop**. |

@@ -231,21 +231,23 @@ function socRingOffset(soc) {
   return 251.3 * (1 - pct);
 }
 
-function socColour(soc) {
+// Colour rule (owner, 2026-10-28; docs/user/ui/colours.md): red at or below
+// 5% (critical), amber at or below the active reserve, otherwise green.
+function socColour(soc, reserve) {
   if (soc == null) return 'var(--text-muted)';
-  if (soc >= 80) return 'var(--ok)';
-  if (soc >= 30) return 'var(--accent)';
-  if (soc >= 15) return 'var(--warn)';
-  return 'var(--danger)';
+  if (soc <= 5) return 'var(--danger)';
+  if (reserve != null && soc <= reserve) return 'var(--warn)';
+  return 'var(--ok)';
 }
 
 function powerColour(watts, type) {
   if (watts == null) return 'var(--text-muted)';
-  // Battery: positive = discharging (amber/warn), negative = charging (green/ok)
-  if (type === 'battery') return watts > 0 ? 'var(--warn)' : watts < 0 ? 'var(--ok)' : 'var(--text-muted)';
-  // Grid: positive = importing (red/danger), negative = exporting (green/ok)
-  if (type === 'grid') return watts > 0 ? 'var(--danger)' : watts < 0 ? 'var(--ok)' : 'var(--text-muted)';
-  if (type === 'solar') return watts > 0 ? 'var(--solar)' : 'var(--text-muted)';
+  // Battery: positive = discharging (orange), negative = charging (green)
+  if (type === 'battery') return watts > 0 ? 'var(--draw)' : watts < 0 ? 'var(--ok)' : 'var(--text-muted)';
+  // Grid: positive = importing (orange), negative = exporting (green). Not
+  // red: red is kept for critical (owner, 2026-10-28).
+  if (type === 'grid') return watts > 0 ? 'var(--draw)' : watts < 0 ? 'var(--ok)' : 'var(--text-muted)';
+  if (type === 'solar') return watts > 0 ? 'var(--ok)' : 'var(--text-muted)';
   return 'var(--text-primary)';
 }
 

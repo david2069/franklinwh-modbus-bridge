@@ -8,13 +8,16 @@
 
 /* ── Tokens ─────────────────────────────────────────────── */
 :root {
-  /* Status Colours */
+  /* Status Colours. The rule (owner, 2026-10-28; docs/user/ui/colours.md):
+     red = critical only, amber = warning, green = active, grey = inactive,
+     orange = energy drawn (battery discharging, grid importing). */
   --live:         #06b6d4; /* cyan-500 */
   --ok:           #10b981; /* emerald-500 */
   --warn:         #f59e0b; /* amber-500 */
   --danger:       #ef4444; /* red-500 */
   --solar:        #f59e0b; /* amber-500 */
-  --grid-import:  #ef4444; /* red-500 */
+  --draw:         #f97316; /* orange-500: battery discharging, grid importing */
+  --grid-import:  #f97316; /* orange-500 (was red: red is critical only) */
   --grid-export:  #10b981; /* emerald-500 */
 
   --glass-blur:   blur(12px);

@@ -96,6 +96,7 @@ nav:
   - Dashboards & Settings:
     - Overview: user/ui/index.md
     - Top bar: user/ui/top-bar.md
+    - Colours: user/ui/colours.md
     - Dashboard: user/ui/dashboard.md
     - Battery controls: user/ui/controls.md
     - SunSpec Explorer: user/ui/sunspec-explorer.md
