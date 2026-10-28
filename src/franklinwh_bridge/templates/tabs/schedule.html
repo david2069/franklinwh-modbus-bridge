@@ -544,8 +544,8 @@
               <span class="sm:w-36 truncate text-slate-300 sm:shrink-0" x-text="m.name"></span>
             </div>
             <span class="hidden lg:block w-32 truncate shrink-0 text-slate-400" :title="m.target" x-text="m.target"></span>
-            <span class="flex-1 text-slate-500 break-words" x-text="m.detail"
-                  :title="(m.conditions || []).map(c => `${c.kind}: ${c.sensor} ${c.op} ${c.value}${c.value2 != null ? '..' + c.value2 : ''} → ${c.live_value} ${c.result ? '✓' : '✗'}`).join('\n')"></span>
+            <span class="flex-1 text-slate-500 break-words" x-text="friendlyText(m.detail)"
+                  :title="(m.conditions || []).map(c => `${c.kind}: ${sensorLabel(c.sensor)} ${c.op} ${c.value}${c.value2 != null ? '..' + c.value2 : ''} → ${c.live_value} ${c.result ? '✓' : '✗'}`).join('\n')"></span>
           </div>
         </template>
       </div>
@@ -591,7 +591,7 @@
             <span class="hidden lg:block w-32 truncate shrink-0" :title="ev.target"
                   :class="(ev.target || '').includes('(mock)') ? 'text-amber-400' : 'text-slate-400'"
                   x-text="ev.target"></span>
-            <span class="flex-1 truncate text-slate-500" x-text="ev.detail" :title="ev.detail"></span>
+            <span class="flex-1 truncate text-slate-500" x-text="friendlyText(ev.detail)" :title="friendlyText(ev.detail)"></span>
           </div>
         </template>
       </div>
@@ -825,12 +825,18 @@
               <div>
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(c)">
-                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                       :style="condSensorStyle()">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
-                            class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
-                      <span class="truncate" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.sensor)" x-text="sensorButtonLabel(c.sensor)"></span>
+                            class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
+                      <!-- Full name; when it doesn't fit the START is cut, as names from one
+                           integration differ at the end (#110). -->
+                      <span class="truncate" style="direction: rtl; text-align: left" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.sensor)"><bdi x-text="sensorLabel(c.sensor)"></bdi></span>
                       <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                     </button>
+                    <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                         @pointerdown.prevent.stop="startCondResize($event)"
+                         title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
                     <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
                       <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                         <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
@@ -908,12 +914,18 @@
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(cc)">
-                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                           :style="condSensorStyle()">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
-                                class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
-                          <span class="truncate" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.sensor)" x-text="sensorButtonLabel(cc.sensor)"></span>
+                                class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
+                          <!-- Full name; when it doesn't fit the START is cut, as names from one
+                               integration differ at the end (#110). -->
+                          <span class="truncate" style="direction: rtl; text-align: left" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.sensor)"><bdi x-text="sensorLabel(cc.sensor)"></bdi></span>
                           <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                         </button>
+                        <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                             @pointerdown.prevent.stop="startCondResize($event)"
+                             title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
                         <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
                           <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                             <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
@@ -1022,7 +1034,8 @@
                   <option value="notify">Notify</option>
                 </select>
                 <select x-show="(a.kind || 'entity') === 'entity'"
-                        :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs">
+                        :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs"
+                        :title="haEntityMeta(a)?.title || ''">
                   <option value="::">— entity —</option>
                   <template x-for="grp in haControllableGroups" :key="grp.label">
                     <optgroup :label="grp.label">
@@ -1034,7 +1047,7 @@
                       <template x-for="ent in grp.items" :key="ent.instance_id + ent.entity_id">
                         <option :value="ent.instance_id + '::' + ent.entity_id"
                                 :selected="(ent.instance_id + '::' + ent.entity_id) === (a.instance_id + '::' + a.entity_id)"
-                                x-text="ent.label"></option>
+                                :title="ent.title" x-text="ent.label"></option>
                       </template>
                     </optgroup>
                   </template>
@@ -1131,12 +1144,18 @@
               <div>
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(c)">
-                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                       :style="condSensorStyle()">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
-                            class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
-                      <span class="truncate" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.sensor)" x-text="sensorButtonLabel(c.sensor)"></span>
+                            class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
+                      <!-- Full name; when it doesn't fit the START is cut, as names from one
+                           integration differ at the end (#110). -->
+                      <span class="truncate" style="direction: rtl; text-align: left" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.sensor)"><bdi x-text="sensorLabel(c.sensor)"></bdi></span>
                       <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                     </button>
+                    <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                         @pointerdown.prevent.stop="startCondResize($event)"
+                         title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
                     <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
                       <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                         <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
@@ -1214,12 +1233,18 @@
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(cc)">
-                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                           :style="condSensorStyle()">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
-                                class="form-control !py-1 !text-xs w-52 text-left flex items-center justify-between gap-1">
-                          <span class="truncate" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.sensor)" x-text="sensorButtonLabel(cc.sensor)"></span>
+                                class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
+                          <!-- Full name; when it doesn't fit the START is cut, as names from one
+                               integration differ at the end (#110). -->
+                          <span class="truncate" style="direction: rtl; text-align: left" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.sensor)"><bdi x-text="sensorLabel(cc.sensor)"></bdi></span>
                           <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                         </button>
+                        <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                             @pointerdown.prevent.stop="startCondResize($event)"
+                             title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
                         <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
                           <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                             <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">

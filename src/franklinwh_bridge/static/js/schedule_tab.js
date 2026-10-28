@@ -82,6 +82,12 @@ function scheduleTab() {
     timeline: { segments: [], now_min: 0, weekday: 0 },
     services: [],
     sensors: [],
+    // Width of the condition sensor column, dragged by the user and kept in
+    // this browser (owner, 2026-10-28). null = the default 13rem. condRest is
+    // the room the rest of the row needs, measured at the drag, so a narrower
+    // window caps the column instead of wrapping the row.
+    condW: (() => { try { return Number(localStorage.getItem('fwh-cond-sensor-w')) || null; } catch (_) { return null; } })(),
+    condRest: (() => { try { return Number(localStorage.getItem('fwh-cond-sensor-rest')) || 0; } catch (_) { return 0; } })(),
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
 
@@ -112,6 +118,52 @@ function scheduleTab() {
     sensorButtonLabel(id) {
       const label = this.sensorLabel(id);
       return label.length > 30 ? '…' + label.slice(-29) : label;
+    },
+    /** Style for a condition sensor field: never narrower than 13rem, and
+     *  never wider than the row has room for. */
+    condSensorStyle() {
+      return {
+        width: this.condW ? `${this.condW}px` : '13rem',
+        minWidth: '13rem',
+        maxWidth: this.condRest ? `max(13rem, calc(100% - ${this.condRest}px))` : '100%',
+      };
+    },
+    /** Drag the grip on a sensor field's right edge to widen the column.
+     *  Only wider than the default, and only as far as the row has room. */
+    startCondResize(ev) {
+      const wrap = ev.currentTarget.parentElement;
+      const row = wrap.parentElement;
+      const cs = getComputedStyle(row);
+      const gap = parseFloat(cs.columnGap) || 0;
+      const others = [...row.children].filter((el) => el !== wrap && el.offsetParent !== null);
+      const rest = others.reduce((sum, el) => sum + el.getBoundingClientRect().width + gap, 0) + 2;
+      const minW = parseFloat(getComputedStyle(wrap).minWidth) || 208;
+      const maxW = Math.max(minW, row.clientWidth - rest);
+      const startX = ev.clientX, startW = wrap.getBoundingClientRect().width;
+      this.condRest = Math.ceil(rest);
+      const move = (e) => {
+        this.condW = Math.round(Math.min(maxW, Math.max(minW, startW + e.clientX - startX)));
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        try {
+          localStorage.setItem('fwh-cond-sensor-w', String(this.condW || ''));
+          localStorage.setItem('fwh-cond-sensor-rest', String(this.condRest));
+        } catch (_) { /* this browser only */ }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    },
+    /** HA entity ids (ha:<inst>:<entity>) in a line of text, as their
+     *  friendly names where known (owner, 2026-10-28: friendly names
+     *  everywhere). The stored text keeps the ids. */
+    friendlyText(s) {
+      if (!s) return s;
+      return String(s).replace(/ha:[^\s:]+:[a-z_]+\.[A-Za-z0-9_]+/g, (id) => {
+        const hit = this.sensors.find((x) => x.id === id);
+        return hit ? hit.label : id;
+      });
     },
     sensorTitle(id) {
       if (!id) return '';
@@ -160,8 +212,13 @@ function scheduleTab() {
         .map((e) => ({
           instance_id: e.instance, instance_name: e.instance_name,
           entity_id: e.entity_id, domain: e.domain, options: e.options || [],
-          label: `${e.friendly_name} (${e.entity_id})`,
-        }));
+          // Friendly name only (owner, 2026-10-28); the id is in the hover.
+          friendly: e.friendly_name || e.entity_id,
+          label: e.friendly_name || e.entity_id,
+          title: `${e.friendly_name || e.entity_id} (${e.entity_id})`,
+        }))
+        .map((e, _i, all) => (all.some((o) => o !== e && o.instance_id === e.instance_id && o.label === e.label)
+          ? { ...e, label: `${e.label} (${e.entity_id})` } : e));
     },
 
     get haControllableGroups() {
@@ -417,7 +474,7 @@ function scheduleTab() {
 
     monitorText() {
       return this.mon.lines.map(m =>
-        `${this.fmtTs(m.ts)}\t${m.name}\t${m.target}\t${m.state}\t${m.detail}`).join('\n');
+        `${this.fmtTs(m.ts)}\t${m.name}\t${m.target}\t${m.state}\t${this.friendlyText(m.detail)}`).join('\n');
     },
 
     async copyMonitor() {
@@ -834,7 +891,7 @@ function scheduleTab() {
       const render = (node) => {
         const join = node.match === 'ANY' ? ' OR ' : ' AND ';
         return node.conditions.map(c =>
-          c.conditions ? '(' + render(c) + ')' : `${c.sensor} ${c.op} ${c.value}${c.op === 'between' ? '..' + c.value2 : ''}`
+          c.conditions ? '(' + render(c) + ')' : `${this.sensorLabel(c.sensor)} ${c.op} ${c.value}${c.op === 'between' ? '..' + c.value2 : ''}`
         ).join(join);
       };
       return render(t);
@@ -906,7 +963,7 @@ function scheduleTab() {
       for (const a of (e.ha_actions || [])) {
         const when = a.when === 'exit' ? ' when it ends' : (a.when === 'both' ? ' when it starts and when it ends' : '');
         if (a.kind === 'notify') out.push(`send a Home Assistant notification${when}`);
-        else out.push(`${(a.service || 'call').replace(/_/g, ' ')} “${a.entity_id || 'an entity'}”${when}`);
+        else out.push(`${(a.service || 'call').replace(/_/g, ' ')} “${this.haEntityMeta(a)?.friendly || a.entity_id || 'an entity'}”${when}`);
       }
       return out.length ? out.join(', then ') : 'take no gateway action';
     },
