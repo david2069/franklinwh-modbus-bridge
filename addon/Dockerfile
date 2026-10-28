@@ -23,7 +23,7 @@ WORKDIR /app
 # build-base/linux-headers/git are needed to compile a few wheels on Alpine and
 # to pip-install from git; dropped again in the same layer so they don't ship.
 ARG FWM_REF=v0.10.1
-ARG BRIDGE_REF=v0.2.43
+ARG BRIDGE_REF=v0.2.44
 ARG REPO=https://github.com/david2069/franklinwh-modbus-bridge
 RUN apk add --no-cache --virtual .build-deps build-base linux-headers git \
     && apk add --no-cache curl \
