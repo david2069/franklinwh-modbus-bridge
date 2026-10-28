@@ -21,12 +21,11 @@ const fmt = {
   // the BRIDGE's zone, not the viewing device's (#79; time_fmt.js).
   clock: (ts) => (ts == null ? 'never' : bridgeTime.time(ts * 1000)),
   // Full timestamp with its zone label, used as a tooltip on the HH:MM label.
-  // When the viewing device is in another zone, its own time follows,
-  // labelled, so both readings are on hand without doubling every row.
+  // One time only, the bridge's (owner, 2026-10-28).
   at: (ts) => {
     if (ts == null) return 'never';
-    const ms = ts * 1000, note = bridgeTime.viewerNote(ms);
-    return `${bridgeTime.full(ms)} ${bridgeTime.label(ms)}${note ? ` (${note})` : ''}`;
+    const ms = ts * 1000;
+    return `${bridgeTime.full(ms)} ${bridgeTime.label(ms)}`;
   },
   // Compact stamp for dense tables: "2 Sep 12:57", or just "12:57" for today.
   // A full stamp is ~24 characters and dominates a phone-width row; pair this
@@ -153,6 +152,20 @@ const MODE_LEGEND_COLORS = {
 /** Navigation tabs, in bottom-bar priority order (#262). One list drives the
  *  phone bar and its More sheet, like the Direct Connect bridge's registry;
  *  the desktop sidebar keeps its own markup. Icons are the sidebar's. */
+// Topbar items, in their default order; all start visible.
+function topbarDefaults() {
+  const items = (list) => list.map(([key, label]) => ({ key, label, visible: true }));
+  return {
+    left: items([['sidebar', 'Sidebar button'], ['title', 'Page title'], ['gateway', 'Gateway picker']]),
+    center: items([['grid', 'Grid'], ['solar', 'Solar'], ['load', 'Load'], ['battery', 'Battery']]),
+    right: items([
+      ['status', 'Connection'], ['quality', 'Data quality'], ['clock', 'Clock'],
+      ['release', 'Release'], ['sunspec', 'SunSpec'], ['user', 'User'],
+      ['theme', 'Theme'], ['refresh', 'Refresh'],
+    ]),
+  };
+}
+
 const NAV_TABS = [
   { key: 'dashboard', short: 'Home', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
   { key: 'schedule', short: 'Schedule', icon: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="16" r="3"/>' },
@@ -674,61 +687,52 @@ document.addEventListener('alpine:init', () => {
     // Model point source annotations
     showSources: localStorage.getItem('fwh-showSources') === 'true',
 
-    // Topbar preferences — which items are visible and in what order
+    // Topbar preferences: every item can be hidden (owner, 2026-10-28); centre
+    // and right items can also be reordered. Only the gear itself is fixed, as
+    // it is the way back. "Logged out — log in" still shows when it applies.
     topbarPrefs: (() => {
-      const DEFAULTS = {
-        center: [
-          { key: 'grid',    label: 'Grid',    visible: true },
-          { key: 'solar',   label: 'Solar',   visible: true },
-          { key: 'load',    label: 'Load',    visible: true },
-          { key: 'battery', label: 'Battery', visible: true },
-        ],
-        right: [
-          { key: 'release', label: 'Release',   visible: true },
-          { key: 'sunspec', label: 'SunSpec',   visible: true },
-          { key: 'theme',   label: 'Theme',     visible: true },
-          { key: 'refresh', label: 'Refresh',   visible: true },
-        ],
-      };
       try {
         const saved = localStorage.getItem('fwh-topbar-prefs');
         if (saved) {
           const parsed = JSON.parse(saved);
-          // Merge: keep saved order/visibility, add any new defaults
+          // Keep saved order/visibility; put each new default after its
+          // neighbour in the defaults, so it lands where it always stood.
           const merge = (saved, defaults) => {
-            const keys = new Set(saved.map(i => i.key));
-            const merged = [...saved];
-            for (const d of defaults) { if (!keys.has(d.key)) merged.push({ ...d }); }
-            return merged;
+            const merged = (saved || []).filter(i => defaults.some(d => d.key === i.key));
+            defaults.forEach((d, n) => {
+              if (merged.some(i => i.key === d.key)) return;
+              const prev = n > 0 ? merged.findIndex(i => i.key === defaults[n - 1].key) : -1;
+              merged.splice(prev + 1, 0, { ...d });
+            });
+            // Labels follow the code, not what was saved.
+            return merged.map(i => ({ ...i, label: defaults.find(d => d.key === i.key).label }));
           };
-          return { center: merge(parsed.center || [], DEFAULTS.center), right: merge(parsed.right || [], DEFAULTS.right) };
+          const D = topbarDefaults();
+          return { left: merge(parsed.left, D.left), center: merge(parsed.center, D.center), right: merge(parsed.right, D.right) };
         }
       } catch (_) {}
-      return { center: DEFAULTS.center.map(i => ({...i})), right: DEFAULTS.right.map(i => ({...i})) };
+      return topbarDefaults();
     })(),
 
     showTopbarPrefs: false,
 
+    // Is this topbar item switched on, and where does it go?
+    tbShow(section, key) {
+      return this.topbarPrefs[section].find(i => i.key === key)?.visible !== false;
+    },
+    // An object, not a string: a string :style replaces the whole style
+    // attribute, which can wipe x-show's display:none.
+    tbOrder(section, key) {
+      return { order: this.topbarPrefs[section].findIndex(i => i.key === key) };
+    },
+
     saveTopbarPrefs() {
-      localStorage.setItem('fwh-topbar-prefs', JSON.stringify(this.topbarPrefs));
+      try { localStorage.setItem('fwh-topbar-prefs', JSON.stringify(this.topbarPrefs)); } catch (_) {}
     },
 
     resetTopbarPrefs() {
-      localStorage.removeItem('fwh-topbar-prefs');
-      this.topbarPrefs = {
-        center: [
-          { key: 'grid',    label: 'Grid',    visible: true },
-          { key: 'solar',   label: 'Solar',   visible: true },
-          { key: 'load',    label: 'Load',    visible: true },
-          { key: 'battery', label: 'Battery', visible: true },
-        ],
-        right: [
-          { key: 'release', label: 'Release',   visible: true },
-          { key: 'sunspec', label: 'SunSpec',   visible: true },
-          { key: 'theme',   label: 'Theme',     visible: true },
-          { key: 'refresh', label: 'Refresh',   visible: true },
-        ],
-      };
+      try { localStorage.removeItem('fwh-topbar-prefs'); } catch (_) {}
+      this.topbarPrefs = topbarDefaults();
     },
 
     moveTopbarItem(section, idx, dir) {
