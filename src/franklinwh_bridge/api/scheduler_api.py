@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from franklinwh_bridge.gateway.constants import ConstantsStore
+from franklinwh_bridge.gateway.scheduler import MONITOR_MAX
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate_dict
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog, snapshot
 
@@ -127,3 +128,16 @@ async def evaluate_conditions(body: ConditionTreeBody, request: Request, gateway
     """
     snap = snapshot(_gateway_points(request, gateway))
     return evaluate_dict(body.model_dump(), snap)
+
+
+@router.get("/scheduler/monitor")
+async def scheduler_monitor(request: Request, entry_id: str | None = None, since: int = 0):
+    """Debug monitor: one line per enabled entry per scheduler tick.
+
+    Kept in memory only (the last ``MONITOR_MAX`` lines, lost on restart).
+    ``since`` is the last ``seq`` the caller has, so a poll gets only new lines.
+    """
+    engine = getattr(request.app.state, "schedule_engine", None)
+    if engine is None:
+        return {"lines": [], "max": MONITOR_MAX, "tick_s": None}
+    return {"lines": engine.monitor(entry_id, since), "max": MONITOR_MAX, "tick_s": engine.tick_s}

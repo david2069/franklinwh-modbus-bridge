@@ -222,6 +222,10 @@ function scheduleTab() {
     audit: [],
     auditAll: [],   // unfiltered log, feeds the timeline's actual-dispatch overlay
     auditFilter: '',
+    // Debug monitor: the scheduler's per-tick evaluation of each enabled entry
+    // (GET api/scheduler/monitor). In the bridge's memory only; polled while open.
+    mon: { open: false, paused: false, entry: '', lines: [], since: 0, max: 500, msg: '' },
+    _monTimer: null,
     conn: { connected: true, gateways: {}, recent_outages: [] },
     expandedId: null,
     explainLevel: (() => {
@@ -372,6 +376,77 @@ function scheduleTab() {
       // dd/mm prefix so the audit trail is unambiguous across days; the
       // bridge's zone, which is the clock the schedules ran on (#79).
       return `${bridgeTime.dayMonth(ts * 1000)} ${bridgeTime.time(ts * 1000, true)}`;
+    },
+
+    toggleMonitor() {
+      this.mon.open = !this.mon.open;
+      clearInterval(this._monTimer);
+      this._monTimer = null;
+      if (!this.mon.open) return;
+      this.pollMonitor();
+      this._monTimer = setInterval(() => {
+        if (!this.mon.paused && Alpine.store('app').activeTab === 'schedule') this.pollMonitor();
+      }, 5000);
+    },
+
+    async pollMonitor() {
+      const q = `since=${this.mon.since}` + (this.mon.entry ? `&entry_id=${encodeURIComponent(this.mon.entry)}` : '');
+      const r = await fetchJSON(`api/scheduler/monitor?${q}`);
+      if (!r || !r.lines) return;
+      this.mon.max = r.max || this.mon.max;
+      if (r.lines.length) {
+        this.mon.since = r.lines[r.lines.length - 1].seq;
+        // Newest first, capped like the bridge's own buffer.
+        this.mon.lines = [...r.lines.reverse(), ...this.mon.lines].slice(0, this.mon.max);
+      }
+    },
+
+    setMonitorEntry(id) {
+      this.mon.entry = id;
+      this.mon.lines = [];
+      this.mon.since = 0;
+      this.pollMonitor();
+    },
+
+    clearMonitor() {
+      // Clears this view only; the bridge keeps its buffer, so a later poll
+      // continues from the newest line already seen.
+      this.mon.lines = [];
+      this.mon.msg = '';
+    },
+
+    monitorText() {
+      return this.mon.lines.map(m =>
+        `${this.fmtTs(m.ts)}\t${m.name}\t${m.target}\t${m.state}\t${m.detail}`).join('\n');
+    },
+
+    async copyMonitor() {
+      const text = this.monitorText();
+      let ok = false;
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(text); ok = true; } catch (_) { /* fall through */ }
+      }
+      if (!ok) {
+        // HA ingress over plain http is not a secure context.
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+        ta.remove();
+      }
+      this.mon.msg = ok ? `Copied ${this.mon.lines.length} line(s).` : 'Copy failed — select the lines and copy them.';
+    },
+
+    monClass(state) {
+      return ({
+        running: 'text-emerald-300', ready: 'text-emerald-300',
+        blocked: 'text-amber-300', deferred: 'text-amber-300', skipped: 'text-amber-300',
+        holding: 'text-sky-300', retrying: 'text-red-300', error: 'text-red-300',
+        done: 'text-cyan-300', idle: 'text-slate-500',
+      })[state] || 'text-slate-300';
     },
 
     auditClass(r) {
