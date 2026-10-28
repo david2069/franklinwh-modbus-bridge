@@ -168,34 +168,6 @@
       return [Math.floor(fromParts(...a) / 1000), Math.floor(fromParts(...b) / 1000)];
     },
 
-    // ── The viewer's own zone (owner, 2026-10-15: show both, labelled) ──
-    /** True when the device's zone shows a different wall clock than the
-     *  bridge's at `ms` (same offset = nothing worth a second reading). */
-    viewerDiffers(ms = Date.now()) {
-      if (!source()) return false;   // already showing the device's zone
-      const local = -new Date(ms).getTimezoneOffset() * 60000;
-      return local !== offsetMs(ms);
-    },
-    /** HH:MM on the viewing device. */
-    viewerTime(ms) {
-      const d = new Date(ms);
-      return `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-    },
-    /** Short name of the viewing device's zone, e.g. "NZDT". */
-    viewerLabel(ms = Date.now()) {
-      try {
-        const named = new Intl.DateTimeFormat('en-AU', { timeZoneName: 'short' })
-          .formatToParts(new Date(ms)).find((x) => x.type === 'timeZoneName');
-        if (named && named.value) return named.value;
-      } catch (e) { /* fall through */ }
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
-    },
-    /** "your time 09:52 NZDT" when the device's zone differs, else ''. */
-    viewerNote(ms = Date.now()) {
-      return bridgeTime.viewerDiffers(ms)
-        ? `your time ${bridgeTime.viewerTime(ms)} ${bridgeTime.viewerLabel(ms)}` : '';
-    },
-
     /** "YYYY-MM-DDTHH:MM" for a datetime-local input, in the bridge's zone. */
     toInput(ms) {
       const t = parts(ms);

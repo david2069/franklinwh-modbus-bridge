@@ -142,10 +142,9 @@
     $('reserveRow').style.display = hasReserve ? 'flex' : 'none';
     if (hasReserve) $('reserveVal').textContent = `${Math.round(reserve)}%`;
 
-    // Bridge's clock, labelled; the device's own time too when it differs (#79).
-    const now = Date.now(), note = bridgeTime.viewerNote(now);
-    $('foot').textContent = `Updated ${bridgeTime.time(now, true)} ${bridgeTime.label(now)}`
-      + (note ? ` · ${note}` : '');
+    // Bridge's clock, labelled (#79); one time only (owner, 2026-10-28).
+    const now = Date.now();
+    $('foot').textContent = `Updated ${bridgeTime.time(now, true)} ${bridgeTime.label(now)}`;
   }
 
   function renderConnectivity(c) {

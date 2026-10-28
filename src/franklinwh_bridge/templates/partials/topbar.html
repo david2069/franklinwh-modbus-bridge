@@ -6,13 +6,14 @@
 
   <!-- Left: Sidebar toggle + Page title -->
   <div class="flex items-center gap-2 lg:gap-3 min-w-0">
-    <button @click="$store.app.toggleSidebar()" x-show="!$store.app.phoneNav"
+    <button @click="$store.app.toggleSidebar()" x-show="!$store.app.phoneNav && $store.app.tbShow('left', 'sidebar')"
             class="p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200 text-sm font-bold"
             :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
             x-text="$store.app.sidebarCollapsed ? '▶' : '◀'">
     </button>
 
-    <h1 class="text-sm font-semibold text-slate-300 uppercase tracking-wider whitespace-nowrap"
+    <h1 x-show="$store.app.tbShow('left', 'title')"
+        class="text-sm font-semibold text-slate-300 uppercase tracking-wider whitespace-nowrap"
         x-text="({ dashboard: 'Dashboard', explorer: 'SunSpec Explorer', logs: 'Logs',
                    sequencer: 'Sequencer', schedule: 'Schedule', ha_entities: 'Home Assistant',
                    energy_costs: 'Energy Costs', settings: 'Settings' })[$store.app.activeTab] || ''">
@@ -20,7 +21,7 @@
   </div>
 
   <!-- Gateway selector (dropdown, visible when multiple gateways) -->
-  <div x-show="$store.app.multiGateway" x-cloak x-data="{ open: false }"
+  <div x-show="$store.app.multiGateway && $store.app.tbShow('left', 'gateway')" x-cloak x-data="{ open: false }"
        @click.away="open = false" @keydown.escape="open = false"
        class="relative">
     <button @click="open = !open"
@@ -64,8 +65,7 @@
   <div class="items-center gap-2 xl:gap-3 text-[10px] font-semibold uppercase tracking-wider"
        :class="$store.app.phoneNav ? 'flex order-last' : 'flex'">
     <!-- Grid -->
-    <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='grid')?.visible !== false"
-         :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='grid')}`"
+    <div x-show="$store.app.tbShow('center', 'grid')" :style="$store.app.tbOrder('center', 'grid')"
          class="flex items-center gap-1.5"
          :title="'Grid: ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected')">
       <span class="text-slate-500">Grid</span>
@@ -73,8 +73,7 @@
             :class="$store.app.points.connection_state === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
     <!-- Solar -->
-    <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='solar')?.visible !== false"
-         :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='solar')}`"
+    <div x-show="$store.app.tbShow('center', 'solar')" :style="$store.app.tbOrder('center', 'solar')"
          class="flex items-center gap-1.5"
          :title="'Solar: ' + (($store.app.solarPowerW ?? 0) > 0 ? 'generating' : 'not generating')">
       <span class="text-slate-500">Solar</span>
@@ -82,8 +81,7 @@
             :class="($store.app.solarPowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-red-400'"></span>
     </div>
     <!-- Load -->
-    <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='load')?.visible !== false"
-         :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='load')}`"
+    <div x-show="$store.app.tbShow('center', 'load')" :style="$store.app.tbOrder('center', 'load')"
          class="flex items-center gap-1.5"
          :title="'Load: ' + (($store.app.homePowerW ?? 0) > 0 ? 'consuming' : 'none')">
       <span class="text-slate-500">Load</span>
@@ -91,8 +89,7 @@
             :class="($store.app.homePowerW ?? 0) > 0 ? 'bg-emerald-400' : 'bg-slate-600'"></span>
     </div>
     <!-- Battery -->
-    <div x-show="$store.app.topbarPrefs.center.find(i=>i.key==='battery')?.visible !== false"
-         :style="`order:${$store.app.topbarPrefs.center.findIndex(i=>i.key==='battery')}`"
+    <div x-show="$store.app.tbShow('center', 'battery')" :style="$store.app.tbOrder('center', 'battery')"
          class="flex items-center gap-1.5"
          :title="'Battery: ' + ($store.app.points.battery_state || 'Standby')">
       <span class="inline"
@@ -113,14 +110,15 @@
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
 
     <!-- Logged out: the bridge answers but refuses this page's login. -->
-    <button type="button" x-show="$store.app.loggedOut" @click="$store.app.goToLogin()"
+    <button type="button" x-show="$store.app.loggedOut" @click="$store.app.goToLogin()" style="order:-1"
             class="flex items-center gap-2 text-xs font-medium text-amber-400 hover:text-amber-300">
       <span>Logged out — log in</span>
       <div class="w-2 h-2 rounded-full bg-amber-400"></div>
     </button>
 
     <!-- Connection status (text-then-dot, matching the indicators on the left) -->
-    <div class="flex items-center gap-2" x-show="!$store.app.loggedOut">
+    <div class="flex items-center gap-2" x-show="!$store.app.loggedOut && $store.app.tbShow('right', 'status')"
+         :style="$store.app.tbOrder('right', 'status')">
       <span class="text-xs font-medium"
             :class="$store.app.connected ? 'text-emerald-400' : 'text-red-400'"
             x-text="$store.app.connected ? 'Connected' : 'Disconnected'"></span>
@@ -131,25 +129,21 @@
     <!-- Quality badge — only shown when data is stale/bad (hidden when ok) -->
     <div class="chip"
          :class="$store.app.quality === 'stale' ? 'warn' : 'error'"
-         x-show="$store.app.quality && $store.app.quality !== 'ok'"
+         x-show="$store.app.quality && $store.app.quality !== 'ok' && $store.app.tbShow('right', 'quality')"
+         :style="$store.app.tbOrder('right', 'quality')"
          x-text="$store.app.quality"></div>
 
-    <!-- Last poll, in the BRIDGE's zone and labelled with it (#79). When this
-         device is in another zone, a second, labelled line gives its own time:
-         both readings, never an unlabelled one. Full stamp on hover. -->
-    <span class="inline-flex flex-col items-end leading-tight text-xs text-slate-500"
-          :title="$store.app.hasAnyGateway ? 'Last poll: ' + fmt.at($store.app.lastPollTs) : 'No aGate or demo gateway set up yet'">
-      <span data-testid="topbar-clock"
-            x-text="$store.app.hasAnyGateway
-              ? (fmt.clock($store.app.lastPollTs) + ($store.app.lastPollTs ? ' ' + fmt.tz() : ''))
-              : 'No gateway yet'"></span>
-      <span data-testid="topbar-viewer-clock" class="text-[10px] text-slate-500/80"
-            x-show="$store.app.hasAnyGateway && $store.app.lastPollTs && bridgeTime.viewerDiffers($store.app.lastPollTs * 1000)"
-            x-text="$store.app.lastPollTs ? bridgeTime.viewerNote($store.app.lastPollTs * 1000) : ''"></span>
-    </span>
+    <!-- Last poll, in the BRIDGE's zone and labelled with it (#79). One time
+         only (owner, 2026-10-28). Full stamp on hover. -->
+    <span data-testid="topbar-clock" class="text-xs text-slate-500"
+          x-show="$store.app.tbShow('right', 'clock')" :style="$store.app.tbOrder('right', 'clock')"
+          :title="$store.app.hasAnyGateway ? 'Last poll: ' + fmt.at($store.app.lastPollTs) : 'No aGate or demo gateway set up yet'"
+          x-text="$store.app.hasAnyGateway
+            ? (fmt.clock($store.app.lastPollTs) + ($store.app.lastPollTs ? ' ' + fmt.tz() : ''))
+            : 'No gateway yet'"></span>
 
     <!-- Release control button -->
-    <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='release')?.visible !== false"
+    <button x-show="$store.app.tbShow('right', 'release')" :style="$store.app.tbOrder('right', 'release')"
             @click="$store.app.releaseResult = null; $store.app.showReleaseModal = true"
             class="relative flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-all duration-200"
             :class="$store.app.isReleaseable
@@ -162,7 +156,7 @@
     </button>
 
     <!-- Model point source toggle -->
-    <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='sunspec')?.visible !== false"
+    <button x-show="$store.app.tbShow('right', 'sunspec')" :style="$store.app.tbOrder('right', 'sunspec')"
             @click="$store.app.toggleSources()"
             class="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition"
             :class="$store.app.showSources
@@ -176,7 +170,8 @@
     </button>
 
     <!-- User menu -->
-    <div class="relative" x-data="{ open: false }" @click.away="open = false" x-show="$store.app.me">
+    <div class="relative" x-data="{ open: false }" @click.away="open = false"
+         x-show="$store.app.me && $store.app.tbShow('right', 'user')" :style="$store.app.tbOrder('right', 'user')">
       <button @click="open = !open"
               class="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-700 transition text-slate-300"
               :title="'Signed in as ' + ($store.app.me?.username || '')">
@@ -195,7 +190,7 @@
     </div>
 
     <!-- Theme toggle -->
-    <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='theme')?.visible !== false"
+    <button x-show="$store.app.tbShow('right', 'theme')" :style="$store.app.tbOrder('right', 'theme')"
             @click="$store.app.toggleTheme()"
             class="block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
             :title="$store.app.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
@@ -208,7 +203,7 @@
     </button>
 
     <!-- Refresh button -->
-    <button x-show="$store.app.topbarPrefs.right.find(i=>i.key==='refresh')?.visible !== false"
+    <button x-show="$store.app.tbShow('right', 'refresh')" :style="$store.app.tbOrder('right', 'refresh')"
             @click="$store.app.refresh()"
             class="block p-1.5 rounded hover:bg-slate-700 transition text-slate-400 hover:text-slate-200"
             title="Refresh now">
@@ -221,7 +216,7 @@
     <!-- Topbar preferences gear -->
     <!-- Phones: the panel is fixed just below the gear and spans the screen with a
          16px gutter; anchored to the gear it ran off the left edge. -->
-    <div class="relative shrink-0" x-data="{ open: false, top: 0 }" @click.away="open = false">
+    <div class="relative shrink-0" style="order:999" x-data="{ open: false, top: 0 }" @click.away="open = false">
       <button @click="top = $el.getBoundingClientRect().bottom; open = !open; $store.app.showTopbarPrefs = open"
               class="p-1.5 rounded hover:bg-slate-700 transition"
               :class="open ? 'text-cyan-400 bg-slate-700' : 'text-slate-400 hover:text-slate-200'"
@@ -234,12 +229,28 @@
 
       <!-- Preferences dropdown -->
       <div x-show="open" x-transition x-cloak
-           :style="window.innerWidth < 640 ? `position: fixed; left: 16px; right: 16px; width: auto; top: ${top}px` : ''"
+           :style="Object.assign({ maxHeight: `calc(100dvh - ${top}px - 24px)`, overflowY: 'auto' },
+                  window.innerWidth < 640 ? { position: 'fixed', left: '16px', right: '16px', width: 'auto', top: `${top}px` } : {})"
            class="absolute right-0 top-full mt-2 w-72 bg-slate-800 border border-white/[0.1] rounded-xl shadow-2xl z-[200] overflow-hidden">
         <div class="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
           <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Topbar Preferences</span>
           <button @click="$store.app.resetTopbarPrefs(); open = false"
                   class="text-[10px] text-slate-500 hover:text-amber-400 transition">Reset</button>
+        </div>
+
+        <!-- Left items: show/hide only -->
+        <div class="px-4 py-2 border-b border-white/[0.06]">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Left</div>
+          <template x-for="item in $store.app.topbarPrefs.left" :key="item.key">
+            <div class="flex items-center gap-2 py-1">
+              <label class="flex items-center gap-1.5 flex-1 cursor-pointer">
+                <input type="checkbox" :checked="item.visible"
+                       @change="item.visible = $event.target.checked; $store.app.saveTopbarPrefs()"
+                       class="rounded border-slate-600 bg-slate-700 w-3 h-3 accent-cyan-500">
+                <span class="text-[11px]" :class="item.visible ? 'text-slate-300' : 'text-slate-600'" x-text="item.label"></span>
+              </label>
+            </div>
+          </template>
         </div>
 
         <!-- Centre indicators -->
@@ -267,7 +278,7 @@
 
         <!-- Right-side buttons -->
         <div class="px-4 py-2">
-          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Right Buttons</div>
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Right</div>
           <template x-for="(item, idx) in $store.app.topbarPrefs.right" :key="item.key">
             <div class="flex items-center gap-2 py-1">
               <label class="flex items-center gap-1.5 flex-1 cursor-pointer">

@@ -578,9 +578,7 @@
                 callbacks: {
                   title: (items) => {
                     const x = items[0].parsed.x;
-                    const main = `${isHistory ? bridgeTime.full(x) : clockLabel(x)} ${bridgeTime.label(x)}`;
-                    const note = bridgeTime.viewerNote(x);
-                    return note ? [main, note] : main;
+                    return `${isHistory ? bridgeTime.full(x) : clockLabel(x)} ${bridgeTime.label(x)}`;
                   },
                 },
               },
