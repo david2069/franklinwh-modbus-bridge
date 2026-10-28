@@ -186,7 +186,9 @@ otherwise the block says *"No controllable HA entities exposed."*
 
 1. Press **+ add action**.
 2. Pick **Entity** or **Notify**.
-3. Pick the entity and service, or the notify target, title and message.
+3. Pick the entity and service, or the notify target, title and message. Entities are
+   listed by their friendly name; hover for the entity id. Two entities with the same name
+   show their ids.
 4. Pick **When**: on fire, on exit, or entry & exit.
 5. Optional: **+ guard** to run it only when a condition is true at that moment.
 

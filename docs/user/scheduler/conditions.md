@@ -14,6 +14,12 @@ Each entry has two condition blocks:
 A condition row (an *item*) has a **sensor**, an **operator** and a right-hand side: a
 **Value** you type or a **Lookup** of another sensor.
 
+The sensor field shows the sensor's full name. When the name doesn't fit, its start is cut
+(names from one integration usually differ at the end); hover for the full name and id. To
+see more, drag the grip on the field's right edge. The whole column widens together, only
+as far as the row has room, and never narrower than its default. This browser remembers
+the width.
+
 ![An entry-condition block with a nested group, after Test Verification](../../images/scheduler/condition-test-verification.png)
 
 ## Rules for every condition
