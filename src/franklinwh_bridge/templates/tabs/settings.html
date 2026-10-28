@@ -559,6 +559,12 @@
               <button @click="diagnoseGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Diagnose</button>
               <button @click="forceHealthcheckGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Force Healthcheck</button>
               <button @click="restartGw(editGw.id)" :disabled="gwBusy" class="btn btn-sm btn-secondary !py-1 !text-xs">Restart</button>
+              <button @click="gwRow(editGw.id)?.polling ? stopGw(editGw.id, true) : startGw(editGw.id, true)"
+                      :disabled="gwBusy || !gwRow(editGw.id) || gwRow(editGw.id).enabled === false || gwRow(editGw.id).health === 'unconfigured'"
+                      data-testid="edit-gw-poll"
+                      :title="gwRow(editGw.id)?.polling ? 'Stop polling and close the Modbus connection. Stays stopped after a bridge restart.' : 'Start polling'"
+                      class="btn btn-sm btn-secondary !py-1 !text-xs"
+                      x-text="gwRow(editGw.id)?.polling ? 'Stop polling' : 'Start polling'"></button>
             </div>
 
             <!-- Test result -->
@@ -605,6 +611,11 @@
             <div x-show="gwRestartResults[editGw.id]" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
                  :class="gwRestartResults[editGw.id]?.testing ? 'text-slate-500' : (gwRestartResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
                  x-text="gwRestartResults[editGw.id]?.testing ? 'Restarting…' : gwRestartResults[editGw.id]?.msg"></div>
+
+            <!-- Stop/start polling result -->
+            <div x-show="gwPollResults[editGw.id]" data-testid="edit-gw-poll-result" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
+                 :class="gwPollResults[editGw.id]?.testing ? 'text-slate-500' : (gwPollResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
+                 x-text="gwPollResults[editGw.id]?.msg"></div>
           </div>
 
           <!-- Danger zone -->
