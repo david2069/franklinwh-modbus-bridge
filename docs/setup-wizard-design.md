@@ -206,7 +206,7 @@ Shown before anything is created, so nobody discovers it the hard way:
 
 | Works | Doesn't |
 |---|---|
-| Dashboard, power flow, Site view | **SunSpec Explorer, Sequencer** — need real Modbus registers |
+| Dashboard, power flow, the All gateways overview | **SunSpec Explorer, Sequencer** — need real Modbus registers |
 | HA entities, including controls | **History and metrics** — synthetic data is deliberately not recorded |
 | Controls tab, schedules — **simulated**: they change the demo's synthetic data, never a battery | |
 
