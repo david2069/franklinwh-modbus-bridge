@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 #: What IS established (docs/vendor-issues.md, issue 11) is narrower: writes to
 #: 15507-15509 are acknowledged at the protocol level but the register does not
 #: change, on every real aGate tested — and an exhaustive sweep, including
-#: cloud-shaped payloads, never found a sequence that made them stick. The cause
-#: is unknown.
+#: cloud-shaped payloads, never found a sequence that made them stick. It is a
+#: known defect with no known workaround (owner, 2026-10-29).
 #:
 #: Telling a user to go ask their installer to flip a setting sends them after a
 #: fix that has never been shown to exist. So the speculation is stripped on the
@@ -69,8 +69,8 @@ _SPECULATION = "Ensure 'SPAN Modbus' is unlocked in installer settings."
 
 _UNKNOWN_CAUSE = (
     "The aGate acknowledged the write but the register did not change. "
-    "This affects the mode/reserve extension registers on all hardware tested "
-    "so far; the cause is not established. See docs/vendor-issues.md."
+    "Writes to the mode/reserve extension registers (15507-15509) are a known "
+    "defect with no known workaround. See docs/vendor-issues.md."
 )
 
 

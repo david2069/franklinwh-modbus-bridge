@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Mode and reserve writes (15507–15509) are documented as a known defect with no
+  known workaround:** the "Hardware ignored write" message, the sample sequences'
+  step notes, the scheduling test plan and design, `vendor-issues.md` and the
+  write-plane handoff no longer present a "SPAN unlock" as a fix. Tests that need
+  these writes to take effect are marked known to fail. Earlier changelog entries are
+  left as written.
+
 ### Added
 
 - **A gateway is locked to its aGate's serial (#296 item 42):** the first serial

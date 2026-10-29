@@ -9,7 +9,7 @@ what this plan verifies.
 
 ## Run log
 
-**2026-06-17 — aGate X (`10060006A02F00000001`, V10R01B04D00), no SPAN unlock.**
+**2026-06-17 — aGate X (`10060006A02F00000001`, V10R01B04D00).**
 Core ship gate **PASSED**: LT-1 ✓ (battery flipped +1500 W discharge → −1000 W
 charge while `mode` stayed TOU), LT-2 ✓ (release resumed TOU in ~8 s), LT-5 ✓
 (`LocRemCtl` read "Local" throughout dispatch), LT-7 ✓ (manual Force Standby
@@ -25,11 +25,14 @@ engine/health-checker on restart. Battery stayed on TOU safely throughout.
   (`pytest -m hardware` only; default `-m "not hardware"` skips them).
 - **Operator present.** Every case writes a live battery setpoint. An operator
   must watch the battery and be ready to hit **Release** / pull the schedule.
-- **SPAN unlock NOT required for the core path** (§4a: M704 `WSetEna`/`WSetPct`
-  is unrestricted). SPAN *is* required only for the reserve/operating-mode
-  context cases (CTX-*) — those are skipped if `15xxx` writes return SPAN-locked.
-- **Community tester** engaged via [issue #5](https://github.com/david2069/franklinwh-modbus/issues/5)
-  has the SPAN-unlocked rig; the core cases run on any aGate.
+- **Core path:** M704 `WSetEna`/`WSetPct` (§4a), which the aGate applies.
+- **Mode and reserve writes (15507–15509): known defect.** The aGate
+  acknowledges them but doesn't apply them, and there is no known workaround.
+  The bridge reports each one as "Hardware ignored write". Any case that needs
+  such a write to take effect is **known to fail** (LT-12): record it as a known
+  failure, not a pass or a skip.
+- **Community tester** engaged via [issue #5](https://github.com/david2069/franklinwh-modbus/issues/5);
+  the core cases run on any aGate.
 - Record firmware + serial at the top of each run (template: aGate X,
   `V10R01B04D00`, `10060006A02F00000001`).
 
@@ -41,7 +44,7 @@ mobile app, and a clamp meter on a battery leg if available.
 
 ---
 
-## A. Core dispatch — VPP overrides TOU (no SPAN needed)
+## A. Core dispatch — VPP overrides TOU (M704 only)
 
 ### LT-1 — A scheduled window takes control from native TOU
 - **Pre:** aGate in **TOU** mode (set in the mobile app), idle or following its
@@ -149,16 +152,19 @@ mobile app, and a clamp meter on a battery leg if available.
   re-issues the dispatch cleanly. No double-control, no stuck VPP.
 - **Pass:** at most one tick of gap; state consistent after restart.
 
-### LT-12 — SPAN-locked write degrades gracefully
-- **Pre:** aGate **without** SPAN unlock; an entry whose action needs a `15xxx`
-  write (e.g. `reserve_self`).
-- **Expect:** the write fails with a SPAN-locked result, logged ✗; the scheduler
+### LT-12 — Mode/reserve write is not applied (known defect) and degrades gracefully
+- **Known to fail:** writes to 15507–15509 are a known defect. The aGate
+  acknowledges them but doesn't apply them, and there is no known workaround.
+  The write never takes effect; this case checks how the bridge handles that.
+- **Pre:** any aGate; an entry whose action needs a `15507`–`15509` write (e.g.
+  `reserve_self`).
+- **Expect:** the write is reported "Hardware ignored write", logged ✗; the scheduler
   does not crash or retry-storm; M704 power actions in the same plan still work.
 - **Pass:** clear ✗ in the log + UI; no loop wedged.
 
 ---
 
-## E. Context guards (SPAN required — skip if locked) — §4c
+## E. Context guards (reads only) — §4c
 
 ### CTX-1 — Skip grid-charge when solar already covers home load
 - **Pre:** Daytime, solar (`15502`) > home load (`16000`); an entry =
@@ -193,8 +199,8 @@ mobile app, and a clamp meter on a battery leg if available.
 | LT-4 | Discharge/Standby sign + status | core |
 | LT-5/6 | Control-state from `WSetEna`, not `LocRemCtl` | core |
 | LT-7/8/9 | Conflict policy + single winner | core |
-| LT-10/11/12 | Watchdog, restart, SPAN-lock safety | core |
-| CTX-1/2 | Context guards | SPAN-only |
+| LT-10/11/12 | Watchdog, restart, mode/reserve write not applied (known defect) | core |
+| CTX-1/2 | Context guards | optional |
 | LT-13 | Multi-aGate fan-out | SCH3/MP5 |
 
 **Ship gate for SCH1:** LT-1, LT-2, LT-5, LT-7, LT-10, LT-11 all pass on a real

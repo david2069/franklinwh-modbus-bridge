@@ -165,9 +165,10 @@ Writing to register 15509 (TOU Reserve) always mirrors the value at 15508 (Self-
 
 ---
 
-## 8. EXTENSION REGISTERS (15500+) — Non-standard, require SPAN unlock
+## 8. EXTENSION REGISTERS (15500+) — Non-standard
 
-These proprietary registers are **not part of any SunSpec model** and require the installer to enable "SPAN Modbus" in the aGate settings:
+These proprietary registers are **not part of any SunSpec model**. Writes to 15507–15509
+(operating mode and reserves) are a known defect: the aGate acknowledges them but doesn't apply them, and there is no known workaround (Issue 11):
 
 | Register | Name | R/W | Precision | Notes |
 |----------|------|-----|-----------|-------|
@@ -179,7 +180,7 @@ These proprietary registers are **not part of any SunSpec model** and require th
 | 15505 | PV Remote 2 | R | 1W | Remote PV source 2 — **not validated** at certification time |
 | 15506 | Home Load | R | ~100W | Quantized in ~100W steps |
 | 15507 | OnGrid Mode | R/W | — | 1=Backup, 2=Self-Consumption, 3=TOU — this is the `oldIndex` numbering (confirmed via cloud API `get_mode_info`). **Do not confuse with `workMode`** (1=TOU, 2=Self, 3=Backup — swaps Backup/TOU vs. `oldIndex`) or the arbitrary per-installation `id` (e.g. 29287, 85232) used elsewhere — three different, unrelated numbering schemes for the same concept. See `docs/modbus-library-docs-update-proposal.md` |
-| 15508 | Self Reserve % | R/W | 1% | Self-consumption reserve SOC — **see Issue 11: this resets to a default (10%) when `OnGridMode` is updated**, a more specific characterization than the later "SPAN-locked" tests |
+| 15508 | Self Reserve % | R/W | 1% | Self-consumption reserve SOC — **see Issue 11: this resets to a default (10%) when `OnGridMode` is updated**, an earlier characterization; writes to it are now a known defect (Issue 11) |
 | 15509 | TOU Reserve % | R/W | 1% | TOU reserve SOC — same reset-on-mode-change behaviour, default 50% |
 | 15510-15511 | PV Output Wh (Total) | R | 1Wh | 32-bit unsigned, lifetime PV energy — this register was **explicitly requested during conformance review** (not present at cert time), added by FranklinWH some time after |
 | 15512-15513 | **proximalOutputWh** (PV Energy Proximal) | R | 1Wh | 32-bit unsigned — corrected 2026-07-13, this is NOT unknown; confirmed via both the bridge's own SunSpec Explorer catalog and `franklinwh-modbus`'s `SUNSPEC_MODEL_REFERENCE.md:171`. **Also confirmed by the original 2023 request**: *"proximalOutputWh - (= register 1117)"* — register 1117/absolute 41117 is `502.OutWh` (SunSpec Model 502 solar_module lifetime output energy), i.e. this extension register was explicitly designed to mirror that standard SunSpec value, not an independent measurement. In one live sample this exactly equalled Total (15510) — plausible if there's no remote PV array contributing |
@@ -305,11 +306,18 @@ authoritative — it should be labeled "derived, unconfirmed" wherever shown.
 
 ---
 
-## 11. BLOCKED: Reserve SoC writes (15508/15509) fail on all tested real hardware — SPAN lock, unlock mechanism unknown
+## 11. BLOCKED: Mode and reserve writes (15507–15509) are not applied — known defect, no known workaround
+
+**Current position (owner, 2026-10-29):** writes to 15507–15509 are a known defect: the aGate acknowledges them but doesn't apply them, and there is no known workaround. No
+"unlock" exists that is known to make them work. The bridge keeps the write path and
+reports each such write as "Hardware ignored write" from its read-back. Any test that needs
+one of these writes to take effect is **known to fail**. The dated evidence below is kept
+as it was recorded: where it speaks of a "SPAN lock" or of 15507 working, that was the
+explanation or result of its time, not the current position.
 
 **Status:** The bridge implements the write path (registers 15508 Self-Consumption Reserve,
-15509 TOU Reserve) in the hope it becomes usable once unlocked — it does **not** currently
-work against real hardware, on either the Modbus TCP path or FranklinWH's Local API.
+15509 TOU Reserve) — it does **not** work against real hardware, on either the Modbus TCP
+path or FranklinWH's Local API.
 
 **Modbus TCP path — direct hardware evidence of failure:**
 - `franklinwh-modbus/tests/results/2026-05-15_live_sequencer_roadmap_results.md:29-37`,
@@ -378,13 +386,12 @@ for how the conclusion was reached:**
   actually persists.
 - `catalog.py:141` separately notes some settings "still bounce to the cloud ('System
   Busy')" on this device family — i.e. even locally-issued setpoint writes are known to
-  sometimes have no local effect at all, independent of the Modbus SPAN-lock issue above.
+  sometimes have no local effect at all, independent of the Modbus extension-write defect above.
 
-**What "SPAN lock detection" in the bridge/library code actually is:** not a dedicated
-status check — there is no separate "is SPAN unlocked" register being read anywhere.
-It's an inferential error message attached to the write-back mismatch
-(`controller.py:1030,1094`: *"Write failed (Read-Only?)... Ensure 'SPAN Modbus' is
-unlocked in installer settings"*), a guess at the cause, not a confirmed unlock procedure.
+**The library's "SPAN Modbus" hint is not a detection:** there is no register that says
+whether writes are allowed. The library attaches a guess to a write-back mismatch
+(`controller.py:1030,1094`: *"Write failed (Read-Only?)..."* plus a sentence about
+installer settings). The bridge removes that sentence and reports "Hardware ignored write".
 
 **UPDATE 2026-07-13 — a more specific failure mode, from conformance-review
 notes that predate all the 2026 test-result files above**, documented for both
@@ -478,9 +485,8 @@ Two concrete follow-ups:
   live test leaves open. Script written:
   `tools/test_cloud_soc_persistence.py`. Not yet run.
 
-**Vendor ask:** Confirm what "SPAN Modbus unlock" actually requires (installer-level
-setting? firmware flag? account permission?) and document it, or clarify these registers
-are permanently read-only via Modbus regardless of provisioning.
+**Vendor ask:** Confirm whether writes to 15507–15509 over Modbus are supported at all,
+and if they are, how; otherwise document them as read-only.
 
 **Bridge/UI ask:** Anywhere the bridge exposes Self/TOU Reserve % as a Modbus-writable
 control (dashboard battery control card, scheduler, API docs), label it as unconfirmed/
@@ -606,10 +612,9 @@ disclaimer than "derived, unconfirmed."
 4. Populate M714.DCA (battery current) (Issue 3)
 5. Implement or return errors for WMaxLimPctEna/WMaxLimPct/VarSetEna/WMax (Issue 2)
 6. Document extension registers (15500+), especially 15510 and 16000 (Issue 8)
-7. **Document the SPAN Modbus unlock procedure for registers 15507-15509**
-   (Issue 11) — Reserve SoC writes fail on every real-hardware test to date;
-   Mode switching (15507) already works, only the reserve percentages are
-   blocked, and it's unclear what unlocks them
+7. **Fix or document writes to registers 15507-15509** (Issue 11) — a known
+   defect: the aGate acknowledges them but doesn't apply them, and there is no
+   known workaround
 8. Implement M701.DERMode (Grid Following/Grid Forming/PV Clipped), or
    confirm in the register map that it's permanently unimplemented and
    reads should be ignored (Issue 12d) — FranklinWH's own PICS certification
@@ -641,7 +646,7 @@ design regardless.
 4. Reserve-write functions (`set_self_consumption_reserve()` /
    `set_tou_reserve()`) are implemented with protocol-level write-back
    checking, but the underlying hardware capability is still blocked
-   (Issue 11) — no further library change needed until the vendor unlock is known
+   (Issue 11, known defect) — no further library change needed unless FranklinWH fixes it
 5. **Feature request: `batch_write`/`batch_read` support in `SunSpecSequencer`**
    (Issue 11, 2026-07-15 update) — both `execute_writes()` and
    `execute_reads()`/`read_value()` issue one Modbus transaction per
@@ -670,18 +675,14 @@ design regardless.
    now that this is confirmed non-functional, not just unreliable (Issue 12d)
 6. Once the library fixes 12a/12b upstream, re-pull the dependency and
    verify the Events table's M701/M714 alarm names against the corrected maps
-7. Label Self/TOU Reserve % controls as unconfirmed/likely non-functional
-   per Issue 11, until a working unlock procedure is confirmed
+7. Label Self/TOU Reserve % and mode controls as not applied (known defect,
+   Issue 11) while the defect stands
 8. **Wire up Model 502 (`solar_module`) alarm bits** — not currently read
    anywhere in the bridge or library; a whole alarm surface (`Evt`, 13 named
    bits, all marked "supported") sitting unused
-9. **Run a Sequencer test to distinguish "hard SPAN lock" from "resets when
-   OnGridMode is touched"** for 15508/15509 (Issue 11 update) — write
-   reserve, verify, then separately re-touch `OnGridMode` and watch whether
-   the reserve value changes. Nobody has run this specific test yet; it
-   would settle a real ambiguity in the existing evidence, using the tool
-   built for exactly this kind of repeatable verification
-   (`src/franklinwh_bridge/sequences/`)
+9. **Withdrawn (2026-10-29):** the Sequencer test to tell "never applied" from
+   "resets when OnGridMode is touched" for 15508/15509. Writes to 15507–15509 are a
+   known defect with no known workaround, so the test is known to fail either way.
 10. **Run the `franklinwh-cloud` `set_mode(requestedSOC=...)` call with an
     actual Modbus readback of 15508/15509 afterward** (Issue 11,
     2026-07-15 update) — closes the gap the existing cloud live test leaves

@@ -24,7 +24,7 @@ This is **not** a HEMS. Keep it a thin, declarative time→action scheduler.
 - A scheduler loop that evaluates active entries each tick and dispatches via
   the existing `CommandHandler` (and the MP5 group executor for multi-aGate).
 - **Native-mode coexistence (§4a):** VPP dispatch overrides native **TOU**
-  directly (owner-confirmed) and works without a SPAN unlock — but **releasing
+  directly (owner-confirmed) and works on any aGate — but **releasing
   hands back to native TOU**, so the **release/gap behaviour** (release vs hold)
   is the key lever, not a mode-switch.
 
@@ -95,7 +95,7 @@ schedule_log (audit: fired_at, entry_id, action, target, result)
   target, the *winning* active entry (last-writer / explicit priority), and
   dispatches only on **state change**.
 - Dispatch goes through the existing **`CommandHandler`**, so schedules inherit
-  the software watchdog, the standby-handshake release, SPAN-lock write
+  the software watchdog, the standby-handshake release, write read-back
   verification, and the command audit log — no new control path.
 - **Multi-aGate / per-service coordination** layers on **MP5** (the coordinated
   control executor): a `service`/`site` target fans the action out to every
@@ -111,7 +111,9 @@ schedule_log (audit: fired_at, entry_id, action, target, result)
 - Schedules never bypass the watchdog or the orphan-release paths.
 - One target, one active dispatch: the scheduler must not fight the manual
   controls or another entry — resolve to a single winner per tick.
-- SPAN-locked writes fail gracefully (logged, ✗), same as manual.
+- Mode and reserve writes (15507–15509) are a known defect: the aGate
+  acknowledges them but doesn't apply them, and there is no known workaround.
+  They fail gracefully ("Hardware ignored write", logged, ✗), same as manual.
 
 ### 4a. Native-mode (TOU) interaction — RESOLVED (owner-confirmed on hardware)
 
@@ -120,10 +122,9 @@ which overrides whatever it is doing — including native TOU's internal
 schedule.** Two consequences:
 
 - ✅ **Taking control needs no mode-switch.** We do *not* have to leave TOU
-  first — the VPP setpoint simply wins. And M704 power control is **unrestricted
-  by the SPAN lock** (only the `15xxx` mode/reserve writes need SPAN), so the
-  scheduler's core dispatch works for **all** users, with or without a SPAN
-  unlock. The earlier "switch-out-of-TOU-or-ban" gate is **dropped** — it isn't
+  first — the VPP setpoint simply wins. And M704 power control works on every
+  aGate (the `15507`–`15509` mode/reserve writes are the known defect above), so
+  the scheduler's core dispatch works for **all** users. The earlier "switch-out-of-TOU-or-ban" gate is **dropped** — it isn't
   needed.
 - ⚠️ **Release hands back to the native schedule.** Setting `WSetEna=0`
   (Release) returns the aGate to whatever it was doing — i.e. **native TOU

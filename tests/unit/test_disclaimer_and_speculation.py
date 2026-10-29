@@ -98,7 +98,7 @@ def test_what_actually_happened_is_kept():
 def test_the_known_position_replaces_the_guess():
     out = _strip_speculation(_LIB_MESSAGE)
 
-    assert "the cause is not established" in out
+    assert "known defect with no known workaround" in out
     assert "vendor-issues.md" in out
 
 

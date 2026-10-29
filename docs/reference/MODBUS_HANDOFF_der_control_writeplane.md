@@ -1,5 +1,11 @@
 # Modbus/SunSpec Speculation Handoff — DER-control write-plane & the SPAN/ControllerHb theory
 
+> **Retired (owner, 2026-10-29).** The "SPAN unlock" theory below is not a known fix and
+> must not be treated as one. Writes to 15507–15509 (operating mode and reserves) are a
+> known defect: the aGate acknowledges them but doesn't apply them, and there is no known
+> workaround. Tests that need those writes to take effect are known to fail. The notes are
+> kept as the speculation they were.
+
 > **Audience:** the franklinwh-modbus Agent.
 > **Status:** SPECULATION / research notes for review. **No code.** Nothing here is
 > validated on hardware beyond the read-only observations explicitly marked "observed".
