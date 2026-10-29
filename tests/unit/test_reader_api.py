@@ -67,9 +67,18 @@ def _app(inst, role="admin"):
     return app
 
 
+@pytest.fixture(autouse=True)
+def _named(monkeypatch):
+    """These apps have no database: take the named gateway as given. (The
+    400/404/422 rules are tested in test_named_gateway.py.)"""
+    async def named(request, ref, how):
+        return ref
+    monkeypatch.setattr(reader_api, "named_gateway", named)
+
+
 async def _post(app, body):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
-        return await c.post("/api/reader/run", json=body)
+        return await c.post("/api/reader/run", json={"gateway_id": "default", **body})
 
 
 async def test_raw_read_uses_base_0_skips_the_model_scan_and_hands_over_the_client(calls):

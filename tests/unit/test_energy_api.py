@@ -44,7 +44,7 @@ async def _seed(app_ref, rows):
 
 
 async def test_flow_defaults_to_today(client):
-    resp = await client.get("/api/energy/flow")
+    resp = await client.get("/api/energy/flow?gateway=default")
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -55,7 +55,7 @@ async def test_flow_defaults_to_today(client):
 async def test_flow_reports_every_arc_even_with_no_data(client):
     """A quiet day returns zeroes, not a partial dict — the Sankey should draw
     an empty diagram rather than break on a missing key."""
-    body = (await client.get("/api/energy/flow?day=2020-01-01")).json()
+    body = (await client.get("/api/energy/flow?day=2020-01-01&gateway=default")).json()
 
     assert body["flows"]["solar_to_home"] == 0.0
     assert body["flows"]["grid_to_battery"] == 0.0
@@ -63,14 +63,14 @@ async def test_flow_reports_every_arc_even_with_no_data(client):
 
 
 async def test_an_unparseable_day_is_rejected(client):
-    resp = await client.get("/api/energy/flow?day=last-tuesday")
+    resp = await client.get("/api/energy/flow?day=last-tuesday&gateway=default")
 
     assert resp.status_code == 400
     assert "YYYY-MM-DD" in resp.json()["detail"]
 
 
 async def test_an_inverted_span_is_rejected(client):
-    resp = await client.get("/api/energy/flow?start=2000&end=1000")
+    resp = await client.get("/api/energy/flow?start=2000&end=1000&gateway=default")
 
     assert resp.status_code == 400
 
@@ -78,7 +78,7 @@ async def test_an_inverted_span_is_rejected(client):
 async def test_an_absurd_span_is_rejected(client):
     """Guards the query, not the caller's taste — an unbounded span would scan
     the whole archive."""
-    resp = await client.get("/api/energy/flow?start=0&end=999999999")
+    resp = await client.get("/api/energy/flow?start=0&end=999999999&gateway=default")
 
     assert resp.status_code == 400
 
@@ -96,7 +96,7 @@ async def test_a_sunny_hour_is_attributed_to_the_right_arcs(client):
     ])
 
     body = (await client.get(
-        f"/api/energy/flow?start={start - 1}&end={start + 3601}")).json()
+        f"/api/energy/flow?start={start - 1}&end={start + 3601}&gateway=default")).json()
 
     f = body["flows"]
     assert f["solar_to_home"] == pytest.approx(1.0, abs=0.05)
@@ -113,7 +113,7 @@ async def test_nodes_and_flows_agree(client):
     ])
 
     body = (await client.get(
-        f"/api/energy/flow?start={start - 1}&end={start + 3601}")).json()
+        f"/api/energy/flow?start={start - 1}&end={start + 3601}&gateway=default")).json()
 
     f, n = body["flows"], body["nodes"]
     assert n["grid_export"] == pytest.approx(f["solar_to_grid"] + f["battery_to_grid"])
@@ -130,7 +130,7 @@ async def test_quality_reports_coverage_and_residual(client):
     ])
 
     q = (await client.get(
-        f"/api/energy/flow?start={start - 1}&end={start + 3601}")).json()["quality"]
+        f"/api/energy/flow?start={start - 1}&end={start + 3601}&gateway=default")).json()["quality"]
 
     assert q["samples"] == 2
     assert 0.0 <= q["coverage"] <= 1.0
@@ -154,7 +154,7 @@ async def test_another_gateways_data_is_not_counted(client):
 async def test_today_is_not_padded_out_to_midnight(client):
     """Querying "today" at noon must not count the unelapsed afternoon as an
     outage — coverage would read ~0.5 on a fully-sampled morning."""
-    body = (await client.get("/api/energy/flow")).json()
+    body = (await client.get("/api/energy/flow?gateway=default")).json()
 
     assert body["quality"]["covered_s"] <= time.time() - body["start"] + 1
 
@@ -163,7 +163,7 @@ async def test_today_is_not_padded_out_to_midnight(client):
 
 
 async def test_totals_expose_every_period(client):
-    resp = await client.get("/api/energy/totals")
+    resp = await client.get("/api/energy/totals?gateway=default")
 
     # 503 when no gateway has reported yet is a valid answer in a bare test
     # app; the contract under test is the shape when it does.

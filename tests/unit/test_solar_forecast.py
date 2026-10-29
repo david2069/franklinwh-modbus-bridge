@@ -385,7 +385,7 @@ async def client(tmp_path, monkeypatch):
 
 
 async def test_route_forecast_unconfigured_gives_reason(client):
-    body = (await client.get("/api/solar/forecast")).json()
+    body = (await client.get("/api/solar/forecast?gateway=default")).json()
     assert body == {"configured": False, "reason": sf.NOT_CONFIGURED_REASON}
     assert client.fetcher.calls == []
 
@@ -404,20 +404,20 @@ async def test_route_settings_round_trip_and_forecast(client):
     assert r.json()["values"]["pv_kwp"] == 6.6
     assert r.json()["values"]["pv_tilt"] == 20.0  # untouched
 
-    body = (await client.get("/api/solar/forecast")).json()
+    body = (await client.get("/api/solar/forecast?gateway=default")).json()
     assert body["configured"] is True
     assert body["pv"] == {"kwp": 6.6, "tilt": 20.0, "azimuth": 0.0, "lat": 12.34, "lon": 56.78}
     assert len(body["days"]) == 2 and len(body["hourly"]) == 48
     assert "solar_forecast.remaining_kwh" in body["sensors"]
     assert "solar_forecast.day_pct" in body["sensors"]
     n = len(client.fetcher.calls)
-    await client.get("/api/solar/forecast?force=true")
+    await client.get("/api/solar/forecast?force=true&gateway=default")
     assert len(client.fetcher.calls) == n + 1
 
     # Off again.
     r = await client.put("/api/solar/settings", json={"pv_latitude": None})
     assert r.json()["configured"] is False
-    assert (await client.get("/api/solar/forecast")).json()["configured"] is False
+    assert (await client.get("/api/solar/forecast?gateway=default")).json()["configured"] is False
 
 
 async def test_route_rejects_bad_values(client):
@@ -432,7 +432,7 @@ async def test_route_rejects_bad_values(client):
 async def test_route_forecast_failure_is_200_with_error(client):
     client.fetcher.fail = httpx.ConnectError("no route")
     await client.put("/api/solar/settings", json={"pv_latitude": 1.0, "pv_longitude": 2.0})
-    r = await client.get("/api/solar/forecast?force=1")
+    r = await client.get("/api/solar/forecast?force=1&gateway=default")
     assert r.status_code == 200
     assert r.json()["error"] == "no route"
     assert r.json()["sensors"]["solar_forecast.today_kwh"] is None
@@ -471,8 +471,8 @@ async def test_route_from_ha_uses_get_config(client):
 
 async def test_condition_sensors_reach_api_sensors(client):
     await client.put("/api/solar/settings", json={"pv_latitude": 12.34, "pv_longitude": 56.78})
-    await client.get("/api/solar/forecast")  # warms the cache
-    r = await client.get("/api/sensors")
+    await client.get("/api/solar/forecast?gateway=default")  # warms the cache
+    r = await client.get("/api/sensors?gateway=default")
     if r.status_code != 200:  # automations module gate off in this env
         pytest.skip(f"/api/sensors unavailable: {r.status_code}")
     cat = {s["id"]: s for s in r.json()["sensors"]}

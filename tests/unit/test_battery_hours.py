@@ -108,7 +108,7 @@ async def client(tmp_path, monkeypatch):
 
 
 async def test_endpoint_shape_and_today_default(client):
-    resp = await client.get("/api/energy/battery-hours")
+    resp = await client.get("/api/energy/battery-hours?gateway=default")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["day"] == dt.date.today().isoformat()
@@ -121,7 +121,7 @@ async def test_endpoint_shape_and_today_default(client):
 
 
 async def test_endpoint_rejects_a_bad_day(client):
-    resp = await client.get("/api/energy/battery-hours?day=yesterday-ish")
+    resp = await client.get("/api/energy/battery-hours?day=yesterday-ish&gateway=default")
     assert resp.status_code == 400
 
 

@@ -216,7 +216,7 @@ function settingsTab() {
     },
 
     async loadGateway() {
-      const data = await fetchJSON('api/gateway');
+      const data = await fetchJSON('api/gateway?gateway_id=' + encodeURIComponent(Alpine.store('app').activeGateway));
       if (data && !data.error) {
         this.gateway = data;
       }
@@ -226,7 +226,7 @@ function settingsTab() {
       this.gwTesting = true;
       this.gwTestResult = null;
       try {
-        const data = await fetchJSON('api/gateway/test');
+        const data = await fetchJSON('api/gateway/test?gateway_id=' + encodeURIComponent(Alpine.store('app').activeGateway));
         if (data && data.ok) {
           this.gwTestResult = {
             ok: true,

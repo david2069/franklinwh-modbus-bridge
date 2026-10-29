@@ -517,7 +517,7 @@ function dashboardTab() {
 
     async _loadGateway() {
       // The gateway being viewed.
-      const gwId = Alpine.store('app').activeGateway || 'default';
+      const gwId = Alpine.store('app').activeGateway;
       const data = await fetchJSON('api/gateway?gateway_id=' + encodeURIComponent(gwId));
       if (data && !data.error) {
         this.deviceIp = data.host || '--';

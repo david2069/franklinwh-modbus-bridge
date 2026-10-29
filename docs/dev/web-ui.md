@@ -34,7 +34,7 @@ Under Home Assistant ingress the UI lives at a path such as
 with no leading slash:
 
 ```js
-fetchJSON('api/points')                       // → /api/points, or /api/hassio_ingress/<token>/api/points
+fetchJSON(`api/sensors?gateway=${gw}`)      // → /api/sensors…, or /api/hassio_ingress/<token>/api/sensors…
 fetchJSON(`api/gateways/${gw}/command`, …)
 ```
 

@@ -8,6 +8,10 @@ learns which serials exist:
 - :func:`check_gateway_ref` runs after the auth dependency and rejects a
   malformed reference (422) or one no gateway has (404), with the reason in
   ``detail``, and logs each rejection.
+
+:func:`named_gateway` does the same for a gateway named in a query parameter
+or body field, and answers 400 when the request names none: no route falls
+back to the gateway with ID 'default' (#296 item 43).
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from urllib.parse import quote, unquote
 
 from fastapi import Depends, HTTPException, Request
 
-from franklinwh_bridge.api.auth import _READ_METHODS, require_auth
+from franklinwh_bridge.api.auth import _READ_METHODS, get_current_user, require_auth
 from franklinwh_bridge.gateway.modules import ROLE_CAPABILITIES
 from franklinwh_bridge.store.db import get_gateways
 
@@ -93,3 +97,23 @@ def _reject(request: Request, user: dict, status: int, reason: str) -> None:
     logger.warning("API %s %s rejected (%d): %s [by %s]", request.method, request.url.path,
                    status, reason, user.get("username") or "?")
     raise HTTPException(status, reason)
+
+
+async def named_gateway(request: Request, ref: str | None, how: str) -> str:
+    """The ID of the gateway a request names by ID or serial in ``how`` (e.g.
+    ``?gateway=``). 400 if it names none, 422 if malformed, 404 if unknown;
+    each logged with the user."""
+    if ref is None or not ref.strip():
+        await _reject_named(request, 400,
+                            f"This request names no gateway: add {how}<ID or serial>")
+    why = malformed(ref)
+    if why:
+        await _reject_named(request, 422, f"Malformed gateway reference: {why}")
+    gw_id = await resolve(request.app.state.db, ref)
+    if gw_id is None:
+        await _reject_named(request, 404, f"No gateway has the ID or serial '{ref}'")
+    return gw_id
+
+
+async def _reject_named(request: Request, status: int, reason: str) -> None:
+    _reject(request, await get_current_user(request) or {}, status, reason)

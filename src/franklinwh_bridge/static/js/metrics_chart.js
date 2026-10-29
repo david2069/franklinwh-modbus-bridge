@@ -328,7 +328,8 @@
           }
 
           const url = `api/point-history/series?points=${encodeURIComponent(wanted.join(','))}`
-            + `&start=${Math.floor(from / 1000)}&end=${Math.ceil(to / 1000)}`;
+            + `&start=${Math.floor(from / 1000)}&end=${Math.ceil(to / 1000)}`
+            + `&gateway=${encodeURIComponent(Alpine.store('app').activeGateway)}`;
           const resp = await fetch(url);
           if (!resp.ok) {
             const detail = await resp.json().catch(() => ({}));

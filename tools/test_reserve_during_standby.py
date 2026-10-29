@@ -70,8 +70,8 @@ def _post(bridge_url: str, path: str, body: dict | None = None) -> dict:
         return json.loads(resp.read())
 
 
-def get_points(bridge_url: str) -> dict:
-    return _get(bridge_url, "/api/points").get("points", {})
+def get_points(bridge_url: str, gw_id: str) -> dict:
+    return _get(bridge_url, f"/api/gateways/{gw_id}/points").get("points", {})
 
 
 def command(bridge_url: str, gw_id: str, slug: str, value: str) -> dict:
@@ -82,10 +82,10 @@ def run_sequence(bridge_url: str, gw_id: str, steps: list[dict]) -> dict:
     return _post(bridge_url, "/api/sequence/execute", {"sequence": steps, "gateway_id": gw_id})
 
 
-def wait_for_wseten(bridge_url: str, target: int, timeout_s: float = 10.0) -> bool:
+def wait_for_wseten(bridge_url: str, gw_id: str, target: int, timeout_s: float = 10.0) -> bool:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        pts = get_points(bridge_url)
+        pts = get_points(bridge_url, gw_id)
         if int(pts.get("704.WSetEna", -1)) == target:
             return True
         time.sleep(0.5)
@@ -104,14 +104,14 @@ def sub_test(
     for line in result.get("output", []):
         print(f"    {line}")
 
-    pts = get_points(bridge_url)
+    pts = get_points(bridge_url, gw_id)
     print(f"  immediate: ongrid_mode={pts.get('ongrid_mode')} "
           f"self_reserve={pts.get('self_reserve_pct')} tou_reserve={pts.get('tou_reserve_pct')} "
           f"WSetEna={pts.get('704.WSetEna')}")
 
     print(f"  settling {settle_s}s...")
     time.sleep(settle_s)
-    pts2 = get_points(bridge_url)
+    pts2 = get_points(bridge_url, gw_id)
     print(f"  after settle: ongrid_mode={pts2.get('ongrid_mode')} "
           f"self_reserve={pts2.get('self_reserve_pct')} tou_reserve={pts2.get('tou_reserve_pct')} "
           f"WSetEna={pts2.get('704.WSetEna')}")
@@ -141,7 +141,7 @@ def main() -> int:
     url = args.bridge_url
 
     print("=== Reading baseline via bridge REST API ===")
-    pts = get_points(url)
+    pts = get_points(url, gw)
     mode_before = int(pts["ongrid_mode"])
     self_before = int(pts["self_reserve_pct"])
     tou_before = int(pts["tou_reserve_pct"])
@@ -175,7 +175,7 @@ def main() -> int:
     cmd_result = command(url, gw, "battery_command", "Force Standby")
     print(f"  command result: {cmd_result}")
 
-    if not wait_for_wseten(url, 1):
+    if not wait_for_wseten(url, gw, 1):
         print("ERROR: WSetEna did not reach 1 within timeout -- "
               "aborting without touching reserves.")
         return 1
@@ -204,9 +204,9 @@ def main() -> int:
         print(f"\n=== Releasing local control on gateway '{gw}' ===")
         rel_result = command(url, gw, "battery_command", "Release")
         print(f"  release result: {rel_result}")
-        wait_for_wseten(url, 0)
+        wait_for_wseten(url, gw, 0)
 
-        pts_final = get_points(url)
+        pts_final = get_points(url, gw)
         print("\n=== Final state ===")
         print(f"  ongrid_mode={pts_final.get('ongrid_mode')}  "
               f"self_reserve={pts_final.get('self_reserve_pct')}%  "

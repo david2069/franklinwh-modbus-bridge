@@ -96,10 +96,7 @@ function energyFlowCard() {
         url = `api/energy/flow?start=${s}&end=${e}`;
         this.spanLabel = this._describeSpan(s, e);
       }
-      const activeGw = Alpine.store('app')?.activeGateway;
-      if (activeGw) {
-        url += `&gateway=${encodeURIComponent(activeGw)}`;
-      }
+      url += `&gateway=${encodeURIComponent(Alpine.store('app').activeGateway)}`;
       try {
         const r = await fetch(url, { headers: { Accept: 'application/json' } });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

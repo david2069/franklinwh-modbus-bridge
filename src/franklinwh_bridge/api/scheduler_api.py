@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.gateway.constants import ConstantsStore
 from franklinwh_bridge.gateway.scheduler import MONITOR_MAX
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate_dict
@@ -64,11 +65,12 @@ def _gateway_points(request: Request, gateway: str) -> dict:
 
 
 @router.get("/sensors")
-async def list_sensors(request: Request, gateway: str = "default"):
+async def list_sensors(request: Request, gateway: str | None = None):
     """Sensor namespace + current values for the condition-builder dropdowns.
 
     Includes the static Bridge sensors plus any HA entities (``ha:<inst>:<entity>``)
     so the Automation Builder can condition on Home Assistant state."""
+    gateway = await named_gateway(request, gateway, "?gateway=")
     points = _gateway_points(request, gateway)
     # Fold in why the bridge is (or isn't) overriding. The engine owns this
     # state; the points source can't know it.
@@ -120,12 +122,15 @@ class ConditionTreeBody(BaseModel):
 
 
 @router.post("/scheduler/evaluate")
-async def evaluate_conditions(body: ConditionTreeBody, request: Request, gateway: str = "default"):
+async def evaluate_conditions(
+    body: ConditionTreeBody, request: Request, gateway: str | None = None,
+):
     """Evaluate a condition tree against the gateway's live snapshot.
 
     Returns ``{result: bool, per_condition: [{sensor, op, value, live_value,
     result}]}`` — the Test Verification response.
     """
+    gateway = await named_gateway(request, gateway, "?gateway=")
     snap = snapshot(_gateway_points(request, gateway))
     return evaluate_dict(body.model_dump(), snap)
 

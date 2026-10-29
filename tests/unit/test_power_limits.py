@@ -323,7 +323,7 @@ async def test_battery_limits_endpoint(tmp_path, monkeypatch):
         AsyncClient(transport=transport, base_url="http://test") as client,
         app.router.lifespan_context(app),
     ):
-        resp = await client.get("/api/battery/limits")
+        resp = await client.get("/api/battery/limits?gateway=default")
         assert resp.status_code == 200
         data = resp.json()
         assert "max_charge_w" in data

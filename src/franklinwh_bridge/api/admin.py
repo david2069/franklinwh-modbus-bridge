@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from franklinwh_bridge import __version__
 from franklinwh_bridge.api.auth import require_capability
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
 from franklinwh_bridge.store import modbus_audit
@@ -61,7 +62,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["admin"])
 
 
-def _get_gateway(request: Request, gateway_id: str = "default"):
+def _get_gateway(request: Request, gateway_id: str):
     """Resolve a GatewayInstance from the registry (or None)."""
     registry = getattr(request.app.state, "registry", None)
     if registry is None:
@@ -69,7 +70,7 @@ def _get_gateway(request: Request, gateway_id: str = "default"):
     return registry.get(gateway_id)
 
 
-def _get_controller(request: Request, gateway_id: str = "default"):
+def _get_controller(request: Request, gateway_id: str):
     """Get the controller for a gateway, falling back to app.state."""
     inst = _get_gateway(request, gateway_id)
     if inst and inst.controller:
@@ -78,7 +79,7 @@ def _get_controller(request: Request, gateway_id: str = "default"):
     return getattr(request.app.state, "controller", None)
 
 
-def _get_command_handler(request: Request, gateway_id: str = "default"):
+def _get_command_handler(request: Request, gateway_id: str):
     """Get the command handler for a gateway, falling back to app.state."""
     inst = _get_gateway(request, gateway_id)
     if inst and inst.command_handler:
@@ -153,14 +154,16 @@ async def _gateway_address(request: Request, gateway_id: str) -> dict:
 
 
 @router.get("/gateway")
-async def get_gateway(request: Request, gateway_id: str = "default"):
+async def get_gateway(request: Request, gateway_id: str | None = None):
     """The address of one gateway (the primary one unless ``gateway_id``)."""
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     return await _gateway_address(request, gateway_id)
 
 
 @router.get("/gateway/test")
-async def test_gateway(request: Request, gateway_id: str = "default") -> dict:
+async def test_gateway(request: Request, gateway_id: str | None = None) -> dict:
     """Test TCP connectivity to a gateway's configured host:port."""
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     gw = await _gateway_address(request, gateway_id)
     host, port = gw["host"], gw["port"]
     if gw["mock"] or not host:
@@ -200,8 +203,9 @@ async def test_gateway(request: Request, gateway_id: str = "default") -> dict:
 
 
 @router.get("/models")
-async def get_models(request: Request, gateway_id: str = "default"):
+async def get_models(request: Request, gateway_id: str | None = None):
     """The SunSpec catalog captured for a gateway (the primary one unless named)."""
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     db: aiosqlite.Connection = request.app.state.db
     catalog = await load_catalog(db, gateway_id)
 
@@ -228,9 +232,10 @@ async def get_models(request: Request, gateway_id: str = "default"):
 
 
 @router.get("/catalog/points")
-async def list_catalog_points(request: Request, gateway_id: str = "default"):
+async def list_catalog_points(request: Request, gateway_id: str | None = None):
     """Flat list of catalog points with metadata + whether each is published
     (promoted into an enabled group). Powers the Explorer → group picker."""
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     db: aiosqlite.Connection = request.app.state.db
     return {"gateway_id": gateway_id, "points": await get_catalog_points(db, gateway_id)}
 
@@ -249,7 +254,7 @@ class SunSpecExport(BaseModel):
 @router.get("/models/export", response_model=SunSpecExport)
 async def export_models(
     request: Request,
-    gateway_id: str = "default",
+    gateway_id: str | None = None,
     models: str = "",
     format: str = "json",
     redact_serial: bool = True,
@@ -261,6 +266,7 @@ async def export_models(
     the serial number, in model 1's ``SN`` and anywhere else it appears, with
     ``<serial>``. The gateway's address and name are never included.
     """
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     if format not in ("json", "csv"):
         raise HTTPException(400, "format must be json or csv")
     try:
@@ -308,13 +314,14 @@ async def export_models(
 
 
 @router.post("/models/{model_id}/read")
-async def read_model(model_id: int, request: Request, gateway_id: str = "default"):
+async def read_model(model_id: int, request: Request, gateway_id: str | None = None):
     """On-demand read of a single SunSpec model from the device.
 
     Connects to the controller, calls model.read() to fetch live register
     values, then returns the point name→value map.  Also injects the values
     into the sample bus so the Explorer sees them immediately.
     """
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     # Resolve the gateway's controller from the registry. The legacy
     # app.state.controller is unset under the multi-gateway architecture, so
     # reading it directly always failed with "No Modbus controller available".
@@ -372,8 +379,9 @@ async def read_model(model_id: int, request: Request, gateway_id: str = "default
 
 
 @router.post("/models/refresh")
-async def refresh_models(request: Request, gateway_id: str = "default"):
+async def refresh_models(request: Request, gateway_id: str | None = None):
     """Re-read a gateway's SunSpec model chain into its catalog."""
+    gateway_id = await named_gateway(request, gateway_id, "?gateway_id=")
     db: aiosqlite.Connection = request.app.state.db
     inst = _get_gateway(request, gateway_id)
     reader_fn = getattr(inst, "reader_fn", None) if inst is not None else None
@@ -401,31 +409,28 @@ async def refresh_models(request: Request, gateway_id: str = "default"):
 
 
 @router.get("/points")
-async def get_points(request: Request):
-    # Scope to the DEFAULT gateway's own sample bus — never the global bus.
-    # The global bus carries every gateway's samples (including mocks and any
-    # second gateway on the same aGate), so reading it makes the default
-    # dashboard flicker between gateways' data — partial samples blank out the
-    # real fields. Reading the default instance's per-gateway bus keeps the
-    # default view consistent regardless of how many other gateways exist.
+async def get_points(request: Request, gateway: str | None = None):
+    """The latest points of the gateway named by ``?gateway=`` (ID or serial),
+    with its command state. No gateway named: 400 (#296 item 43).
+
+    Reads that gateway's own sample bus, never the global one: the global bus
+    carries every gateway's samples, and partial samples from one would blank
+    out another's fields.
+    """
+    gw_id = await named_gateway(request, gateway, "?gateway=")
     registry = getattr(request.app.state, "registry", None)
-    inst = registry.get("default") if registry else None
-    bus = inst.sample_bus if inst is not None else request.app.state.sample_bus
-    last = bus.last_sample
+    inst = registry.get(gw_id) if registry else None
+    last = inst.sample_bus.last_sample if inst is not None else None
     if last is None:
-        return {"gateway_id": "default", "points": {}, "ts": None}
+        return {"gateway_id": gw_id, "points": {}, "ts": None}
 
     # Merge command handler virtual points (software-tracked command state)
     points = dict(last.points)
-    command_handler = (
-        inst.command_handler if inst is not None
-        else getattr(request.app.state, "command_handler", None)
-    )
-    if command_handler is not None:
-        points.update(command_handler.virtual_points)
+    if inst.command_handler is not None:
+        points.update(inst.command_handler.virtual_points)
 
     return {
-        "gateway_id": last.gateway_id,
+        "gateway_id": gw_id,
         "points": points,
         "ts": last.ts,
         "quality": last.quality,
@@ -433,9 +438,12 @@ async def get_points(request: Request):
 
 
 @router.get("/points/{point_id}")
-async def get_point(point_id: str, request: Request):
-    sample_bus = request.app.state.sample_bus
-    last = sample_bus.last_sample
+async def get_point(point_id: str, request: Request, gateway: str | None = None):
+    """One point of the gateway named by ``?gateway=``; 400 if none is named."""
+    gw_id = await named_gateway(request, gateway, "?gateway=")
+    registry = getattr(request.app.state, "registry", None)
+    inst = registry.get(gw_id) if registry else None
+    last = inst.sample_bus.last_sample if inst is not None else None
     if last is None or point_id not in last.points:
         raise HTTPException(404, f"Point '{point_id}' not found")
     return {
@@ -722,7 +730,7 @@ class SequenceExecRequest(BaseModel):
     sequence: list[dict[str, Any]] | None = None
     inline: str | None = None
     dry_run: bool = False
-    gateway_id: str | None = None  # None = default, "all" = all active
+    gateway_id: str | None = None  # a gateway's ID or serial, or "all" = all active
 
 
 # Hoisted: Depends() in an argument default trips ruff B008.
@@ -769,8 +777,10 @@ async def execute_sequence(
     else:
         return {"ok": False, "output": ["ERROR: No sequence provided"]}
 
-    # Resolve target gateway(s)
-    gw_id = body.gateway_id or "default"
+    # Resolve target gateway(s): named, or "all"; never a silent default.
+    gw_id = body.gateway_id
+    if gw_id != "all":
+        gw_id = await named_gateway(request, gw_id, '"gateway_id": ')
 
     def _is_mock(inst: object) -> bool:
         return bool(inst is not None and getattr(getattr(inst, "config", None), "mock", False))
@@ -1108,9 +1118,10 @@ async def put_pics(body: PicsUpdateRequest, request: Request):
 
 
 @router.get("/battery/limits")
-async def get_battery_limits(request: Request):
-    """Battery power limits a force command may use: trusted ratings only (#133)."""
-    handler = _get_command_handler(request)
+async def get_battery_limits(request: Request, gateway: str | None = None):
+    """Battery power limits a force command may use: trusted ratings only (#133).
+    For the gateway named by ``?gateway=``; 400 if none is named."""
+    handler = _get_command_handler(request, await named_gateway(request, gateway, "?gateway="))
     if handler is None:
         return {"max_charge_w": None, "max_discharge_w": None, "source": "unknown"}
     return handler.power_limits
