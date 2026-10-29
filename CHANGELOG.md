@@ -22,27 +22,35 @@ lands, not backfilled later.
   these writes to take effect are marked known to fail. Earlier changelog entries are
   left as written.
 
+## [0.2.46] — 2026-10-29
+
 ### Added
 
-- **A gateway is locked to its aGate's serial (#296 item 42):** the first serial
+- **A gateway is locked to its aGate's serial (PR #394, #296 item 42):** the first serial
   reported is kept; a different serial at the address (read twice) or one another
   gateway holds is refused: no polling, no commands, no new connection, an ERROR in
   the log, and `serial_refused` in the gateway list. Start-up stops before it reads
   control state or sends a Release to that aGate.
-- **Gateway ID or serial in `/api/gateways/{gw_id}/…` (#296 item 42):** a serial is
+- **Gateway ID or serial in `/api/gateways/{gw_id}/…` (PR #394, #296 item 42):** a serial is
   rewritten to its gateway's ID before routing. After sign-in, an unknown reference
   gets 404 "No gateway has the ID or serial '…'" and a malformed one 422 with the
   reason; each is logged with the user. A viewer's write still gets 403 first.
 
 ### Changed
 
-- **"Site (All Gateways)" replaced by a read-only All gateways overview (#296 item 43):**
+- **"Site (All Gateways)" replaced by a read-only All gateways overview (PR #395, #296 item 43):**
   the gateway picker's **All gateways…** opens a modal: counts (Registered, Polling,
   Unavailable, Stopped), one row per gateway (status, grid, mode and command, SoC, battery,
   grid, solar and load power, last poll) and a site total; clicking a row makes that gateway
   active. The Site view sent commands and Release to `default`; the page now always names
   the active gateway (`api/gateways/{id}/points` and `/command`, never `api/points` or
   `api/command`). New schedule entries target the active gateway.
+
+### Fixed
+
+- **A gateway not set up reads Connected again (PR #396):** after #395 a fresh install
+  showed red Disconnected beside "No gateway yet". The setup wizard and docs no longer
+  name the removed Site view.
 
 ## [0.2.45] — 2026-10-29
 

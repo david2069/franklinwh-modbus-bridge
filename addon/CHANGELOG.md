@@ -7,6 +7,19 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.46 — 2026-10-29
+
+### Added
+- **Each gateway is locked to its aGate's serial.** If a different aGate answers
+  at its address, or another gateway already has that serial, the bridge stops
+  talking to it and says why in the log.
+- **The API takes a gateway's ID or its serial**, and explains a wrong one.
+
+### Changed
+- **All gateways** in the gateway picker replaces "Site (All Gateways)": an
+  overview of every gateway and the site total, for viewing only. Click a
+  gateway to make it the active one; controls always act on the active gateway.
+
 ## 0.2.45 — 2026-10-29
 
 ### Added
