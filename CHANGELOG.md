@@ -37,6 +37,12 @@ lands, not backfilled later.
   the active gateway (`api/gateways/{id}/points` and `/command`, never `api/points` or
   `api/command`). New schedule entries target the active gateway.
 
+### Fixed
+
+- **A gateway not set up reads Connected again (PR #396):** after #395 a fresh install
+  showed red Disconnected beside "No gateway yet". The setup wizard and docs no longer
+  name the removed Site view.
+
 ## [0.2.45] — 2026-10-29
 
 ### Added
