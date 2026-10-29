@@ -7,6 +7,21 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.45 — 2026-10-29
+
+### Added
+- **Stop or start polling a gateway** from its Edit Gateway dialog.
+
+### Changed
+- **Run now is followed like a scheduled run**: the Monitor shows it, its exit
+  conditions end it, and **Stop now** works outside the window too.
+- **The Activity Log says who ended a run**: a Release from the top bar, Stop,
+  the window end or exit conditions.
+
+### Fixed
+- **A Run now the aGate rejects** is logged as failed.
+- **No errors for a stopped gateway**: the page no longer asks for its data.
+
 ## 0.2.44 — 2026-10-28
 
 ### Added
