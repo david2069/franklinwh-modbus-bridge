@@ -19,7 +19,7 @@ from franklinwh_bridge.api.auth import (
     require_capability,
 )
 from franklinwh_bridge.api.disclaimer_api import _client_ip
-from franklinwh_bridge.api.gateways_api import require_known_slug
+from franklinwh_bridge.api.gateways_api import require_known_slug, send_user_command
 from franklinwh_bridge.gateway.modules import API_ONLY_ROLES
 
 # Hoisted so it is built once at import rather than per-request: ruff's B008
@@ -201,8 +201,8 @@ async def send_command(
         )
         return {"ok": False, "slug": body.slug, "result": "Command handler not available"}
 
-    outcome = await command_handler.handle_command(
-        body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
+    outcome = await send_user_command(
+        request, "default", command_handler, body.slug, body.value, _user)
     # This call's outcome, never the handler's leftover state (#97).
     return {"ok": outcome["ok"], "slug": body.slug, "result": outcome["result"]}
 

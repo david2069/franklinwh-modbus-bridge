@@ -27,6 +27,7 @@ notifications. Also the two buttons that act outside the schedule: **Run now** a
 | exit_condition_met | exit conditions ended the run |
 | expired | the command ended inside the window (time limit, target SoC, external release, overshoot) |
 | stopped | you pressed Stop |
+| released | someone released the entry's command outside the scheduler: the top bar's **Release** button, or the API ("released by <user> — Released"). A scheduled run released this way can also show *expired* when the scheduler next checks it |
 | executed | Run now |
 | missed, late_fired | catch-up after an outage or restart |
 | verified, unverifiable, not_effective, reasserted | dispatch supervision |
@@ -74,7 +75,8 @@ check. <!-- @b OUT-07 ;; src: gateway/scheduler.py:1255-1268, gateway/scheduler.
 <!-- @b OUT-09 ;; src: gateway/scheduler.py:1316-1345 ;; tested: tests/unit/test_dispatch_verification.py::test_t2_moving_battery_is_verified_once_with_no_extra_writes ;; write: no ;; b: 90 s after the send the battery must move the commanded way at >= max(100 W, 20 % of request) (standby within 200 W) to be verified ;; test: — -->
 <!-- @b OUT-10 ;; src: gateway/scheduler.py:1330-1336, gateway/scheduler.py:1380-1388 ;; tested: tests/unit/test_dispatch_verification.py::test_t7_soc_limit_is_not_judged_as_not_effective ;; write: no ;; b: A charge at >= 98 % SoC or a discharge within 3 % of the reserve is audited unverifiable, not not_effective ;; test: — -->
 <!-- @b OUT-11 ;; src: gateway/scheduler.py:1346-1373 ;; tested: tests/unit/test_dispatch_verification.py::test_t2_not_effective_resends_once_then_notifies ;; write: yes ;; b: A not-moving battery gets one re-send; still not moving 90 s later is final not_effective with a NOT EFFECTIVE notification ;; test: — -->
-<!-- @b OUT-12 ;; src: gateway/scheduler.py:920-929 ;; untested ;; write: no ;; b: Supervision runs only for runs the engine owns: not for Run now, late fires, manual commands or a hold ;; test: unit — execute() a force entry; advance 90 s with a stationary battery; assert no not_effective row -->
+Supervision covers scheduled runs and Run now. It does not cover late fires, manual
+commands or a hold. A re-send that fails ends a Run now: there is no retry outside a window.
 
 ## The dispatch record
 
@@ -134,8 +136,8 @@ on this entry*. Set one up in [Home Assistant setup](../ha-setup.md#failure-aler
 
 | Button | Shown | What it does |
 |---|---|---|
-| ▶ **Run now** | while the entry is **not** active | Sends the action now, whatever the time. |
-| ■ **Stop** | while the entry is active (its window is open, even if it is gated) | Ends this run and blocks the entry for the rest of the window. |
+| ▶ **Run now** | while the entry is **not** active and no Run now of it is running | Sends the action now, whatever the time. |
+| ■ **Stop** | while the entry is active (its window is open, even if it is gated), or its Run now is running | Ends this run and blocks the entry for the rest of the window. |
 
 <!-- @b OUT-19 ;; src: templates/tabs/schedule.html:407-414, api/schedules_api.py:278 ;; untested ;; write: no ;; b: Stop is shown when active_now (window open, enabled) and Run now otherwise, regardless of whether a command is running ;; test: browser — a gated entry in an open window shows Stop -->
 
@@ -144,23 +146,31 @@ on this entry*. Set one up in [Home Assistant setup](../ha-setup.md#failure-aler
 1. Press ▶ and confirm **Fire**.
 2. The bridge checks the entry conditions on each target gateway (the REST API can skip this
    with `?force=true`).
-3. It sends the action to each gateway that passes, logs *executed* (or *gated*), and shows
-   *Fired* or *Skipped — entry conditions not met*.
+3. It sends the action to each gateway that passes, logs *executed* (or *gated*, or *failed*
+   if the aGate didn't take it), and shows *Fired* or *Skipped — entry conditions not met*.
 
 <!-- @b OUT-20 ;; src: gateway/scheduler.py:549-608, api/schedules_api.py:516-526 ;; tested: tests/unit/test_scheduler_engine.py::test_execute_respects_entry_conditions_unless_forced ;; write: yes ;; b: Run now checks entry conditions per gateway unless force=true, sends the action, audits executed or gated and returns fired, gated or noop ;; test: — -->
 
-A Run now command is **not owned by the scheduler**:
+The scheduler then follows a Run now force command like a scheduled run, until it ends:
 
-- it uses the entry's **Duration (min)** as its time limit; a window entry usually has none,
-  so a force command then **runs until you release it**;
+- the **Monitor** shows it as *running*: "Run now — running Force Discharge", with its exit
+  conditions;
+- its **exit conditions** end it: the scheduler releases it with the entry's release policy and
+  logs *exit_condition_met* ("Run now: exit conditions met …");
+- **supervision** checks it as for a scheduled run (above);
+- ■ **Stop** releases it and logs *stopped*; the top bar's **Release** logs *released*;
+- it ends by itself at the entry's **Duration (min)**. A window entry usually has none, so the
+  command then runs until it is released, or until the aGate's own timeout;
   <!-- @b OUT-21 ;; src: gateway/scheduler.py:569-571, gateway/scheduler.py:319-321 ;; untested ;; write: yes ;; b: Run now stages the entry's duration_s as the time limit; with none it stages 0 and the command is open-ended ;; test: unit — execute() a window entry with no duration; assert battery_command_duration '0' -->
-- no exit conditions, verification, release policy or HA actions;
-- it ignores **If already controlled** and replaces a manual command;
+- when it ends any other way (its time limit, or another command replacing it) the log says
+  so: *expired* or *duration_elapsed*, "Run now ended — …";
+- if the entry's own window opens while it runs, the window takes it over and ends it at
+  window exit.
+
+A Run now still ignores **If already controlled** and replaces a manual command, and it runs
+no HA actions.
   <!-- @b OUT-22 ;; src: gateway/scheduler.py:585-600 ;; untested ;; write: yes ;; b: Run now does not check the conflict policy and supersedes a manual command ;; test: unit — manual Force Charge active; execute() a force_discharge entry with conflict defer; assert it is sent -->
-- **Stop** does not see it (*Nothing active to stop*); release it from the top bar or the
-  Controls tab;
-- on the next ticks, entries for that gateway (including this one, if its window opens)
-  treat it as manual control.
+Other entries on that gateway treat it as manual control.
 
 Through the API, Run now works while the entry is active too, and on an entry that already
 finished its window. <!-- @b OUT-23 ;; src: gateway/scheduler.py:549-608 ;; untested ;; write: yes ;; b: execute() ignores the trigger window and the done-for-window mark ;; test: unit — execute() an entry whose window is closed and one that is expired; both dispatch -->

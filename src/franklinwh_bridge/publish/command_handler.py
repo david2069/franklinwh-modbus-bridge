@@ -247,6 +247,9 @@ class CommandHandler:
         # the command currently active (so a release or supersede can close it).
         self._last_dispatch: DispatchResult | None = None
         self._active_dispatch_id: str | None = None
+        #: Who sent the active command (e.g. ``schedule:<entry id>``), so a
+        #: release by someone else can be noted against that schedule entry.
+        self._active_requester: str | None = None
         self._requester: str = "manual"
         # What this bridge last asked the gateway for, to tell our own dispatch
         # from one sent by something else (another app, a CLI, the cloud).
@@ -268,6 +271,10 @@ class CommandHandler:
     @property
     def active_dispatch_id(self) -> str | None:
         return self._active_dispatch_id
+
+    @property
+    def active_requester(self) -> str | None:
+        return self._active_requester
 
     @property
     def mode_write_locked(self) -> bool:
@@ -637,6 +644,7 @@ class CommandHandler:
         self._active_dispatch_id = await dispatch_outcomes.create(
             self._db, gateway_id=self._gateway_id, requester=self._requester,
             action=display_action, requested_w=report_w, state="sent", reason=msg)
+        self._active_requester = self._requester
         self._last_dispatch = DispatchResult(
             ok=True, reason=msg, action=display_action, requested_w=report_w,
             dispatch_id=self._active_dispatch_id, hw=hw, ts=time.time())
@@ -796,6 +804,7 @@ class CommandHandler:
                     self._db, self._active_dispatch_id, "superseded",
                     reason=f"stopped by a failed {display_action} send")
                 self._active_dispatch_id = None
+                self._active_requester = None
         msg = explain_command_failure(_strip_speculation(msg), stopped_previous=(
             prev_active and not self._state.active))
         self._state.last_result = msg
@@ -862,6 +871,7 @@ class CommandHandler:
                 "released" if success else "release_unverified",
                 reason=f"reason={reason}; {self._state.last_result}")
             self._active_dispatch_id = None
+            self._active_requester = None
 
         self._sent_pct = None
         self._sent_w = None

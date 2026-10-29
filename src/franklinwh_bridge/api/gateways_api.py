@@ -12,6 +12,7 @@ import logging
 import os
 import signal
 import time
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import aiosqlite
@@ -1258,6 +1259,21 @@ async def get_gateway_points(gw_id: str, request: Request):
     }
 
 
+async def send_user_command(
+    request: Request, gw_id: str, handler: Any, slug: str, value: str, user: dict,
+) -> dict:
+    """Send a user's command. A Release that ends a schedule entry's command is
+    also noted in that entry's Activity Log: it bypasses the scheduler."""
+    by = f"user:{user.get('username') or '?'}"
+    owner = getattr(handler, "active_requester", None)
+    outcome = await handler.handle_command(slug, value, requester=by)
+    engine = getattr(request.app.state, "schedule_engine", None)
+    if (engine is not None and slug == "battery_command"
+            and str(value).strip() in ("Not Active", "Stop", "Release") and owner != by):
+        await engine.note_release(gw_id, owner, by, outcome["result"])
+    return outcome
+
+
 def require_known_slug(slug: str) -> None:
     """Refuse a command slug nothing handles, rather than report it sent (#97)."""
     if slug not in COMMAND_SLUGS:
@@ -1309,8 +1325,8 @@ async def send_gateway_command(
             "result": "Command handler not available",
         }
 
-    outcome = await inst.command_handler.handle_command(
-        body.slug, body.value, requester=f"user:{_user.get('username') or '?'}")
+    outcome = await send_user_command(
+        request, gw_id, inst.command_handler, body.slug, body.value, _user)
     # This call's outcome, never the handler's leftover state (#97).
     return {
         "ok": outcome["ok"], "slug": body.slug, "gateway_id": gw_id,

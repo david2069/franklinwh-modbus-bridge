@@ -179,6 +179,11 @@ def next_fire(when_spec: dict, now: datetime, horizon_days: int = 8) -> datetime
     return None
 
 
+def _by(own: dict) -> str | None:
+    """Requester for a command the engine sends for an owned run."""
+    return f"schedule:{own['entry_id']}" if own.get("entry_id") else None
+
+
 def _is_v2(entry: dict) -> bool:
     """A v2 entry carries a trigger kind and/or a condition tree. Only these opt
     into fire-based activation and release_policy; legacy entries are untouched."""
@@ -483,6 +488,11 @@ class ScheduleEngine:
         self._monitor_seq = 0
         # tkey -> id of the entry that won the target on this tick (or None).
         self._tick_win: dict[tuple, str | None] = {}
+        # Run now: tkey -> the same record as _owned plus the entry, for a
+        # sustained command fired by execute(). Followed like a scheduled run
+        # (exit conditions, supervision, the Monitor) until it ends, outside
+        # any window; handed to _owned if the entry's own window opens.
+        self._manual: dict[tuple, dict] = {}
 
     # ---- lifecycle ----
 
@@ -586,8 +596,9 @@ class ScheduleEngine:
         its trigger/window. Respects ``entry_conditions`` unless ``force``.
 
         Dispatches with the entry's ``duration_s`` as the command watchdog so the
-        handler auto-releases — this is a deliberate override that does NOT take
-        engine ownership (the periodic tick won't manage or release it).
+        handler auto-releases. A sustained command is then followed like a
+        scheduled run (``_manual``): exit conditions end it, supervision checks
+        it and the Monitor shows it, until it is released.
         Serialised against the tick so the snapshot can't race a reconcile.
         """
         from franklinwh_bridge.store.db import get_schedule
@@ -630,12 +641,21 @@ class ScheduleEngine:
                 if not cmds:
                     return {"status": "unknown_action", "action": action}
                 await self._send(handler, cmds, requester=f"schedule:{schedule_id}")
+                res = getattr(handler, "last_dispatch", None)
+                if action in _SUSTAINED and res is not None and not res.ok:
+                    await self._audit(
+                        schedule_id, action, target, "failed",
+                        f"manual execute failed: {res.reason}",
+                    )
+                    continue
                 dispatched.append(gw_id)
                 await self._audit(
                     schedule_id, action, target, "executed",
                     f"manual execute{' (forced)' if force else ''} — "
                     f"{_action_summary(action, params)}",
                 )
+                if action in _SUSTAINED:
+                    await self._start_manual(target, handler, entry, params, res, now_dt)
 
         status = "fired" if dispatched else ("gated" if gated else "noop")
         return {"status": status, "dispatched": dispatched, "gated": gated}
@@ -670,7 +690,8 @@ class ScheduleEngine:
                             now_dt,
                         )
                     else:
-                        await self._send(handler, [("battery_command", "Release")])
+                        await self._send(handler, [("battery_command", "Release")],
+                                         requester=f"schedule:{schedule_id}")
                     released.append(gw_id)
                 self._owned.pop(tkey, None)
                 self._expired[tkey] = schedule_id  # don't re-fire until next window
@@ -679,6 +700,22 @@ class ScheduleEngine:
                     schedule_id, own.get("action"), tkey, "stopped",
                     "stopped by user — released; won't re-fire until the next window"
                     + (f"; {note}" if note else ""),
+                )
+            # A Run now of this entry ends the same way.
+            for tkey, man in list(self._manual.items()):
+                if man["entry_id"] != schedule_id:
+                    continue
+                handler = next(
+                    (h for g, h in self._resolver(tkey[0], tkey[1]) if g == tkey[2]), None
+                )
+                self._manual.pop(tkey, None)
+                if handler is None:
+                    continue
+                note = await self._release_manual(handler, man, tkey[2], now_dt)
+                released.append(tkey[2])
+                await self._audit(
+                    schedule_id, man["action"], tkey, "stopped",
+                    "stopped by user — Run now released" + (f"; {note}" if note else ""),
                 )
             # Block the current window on any not-yet-owned target too, so a
             # between-ticks fire can't slip through right after Stop.
@@ -690,6 +727,23 @@ class ScheduleEngine:
             if released:
                 return {"status": "stopped", "released": released}
             return {"status": "not_active" if entry is not None else "not_found", "released": []}
+
+    async def note_release(self, gw_id: str, owner: str | None, by: str, result: str) -> None:
+        """Record a Release sent outside the scheduler (the top bar's Release
+        button, the API) in the Activity Log of the entry whose command it ended.
+        ``owner`` is who sent that command; only ``schedule:<entry id>`` counts."""
+        if not owner or not owner.startswith("schedule:"):
+            return
+        schedule_id = owner.split(":", 1)[1]
+        entry = next((e for e in self._entries if e.get("id") == schedule_id), None)
+        name = by.split(":", 1)[1] if by.startswith("user:") else by
+        for tkey in [k for k, m in self._manual.items()
+                     if k[2] == gw_id and m["entry_id"] == schedule_id]:
+            self._manual.pop(tkey, None)  # this row is how it ended
+        await self._audit(
+            schedule_id, entry.get("action", "") if entry else "", ("gateway", gw_id, gw_id),
+            "released", f"released by {name} — {result}",
+        )
 
     async def start(self) -> None:
         await self.load()
@@ -767,6 +821,13 @@ class ScheduleEngine:
                 win = await self._battery_winner(battery, tkey, now)
                 self._tick_win[tkey] = win["id"] if win else None
                 watched.append((tkey, battery))
+                man = self._manual.get(tkey)
+                if man is not None and win is not None and win["id"] == man["entry_id"]:
+                    # The entry's own window opened during its Run now: the
+                    # window takes the run over (and ends it at window exit).
+                    self._manual.pop(tkey)
+                    self._owned[tkey] = {
+                        k: v for k, v in man.items() if k != "entry"} | {"mode": "window"}
                 await self._reconcile(tkey, h, win, now)
                 for e in ha_only:
                     # Same gw_id in slot 2 so the audit target still resolves to
@@ -798,7 +859,83 @@ class ScheduleEngine:
                 self._last_win.pop(tkey, None)
                 self._skipped = {m for m in self._skipped if m[0] != tkey}
 
+        await self._tick_manual(now)
         self._record_monitor(watched, now)
+
+    # ---- Run now ----
+
+    async def _start_manual(
+        self, tkey: tuple, handler: Any, entry: dict, params: dict, res: Any, now: datetime,
+    ) -> None:
+        """Follow a Run now's sustained command until it ends."""
+        own = self._own_record(entry, entry["action"], params, handler, res, tkey, now)
+        prev = self._owned.get(tkey)
+        if prev is not None and prev["entry_id"] == entry["id"]:
+            self._owned[tkey] = own  # its window is open: the window keeps it
+            return
+        if prev is not None:
+            # Run now replaced another entry's scheduled command.
+            self._owned.pop(tkey, None)
+            await self._audit(
+                prev["entry_id"], prev["action"], tkey, "expired",
+                f"replaced by Run now of {entry.get('name') or entry['id']}",
+            )
+        old = self._manual.get(tkey)
+        if old is not None and old["entry_id"] != entry["id"]:
+            await self._audit(
+                old["entry_id"], old["action"], tkey, "expired",
+                f"Run now replaced by Run now of {entry.get('name') or entry['id']}",
+            )
+        self._manual[tkey] = {**own, "mode": "run_now", "entry": entry}
+
+    async def _release_manual(self, handler: Any, man: dict, gw_id: str, now: datetime) -> str:
+        policy = (man.get("release_policy") or "release") if man.get("is_v2") else "release"
+        return await self._apply_release(handler, policy, man, gw_id, now)
+
+    async def _tick_manual(self, now: datetime) -> None:
+        """One tick for each Run now: has it ended, should it end, is it working?"""
+        for tkey, man in list(self._manual.items()):
+            ttype, tid, gw_id = tkey
+            handler = next((h for g, h in self._resolver(ttype, tid) if g == gw_id), None)
+            if handler is None:
+                self._manual.pop(tkey, None)
+                continue
+            e, eid = man["entry"], man["entry_id"]
+            mine = f"schedule:{eid}"
+            sender = getattr(handler, "active_requester", mine)
+            if not handler.state.active or sender != mine:
+                self._manual.pop(tkey, None)
+                if handler.state.active:
+                    result, detail = "expired", (
+                        f"Run now ended — replaced by another command ({handler.state.action})")
+                elif man.get("duration_s") and (
+                        now.timestamp() - man["since"] >= int(man["duration_s"]) - self._tick_s):
+                    result, detail = "duration_elapsed", (
+                        f"Run now ended — its {int(man['duration_s'])}s time limit")
+                else:
+                    result, detail = "expired", (
+                        "Run now ended — the command was released (time limit or a release)")
+                await self._audit(eid, man["action"], tkey, result, detail)
+                continue
+            exit_tree = e.get("exit_conditions")
+            if exit_tree is not None:
+                met, trace = eval_conditions(exit_tree, self._snapshot(gw_id, now))
+                if met:
+                    self._manual.pop(tkey, None)
+                    note = await self._release_manual(handler, man, gw_id, now)
+                    await self._audit(
+                        eid, man["action"], tkey, "exit_condition_met",
+                        "Run now: " + _condition_reason("exit conditions met", trace)
+                        + (f"; {note}" if note else ""),
+                    )
+                    continue
+            await self._supervise(tkey, handler, e, man, now)
+            rec = self._retry.get(tkey)
+            if rec is not None and rec["entry_id"] == eid:
+                # A re-send failed (audited by _dispatch_failed): no retries
+                # outside a window, so the Run now ends here.
+                self._retry.pop(tkey, None)
+                self._manual.pop(tkey, None)
 
     # ---- debug monitor ----
 
@@ -824,6 +961,11 @@ class ScheduleEngine:
 
     def _monitor_state(self, tkey: tuple, e: dict, now: datetime) -> tuple[str, str, list[dict]]:
         """Where an entry stands on a target after this tick's reconcile."""
+        man = self._manual.get(tkey)
+        if man is not None and man["entry_id"] == e["id"]:
+            return self._running_state(
+                e, f"Run now — running {man.get('display') or man.get('action')}",
+                self._snapshot(tkey[2], now))
         if not entry_active(e, now):
             return "idle", "not active now (outside its window or not due)", []
         win_id = self._tick_win.get(tkey)
@@ -843,18 +985,10 @@ class ScheduleEngine:
         snap = self._snapshot(tkey[2], now)
         own = self._owned.get(tkey)
         if own and own.get("entry_id") == e["id"]:
-            detail = (
+            return self._running_state(e, (
                 "active (HA actions only)" if e.get("action") == "none"
                 else f"running {own.get('display') or own.get('action')}"
-            )
-            exit_tree = e.get("exit_conditions")
-            if exit_tree is None:
-                return "running", detail, []
-            met, trace = eval_conditions(exit_tree, snap)
-            fails = "; ".join(_leaf_str(t) for t in trace if not t.get("result"))
-            return "running", detail + (
-                " — exit conditions met" if met else f" — exit not met: {fails}"
-            ), _monitor_conds("exit", trace)
+            ), snap)
         if self._expired.get(tkey) == e["id"]:
             return "done", "finished for this window; fires again next window", []
         if tkey in self._deferred:
@@ -879,6 +1013,22 @@ class ScheduleEngine:
             left = max(0, hold_s - int((now - dwell[1]).total_seconds()))
             return "holding", f"conditions met — {left}s left of {hold_s}s hold", conds
         return "ready", "conditions met — fires on the next tick", conds
+
+    @property
+    def run_now_ids(self) -> set[str]:
+        """Entries with a Run now still running."""
+        return {m["entry_id"] for m in self._manual.values()}
+
+    @staticmethod
+    def _running_state(e: dict, detail: str, snap: dict) -> tuple[str, str, list[dict]]:
+        exit_tree = e.get("exit_conditions")
+        if exit_tree is None:
+            return "running", detail, []
+        met, trace = eval_conditions(exit_tree, snap)
+        fails = "; ".join(_leaf_str(t) for t in trace if not t.get("result"))
+        return "running", detail + (
+            " — exit conditions met" if met else f" — exit not met: {fails}"
+        ), _monitor_conds("exit", trace)
 
     @property
     def tick_s(self) -> int:
@@ -991,7 +1141,8 @@ class ScheduleEngine:
             await self._fire_exit_ha_actions(tkey, now)  # exit-tagged HA actions on window close
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
-                    await self._dispatch(handler, "force_standby", {}, label="hold")
+                    await self._dispatch(handler, "force_standby", {}, label="hold",
+                                         requester=own.get("entry_id"))
                     self._owned[tkey] = {
                         **own,
                         "action": "force_standby",
@@ -1016,7 +1167,8 @@ class ScheduleEngine:
                             f"; {note}" if note else ""
                         )
                     else:
-                        await self._send(handler, [("battery_command", "Release")])
+                        await self._send(handler, [("battery_command", "Release")],
+                                         requester=_by(own))
                         detail = "window exit — released to native"
                     self._owned.pop(tkey, None)
                     await self._audit(own.get("entry_id"), "release", tkey, "ok", detail)
@@ -1195,16 +1347,32 @@ class ScheduleEngine:
                 (a.get("when") in ("exit", "both")) for a in (win.get("ha_actions") or [])
             ):
                 self._exit_entry[tkey] = win
-        self._owned[tkey] = {
+        self._owned[tkey] = self._own_record(win, action, params, handler, res, tkey, now)
+        detail = f"dispatched {win.get('name', action)} — {_action_summary(action, params)}"
+        if recovered is not None:
+            detail += f" — recovered after {recovered['attempts']} failed attempt(s)"
+        await self._audit(win["id"], action, tkey, "ok", detail)
+        if recovered is not None:
+            await self._notify_owner(
+                win, tkey,
+                f"Recovered: {win.get('name') or win['id']} dispatched after "
+                f"{recovered['attempts']} failed attempt(s)", now)
+
+    def _own_record(
+        self, win: dict, action: str, params: dict, handler: Any, res: Any,
+        tkey: tuple, now: datetime,
+    ) -> dict:
+        """What the engine keeps about a sustained command it sent for ``win``."""
+        return {
             "entry_id": win["id"],
             # Name + start so "why is the battery doing this?" is answerable
             # without joining back to the entry list.
             "name": win.get("name") or win["id"],
             "since": now.timestamp(),
             "duration_s": win.get("duration_s"),
-            "signature": sig,
+            "signature": action_signature(action, params),
             "action": action,
-            "display": display,
+            "display": _DISPLAY.get(action),
             "release": win.get("release", "release"),
             "mode": "window",
             # Snapshot the native mode at dispatch so a restore_prior_mode exit
@@ -1223,15 +1391,6 @@ class ScheduleEngine:
             "resent": False,
             "reasserts": 0,
         }
-        detail = f"dispatched {win.get('name', action)} — {_action_summary(action, params)}"
-        if recovered is not None:
-            detail += f" — recovered after {recovered['attempts']} failed attempt(s)"
-        await self._audit(win["id"], action, tkey, "ok", detail)
-        if recovered is not None:
-            await self._notify_owner(
-                win, tkey,
-                f"Recovered: {win.get('name') or win['id']} dispatched after "
-                f"{recovered['attempts']} failed attempt(s)", now)
 
     def _render(self, text: str, tkey: tuple, now: datetime | None) -> str:
         """Substitute %sensor.id% placeholders from the live snapshot.
@@ -1580,7 +1739,7 @@ class ScheduleEngine:
         Applies to v2 entries only (condition-exit and v2 duration/window-exit);
         the legacy release/hold path never calls this, so it is unaffected.
         """
-        await self._send(handler, [("battery_command", "Release")])
+        await self._send(handler, [("battery_command", "Release")], requester=_by(own))
         if policy == "restore_prior_mode":
             prior = own.get("prior_mode")
             return restore_mode_note(
@@ -1594,7 +1753,7 @@ class ScheduleEngine:
                 return f"mode already {target}"
             if getattr(handler, "mode_write_locked", False):
                 return f"mode not set: mode register is write-locked — {target} skipped"
-            await self._send(handler, [("operating_mode", target)])
+            await self._send(handler, [("operating_mode", target)], requester=_by(own))
             state = getattr(handler, "state", None)
             if state is not None and not getattr(state, "last_success", True):
                 return f"mode {target} write failed: {getattr(state, 'last_result', '')}"
