@@ -13,6 +13,34 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.45] — 2026-10-29
+
+### Added
+
+- **Stop/Start polling in the Edit Gateway dialog (PR #390):** the result shows
+  in the dialog and stays there.
+
+### Changed
+
+- **Run now is followed like a scheduled run (PR #392):** the Monitor shows
+  "Run now — running …"; the entry's exit conditions end it and the battery is
+  checked to be moving; ■ Stop now shows outside the window too and releases it;
+  if the entry's window opens while it runs, the window takes it over. However
+  it ends is logged once: Stop, a Release, its time limit or another command
+  replacing it. With no Duration it still runs until released or the aGate's
+  own timeout.
+- **Scheduler releases name the entry (PR #392):** window end, Stop and exit
+  conditions send the Release as `schedule:<id>`, not `manual`.
+
+### Fixed
+
+- **Release from the top bar shows in the entry's Activity Log (PR #392):** a
+  `released` row, "released by <user> — <result>", when the Release ends a
+  schedule's command.
+- **A Run now the aGate rejects is logged `failed` (PR #392)**, not `executed`.
+- **A stopped gateway's points aren't requested (PR #391):** the page and the
+  MQTT settings skip gateways that aren't polling, so no 404s.
+
 ## [0.2.44] — 2026-10-28
 
 ### Added
