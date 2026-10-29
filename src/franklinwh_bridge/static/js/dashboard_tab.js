@@ -516,9 +516,8 @@ function dashboardTab() {
     },
 
     async _loadGateway() {
-      // The gateway being viewed (the primary one for "Site").
-      const active = Alpine.store('app').activeGateway;
-      const gwId = active && active !== 'site' ? active : 'default';
+      // The gateway being viewed.
+      const gwId = Alpine.store('app').activeGateway || 'default';
       const data = await fetchJSON('api/gateway?gateway_id=' + encodeURIComponent(gwId));
       if (data && !data.error) {
         this.deviceIp = data.host || '--';
@@ -571,10 +570,10 @@ function dashboardTab() {
       let url = `api/metrics?start=${startTs}&end=${endTs}`;
       if (this.chartBucket) url += `&bucket=${this.chartBucket}`;
       const activeGw = Alpine.store('app')?.activeGateway;
-      if (activeGw && activeGw !== 'site') url += `&gateway_id=${encodeURIComponent(activeGw)}`;
+      if (activeGw) url += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
       let alarmUrl = `api/alarm-events?start=${startTs}&end=${endTs}`;
-      if (activeGw && activeGw !== 'site') alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
+      if (activeGw) alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
       const gwMetaC = (Alpine.store('app')?.gatewayList || []).find((g) => g.id === activeGw);
       let data, alarmResp;
@@ -674,10 +673,10 @@ function dashboardTab() {
       let url = 'api/metrics?range=' + this.chartRange;
       if (this.chartBucket) url += '&bucket=' + this.chartBucket;
       const activeGw = Alpine.store('app')?.activeGateway;
-      if (activeGw && activeGw !== 'site') url += `&gateway_id=${encodeURIComponent(activeGw)}`;
+      if (activeGw) url += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
       let alarmUrl = `api/alarm-events?range=${this.chartRange}`;
-      if (activeGw && activeGw !== 'site') alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
+      if (activeGw) alarmUrl += `&gateway_id=${encodeURIComponent(activeGw)}`;
 
       // A mock gateway never persists metrics, so a fetch returns nothing and
       // the chart would be blank while the Comparison modal — which already
@@ -1188,7 +1187,7 @@ function dashboardTab() {
         } else {
           url = `api/events?range=${this.eventsRange}`;
         }
-        if (activeGw && activeGw !== 'site') url += `&gateway_id=${encodeURIComponent(activeGw)}`;
+        if (activeGw) url += `&gateway_id=${encodeURIComponent(activeGw)}`;
         const resp = await fetchJSON(url);
         this.eventsData = resp?.events || [];
       } catch (e) {

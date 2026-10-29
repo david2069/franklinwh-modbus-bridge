@@ -1,0 +1,89 @@
+{# All gateways (#296 item 43): read-only, opened from the gateway picker. #}
+<div x-data="allGateways()" x-init="watchOpen()">
+  <template x-if="$store.app.allGatewaysOpen">
+    <div class="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-black/60"
+         role="dialog" aria-modal="true" aria-labelledby="all-gw-title"
+         data-testid="all-gateways" @click.self="close()" @keydown.escape.window="close()">
+      <div class="w-full max-w-6xl rounded-lg border shadow-2xl flex flex-col"
+           style="background: var(--surface-0); border-color: var(--border); max-height: 92vh;">
+        <div class="flex items-center justify-between p-4 border-b" style="border-color: var(--border);">
+          <h2 id="all-gw-title" class="text-sm font-semibold">All gateways</h2>
+          <button type="button" @click="close()" aria-label="Close"
+                  class="text-slate-500 hover:text-slate-300 text-lg leading-none">&times;</button>
+        </div>
+        <div class="p-4 overflow-y-auto space-y-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="all-gw-counts">
+            <template x-for="c in [['Registered', counts.registered, 'text-slate-200'],
+                                    ['Polling', counts.polling, counts.polling ? 'text-emerald-400' : 'text-slate-400'],
+                                    ['Unavailable', counts.unavailable, counts.unavailable ? 'text-amber-400' : 'text-slate-400'],
+                                    ['Stopped', counts.stopped, 'text-slate-400']]" :key="c[0]">
+              <div class="rounded border border-slate-700/60 bg-slate-800/40 px-3 py-2">
+                <div class="text-[10px] uppercase tracking-wider text-slate-500" x-text="c[0]"></div>
+                <div class="text-xl font-semibold tabular-nums" :class="c[2]" x-text="c[1]"></div>
+              </div>
+            </template>
+          </div>
+          <p class="text-[11px] text-slate-500">For viewing only. Click a gateway to make it the
+            active one: the page shows and controls the active gateway.</p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs tabular-nums">
+              <thead>
+                <tr class="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-700/60">
+                  <th class="py-1.5 pr-3">Name</th><th class="pr-3">Model</th><th class="pr-3">Status</th>
+                  <th class="pr-3">Grid</th><th class="pr-3">Mode</th><th class="pr-3 text-right">SoC</th>
+                  <th class="pr-3 text-right">Battery kW</th><th class="pr-3 text-right">Grid kW</th>
+                  <th class="pr-3 text-right">Solar kW</th><th class="pr-3 text-right">Load kW</th>
+                  <th class="pr-3">Last poll</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="gw in rows" :key="gw.id">
+                  <tr class="border-b border-slate-700/60 hover:bg-slate-700/30 cursor-pointer"
+                      data-testid="all-gw-row" @click="pick(gw)"
+                      :class="$store.app.activeGateway === gw.id && 'bg-cyan-500/5'">
+                    <td class="py-2 pr-3">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-slate-200" :class="$store.app.activeGateway === gw.id && 'text-cyan-400'"
+                              x-text="gwLabel(gw)"></span>
+                        <span x-show="gw.mock" class="text-[9px] px-1 rounded bg-violet-500/15 text-violet-300">mock</span>
+                        <span x-show="$store.app.activeGateway === gw.id" class="text-[9px] text-cyan-400">active</span>
+                      </div>
+                      <div class="font-mono text-[10px] text-slate-500" x-text="gw.serial || '—'"></div>
+                    </td>
+                    <td class="pr-3 text-slate-300" x-text="gw.model || '—'"></td>
+                    <td class="pr-3">
+                      <span class="inline-flex items-center gap-1.5" :title="gw.serial_refused || gw.health">
+                        <span class="w-1.5 h-1.5 rounded-full" :class="gwDotClass(gw.health)"></span>
+                        <span class="text-slate-300" x-text="gw.serial_refused ? 'Refused' : gwStatusText(gw)"></span>
+                      </span>
+                    </td>
+                    <td class="pr-3 text-slate-300" x-text="p(gw).connection_state || '—'"></td>
+                    <td class="pr-3">
+                      <div class="text-slate-300" x-text="p(gw).mode_name || '—'"></div>
+                      <div class="text-[10px] text-amber-400" x-show="command(gw)" x-text="command(gw)"></div>
+                    </td>
+                    <td class="pr-3 text-right" x-text="p(gw).soc != null ? fmt.pct(p(gw).soc) : '—'"></td>
+                    <td class="pr-3 text-right" x-text="kw(p(gw).battery_power_w)"></td>
+                    <td class="pr-3 text-right" x-text="kw(p(gw).grid_power_w)"></td>
+                    <td class="pr-3 text-right" x-text="kw(p(gw).total_solar)"></td>
+                    <td class="pr-3 text-right" x-text="kw(p(gw).home_load_ext)"></td>
+                    <td class="pr-3 text-slate-400" x-text="gw.polling ? fmt.ago(gw.last_poll_ts) : '—'"></td>
+                  </tr>
+                </template>
+                <tr class="font-semibold" data-testid="all-gw-site">
+                  <td class="py-2 pr-3 text-slate-200" colspan="5">Site total</td>
+                  <td class="pr-3 text-right" x-text="site.soc != null ? fmt.pct(site.soc) : '—'"></td>
+                  <td class="pr-3 text-right" x-text="kw(site.battery_power_w)"></td>
+                  <td class="pr-3 text-right" x-text="kw(site.grid_power_w)"></td>
+                  <td class="pr-3 text-right" x-text="kw(site.total_solar)"></td>
+                  <td class="pr-3 text-right" x-text="kw(site.home_load_ext)"></td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

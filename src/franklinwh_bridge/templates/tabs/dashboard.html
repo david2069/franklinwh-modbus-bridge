@@ -10,8 +10,7 @@
       <div x-show="$store.app.multiGateway" class="flex items-center gap-1.5">
         <span class="text-slate-500">Viewing</span>
         <span class="font-semibold text-cyan-400"
-              x-text="$store.app.activeGateway === 'site' ? 'All Gateways (Site)' :
-                      ($store.app.gatewayList.find(g => g.id === $store.app.activeGateway)?.name || $store.app.activeGateway)">
+              x-text="$store.app.gatewayList.find(g => g.id === $store.app.activeGateway)?.name || $store.app.activeGateway">
         </span>
         <span class="w-px h-3 bg-slate-700 mx-1"></span>
       </div>
@@ -1096,11 +1095,9 @@
       <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div class="flex items-center gap-2">
           <div class="card-label !mb-0">Power History</div>
-          <span x-show="$store.app.activeGateway && $store.app.activeGateway !== 'site'"
+          <span x-show="$store.app.activeGateway"
                 class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300"
                 x-text="$store.app.gatewayList.find(g => g.id === $store.app.activeGateway)?.name || $store.app.activeGateway"></span>
-          <span x-show="!$store.app.activeGateway || $store.app.activeGateway === 'site'"
-                class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-600/30 text-slate-400">Combined</span>
         </div>
         <!-- Compare / Events open other views rather than configuring this
              chart, so they sit outside the collapsible group and stay

@@ -257,7 +257,7 @@ A chart of Battery, Grid, Solar and Home power. Click a legend entry to hide or 
 line. The background is shaded by operating mode (TOU, Self, Backup), and dashed vertical
 lines mark grid-mode changes (Following, Forming, PV Clip) and alarms.
 
-The badge next to the title is the gateway shown, or **Combined** for Site view.
+The badge next to the title is the gateway shown.
 
 ### Toolbar
 

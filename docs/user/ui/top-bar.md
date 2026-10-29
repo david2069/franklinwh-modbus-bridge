@@ -30,8 +30,7 @@ Every item except the gear can be hidden; see [Top bar preferences](#top-bar-pre
 
 Shown only when the bridge has two or more gateways.
 
-- **Site (All Gateways)** combines every gateway's data where that makes sense
-  (for example, Power History is labelled *Combined*).
+- **All gateways…** opens a read-only overview of every gateway (below).
 - Under **Gateways**, each gateway shows its name and a status: *Polling*, *Connected*,
   *Offline*, *Not set up* or *Stopped*. A gateway with no address yet is shown as
   **aGate — not set up**.
@@ -40,8 +39,29 @@ Until you pick one, the UI shows a gateway that is actually producing data. So w
 unconfigured aGate and the demo gateway, it opens on the demo. Once you pick, it stays on
 your choice for the rest of the session.
 
+The selected gateway is the **active** one: the page shows it and controls it. Commands,
+Release and new schedule entries go to the active gateway only. Every gateway keeps polling,
+publishing to Home Assistant and running its schedules whichever one is active.
+
 The selection changes the Dashboard cards, Power History, Events and the Energy Flow card.
 It does **not** change the [simple dashboard](user-dashboard.md).
+
+### All gateways
+
+**All gateways…** at the top of the selector opens a read-only overview, refreshed every
+5 seconds while it is open:
+
+- Counts: **Registered**, **Polling**, **Unavailable** (set up but not polling, e.g.
+  offline) and **Stopped** (stopped, disabled or not set up).
+- One row per gateway: name (with *mock* and *active* badges) and serial, model, status
+  (*Refused* when its serial was refused; hover for why), grid connection, operating mode
+  and any active battery command, SoC, battery, grid, solar and load power, and the last poll.
+- A **Site total** row: the summed power and the SoC across gateways.
+
+Click a row to make that gateway the active one. The overview has no controls.
+
+It replaced the **Site (All Gateways)** entry, which showed the combined data as if it were
+one gateway but sent its commands and Release to the `default` gateway.
 
 ## Grid, Solar, Load and Battery
 

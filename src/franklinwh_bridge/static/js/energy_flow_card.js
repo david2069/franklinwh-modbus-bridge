@@ -86,9 +86,7 @@ function energyFlowCard() {
     },
 
     async load() {
-      // Relative to <base href>, like every other tab fetch. 'site' is the
-      // aggregate pseudo-gateway and has no per-gateway series, so fall back
-      // to the default rather than send it as an id the API can't resolve.
+      // Relative to <base href>, like every other tab fetch.
       let url;
       if (this.period === 'day') {
         url = `api/energy/flow?day=${encodeURIComponent(this.day)}`;
@@ -99,7 +97,7 @@ function energyFlowCard() {
         this.spanLabel = this._describeSpan(s, e);
       }
       const activeGw = Alpine.store('app')?.activeGateway;
-      if (activeGw && activeGw !== 'site') {
+      if (activeGw) {
         url += `&gateway=${encodeURIComponent(activeGw)}`;
       }
       try {
