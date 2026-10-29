@@ -18,7 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.gateway.link_stats import LinkCollector, classify
 from franklinwh_bridge.store import link_stats as store
-from franklinwh_bridge.store.db import init_db
+from franklinwh_bridge.store.db import create_gateway, init_db
 
 
 class Clock:
@@ -331,6 +331,8 @@ async def client(tmp_path, monkeypatch):
         AsyncClient(transport=transport, base_url="http://test") as ac,
         app.router.lifespan_context(app),
     ):
+        # A gateway that exists (#296 item 42); no host, so it never starts.
+        await create_gateway(app.state.db, "gwx", "GW X", "")
         yield ac, app
 
 

@@ -126,6 +126,13 @@ curl -s -b jar.txt $B/api/gateways/demo/points     # one gateway's latest sample
 }
 ```
 
+In `/api/gateways/{gw_id}/…` the gateway is its **ID or its serial**: `demo` and the
+demo's serial reach the same gateway. A reference no gateway has is refused with `404`
+and `"No gateway has the ID or serial '…'"`. An empty one, one over 63 characters, or one
+with a control character or `\` is refused with `422` and what is wrong with it. Each
+refusal is logged in the bridge's log (Logs tab), with the user. A gateway that exists but
+is stopped still answers `404 … not running` on routes that need it polling.
+
 `GET /api/points` is the same for the **default** gateway only. Use the per-gateway route
 when you have more than one, or a demo.
 

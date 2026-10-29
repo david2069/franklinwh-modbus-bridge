@@ -13,6 +13,18 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **A gateway is locked to its aGate's serial (#296 item 42):** the first serial
+  reported is kept; a different serial at the address (read twice) or one another
+  gateway holds is refused: no polling, no commands, no new connection, an ERROR in
+  the log, and `serial_refused` in the gateway list. Start-up stops before it reads
+  control state or sends a Release to that aGate.
+- **Gateway ID or serial in `/api/gateways/{gw_id}/…` (#296 item 42):** a serial is
+  rewritten to its gateway's ID before routing. After sign-in, an unknown reference
+  gets 404 "No gateway has the ID or serial '…'" and a malformed one 422 with the
+  reason; each is logged with the user. A viewer's write still gets 403 first.
+
 ### Changed
 
 - **"Site (All Gateways)" replaced by a read-only All gateways overview (#296 item 43):**
