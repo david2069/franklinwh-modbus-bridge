@@ -21,6 +21,10 @@ lands, not backfilled later.
   write-plane handoff no longer present a "SPAN unlock" as a fix. Tests that need
   these writes to take effect are marked known to fail. Earlier changelog entries are
   left as written.
+- **`franklinwh-modbus` capped below 0.11 (`>=0.10.1,<0.11`) in `pyproject.toml` and
+  `requirements.txt`:** 0.11.0 changes how Power % and control modes are sent, and the
+  bridge hasn't been tested against it. A pip install no longer pulls it; the Docker
+  images already pin v0.10.1.
 
 ## [0.2.46] — 2026-10-29
 
