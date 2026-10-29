@@ -16,9 +16,13 @@ A condition row (an *item*) has a **sensor**, an **operator** and a right-hand s
 
 The sensor field shows the sensor's full name. When the name doesn't fit, its start is cut
 (names from one integration usually differ at the end); hover for the full name and id. To
-see more, drag the grip on the field's right edge. The whole column widens together, only
-as far as the row has room, and never narrower than its default. This browser remembers
+see more, drag the grip (**⋮**) just right of the field. The whole column widens together,
+only as far as the row has room, and never narrower than its default. This browser remembers
 the width.
+
+The sensor list that opens from the field can be resized too: drag the **◢** corner at its
+bottom right. It never gets smaller than its default or larger than the dialog, and this
+browser remembers the size.
 
 ![An entry-condition block with a nested group, after Test Verification](../../images/scheduler/condition-test-verification.png)
 

@@ -823,3 +823,27 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .sf-swatch.charge    { background: var(--sf-charge); }
 .sf-swatch.discharge { background: var(--sf-discharge); }
 .sf-swatch.idle      { background: var(--surface-2); }
+
+/* Schedule condition rows: the grip that widens the sensor column, and the
+   corner that resizes a sensor drop list. Big enough for a finger. */
+.cond-grip {
+  position: absolute; top: 0; bottom: 0; right: -20px; width: 24px; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  cursor: col-resize; touch-action: none;
+}
+.cond-grip > span, .list-grip > span {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; font-size: 12px; line-height: 1;
+  color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent);
+}
+.cond-grip > span { width: 12px; height: 75%; }
+.cond-grip:hover > span, .cond-grip.dragging > span,
+.list-grip > span:hover, .list-grip > span.dragging {
+  color: var(--accent); border-color: var(--accent); background: var(--accent-glow);
+}
+.list-grip { position: sticky; bottom: 0; height: 0; pointer-events: none; }
+.list-grip > span {
+  position: absolute; right: 2px; bottom: 2px; width: 22px; height: 22px;
+  pointer-events: auto; cursor: nwse-resize; touch-action: none;
+}

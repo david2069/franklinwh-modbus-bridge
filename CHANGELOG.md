@@ -13,6 +13,17 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Schedule conditions: the column grip can be seen and caught (owner, 2026-10-30):** the
+  grip that widens the sensor column was a faint 2px line with a 10px hit area. It's now a
+  bordered **⋮** handle with a 24px hit area beside the field, highlighted on hover and
+  while dragging.
+- **Schedule conditions: the sensor drop list can be resized:** a **◢** corner drags it
+  wider and taller, never below its default size or past the dialog; the size is
+  remembered in this browser. Applies to the sensor and Lookup lists in entry and exit
+  conditions and in groups.
+
 ### Changed
 
 - **Mode and reserve writes (15507–15509) are documented as a known defect with no

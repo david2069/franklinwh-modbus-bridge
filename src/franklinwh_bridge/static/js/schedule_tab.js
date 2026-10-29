@@ -88,6 +88,7 @@ function scheduleTab() {
     // window caps the column instead of wrapping the row.
     condW: (() => { try { return Number(localStorage.getItem('fwh-cond-sensor-w')) || null; } catch (_) { return null; } })(),
     condRest: (() => { try { return Number(localStorage.getItem('fwh-cond-sensor-rest')) || 0; } catch (_) { return 0; } })(),
+    condList: (() => { try { return JSON.parse(localStorage.getItem('fwh-cond-list-size')) || null; } catch (_) { return null; } })(),
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
 
@@ -126,7 +127,47 @@ function scheduleTab() {
         width: this.condW ? `${this.condW}px` : '13rem',
         minWidth: '13rem',
         maxWidth: this.condRest ? `max(13rem, calc(100% - ${this.condRest}px))` : '100%',
+        marginRight: '16px',  // room for the grip, clear of the next field
       };
+    },
+    /** Size of a sensor drop list once the user has dragged its corner;
+     *  until then the w-72 / max-h-64 classes apply. */
+    condListStyle() {
+      const l = this.condList;
+      return l ? { width: `${l.w}px`, maxHeight: `${l.h}px` } : {};
+    },
+    /** Drag a sensor drop list's bottom-right corner to resize it. Never
+     *  smaller than the default, never past the dialog's edges. */
+    startListResize(ev) {
+      const grip = ev.currentTarget;
+      const list = grip.closest('[data-testid="sensor-list"]');
+      const box = (list.closest('[x-data^="dialogSize"]') || document.documentElement).getBoundingClientRect();
+      const r = list.getBoundingClientRect();
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const minW = 18 * rem, minH = 16 * rem;  // w-72, max-h-64
+      const maxW = Math.max(minW, Math.min(box.right, window.innerWidth) - r.left - 8);
+      const maxH = Math.max(minH, Math.min(box.bottom, window.innerHeight) - r.top - 8);
+      const startX = ev.clientX, startY = ev.clientY;
+      const startW = r.width, startH = Math.max(r.height, (this.condList && this.condList.h) || minH);
+      grip.classList.add('dragging');
+      const move = (e) => {
+        this.condList = {
+          w: Math.round(Math.min(maxW, Math.max(minW, startW + e.clientX - startX))),
+          h: Math.round(Math.min(maxH, Math.max(minH, startH + e.clientY - startY))),
+        };
+      };
+      const up = () => {
+        grip.classList.remove('dragging');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        // A release outside the list mustn't count as a click outside it.
+        const eat = (e) => e.stopPropagation();
+        window.addEventListener('click', eat, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 0);
+        try { localStorage.setItem('fwh-cond-list-size', JSON.stringify(this.condList)); } catch (_) { /* this browser only */ }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
     },
     /** Drag the grip on a sensor field's right edge to widen the column.
      *  Only wider than the default, and only as far as the row has room. */
@@ -136,15 +177,19 @@ function scheduleTab() {
       const cs = getComputedStyle(row);
       const gap = parseFloat(cs.columnGap) || 0;
       const others = [...row.children].filter((el) => el !== wrap && el.offsetParent !== null);
-      const rest = others.reduce((sum, el) => sum + el.getBoundingClientRect().width + gap, 0) + 2;
+      const rest = others.reduce((sum, el) => sum + el.getBoundingClientRect().width + gap, 0) + 2
+        + (parseFloat(getComputedStyle(wrap).marginRight) || 0);
       const minW = parseFloat(getComputedStyle(wrap).minWidth) || 208;
       const maxW = Math.max(minW, row.clientWidth - rest);
       const startX = ev.clientX, startW = wrap.getBoundingClientRect().width;
       this.condRest = Math.ceil(rest);
+      const grip = ev.currentTarget;
+      grip.classList.add('dragging');
       const move = (e) => {
         this.condW = Math.round(Math.min(maxW, Math.max(minW, startW + e.clientX - startX)));
       };
       const up = () => {
+        grip.classList.remove('dragging');
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         try {
