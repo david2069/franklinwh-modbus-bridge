@@ -14,7 +14,7 @@
     "writes": { "704.WSetEna": 1, "704.WSetPct": 30 },
     "verify": true,
     "verify_timeout_ms": 2000,
-    "note": "WSetPct is scale-factor converted on write (human % -> raw). Enables VPP remote control and requests ~30% charge. SPAN must be unlocked to take."
+    "note": "WSetPct is scale-factor converted on write (human % -> raw). Enables VPP remote control and requests ~30% charge."
   },
   {
     "step": "Hold briefly",

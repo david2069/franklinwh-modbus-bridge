@@ -21,7 +21,7 @@
     "writes": { "15508": 20 },
     "verify": true,
     "verify_timeout_ms": 2000,
-    "note": "Raw write to 15508 SelfReserve (%). SPAN Modbus must be UNLOCKED for the write to take; otherwise verify reports the unchanged value."
+    "note": "Raw write to 15508 SelfReserve (%). Known defect: writes to 15507–15509 are acknowledged but not applied, with no known workaround, so verify reports the unchanged value (this step is known to fail)."
   },
   {
     "step": "Write TOU reserve via inline override (value + type + sf)",
