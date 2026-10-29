@@ -59,7 +59,7 @@ function solarForecastCard() {
 
     _gateway() {
       const g = this.$store.app.activeGateway;
-      return (!g || g === 'site') ? 'default' : g;
+      return g || 'default';
     },
 
     async load(force) {

@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **"Site (All Gateways)" replaced by a read-only All gateways overview (#296 item 43):**
+  the gateway picker's **All gateways…** opens a modal: counts (Registered, Polling,
+  Unavailable, Stopped), one row per gateway (status, grid, mode and command, SoC, battery,
+  grid, solar and load power, last poll) and a site total; clicking a row makes that gateway
+  active. The Site view sent commands and Release to `default`; the page now always names
+  the active gateway (`api/gateways/{id}/points` and `/command`, never `api/points` or
+  `api/command`). New schedule entries target the active gateway.
+
 ## [0.2.45] — 2026-10-29
 
 ### Added

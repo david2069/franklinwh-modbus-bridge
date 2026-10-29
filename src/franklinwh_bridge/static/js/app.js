@@ -762,7 +762,8 @@ document.addEventListener('alpine:init', () => {
     // Multi-gateway
     settingsSection: 'gateways',  // Settings sub-tab (see SETTINGS_SECTIONS)
     explorerSection: 'models',    // SunSpec Explorer sub-tab (see EXPLORER_SECTIONS)
-    activeGateway: 'default',  // 'default', gateway_id, or 'site'
+    activeGateway: 'default',  // the gateway the page shows and controls
+    allGatewaysOpen: false,    // the read-only All gateways modal
     gatewayChosen: false,      // set once the user picks; stops auto-selection
     gatewayList: [],            // [{id, name, health, polling, ...}]
 
@@ -939,7 +940,7 @@ document.addEventListener('alpine:init', () => {
     // second aGate polling, showing an empty placeholder with empty cards is the
     // least useful thing we could do.
     autoSelectGateway() {
-      if (this.gatewayChosen || this.activeGateway === 'site') return;
+      if (this.gatewayChosen) return;
       const current = this.gatewayList.find(g => g.id === this.activeGateway);
       if (current && current.polling) return;
       const polling = this.gatewayList.find(g => g.polling);
@@ -966,13 +967,11 @@ document.addEventListener('alpine:init', () => {
     },
 
     get activeGatewayName() {
-      if (this.activeGateway === 'site') return 'Site (All Gateways)';
       const gw = this.gatewayList.find(g => g.id === this.activeGateway);
       return gw ? gwLabel(gw) : 'aGate';
     },
 
     get activeGatewayHealth() {
-      if (this.activeGateway === 'site') return 'connected';
       const gw = this.gatewayList.find(g => g.id === this.activeGateway);
       return gw ? gw.health : 'connected';
     },
@@ -986,21 +985,14 @@ document.addEventListener('alpine:init', () => {
         this.autoSelectGateway();
       }
 
-      // Fetch points from the active gateway (or site aggregator)
+      // Fetch points from the active gateway
       const gw = this.activeGateway;
-      let pointsUrl;
-      if (gw === 'site') {
-        pointsUrl = 'api/site/status';
-      } else if (gw && gw !== 'default') {
-        pointsUrl = `api/gateways/${gw}/points`;
-      } else {
-        pointsUrl = 'api/points';
-      }
+      const pointsUrl = `api/gateways/${encodeURIComponent(gw)}/points`;
 
       // A stopped gateway has no instance, so its points answer 404 on every
       // refresh. Skip the request; the outcome (not connected) is the same.
       const row = this.gatewayList.find(g => g.id === gw);
-      const stopped = gw !== 'site' && gw !== 'default' && row && row.polling === false;
+      const stopped = row && row.polling === false;
       const data = stopped ? null : await fetchJSON(pointsUrl, { background: true });
       if (data && !data.error) {
         this.points = data.points || {};
@@ -1042,10 +1034,7 @@ document.addEventListener('alpine:init', () => {
     // DEFAULT gateway: viewing a mock (or a second aGate) showed its state but
     // sent Release/Force to a different gateway entirely.
     get commandUrl() {
-      const gw = this.activeGateway;
-      return gw && gw !== 'site'
-        ? `api/gateways/${encodeURIComponent(gw)}/command`
-        : 'api/command';
+      return `api/gateways/${encodeURIComponent(this.activeGateway)}/command`;
     },
 
     // Styled confirm — returns a Promise<boolean>. Drop-in for window.confirm:
