@@ -999,6 +999,11 @@ document.addEventListener('alpine:init', () => {
         this.quality = data.quality ?? null;
         this.lastPollTs = data.ts ?? null;
         this.connected = true;
+      } else if (row && row.health === 'unconfigured') {
+        // Not set up: there is nothing to poll, and the bridge answered. As
+        // before #395, when api/points answered for it: "No gateway yet".
+        this.points = {};
+        this.connected = true;
       } else {
         this.connected = false;
       }
