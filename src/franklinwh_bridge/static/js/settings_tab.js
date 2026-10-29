@@ -122,6 +122,7 @@ function settingsTab() {
     lifecycle: null,       // GET api/lifecycle/check: busy gateways, bridge restart support
     bridgeRestartResult: null,
     gwHealthResults: {},   // per-gateway force-healthcheck result, keyed by gateway id
+    gwDefaultResult: null, // Make default result, shown in the Edit dialog
     gwPollResults: {},     // per-gateway stop/start result from the Edit dialog, keyed by gateway id
     deleteGwTarget: null,  // gateway pending delete confirmation (styled modal)
     deleteGwResult: null,  // its latest result, shown in that dialog (#351)
@@ -1341,6 +1342,21 @@ function settingsTab() {
       }
     },
 
+    // Designate the default gateway (#296 item 43). The result stays in the
+    // Edit dialog (#351).
+    async makeDefaultGw(gwId) {
+      this.gwBusy = true;
+      try {
+        const data = await fetchJSON(`api/gateways/${encodeURIComponent(gwId)}/default`, { method: 'POST' });
+        const ok = !!(data && data.default === gwId);
+        this.gwDefaultResult = { ok, msg: ok ? 'This is now the default gateway.' : 'Make default failed: ' + (data?.detail || data?.error || 'unknown') };
+      } finally {
+        this.gwBusy = false;
+        await this.loadGateways();
+        Alpine.store('app').refresh();
+      }
+    },
+
     // Open the styled delete-confirmation modal for a gateway.
     confirmRemoveGw(gw) {
       this.deleteGwResult = null;
@@ -1369,6 +1385,7 @@ function settingsTab() {
     // ── Gateway edit (PATCH) ──────────────────────────────
     startEditGw(gw) {
       this.editGwResult = null;
+      this.gwDefaultResult = null;
       this.editGw = {
         id: gw.id,
         name: gw.name,

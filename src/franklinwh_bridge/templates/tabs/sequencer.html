@@ -157,10 +157,12 @@
               <span x-show="saving">Saving...</span>
             </button>
             <!-- Gateway target selector -->
-            <select x-model="seqGateway"
+            <!-- Each real gateway once; starts on the default one (#296 item 43). -->
+            <select x-model="seqGateway" data-testid="seq-gateway"
+                    x-effect="if (!seqGateway) { const r = $store.app.gatewayList.filter(g => !g.mock);
+                              const d = r.find(g => g.is_default) || r[0]; if (d) seqGateway = d.id; }"
                     class="form-control !py-0.5 !text-[10px] w-24"
                     :class="seqGateway === 'all' ? '!border-amber-500/40 !text-amber-400' : ''">
-              <option value="default">Primary aGate</option>
               <template x-for="gw in $store.app.gatewayList.filter(g => !g.mock)" :key="'seq-' + gw.id">
                 <option :value="gw.id" x-text="gw.name" :selected="seqGateway === gw.id"></option>
               </template>

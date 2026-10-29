@@ -50,7 +50,7 @@ batteries, Model 714 points take a port suffix: `714.DCW_1`, `714.DCW_2` (`714.D
 |---|---|
 | Rename / Delete | Renames or deletes the sequence. |
 | Save | Saves your edits (enabled when there are changes). |
-| Gateway | *Primary aGate*, another real gateway, or *All Gateways*. Mock gateways are not listed. |
+| Gateway | A real gateway (each listed once by name; starts on the default gateway), or *All Gateways*. Mock gateways are not listed. |
 | Dry Run | Shows what would be written without writing. |
 | Execute | Runs the sequence. Disabled while the JSON is invalid. |
 

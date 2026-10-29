@@ -321,6 +321,8 @@
                 <span class="font-medium" x-text="gwLabel(gw)"></span>
                 <span x-show="gw.id !== 'default'" class="text-[10px] text-slate-500 ml-1 font-mono" x-text="gw.id"></span>
                 <span x-show="gw.mock" class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">mock</span>
+                <span x-show="gw.is_default" data-testid="gw-default-chip" title="The default gateway: listed first, and the page opens on it"
+                      class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-cyan-500/20 text-cyan-300">default</span>
                 <span x-show="gw.description && gw.health !== 'unconfigured'" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
               </td>
               <td class="font-mono" :class="gw.health === 'unconfigured' ? 'text-amber-400' : 'text-slate-400'"
@@ -616,6 +618,23 @@
             <div x-show="gwPollResults[editGw.id]" data-testid="edit-gw-poll-result" class="text-xs rounded p-2 mb-2 bg-slate-900/50 font-mono"
                  :class="gwPollResults[editGw.id]?.testing ? 'text-slate-500' : (gwPollResults[editGw.id]?.ok ? 'text-emerald-400' : 'text-red-400')"
                  x-text="gwPollResults[editGw.id]?.msg"></div>
+          </div>
+
+          <!-- Default gateway (#296 item 43): a designation only -->
+          <div class="mt-4 pt-3 border-t border-slate-700" data-testid="edit-gw-default">
+            <div class="text-[10px] uppercase text-slate-500 font-semibold mb-2">Default gateway</div>
+            <template x-if="gwRow(editGw.id)?.is_default">
+              <p class="text-xs text-slate-400">This is the default gateway: it's listed first, and the page opens on it.</p>
+            </template>
+            <template x-if="!gwRow(editGw.id)?.is_default">
+              <div class="flex flex-wrap items-center gap-2">
+                <button @click="makeDefaultGw(editGw.id)" :disabled="gwBusy" data-testid="edit-gw-make-default"
+                        class="btn btn-sm btn-secondary !py-1 !text-xs">Make default</button>
+                <span class="text-[11px] text-slate-500">Lists it first, and the page opens on it. Nothing else changes.</span>
+              </div>
+            </template>
+            <div x-show="gwDefaultResult" data-testid="edit-gw-default-result" class="text-xs rounded p-2 mt-2 bg-slate-900/50 font-mono"
+                 :class="gwDefaultResult?.ok ? 'text-emerald-400' : 'text-red-400'" x-text="gwDefaultResult?.msg"></div>
           </div>
 
           <!-- Danger zone -->
