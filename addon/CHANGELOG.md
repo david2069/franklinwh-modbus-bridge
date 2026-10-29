@@ -7,6 +7,18 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.47 — 2026-10-30
+
+### Fixed
+- **Schedule conditions: the grip that widens the sensor column can be seen**
+  and caught with a finger: a **⋮** handle just right of the field.
+- **The sensor list in a condition can be resized**: drag the **◢** corner at
+  its bottom right. Your browser remembers the size.
+
+### Changed
+- Mode and reserve writes are documented as a known defect with no known
+  workaround.
+
 ## 0.2.46 — 2026-10-29
 
 ### Added

@@ -13,13 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.47] — 2026-10-30
+
 ### Fixed
 
-- **Schedule conditions: the column grip can be seen and caught (owner, 2026-10-30):** the
+- **Schedule conditions: the column grip can be seen and caught (PR #400, owner 2026-10-30):** the
   grip that widens the sensor column was a faint 2px line with a 10px hit area. It's now a
   bordered **⋮** handle with a 24px hit area beside the field, highlighted on hover and
   while dragging.
-- **Schedule conditions: the sensor drop list can be resized:** a **◢** corner drags it
+- **Schedule conditions: the sensor drop list can be resized (PR #400):** a **◢** corner drags it
   wider and taller, never below its default size or past the dialog; the size is
   remembered in this browser. Applies to the sensor and Lookup lists in entry and exit
   conditions and in groups.
@@ -27,13 +29,13 @@ lands, not backfilled later.
 ### Changed
 
 - **Mode and reserve writes (15507–15509) are documented as a known defect with no
-  known workaround:** the "Hardware ignored write" message, the sample sequences'
+  known workaround (PR #398):** the "Hardware ignored write" message, the sample sequences'
   step notes, the scheduling test plan and design, `vendor-issues.md` and the
   write-plane handoff no longer present a "SPAN unlock" as a fix. Tests that need
   these writes to take effect are marked known to fail. Earlier changelog entries are
   left as written.
 - **`franklinwh-modbus` capped below 0.11 (`>=0.10.1,<0.11`) in `pyproject.toml` and
-  `requirements.txt`:** 0.11.0 changes how Power % and control modes are sent, and the
+  `requirements.txt` (PR #399):** 0.11.0 changes how Power % and control modes are sent, and the
   bridge hasn't been tested against it. A pip install no longer pulls it; the Docker
   images already pin v0.10.1.
 
