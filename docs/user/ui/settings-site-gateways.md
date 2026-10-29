@@ -47,6 +47,17 @@ wizard, admins only) and **+ Add Gateway**.
     to a gateway being disabled through the API (`enabled: false`), and is true only for
     gateways other than `default`.
 
+!!! note "A gateway is locked to its aGate's serial"
+    The first time a gateway connects, the serial its aGate reports is stored, and the
+    gateway is linked to that serial for good. No two gateways can have the same serial.
+    The gateway's ID is what the bridge knows it by; its name is only a label.
+
+    If the address later answers with a **different** aGate (a second read gives the
+    same answer), or with a serial another gateway already has, the bridge **refuses**
+    it: it stops polling, sends no commands and makes no new connection, and logs
+    *"Gateway … refused: …"* with the serials involved. The refusal stays until the bridge or
+    the gateway is restarted, and then happens again unless the right aGate answers.
+
 ### Add Gateway
 
 ![Add Gateway form](../../images/ui/settings-add-gateway.png)

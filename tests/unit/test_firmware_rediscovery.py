@@ -54,7 +54,15 @@ def gw(monkeypatch):
     async def fake_update(db, gateway_id, **kw):
         updates.append(kw)
 
+    async def no_row(db, gateway_id):
+        return None
+
+    async def no_rows(db):
+        return []
+
     monkeypatch.setattr(inst_mod, "update_gateway", fake_update)
+    monkeypatch.setattr(inst_mod, "get_gateway", no_row)
+    monkeypatch.setattr(inst_mod, "get_gateways", no_rows)
     g = GatewayInstance(GatewayConfig(gateway_id="gw", name="GW", host="192.0.2.1"),
                         db=None, global_bus=SampleBus())
     g.controller = _Ctrl()

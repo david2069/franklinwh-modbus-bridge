@@ -29,6 +29,8 @@ from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.mqtt_publisher import DeviceInfo
 from franklinwh_bridge.store import modbus_audit
 from franklinwh_bridge.store.db import (
+    get_gateway,
+    get_gateways,
     load_control_state,
     log_control_event,
     save_control_state,
@@ -105,6 +107,27 @@ def note_reconnects(controller: Any, callback: Any) -> None:
             return result
 
         wrapped._notes_reconnect = True  # type: ignore[attr-defined]
+        setattr(controller, name, wrapped)
+
+
+def refuse_connects(controller: Any, refused: Any) -> None:
+    """Keep a gateway whose serial was refused off the aGate (#296 item 42).
+
+    ``refused()`` returns the reason, or None. While it has one, the library's
+    ``connect``/``reconnect`` fail without opening a socket, so no poll,
+    command, Explorer read or Sequencer write can reach that device.
+    """
+    for name in ("connect", "reconnect"):
+        original = getattr(controller, name, None)
+        if original is None or getattr(original, "_refuses", False):
+            continue
+
+        def wrapped(*args, _original=original, **kwargs):
+            if refused():
+                return False
+            return _original(*args, **kwargs)
+
+        wrapped._refuses = True  # type: ignore[attr-defined]
         setattr(controller, name, wrapped)
 
 
@@ -192,6 +215,8 @@ class GatewayStatus:
     model: str | None = None
     firmware: str | None = None
     ac_type: int = 0
+    # Why this gateway was refused for its serial (#296 item 42), else None.
+    serial_refused: str | None = None
 
 
 class GatewayInstance:
@@ -262,6 +287,7 @@ class GatewayInstance:
         disable_connect_writes(self.controller)
         close_sockets_on_disconnect(self.controller)
         note_reconnects(self.controller, self._note_reconnect)
+        refuse_connects(self.controller, lambda: self.status.serial_refused)
 
         self.poller = ModbusPoller(
             controller=self.controller,
@@ -387,6 +413,10 @@ class GatewayInstance:
 
             # Discover device info (serial, model, firmware)
             await self._discover_device()
+            if self.status.serial_refused:
+                # Nothing more is read from or written to this aGate.
+                await asyncio.to_thread(self.controller.disconnect)
+                return
 
             # Log startup HW state
             await self._log_startup_state()
@@ -471,7 +501,18 @@ class GatewayInstance:
             nameplate = await asyncio.to_thread(
                 self._tracked, self.controller.read_nameplate, "model_read", "startup",
             )
+            row = await get_gateway(self._db, self.gateway_id) or {}
+            locked = row.get("serial") or ""
+            if nameplate.get("serial") and locked and nameplate["serial"] != locked:
+                # Read it once more: one bad read must not refuse the gateway.
+                nameplate = await asyncio.to_thread(
+                    self._tracked, self.controller.read_nameplate, "model_read", "serial_check",
+                )
             if nameplate.get("serial"):
+                reason = await self._serial_refusal(nameplate["serial"], locked)
+                if reason:
+                    await self._refuse(reason)
+                    return
                 old = self.status.firmware
                 new = nameplate.get("version")
                 if old and new and old != new:
@@ -500,6 +541,35 @@ class GatewayInstance:
         except Exception as exc:
             logger.warning("Gateway %s: nameplate read failed: %s", self.gateway_id, exc)
 
+    async def _serial_refusal(self, serial: str, locked: str) -> str | None:
+        """Why the aGate's serial can't be this gateway's, or None (#296 item 42).
+
+        A gateway is locked to the first serial its aGate reports, and no two
+        gateways share a serial.
+        """
+        if locked and serial != locked:
+            return (f"the aGate at {self.config.host}:{self.config.port} reports serial "
+                    f"{serial}, but this gateway is locked to serial {locked}")
+        for other in await get_gateways(self._db):
+            if other["id"] != self.gateway_id and (other.get("serial") or "") == serial:
+                return f"serial {serial} already belongs to gateway '{other['id']}'"
+        return None
+
+    async def _refuse(self, reason: str) -> None:
+        """Stop talking to this aGate: no commands, and no new connection.
+
+        The caller stops a running poller, outside the Modbus lock.
+        """
+        self.status.serial_refused = reason
+        self.status.last_error = f"Refused: {reason}"
+        self.status.connected = False
+        if self.command_handler is not None:
+            self.command_handler.refused = reason
+        logger.error(
+            "Gateway %s refused: %s. It is not polled and no commands are sent to it.",
+            self.gateway_id, reason, extra={"gateway_id": self.gateway_id},
+        )
+
     def _note_reconnect(self) -> None:
         # Only once the start-up discovery has run: that one reads it anyway.
         if self.device_info is not None:
@@ -517,6 +587,9 @@ class GatewayInstance:
     async def _rediscover(self) -> None:
         async with self.modbus_lock:
             await self._discover_device()
+        if self.status.serial_refused and self.poller is not None:
+            await self.poller.stop()  # takes the lock; disconnects
+            self.status.polling = False
 
     async def _log_startup_state(self) -> None:
         """Log hardware control state at startup."""
@@ -631,4 +704,5 @@ class GatewayInstance:
                 self.poller.state.last_poll_ts if self.poller else None
             ),
             "last_error": self.status.last_error,
+            "serial_refused": self.status.serial_refused,
         }

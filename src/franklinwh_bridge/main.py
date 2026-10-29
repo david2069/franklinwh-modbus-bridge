@@ -28,6 +28,7 @@ from franklinwh_bridge.api.auth import router as auth_router
 from franklinwh_bridge.api.diagnostics_api import router as diagnostics_router
 from franklinwh_bridge.api.disclaimer_api import router as disclaimer_router
 from franklinwh_bridge.api.energy_api import router as energy_router
+from franklinwh_bridge.api.gateway_ref import GatewayRefMiddleware, check_gateway_ref
 from franklinwh_bridge.api.gateways_api import router as gateways_router
 from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.ha_api import router as ha_router
@@ -1228,6 +1229,9 @@ app.add_middleware(
     https_only=os.environ.get("SESSION_COOKIE_SECURE") == "1",
 )
 
+# /api/gateways/<serial>/… reaches the gateway with that serial (#296 item 42).
+app.add_middleware(GatewayRefMiddleware)
+
 # Mount static files
 _static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
@@ -1248,7 +1252,8 @@ _AUTH = [Depends(require_auth), _ADMIN_WRITES]
 app.include_router(admin_router, dependencies=_AUTH)
 app.include_router(mqtt_router, dependencies=_AUTH)
 app.include_router(groups_router, dependencies=_AUTH)
-app.include_router(gateways_router, dependencies=_AUTH)
+# A gateway in the path is its ID or serial; a bad one is rejected after auth.
+app.include_router(gateways_router, dependencies=[*_AUTH, Depends(check_gateway_ref)])
 app.include_router(setup_router, dependencies=_AUTH)
 app.include_router(modules_router, dependencies=_AUTH)
 app.include_router(energy_router, dependencies=_AUTH)

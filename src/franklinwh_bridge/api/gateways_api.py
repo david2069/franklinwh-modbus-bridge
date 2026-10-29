@@ -749,6 +749,7 @@ async def list_gateways(request: Request):
                         if inst.poller else None
                     ),
                     "last_error": inst.status.last_error,
+                    "serial_refused": inst.status.serial_refused,
                 })
             else:
                 entry.update({

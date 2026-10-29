@@ -227,6 +227,9 @@ class CommandHandler:
         # command state are per gateway; without it every gateway's dispatches
         # were logged — and their crash-recovery state saved — as "default".
         self._gateway_id = gateway_id
+        # Set when the gateway's serial is refused (#296 item 42): no command
+        # may reach that aGate.
+        self.refused: str | None = None
         self._on_state_changed = on_state_changed
         self._points_getter = points_getter
         self._state = CommandState()
@@ -422,6 +425,8 @@ class CommandHandler:
         payload = payload.strip()
         self._requester = requester or "manual"
         logger.info("Command received: %s = %s (by %s)", slug, payload, self._requester)
+        if self.refused:
+            return {"ok": False, "result": f"Refused: {self.refused}"}
 
         if slug not in COMMAND_SLUGS:
             logger.warning("Unknown command slug: %s", slug)
