@@ -834,10 +834,11 @@
                       <span class="truncate" style="direction: rtl; text-align: left" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.sensor)"><bdi x-text="sensorLabel(c.sensor)"></bdi></span>
                       <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                     </button>
-                    <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                    <div class="cond-grip" data-testid="cond-grip"
                          @pointerdown.prevent.stop="startCondResize($event)"
-                         title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
-                    <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                         title="Drag to widen this column"><span aria-hidden="true">⋮</span></div>
+                    <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                         data-testid="sensor-list" :style="condListStyle()">
                       <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                         <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                       </div>
@@ -850,6 +851,7 @@
                         </div>
                       </template>
                       <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                      <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                     </div>
                   </div>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
@@ -877,7 +879,8 @@
                         <span class="truncate" :class="c.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.value_sensor)" x-text="c.value_sensor ? sensorButtonLabel(c.value_sensor) : 'Select sensor…'"></span>
                         <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                       </button>
-                      <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                      <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                           data-testid="sensor-list" :style="condListStyle()">
                         <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                           <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                         </div>
@@ -890,6 +893,7 @@
                           </div>
                         </template>
                         <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                        <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                       </div>
                     </div>
                   </template>
@@ -923,10 +927,11 @@
                           <span class="truncate" style="direction: rtl; text-align: left" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.sensor)"><bdi x-text="sensorLabel(cc.sensor)"></bdi></span>
                           <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                         </button>
-                        <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                        <div class="cond-grip" data-testid="cond-grip"
                              @pointerdown.prevent.stop="startCondResize($event)"
-                             title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
-                        <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                             title="Drag to widen this column"><span aria-hidden="true">⋮</span></div>
+                        <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                             data-testid="sensor-list" :style="condListStyle()">
                           <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                             <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                           </div>
@@ -939,6 +944,7 @@
                             </div>
                           </template>
                           <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                          <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                         </div>
                       </div>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
@@ -966,7 +972,8 @@
                             <span class="truncate" :class="cc.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.value_sensor)" x-text="cc.value_sensor ? sensorButtonLabel(cc.value_sensor) : 'Select sensor…'"></span>
                             <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                           </button>
-                          <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                          <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                               data-testid="sensor-list" :style="condListStyle()">
                             <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                               <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                             </div>
@@ -979,6 +986,7 @@
                               </div>
                             </template>
                             <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                            <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                           </div>
                         </div>
                       </template>
@@ -1153,10 +1161,11 @@
                       <span class="truncate" style="direction: rtl; text-align: left" :class="c.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.sensor)"><bdi x-text="sensorLabel(c.sensor)"></bdi></span>
                       <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                     </button>
-                    <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                    <div class="cond-grip" data-testid="cond-grip"
                          @pointerdown.prevent.stop="startCondResize($event)"
-                         title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
-                    <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                         title="Drag to widen this column"><span aria-hidden="true">⋮</span></div>
+                    <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                         data-testid="sensor-list" :style="condListStyle()">
                       <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                         <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                       </div>
@@ -1169,6 +1178,7 @@
                         </div>
                       </template>
                       <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                      <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                     </div>
                   </div>
                   <select x-model="c.op" class="form-control !py-1 !text-xs w-20">
@@ -1196,7 +1206,8 @@
                         <span class="truncate" :class="c.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.value_sensor)" x-text="c.value_sensor ? sensorButtonLabel(c.value_sensor) : 'Select sensor…'"></span>
                         <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                       </button>
-                      <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                      <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                           data-testid="sensor-list" :style="condListStyle()">
                         <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                           <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                         </div>
@@ -1209,6 +1220,7 @@
                           </div>
                         </template>
                         <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                        <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                       </div>
                     </div>
                   </template>
@@ -1242,10 +1254,11 @@
                           <span class="truncate" style="direction: rtl; text-align: left" :class="cc.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.sensor)"><bdi x-text="sensorLabel(cc.sensor)"></bdi></span>
                           <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                         </button>
-                        <div class="absolute top-0 h-full w-2.5 z-10 flex items-center justify-center" style="right: -7px; cursor: col-resize; touch-action: none"
+                        <div class="cond-grip" data-testid="cond-grip"
                              @pointerdown.prevent.stop="startCondResize($event)"
-                             title="Drag to widen this column"><span style="width: 2px; height: 60%; border-radius: 1px; background: rgba(148,163,184,.35)"></span></div>
-                        <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                             title="Drag to widen this column"><span aria-hidden="true">⋮</span></div>
+                        <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                             data-testid="sensor-list" :style="condListStyle()">
                           <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                             <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                           </div>
@@ -1258,6 +1271,7 @@
                             </div>
                           </template>
                           <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                          <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                         </div>
                       </div>
                       <select x-model="cc.op" class="form-control !py-1 !text-xs w-20">
@@ -1285,7 +1299,8 @@
                             <span class="truncate" :class="cc.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.value_sensor)" x-text="cc.value_sensor ? sensorButtonLabel(cc.value_sensor) : 'Select sensor…'"></span>
                             <span class="text-slate-500 text-[9px] flex-shrink-0">▾</span>
                           </button>
-                          <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl">
+                          <div x-show="open" x-cloak class="absolute z-[60] mt-1 w-72 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-slate-800 shadow-2xl"
+                               data-testid="sensor-list" :style="condListStyle()">
                             <div class="sticky top-0 bg-slate-800 p-1.5 border-b border-white/10">
                               <input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors…" class="form-control !py-1 !text-xs w-full font-mono">
                             </div>
@@ -1298,6 +1313,7 @@
                               </div>
                             </template>
                             <div x-show="filterGroups(q).length===0" class="px-3 py-3 text-xs text-slate-500 text-center">No matches</div>
+                            <div class="list-grip"><span data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">◢</span></div>
                           </div>
                         </div>
                       </template>
