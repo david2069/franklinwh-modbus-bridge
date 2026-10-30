@@ -263,6 +263,13 @@ function modbusWrites() {
       return `${bridgeTime.dayMonth(ms)} ${bridgeTime.time(ms, true)}`;
     },
 
+    // Which aGate a write went to: the gateway's name and its serial (each
+    // gateway is locked to its aGate's serial). A removed gateway shows its ID.
+    gw(id) {
+      const g = (Alpine.store('app').gatewayList || []).find(x => x.id === id);
+      return { name: g ? (g.name || id) : (id || '--'), serial: g ? (g.serial || '') : '' };
+    },
+
     regLabel(addr) {
       const name = M704_REGISTERS[addr];
       return name ? `${addr} ${name}` : String(addr);

@@ -13,6 +13,12 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Logs → Battery-control writes has a Gateway column** (owner, 2026-10-30): which aGate
+  each write went to, by gateway name with its aGate serial below (the ID on hover). The
+  downloads already carried `gateway_id` and still carry no serial.
+
 ### Added
 
 - **Status notices in Home Assistant (owner, 2026-10-30; modelled on the Energipays
