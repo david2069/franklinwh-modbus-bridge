@@ -119,6 +119,7 @@ async def test_a_span_returns_the_samples_in_it(client):
     body = (
         await client.get(
             f"/api/point-history/series?points=voltage_v&start={now - 3600}&end={now + 1}"
+            "&gateway=default"
         )
     ).json()
 
@@ -135,6 +136,7 @@ async def test_samples_outside_the_span_are_excluded(client):
     body = (
         await client.get(
             f"/api/point-history/series?points=voltage_v&start={now - 3600}&end={now + 1}"
+            "&gateway=default"
         )
     ).json()
 
@@ -151,7 +153,7 @@ async def test_several_points_come_back_keyed_separately(client):
 
     body = (
         await client.get(
-            f"/api/point-history/series?points=voltage_v,frequency_hz"
+            f"/api/point-history/series?points=voltage_v,frequency_hz&gateway=default"
             f"&start={now - 3600}&end={now + 1}"
         )
     ).json()
@@ -166,7 +168,7 @@ async def test_a_requested_point_with_no_data_is_present_but_empty(client):
 
     body = (
         await client.get(
-            f"/api/point-history/series?points=soh&start={now - 3600}&end={now + 1}"
+            f"/api/point-history/series?points=soh&start={now - 3600}&end={now + 1}&gateway=default"
         )
     ).json()
 
@@ -178,7 +180,7 @@ async def test_a_long_span_is_bucketed_down_to_something_drawable(client):
     now = time.time()
     body = (
         await client.get(
-            f"/api/point-history/series?points=voltage_v"
+            f"/api/point-history/series?points=voltage_v&gateway=default"
             f"&start={now - 30 * 86400}&end={now}"
         )
     ).json()
@@ -192,7 +194,7 @@ async def test_bucket_zero_means_raw_samples(client):
 
     body = (
         await client.get(
-            f"/api/point-history/series?points=voltage_v"
+            f"/api/point-history/series?points=voltage_v&gateway=default"
             f"&start={now - 60}&end={now + 1}&bucket_s=0"
         )
     ).json()
@@ -212,7 +214,7 @@ async def test_bucketing_averages_rather_than_samples(client):
 
     body = (
         await client.get(
-            f"/api/point-history/series?points=voltage_v"
+            f"/api/point-history/series?points=voltage_v&gateway=default"
             f"&start={now - 10}&end={now}&bucket_s=60"
         )
     ).json()
@@ -223,7 +225,8 @@ async def test_bucketing_averages_rather_than_samples(client):
 async def test_a_day_resolves_to_local_midnight(client):
     """The aGate's daily counters roll at gateway-local midnight, so a UTC day
     would disagree with every other figure on the page by the offset."""
-    body = (await client.get("/api/point-history/series?points=soc&day=2026-09-20")).json()
+    body = (await client.get(
+        "/api/point-history/series?points=soc&day=2026-09-20&gateway=default")).json()
 
     expected = dt.datetime(2026, 9, 20).timestamp()
     assert body["start_ts"] == expected
@@ -233,20 +236,20 @@ async def test_a_day_resolves_to_local_midnight(client):
 async def test_the_response_says_whether_recording_is_even_on(client):
     """An empty chart has two very different causes and the user should not have
     to guess which: nothing recorded for this span, or never switched on."""
-    body = (await client.get("/api/point-history/series?points=soc")).json()
+    body = (await client.get("/api/point-history/series?points=soc&gateway=default")).json()
 
     assert body["recording_enabled"] is False
 
 
 async def test_an_unknown_point_is_a_400_not_an_empty_chart(client):
-    resp = await client.get("/api/point-history/series?points=made_up")
+    resp = await client.get("/api/point-history/series?points=made_up&gateway=default")
 
     assert resp.status_code == 400
     assert "made_up" in resp.text
 
 
 async def test_no_points_is_refused(client):
-    resp = await client.get("/api/point-history/series?points=")
+    resp = await client.get("/api/point-history/series?points=&gateway=default")
 
     assert resp.status_code == 400
 
@@ -254,20 +257,21 @@ async def test_no_points_is_refused(client):
 async def test_an_inverted_span_is_refused(client):
     now = time.time()
     resp = await client.get(
-        f"/api/point-history/series?points=soc&start={now}&end={now - 3600}"
+        f"/api/point-history/series?points=soc&start={now}&end={now - 3600}&gateway=default"
     )
 
     assert resp.status_code == 400
 
 
 async def test_an_enormous_span_is_refused(client):
-    resp = await client.get("/api/point-history/series?points=soc&start=0&end=99999999999")
+    resp = await client.get(
+        "/api/point-history/series?points=soc&start=0&end=99999999999&gateway=default")
 
     assert resp.status_code == 400
 
 
 async def test_a_bad_day_is_refused(client):
-    resp = await client.get("/api/point-history/series?points=soc&day=20th-sept")
+    resp = await client.get("/api/point-history/series?points=soc&day=20th-sept&gateway=default")
 
     assert resp.status_code == 400
 

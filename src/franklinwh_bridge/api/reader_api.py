@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from franklinwh_bridge.api.auth import require_role
+from franklinwh_bridge.api.gateway_ref import named_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ _run_lock = asyncio.Lock()
 
 
 class ReaderRequest(BaseModel):
-    gateway_id: str = "default"
+    gateway_id: str | None = None  # ID or serial; required (#296 item 43)
     raw: str | None = Field(None, pattern=r"^\d{1,5}(:\d{1,3})?$",
                             description="start:count, e.g. 15500:14 (PDU addresses)")
     models: str | None = Field(None, pattern=r"^[\d,\-\s]+$", description="e.g. 1,701-704")
@@ -105,6 +106,7 @@ def _run_reader(host: str, port: int, unit: int, timeout: float,
 async def run_reader(body: ReaderRequest, request: Request) -> ReaderResult:
     """Run the franklinwh-modbus reader against a gateway. Admin, read-only."""
     registry = getattr(request.app.state, "registry", None)
+    body.gateway_id = await named_gateway(request, body.gateway_id, '"gateway_id": ')
     inst = registry.get(body.gateway_id) if registry else None
     if inst is None:
         raise HTTPException(404, f"gateway '{body.gateway_id}' is not running")

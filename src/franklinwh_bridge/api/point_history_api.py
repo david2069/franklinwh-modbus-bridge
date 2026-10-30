@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from franklinwh_bridge.api.auth import require_capability
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.store import point_history
 
 router = APIRouter(prefix="/api/point-history", tags=["point-history"])
@@ -142,7 +143,7 @@ async def get_series(
     start: float | None = None,
     end: float | None = None,
     bucket_s: float | None = None,
-    gateway: str = "default",
+    gateway: str | None = None,
 ):
     """Historical series for a comma-separated ``points`` list.
 
@@ -150,6 +151,7 @@ async def get_series(
     response echoes the resolved span and bucket so a caller can label the
     axis with what it actually got rather than what it asked for.
     """
+    gateway = await named_gateway(request, gateway, "?gateway=")
     db: aiosqlite.Connection = request.app.state.db
 
     wanted = [p.strip() for p in points.split(",") if p.strip()]

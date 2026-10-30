@@ -20,6 +20,22 @@
     window.location.href = `${base}/login`;
   }
 
+  // The gateway this page shows and controls, chosen as the main page does:
+  // the default one (first in the list), or a polling one when it isn't
+  // polling. Every request names it; the bridge no longer falls back to
+  // 'default' (#296 item 43).
+  let gwId = null;
+  async function gateway() {
+    if (gwId) return gwId;
+    const d = await getJSON('api/gateways');
+    const list = (d && d.gateways) || [];
+    let gw = list.find(g => g.is_default) || list[0];
+    if (gw && !gw.polling) gw = list.find(g => g.polling) || gw;
+    gwId = gw ? gw.id : null;
+    return gwId;
+  }
+  const gwPath = () => `api/gateways/${encodeURIComponent(gwId)}`;
+
   async function getJSON(path) {
     try {
       const r = await fetch(`${base}/${path}`, { headers: { Accept: 'application/json' } });
@@ -233,7 +249,8 @@
       url = `api/energy/flow?start=${a}&end=${z}`;
       $('spanLabel').textContent = describeSpan(a, z);
     }
-    const data = await getJSON(url);
+    if (!await gateway()) return;
+    const data = await getJSON(`${url}&gateway=${encodeURIComponent(gwId)}`);
     if (!data || data.error) {
       host.innerHTML = '<p class="sankey-empty">Energy flow unavailable.</p>';
       $('flowQuality').textContent = '';
@@ -386,7 +403,8 @@
   }
 
   async function loadLimits() {
-    const lim = await getJSON('api/gateways/default/battery/limits');
+    if (!await gateway()) return;
+    const lim = await getJSON(`${gwPath()}/battery/limits`);
     if (!lim || lim.error) return;
     const max = Math.max(Number(lim.max_charge_w) || 0,
                          Number(lim.max_discharge_w) || 0);
@@ -410,6 +428,11 @@
     if (!dispatchAction || busy) return;
     busy = true; syncDispatchControls();
     setDispatchState('Sending…');
+    if (!await gateway()) {
+      busy = false; syncDispatchControls();
+      setDispatchState('No gateway to control', 'err');
+      return;
+    }
 
     const watts = Number($('powRange').value);
     const seconds = Number($('durRange').value) * 60;
@@ -426,7 +449,7 @@
       { slug: 'battery_command', value: dispatchAction },
     ];
     for (const s of steps) {
-      const r = await postJSON('api/gateways/default/command', s);
+      const r = await postJSON(`${gwPath()}/command`, s);
       if (!r || r.error || r.ok === false) {
         busy = false;
         setDispatchState((r && (r.error || r.result)) || 'Command failed', 'err');
@@ -449,8 +472,13 @@
     if (busy) return;
     busy = true; syncDispatchControls();
     setDispatchState('Stopping…');
+    if (!await gateway()) {
+      busy = false; syncDispatchControls();
+      setDispatchState('No gateway to control', 'err');
+      return;
+    }
 
-    const r = await postJSON('api/gateways/default/command',
+    const r = await postJSON(`${gwPath()}/command`,
                              { slug: 'battery_command', value: 'Stop' });
     busy = false;
     if (!r || r.error || r.ok === false) {
@@ -508,10 +536,12 @@
 
   // ── Poll loop ───────────────────────────────────────────────
   async function tick() {
+    if (!await gateway()) return;
+    const q = `gateway=${encodeURIComponent(gwId)}`;
     const [pts, conn, sensors] = await Promise.all([
-      getJSON('api/points'),
+      getJSON(`${gwPath()}/points`),
       getJSON('api/health/connectivity'),
-      getJSON('api/sensors'), // optional — 403 if automations module disabled
+      getJSON(`api/sensors?${q}`), // optional — 403 if automations module disabled
     ]);
     if (pts && pts.points) renderPoints(pts.points);
     renderConnectivity(conn);

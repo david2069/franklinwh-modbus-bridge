@@ -30,6 +30,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
 from franklinwh_bridge.api.auth import require_capability
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.api.scheduler_api import _gateway_points
 from franklinwh_bridge.api.schedules_api import _collect_sensor_refs, _decorate
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog
@@ -59,8 +60,9 @@ def _is_tariff(sensor_id: str) -> bool:
 
 
 @router.get("/tariff/overview")
-async def tariff_overview(request: Request, gateway: str = "default"):
+async def tariff_overview(request: Request, gateway: str | None = None):
     """Setup config + live period values + linked automations for the tab."""
+    gateway = await named_gateway(request, gateway, "?gateway=")
     db: aiosqlite.Connection = request.app.state.db
     billing = getattr(request.app.state, "billing", None)
 
@@ -200,7 +202,7 @@ async def _annotate_plans(
 @router.get("/tariff/history")
 async def tariff_history(
     request: Request,
-    gateway: str = "default",
+    gateway: str | None = None,
     limit: int = 36,
     service: str | None = None,
 ):
@@ -210,6 +212,7 @@ async def tariff_history(
     straddles a retailer switch can be flagged rather than silently reported
     under one retailer's name.
     """
+    gateway = await named_gateway(request, gateway, "?gateway=")
     db: aiosqlite.Connection = request.app.state.db
     periods = await get_billing_periods(db, gateway, max(1, min(limit, 240)))
     service_id = service or await _default_service_id(db)
@@ -321,8 +324,9 @@ async def patch_tariff_plan(
 
 
 @router.get("/tariff/history.csv")
-async def tariff_history_csv(request: Request, gateway: str = "default"):
+async def tariff_history_csv(request: Request, gateway: str | None = None):
     """Closed billing periods as a CSV download (chronological)."""
+    gateway = await named_gateway(request, gateway, "?gateway=")
     db: aiosqlite.Connection = request.app.state.db
     periods = await get_billing_periods(db, gateway, 240)
     buf = io.StringIO()

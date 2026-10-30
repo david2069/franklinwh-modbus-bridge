@@ -173,7 +173,7 @@ async def _seed() -> None:
 
 
 async def test_api_export_redacts_and_omits_address_and_name(client):
-    r = await client.get("/api/models/export")
+    r = await client.get("/api/models/export?gateway_id=default")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["filename"] == "sunspec_all_redacted.json"
@@ -186,7 +186,8 @@ async def test_api_export_redacts_and_omits_address_and_name(client):
 
 
 async def test_api_export_chosen_models_as_csv(client):
-    r = await client.get("/api/models/export", params={"models": "714", "format": "csv"})
+    r = await client.get("/api/models/export",
+                         params={"gateway_id": "default", "models": "714", "format": "csv"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["filename"] == "sunspec_model_714_redacted.csv"
@@ -195,9 +196,10 @@ async def test_api_export_chosen_models_as_csv(client):
 
 
 async def test_api_export_bad_requests(client):
-    assert (await client.get("/api/models/export", params={"format": "xml"})).status_code == 400
-    assert (await client.get("/api/models/export", params={"models": "1,x"})).status_code == 400
-    r = await client.get("/api/models/export", params={"models": "999"})
+    url, gw = "/api/models/export", {"gateway_id": "default"}
+    assert (await client.get(url, params={**gw, "format": "xml"})).status_code == 400
+    assert (await client.get(url, params={**gw, "models": "1,x"})).status_code == 400
+    r = await client.get("/api/models/export", params={"gateway_id": "default", "models": "999"})
     assert r.status_code == 404 and "999" in r.text
     r = await client.get("/api/models/export", params={"gateway_id": "nope"})
     assert r.status_code == 404

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from franklinwh_bridge.api.auth import require_role
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.gateway.solar_forecast import (
     NOT_CONFIGURED_REASON,
     SolarForecastService,
@@ -74,9 +75,10 @@ def _settings_response(request: Request, svc: SolarForecastService) -> SolarSett
 
 
 @router.get("/forecast")
-async def solar_forecast(request: Request, force: bool = False, gateway: str = "default"):
+async def solar_forecast(request: Request, force: bool = False, gateway: str | None = None):
     """Weather + PV production forecast. Needs latitude/longitude set; otherwise
     ``{configured: false, reason}``. Cached 15 min; ``force`` refetches."""
+    gateway = await named_gateway(request, gateway, "?gateway=")
     svc = _service(request)
     s = svc.settings
     if not s.configured:

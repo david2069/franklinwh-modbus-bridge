@@ -27,13 +27,13 @@ async def client(tmp_path, monkeypatch):
 async def test_module_gated_when_disabled(client):
     # Disabling the module blocks the endpoint (require_module gate).
     await client.patch("/api/modules/energy_costs", json={"enabled": False})
-    resp = await client.get("/api/tariff/overview")
+    resp = await client.get("/api/tariff/overview?gateway=default")
     assert resp.status_code == 403
     await client.patch("/api/modules/energy_costs", json={"enabled": True})
 
 
 async def test_overview_shape_and_live_sensors(client):
-    resp = await client.get("/api/tariff/overview")
+    resp = await client.get("/api/tariff/overview?gateway=default")
     assert resp.status_code == 200, resp.text
     data = resp.json()
     # top-level shape
@@ -84,7 +84,7 @@ async def test_linked_automations_scanner(client):
     a = (await client.post("/api/schedules", json=tariff_entry)).json()
     await client.post("/api/schedules", json=plain_entry)
 
-    data = (await client.get("/api/tariff/overview")).json()
+    data = (await client.get("/api/tariff/overview?gateway=default")).json()
     linked = {x["name"]: x for x in data["linked"]}
     assert "Solar sponge guard" in linked
     assert "SOC only" not in linked
@@ -107,14 +107,14 @@ async def test_history_endpoint_and_csv(client):
     }
     await insert_billing_period(app.state.db, rec)
 
-    r = await client.get("/api/tariff/history")
+    r = await client.get("/api/tariff/history?gateway=default")
     assert r.status_code == 200
     periods = r.json()["periods"]
     assert len(periods) == 1
     assert periods[0]["net_total"] == 17.43
     assert periods[0]["demand_peak_kw"] == 6.0
 
-    c = await client.get("/api/tariff/history.csv")
+    c = await client.get("/api/tariff/history.csv?gateway=default")
     assert c.status_code == 200
     assert "text/csv" in c.headers["content-type"]
     lines = c.text.splitlines()

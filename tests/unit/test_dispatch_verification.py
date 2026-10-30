@@ -490,7 +490,7 @@ async def test_sequencer_needs_control_and_records_who_ran_it(tmp_path, monkeypa
     from franklinwh_bridge.api.admin import router as admin_router
     from franklinwh_bridge.api.auth import router as auth_router
     from franklinwh_bridge.security import hash_password
-    from franklinwh_bridge.store.db import create_user
+    from franklinwh_bridge.store.db import create_gateway, create_user
 
     class FakeSeq:  # never touches a register
         def __init__(self, dev):
@@ -515,7 +515,8 @@ async def test_sequencer_needs_control_and_records_who_ran_it(tmp_path, monkeypa
     app.state.registry = SimpleNamespace(get=lambda gid: inst, list_active=lambda: ["default"])
     app.include_router(auth_router)
     app.include_router(admin_router)
-    body = {"inline": '{"DERCtlAC.WSetEna": 1, "DERCtlAC.WSetPct": 30}'}
+    await create_gateway(conn, "default", "aGate", "192.0.2.1")
+    body = {"inline": '{"DERCtlAC.WSetEna": 1, "DERCtlAC.WSetPct": 30}', "gateway_id": "default"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as v:
         await v.post("/api/auth/login", json={"username": "viewer1", "password": "pw"})
         assert (await v.post("/api/sequence/execute", json=body)).status_code == 403

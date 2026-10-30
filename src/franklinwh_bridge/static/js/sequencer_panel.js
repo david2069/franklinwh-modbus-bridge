@@ -37,7 +37,8 @@ function sequencerPanel() {
         try { parsed = JSON.parse(input); } catch (_) { /* a name, not JSON: unknown length */ }
         const data = await fetchJSON('api/sequence/execute', {
           method: 'POST',
-          body: JSON.stringify({ inline: input, dry_run: this.dryRun }),
+          body: JSON.stringify({ inline: input, dry_run: this.dryRun,
+                                 gateway_id: Alpine.store('app').activeGateway }),
         }, sequenceTimeoutMs(parsed));
 
         console.log('[SeqPanel] API response:', JSON.stringify(data).substring(0, 200));

@@ -438,7 +438,7 @@ function scheduleTab() {
         fetchJSON('api/schedules'),
         fetchJSON(`api/schedules/timeline?day=${this.previewDay}`),
         fetchJSON('api/services'),
-        fetchJSON('api/sensors'),
+        fetchJSON('api/sensors?gateway=' + encodeURIComponent(Alpine.store('app').activeGateway)),
         fetchJSON(this._logUrl()),
         fetchJSON('api/health/connectivity'),
         // Unfiltered log for the timeline's actual-dispatch overlay — the

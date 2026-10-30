@@ -32,7 +32,7 @@ async def test_gateway_address_comes_from_the_gateway_row(fresh_client):
     client = fresh_client
     resp = await client.patch("/api/gateways/default", json={"host": "127.0.0.1", "port": 9})
     assert resp.status_code == 200
-    gw = (await client.get("/api/gateway")).json()
+    gw = (await client.get("/api/gateway?gateway_id=default")).json()
     assert (gw["host"], gw["port"], gw["gateway_id"]) == ("127.0.0.1", 9, "default")
 
     # A named gateway — e.g. a demo — and its catalog, independently.

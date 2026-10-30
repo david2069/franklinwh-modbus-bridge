@@ -1,4 +1,4 @@
-"""GET /api/points must be scoped to the DEFAULT gateway's bus.
+"""GET /api/points must be scoped to the named gateway's bus.
 
 Regression: it read the global sample bus, so when another gateway (a mock,
 or a second gateway on the same aGate) published a partial sample, the
@@ -11,7 +11,12 @@ from franklinwh_bridge.api.admin import get_points, read_model
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 
 
-async def test_points_use_default_gateway_bus_not_global():
+async def _named(request, ref, how):
+    return ref  # these requests are stubs with no database to resolve against
+
+
+async def test_points_use_default_gateway_bus_not_global(monkeypatch):
+    monkeypatch.setattr("franklinwh_bridge.api.admin.named_gateway", _named)
     # Default gateway's own bus: a full, real-looking sample.
     default_bus = SampleBus()
     await default_bus.publish(
@@ -31,13 +36,14 @@ async def test_points_use_default_gateway_bus_not_global():
         )
     )
 
-    resp = await get_points(request)
+    resp = await get_points(request, gateway="default")
     assert resp["gateway_id"] == "default"
     assert resp["points"]["soc"] == 50  # default's value, not the mock's 99
     assert resp["points"]["model"] == "aGate X"  # full field, not blanked
 
 
-async def test_read_model_resolves_controller_from_registry():
+async def test_read_model_resolves_controller_from_registry(monkeypatch):
+    monkeypatch.setattr("franklinwh_bridge.api.admin.named_gateway", _named)
     """Regression: /api/models/{id}/read read app.state.controller (None under
     multi-gateway) and 503'd. It must resolve the default gateway's controller."""
     class _Pt:
@@ -70,6 +76,6 @@ async def test_read_model_resolves_controller_from_registry():
         )
     )
 
-    resp = await read_model(502, request)
+    resp = await read_model(502, request, gateway_id="default")
     assert resp["model_id"] == 502
     assert resp["values"]["502.OutWh"] == 13280454

@@ -33,7 +33,7 @@ function energyCostsTab() {
 
     async load() {
       this.loading = true;
-      const data = await fetchJSON('api/tariff/overview');
+      const data = await fetchJSON('api/tariff/overview?gateway=' + encodeURIComponent(Alpine.store('app').activeGateway));
       this.loading = false;
       if (data && !data.error) {
         this.overview = data;
@@ -45,14 +45,14 @@ function energyCostsTab() {
     },
 
     async loadHistory() {
-      const data = await fetchJSON('api/tariff/history');
+      const data = await fetchJSON('api/tariff/history?gateway=' + encodeURIComponent(Alpine.store('app').activeGateway));
       if (data && Array.isArray(data.periods)) this.history = data.periods;
     },
 
     /** Same-origin CSV download (session cookie authorises it). */
     downloadCsv() {
       const base = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
-      window.open(`${base}/api/tariff/history.csv`, '_blank');
+      window.open(`${base}/api/tariff/history.csv?gateway=${encodeURIComponent(Alpine.store('app').activeGateway)}`, '_blank');
     },
 
     // ── live sensor accessors ──────────────────────────────
