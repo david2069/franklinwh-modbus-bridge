@@ -64,6 +64,8 @@ wizard, admins only) and **+ Add Gateway**.
     it: it stops polling, sends no commands and makes no new connection, and logs
     *"Gateway … refused: …"* with the serials involved. The refusal stays until the bridge or
     the gateway is restarted, and then happens again unless the right aGate answers.
+    While it lasts, the gateway's row in the table shows a red **serial refused** label;
+    hover over it for the reason.
 
 ### Add Gateway
 

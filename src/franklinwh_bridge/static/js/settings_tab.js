@@ -186,10 +186,14 @@ function settingsTab() {
     },
 
     async loadAll() {
+      // Both name their gateway (#296 item 43): the poller card shows the
+      // active gateway; the topic list the one picked in the MQTT card.
+      const active = Alpine.store('app').activeGateway;
+      const topicsGw = this.selectedMqttGateway || active;
       const [mqttStatus, appStatus, topics] = await Promise.all([
         fetchJSON('api/mqtt/status'),
-        fetchJSON('api/status'),
-        fetchJSON('api/mqtt/topics'),
+        fetchJSON('api/status?gateway=' + encodeURIComponent(active)),
+        fetchJSON('api/mqtt/topics?gateway=' + encodeURIComponent(topicsGw)),
       ]);
 
       if (mqttStatus && !mqttStatus.error) this.mqtt = mqttStatus;
@@ -204,8 +208,9 @@ function settingsTab() {
         this.mqttGateways = topics.gateways;
         const keep = this.mqttGateways.find(g => g.gateway_id === this.selectedMqttGateway);
         if (!keep) {
-          this.selectedMqttGateway = topics.gateway_id
-            || (this.mqttGateways[0] || {}).gateway_id || '';
+          // The one asked for if it publishes, else the first that does.
+          const asked = this.mqttGateways.find(g => g.gateway_id === topics.gateway_id);
+          this.selectedMqttGateway = (asked || this.mqttGateways[0] || {}).gateway_id || '';
         }
         this.applyMqttGateway();
       } else if (topics && topics.topics) {

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Request
 
 from franklinwh_bridge import __version__, workers
 from franklinwh_bridge.api.auth import require_auth
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.store import alerts as alert_store
 
 router = APIRouter(tags=["health"])
@@ -69,7 +70,12 @@ async def health_workers() -> dict[str, Any]:
 
 
 @router.get("/api/status")
-async def status(request: Request):
+async def status(request: Request, gateway: str | None = None):
+    """The bridge's status. Answers with no gateway named: it is the add-on's
+    health check. The poller component lists every gateway; ``?gateway=``
+    (ID or serial) adds that gateway's poller as the flat fields (#296 item 43:
+    no silent fallback to the gateway with ID 'default')."""
+    gw_id = None if gateway is None else await named_gateway(request, gateway, "?gateway=")
     config = getattr(request.app.state, "config", None)
     env = config.environment if config else "unknown"
 
@@ -82,6 +88,11 @@ async def status(request: Request):
             states[name] = result
         except Exception as exc:
             states[name] = {"error": str(exc)}
+
+    poller = states.get("poller")
+    if gw_id is not None and isinstance(poller, dict):
+        poller.update({"gateway_id": gw_id,
+                       **(poller.get("gateways") or {}).get(gw_id, {"status": "not_running"})})
 
     return {
         "status": "ok",

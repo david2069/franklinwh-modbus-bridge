@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from franklinwh_bridge.api.auth import get_current_user
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.config.environment import detect_environment
 from franklinwh_bridge.config.mqtt_broker import ENV_VARS, env_values, resolve_broker
 from franklinwh_bridge.config.supervisor import discover_mqtt
@@ -280,6 +281,9 @@ async def test_connection(request: Request):
 
 @router.get("/topics")
 async def get_topics(request: Request):
+    # Names its gateway like every other route (#296 item 43): `topics` and
+    # `short_id` describe that gateway; `gateways` still lists every one.
+    wanted = await named_gateway(request, request.query_params.get("gateway"), "?gateway=")
     publisher = getattr(request.app.state, "mqtt_publisher", None)
     if publisher is None:
         return {"topics": []}
@@ -343,11 +347,10 @@ async def get_topics(request: Request):
     if not gateways:
         return {"topics": [], "gateways": [], "note": "No device info set yet"}
 
-    # Back-compat: `topics`/`short_id` keep describing ONE gateway — the one
-    # asked for, else the default — so existing callers are unaffected while
-    # `gateways` carries the full picture.
-    wanted = request.query_params.get("gateway")
-    sel = next((g for g in gateways if g["gateway_id"] == wanted), None) or gateways[0]
+    # `topics`/`short_id` describe the gateway asked for; one that isn't
+    # publishing has none (it used to fall back to the first gateway).
+    sel = next((g for g in gateways if g["gateway_id"] == wanted), None) or {
+        "gateway_id": wanted, "short_id": None, "entity_count": 0, "topics": []}
 
     return {
         "short_id": sel["short_id"],

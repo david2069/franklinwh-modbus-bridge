@@ -35,6 +35,10 @@ def known_identifiers(gateways: Iterable[Mapping[str, Any]],
     serials: list[Any] = []
     known: dict[str, str] = {}
     for g in gateways:
+        if g.get("mock"):
+            # A demo gateway's "mock" host and MOCK-DEMO serial identify no one;
+            # masking them also hid every "mock" and "MOCK" in the log.
+            continue
         serials.append(g.get("serial"))
         inst = registry.get(g.get("id")) if registry is not None else None
         if inst is not None:

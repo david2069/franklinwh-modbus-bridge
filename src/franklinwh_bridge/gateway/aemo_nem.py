@@ -197,7 +197,8 @@ class NemSpotClient:
                     return fresh[1]
                 logger.warning("AEMO NEM summary has no price for %s", region)
             except Exception as exc:
-                logger.warning("AEMO NEM fetch failed: %s", exc)
+                # A timeout's text is empty: name the exception so the log says why.
+                logger.warning("AEMO NEM fetch failed: %s", str(exc) or type(exc).__name__)
             return {**hit[1], "stale": True} if hit else None
 
     def cached(self, region: str | None, *, max_age_s: float | None = None) -> dict | None:

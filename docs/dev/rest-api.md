@@ -138,11 +138,17 @@ is stopped still answers `404 … not running` on routes that need it polling.
 **Every route names its gateway.** No route falls back to the gateway with ID `default`
 (#296 item 43). Routes outside `/api/gateways/{gw_id}/…` take the gateway as
 `?gateway=` (points, battery limits, sensors, condition tests, point history, energy,
-tariff and solar), `?gateway_id=` (gateway address and test, SunSpec models, catalog,
+tariff, solar and `/api/mqtt/topics`), `?gateway_id=` (gateway address and test, SunSpec models, catalog,
 export, model read and refresh) or a `"gateway_id"` body field (`/api/command`,
 `/api/sequence/execute`, which also takes `"all"`, and `/api/reader/run`). A request that
 names none gets `400` and *"This request names no gateway: add …"*; a malformed one `422`
 and an unknown one `404`, as above. Each refusal is logged with the user.
+
+`/api/status` is the one exception: it answers with no gateway named, because it is the
+add-on's health check. Its `components.poller.gateways` lists every gateway's poller by
+ID. With `?gateway=<ID or serial>` it also puts that gateway's poller in the flat fields
+(`status`, `polls_total`, `last_poll_ts`, `last_error`); a bad reference gets the same
+`422` or `404`.
 
 ### Send a battery command
 
