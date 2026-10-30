@@ -6,6 +6,17 @@ It is on by default.
 
 ![Logs page](../../images/ui/page-logs.png)
 
+## Sub-tabs
+
+Admins see two sub-tabs at the top of the page. Each one has a link of its own:
+
+| Sub-tab | Link | Shows |
+|---|---|---|
+| **App log** | `?tab=logs&section=app` | The bridge's log, described below. This is the default. |
+| **Battery-control writes** | `?tab=logs&section=writes` | Every Modbus write the bridge sent, and the aGate's reply. |
+
+Other roles see only the app log, with no sub-tabs.
+
 ## Level chips
 
 The chips at the top count entries per level in the current time span: **DEBUG**, **INFO**,
@@ -60,3 +71,18 @@ Only admins see these buttons.
     serials and IP addresses. Use
     [Settings → Admin → Support info](settings-admin.md#support-info), which removes
     serials, addresses, names and tokens first.
+
+## Battery-control writes
+
+Every SunSpec write the bridge sent to the aGate, newest first, up to the last 200.
+It loads each time you open the sub-tab; **Refresh** reloads it.
+
+| Column | Meaning |
+|---|---|
+| Time | When it was sent, in the bridge's timezone. |
+| Register | The register address, and its name when it is a model 704 point. |
+| Raw values | The values written, as sent. |
+| aGate reply | **OK**, or the error the aGate answered. |
+| Sent by | Who asked for it, for example `schedule:<entry id>` or `user:<account>`. |
+
+**Download CSV** and **Download JSON** save the audit trail, up to the last 100,000 writes.

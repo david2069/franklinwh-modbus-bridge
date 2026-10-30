@@ -189,6 +189,9 @@ const GUIDE_PAGES = {
 /** SunSpec Explorer sub-tabs (?tab=explorer&section=…). */
 const EXPLORER_SECTIONS = ['models', 'extensions', 'reader'];
 
+/** Logs sub-tabs (?tab=logs&section=…): the app log, and battery-control writes (admins). */
+const LOGS_SECTIONS = ['app', 'writes'];
+
 const SETTINGS_SECTIONS = [
   { id: 'gateways',       label: 'Site & Gateways' },
   { id: 'home-assistant', label: 'Home Assistant' },
@@ -762,6 +765,7 @@ document.addEventListener('alpine:init', () => {
     // Multi-gateway
     settingsSection: 'gateways',  // Settings sub-tab (see SETTINGS_SECTIONS)
     explorerSection: 'models',    // SunSpec Explorer sub-tab (see EXPLORER_SECTIONS)
+    logsSection: 'app',           // Logs sub-tab (see LOGS_SECTIONS)
     activeGateway: 'default',  // the gateway the page shows and controls
     allGatewaysOpen: false,    // the read-only All gateways modal
     gatewayChosen: false,      // set once the user picks; stops auto-selection
@@ -883,6 +887,9 @@ document.addEventListener('alpine:init', () => {
       if (tab === 'explorer' && section && EXPLORER_SECTIONS.includes(section)) {
         this.explorerSection = section;
       }
+      if (tab === 'logs' && section && LOGS_SECTIONS.includes(section)) {
+        this.logsSection = section;
+      }
       // Keep ?tab= (and ?section= on Settings) in sync so the address bar is
       // always shareable/refreshable — and so docs can link to a section.
       // replaceState, not pushState: tab switches shouldn't stack up in Back.
@@ -892,6 +899,7 @@ document.addEventListener('alpine:init', () => {
           u.searchParams.set('tab', tab);
           if (tab === 'settings') u.searchParams.set('section', this.settingsSection);
           else if (tab === 'explorer') u.searchParams.set('section', this.explorerSection);
+          else if (tab === 'logs') u.searchParams.set('section', this.logsSection);
           else u.searchParams.delete('section');
           window.history.replaceState(null, '', u);
         } catch { /* non-browser context — URL sync is cosmetic */ }
@@ -904,6 +912,12 @@ document.addEventListener('alpine:init', () => {
     setExplorerSection(section) {
       if (!EXPLORER_SECTIONS.includes(section)) return;
       this.setTab('explorer', { section });
+    },
+
+    /** Switch the Logs sub-tab and keep ?section= in sync. */
+    setLogsSection(section) {
+      if (!LOGS_SECTIONS.includes(section)) return;
+      this.setTab('logs', { section });
     },
 
     /** Open the tab named in ?tab=, if it's real and this role may see it.

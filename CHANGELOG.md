@@ -13,6 +13,12 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Logs has two sub-tabs**, **App log** and **Battery-control writes**, each with its
+  own link (`?tab=logs&section=app|writes`). The writes table used to sit below the log.
+  Writes stay admin only (owner).
+
 ## [0.2.47] — 2026-10-30
 
 ### Fixed
