@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **Status notices in Home Assistant (owner, 2026-10-30; modelled on the Energipays
+  bridge):** a persistent notification when the bridge starts (version, gateways polling
+  and how often, any not polling), when it shuts down, and when a gateway is paused
+  (Stop) or polls again (Start, or Restart of a paused one). One attempt each, logged
+  either way. On by default; **Settings → Home Assistant → Status notices** switches
+  them off (`status_notices` in `GET/PUT /api/alerts/settings`, whose fields are now
+  each optional).
+
 ## [0.2.48] — 2026-10-30
 
 ### Added

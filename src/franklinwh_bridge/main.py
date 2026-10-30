@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from franklinwh_bridge import __version__, disclaimer, workers
+from franklinwh_bridge import __version__, disclaimer, status_notices, workers
 from franklinwh_bridge.alert_delivery import AlertDelivery
 from franklinwh_bridge.alert_monitor import AlertMonitor
 from franklinwh_bridge.api.admin import router as admin_router
@@ -1041,6 +1041,20 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Metrics snapshot (startup) failed: %s", exc)
 
+        try:
+            # After bring-up and the HA registry: say what is polling (owner, 2026-10-30).
+            active = set(registry.list_active())
+            rows = [g for g in await get_gateways(db) if g.get("enabled", 1)]
+            title, message = status_notices.started_text(
+                __version__,
+                [{"name": g.get("name") or g["id"], "poll_interval": g.get("poll_interval", 10)}
+                 for g in rows if g["id"] in active],
+                [{"name": g.get("name") or g["id"]} for g in rows if g["id"] not in active])
+            await status_notices.send(db, ha_registry, status_notices.BRIDGE_NOTIFICATION_ID,
+                                      title, message, time.time())
+        except Exception as exc:
+            logger.warning("Status notice (started) failed: %s", exc)
+
     asyncio.create_task(_start_gateways())
     mqtt_device_reconcile = asyncio.create_task(_reconcile_mqtt_devices())
 
@@ -1130,6 +1144,11 @@ async def lifespan(app: FastAPI):
 
     # ── Shutdown ──────────────────────────────────────────────
     logger.info("Bridge shutting down — releasing control and logging state")
+
+    # 0. Tell Home Assistant first, while it can still be reached (bounded, never raises).
+    title, message = status_notices.stopping_text()
+    await status_notices.send(db, ha_registry, status_notices.BRIDGE_NOTIFICATION_ID,
+                              title, message, time.time())
 
     # 1. Stop the schedule engine (so it can't re-dispatch during teardown),
     #    then the health checker.

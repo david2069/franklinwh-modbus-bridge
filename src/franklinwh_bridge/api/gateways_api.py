@@ -19,6 +19,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from franklinwh_bridge import status_notices
 from franklinwh_bridge.api.auth import get_current_user, require_capability, require_role
 from franklinwh_bridge.config import clock
 from franklinwh_bridge.config.environment import detect_environment
@@ -69,6 +70,17 @@ async def _admin_action(request: Request, user: dict | None, gw_id: str, what: s
     db = getattr(request.app.state, "db", None)
     if db is not None:
         await alert_store.raise_event(db, "ADMIN_ACTION", msg, gateway_id=gw_id)
+
+
+async def _status_notice(request: Request, user: dict | None, row: dict, paused: bool) -> None:
+    """Tell Home Assistant a gateway was paused (Stop) or is polling again (owner, 2026-10-30)."""
+    who = (user or {}).get("username") or "unknown"
+    name = row.get("name") or row["id"]
+    title, message = (status_notices.paused_text if paused else status_notices.resumed_text)(
+        name, who)
+    await status_notices.send(request.app.state.db, getattr(request.app.state, "ha_registry", None),
+                              status_notices.gateway_notification_id(row["id"]), title, message,
+                              time.time())
 
 # Built once at import: ruff's B008 permits Depends() in a default, but not
 # a factory call nested inside it (and rebuilding it per request is pointless).
@@ -1027,6 +1039,7 @@ async def start_gateway_endpoint(
         raise HTTPException(500, f"Failed to start gateway '{gw_id}'")
     await _after_gateway_started(request, gw_id)
     await _admin_action(request, user, gw_id, f"Gateway {gw_id} started")
+    await _status_notice(request, user, row, paused=False)
     return {"started": True, "gateway_id": gw_id}
 
 
@@ -1051,6 +1064,7 @@ async def stop_gateway_endpoint(
     if registry.get(gw_id):
         await registry.stop_gateway(gw_id)
     await _admin_action(request, user, gw_id, f"Gateway {gw_id} stopped")
+    await _status_notice(request, user, row, paused=True)
     return {"stopped": True, "gateway_id": gw_id}
 
 
@@ -1082,6 +1096,8 @@ async def restart_gateway_endpoint(
         raise HTTPException(500, f"Failed to restart gateway '{gw_id}'")
     await _after_gateway_started(request, gw_id)
     await _admin_action(request, user, gw_id, f"Gateway {gw_id} restarted")
+    if not row.get("autostart", 1):  # a restart of a paused gateway resumes it
+        await _status_notice(request, user, row, paused=False)
     return {"restarted": True, "gateway_id": gw_id}
 
 
