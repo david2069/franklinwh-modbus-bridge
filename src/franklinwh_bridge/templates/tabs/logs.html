@@ -226,6 +226,7 @@
         <thead class="text-slate-500 text-[10px] uppercase">
           <tr>
             <th class="text-left px-4 py-2">Time <span class="normal-case" x-text="'(' + fmt.tz() + ')'"></span></th>
+            <th class="text-left px-2 py-2">Gateway</th>
             <th class="text-left px-2 py-2">Register</th>
             <th class="text-left px-2 py-2">Raw values</th>
             <th class="text-left px-2 py-2">aGate reply</th>
@@ -236,6 +237,11 @@
           <template x-for="r in rows" :key="r.id">
             <tr class="border-t border-white/[0.04]">
               <td class="px-4 py-1.5 whitespace-nowrap" x-text="stamp(r.ts)"></td>
+              <td class="px-2 py-1.5 whitespace-nowrap" data-testid="write-gateway" :title="r.gateway_id">
+                <span x-text="gw(r.gateway_id).name"></span>
+                <span x-show="gw(r.gateway_id).serial" class="block text-[10px] text-slate-500"
+                      x-text="gw(r.gateway_id).serial"></span>
+              </td>
               <td class="px-2 py-1.5 whitespace-nowrap" x-text="regLabel(r.address)"></td>
               <td class="px-2 py-1.5" x-text="'[' + r.values.join(', ') + ']'"></td>
               <td class="px-2 py-1.5" :class="r.result === 'ok' ? 'text-green-400' : 'text-red-400'"
