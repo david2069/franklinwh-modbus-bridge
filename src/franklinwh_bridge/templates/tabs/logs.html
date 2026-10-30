@@ -1,6 +1,25 @@
 <!-- ── Logs Tab — filterable log viewer with pagination ── -->
 <div x-data="logsTab()">
 
+  <!-- Sub-tabs (owner, 2026-10-30): the app log and the battery-control
+       writes each get the full page. ?tab=logs&section=app|writes.
+       Writes are admin only, so others see the app log and no tab bar. -->
+  <div x-show="$store.app.isAdmin" class="flex flex-wrap items-center gap-1 mb-3 border-b border-white/[0.08]" role="tablist">
+    <template x-for="t in [['app', 'App log'], ['writes', 'Battery-control writes']]" :key="t[0]">
+      <button type="button" role="tab"
+              :data-testid="'logs-section-' + t[0]"
+              :aria-selected="$store.app.logsSection === t[0]"
+              @click="$store.app.setLogsSection(t[0])"
+              class="px-3 py-1.5 text-xs font-medium border-b-2 transition" style="margin-bottom: -1px"
+              :class="$store.app.logsSection === t[0]
+                ? 'border-cyan-400 text-cyan-300'
+                : 'border-transparent text-slate-400 hover:text-slate-200'"
+              x-text="t[1]"></button>
+    </template>
+  </div>
+
+  <div x-show="$store.app.logsSection === 'app' || !$store.app.isAdmin" data-testid="logs-app">
+
   <!-- Level totals as one row of tappable chips. As cards these were five
        ~130px boxes around a single digit — ~270px of chrome on a phone before
        any log was visible, and four of the five read 0 nearly always. -->
@@ -182,12 +201,14 @@
       </div>
     </div>
   </div>
+  </div>
 
   <!-- Modbus write audit trail (#342): every SunSpec write, as sent and as
        answered. Admin only; downloads go through fetch + Blob so they work
        under HA ingress, where there is no address bar. -->
-  <div x-show="$store.app.isAdmin" x-data="modbusWrites()" x-init="load()" class="card !p-0 overflow-hidden mt-4"
-       data-testid="modbus-writes">
+  <div x-show="$store.app.isAdmin && $store.app.logsSection === 'writes'" x-data="modbusWrites()"
+       x-effect="$store.app.isAdmin && $store.app.logsSection === 'writes' && load()"
+       class="card !p-0 overflow-hidden" data-testid="modbus-writes">
     <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Battery-control writes</h3>
       <span class="text-[11px] text-slate-500">every Modbus write the bridge sent, and the aGate's reply</span>
@@ -200,7 +221,7 @@
     </div>
     <div x-show="error" class="px-4 py-3 text-xs text-red-400" x-text="error"></div>
     <div x-show="!error && rows.length === 0" class="px-4 py-3 text-xs text-slate-500">No writes recorded yet.</div>
-    <div x-show="rows.length > 0" class="overflow-x-auto max-h-96">
+    <div x-show="rows.length > 0" class="overflow-auto" style="max-height: calc(100vh - 260px);">
       <table class="w-full text-xs font-mono">
         <thead class="text-slate-500 text-[10px] uppercase">
           <tr>

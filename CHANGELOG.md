@@ -36,6 +36,9 @@ lands, not backfilled later.
   the default isn't polling, as the main page does; it used to read and command
   `default` only. **REST clients that call these routes without a gateway must add
   one.**
+- **Logs has two sub-tabs**, **App log** and **Battery-control writes**, each with its
+  own link (`?tab=logs&section=app|writes`). The writes table used to sit below the log.
+  Writes stay admin only (owner).
 
 ### Fixed
 

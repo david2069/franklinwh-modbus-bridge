@@ -58,7 +58,8 @@ function logsTab() {
     startAutoRefresh() {
       this.stopAutoRefresh();
       this._refreshInterval = setInterval(() => {
-        if (this.autoRefresh && Alpine.store('app').activeTab === 'logs') {
+        const app = Alpine.store('app');
+        if (this.autoRefresh && app.activeTab === 'logs' && app.logsSection === 'app') {
           this.loadLogs();
         }
       }, 5000);
