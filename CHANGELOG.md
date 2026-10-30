@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.49] — 2026-10-31
+
 ### Added
 
 - **Status notices in Home Assistant (owner, 2026-10-30; modelled on the Energipays

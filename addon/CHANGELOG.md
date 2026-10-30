@@ -7,6 +7,30 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.49 — 2026-10-31
+
+### Added
+- **Status notices in Home Assistant**: a notification when the bridge starts
+  (which gateways it polls, and how often), when it stops, and when a gateway is
+  paused (Stop) or polling again (Start). On by default; switch them off in
+  **Settings → Home Assistant → Status notices**.
+
+### Changed
+- **Logs → Battery-control writes shows which gateway** each write went to:
+  its name, with the aGate serial below.
+- **A refused gateway stays visible**: if a different aGate answers at a
+  gateway's address, its row in Settings → Site & Gateways shows a red
+  **serial refused** label, with the reason on hover.
+- The API's MQTT topic list must name its gateway, like the rest of the API.
+  The status page lists every gateway instead of only the first.
+
+### Fixed
+- **Removing a gateway now takes its device and entities out of Home Assistant
+  at once**; before, they stayed until the add-on restarted. A page showing the
+  removed gateway moves to the default gateway.
+- A failed AEMO price fetch now says why in the log, even after a timeout.
+- The log export no longer hides the word "mock" for the demo gateway.
+
 ## 0.2.48 — 2026-10-30
 
 ### Added

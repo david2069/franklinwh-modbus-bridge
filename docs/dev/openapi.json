@@ -3,7 +3,7 @@
   "info": {
     "title": "franklinwh-modbus-bridge",
     "description": "**Unofficial software.** `franklinwh-modbus-bridge` is not endorsed, supported, or\naffiliated with FranklinWH in any way. Provided **\"AS IS\"**, for educational\nand informational purposes only, without warranty of any kind, express or\nimplied. The authors and contributors accept no responsibility or liability\nfor any consequences of its use.\n\nThis API issues **write commands to grid-connected battery hardware**. You\nassume all risk, including risk to your hardware, your warranty and your\nelectricity supply.\n\n**Compliance.** Keep your system compliant with the settings your official\nFranklinWH app or installer configured \u2014 they may enforce battery and gateway\nsafety, your local grid profile and import/export limits, or incentive/VPP\nprogramme conditions. Using this API to bypass them is entirely at your own\nrisk and is neither condoned nor encouraged.\n\n**Do not contact FranklinWH support about this software.** Report bugs and\nrequest features at [https://github.com/david2069/franklinwh-modbus-bridge/issues](https://github.com/david2069/franklinwh-modbus-bridge/issues).\n\nFull terms: [LICENSE](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE) \u00b7 SunSpec conformance:\n[PICS SM-000028](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx)\n",
-    "version": "0.2.11"
+    "version": "0.2.49"
   },
   "paths": {
     "/api/health": {
@@ -45,19 +45,72 @@
         }
       }
     },
+    "/api/health/workers": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Workers",
+        "description": "The bridge's background loops and when each last ran (#324 \u00a711 C).\n\n``{ok, counts, stale[], broken[], workers[]}``, the DC bridge's shape. A\nstalled worker is reported here and as WORKER_STALLED; it never fails the\nhealth check, so the platform doesn't restart away the evidence.",
+        "operationId": "health_workers_api_health_workers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Workers Api Health Workers Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/status": {
       "get": {
         "tags": [
           "health"
         ],
         "summary": "Status",
+        "description": "The bridge's status. Answers with no gateway named: it is the add-on's\nhealth check. The poller component lists every gateway; ``?gateway=``\n(ID or serial) adds that gateway's poller as the flat fields (#296 item 43:\nno silent fallback to the gateway with ID 'default').",
         "operationId": "status_api_status_get",
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -471,8 +524,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           }
@@ -513,8 +572,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           }
@@ -559,8 +624,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           }
@@ -601,8 +672,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           }
@@ -643,8 +720,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           },
@@ -726,8 +809,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           }
@@ -768,8 +857,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway Id"
             }
           }
@@ -802,13 +897,42 @@
           "admin"
         ],
         "summary": "Get Points",
+        "description": "The latest points of the gateway named by ``?gateway=`` (ID or serial),\nwith its command state. No gateway named: 400 (#296 item 43).\n\nReads that gateway's own sample bus, never the global one: the global bus\ncarries every gateway's samples, and partial samples from one would blank\nout another's fields.",
         "operationId": "get_points_api_points_get",
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -821,6 +945,7 @@
           "admin"
         ],
         "summary": "Get Point",
+        "description": "One point of the gateway named by ``?gateway=``; 400 if none is named.",
         "operationId": "get_point_api_points__point_id__get",
         "parameters": [
           {
@@ -830,6 +955,22 @@
             "schema": {
               "type": "string",
               "title": "Point Id"
+            }
+          },
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
             }
           }
         ],
@@ -1655,6 +1796,106 @@
         }
       }
     },
+    "/api/sequence-import/samples": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Sequence Samples",
+        "description": "The latest version's sample sequences on GitHub, marked new, changed or same.",
+        "operationId": "sequence_samples_api_sequence_import_samples_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sequence-import/preview": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Sequence Preview",
+        "description": "Fetch (or take pasted) sequence text and check it. Saves and runs nothing.",
+        "operationId": "sequence_preview_api_sequence_import_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SequencePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sequence-import/save": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Sequence Import Save",
+        "description": "Save a previewed sequence. Asks (``exists``) before replacing one.",
+        "operationId": "sequence_import_save_api_sequence_import_save_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SequenceImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/pics": {
       "get": {
         "tags": [
@@ -1719,14 +1960,42 @@
           "admin"
         ],
         "summary": "Get Battery Limits",
-        "description": "Battery power limits a force command may use: trusted ratings only (#133).",
+        "description": "Battery power limits a force command may use: trusted ratings only (#133).\nFor the gateway named by ``?gateway=``; 400 if none is named.",
         "operationId": "get_battery_limits_api_battery_limits_get",
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3455,8 +3724,49 @@
           "gateways"
         ],
         "summary": "Remove Gateway",
-        "description": "Remove a gateway. Default gateway cannot be removed.",
+        "description": "Remove a gateway. The row with ID 'default' can't be removed yet (D1);\nif the designated default goes, the next gateway becomes the default.",
         "operationId": "remove_gateway_api_gateways__gw_id__delete",
+        "parameters": [
+          {
+            "name": "gw_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Gw Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gateways/{gw_id}/default": {
+      "post": {
+        "tags": [
+          "gateways"
+        ],
+        "summary": "Make Default Gateway",
+        "description": "Designate the default gateway (#296 item 43): listed first, and the\npage opens on it. A designation only; no gateway's identity changes.",
+        "operationId": "make_default_gateway_api_gateways__gw_id__default_post",
         "parameters": [
           {
             "name": "gw_id",
@@ -3607,6 +3917,46 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lifecycle/check": {
+      "get": {
+        "tags": [
+          "gateways"
+        ],
+        "summary": "Lifecycle Check",
+        "description": "What a stop or restart would interrupt: each running gateway's dispatch.\n\nA restart releases an active battery command, and a schedule whose window\nis open fires again afterwards (docs/restarts-and-shutdown.md).",
+        "operationId": "lifecycle_check_api_lifecycle_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bridge/restart": {
+      "post": {
+        "tags": [
+          "gateways"
+        ],
+        "summary": "Restart Bridge",
+        "description": "Restart the whole bridge (Docker only): a graceful shutdown, then the\ncontainer's restart policy starts it again.",
+        "operationId": "restart_bridge_api_bridge_restart_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -4639,8 +4989,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -4697,8 +5053,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -4741,8 +5103,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -4914,8 +5282,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -5046,8 +5420,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -5648,6 +6028,479 @@
         }
       }
     },
+    "/api/alerts": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "Get Alerts",
+        "description": "Alerts newest first, with where each was delivered. Any signed-in role.",
+        "operationId": "get_alerts_api_alerts_get",
+        "parameters": [
+          {
+            "name": "open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "only alerts that still need someone",
+              "default": false,
+              "title": "Open"
+            },
+            "description": "only alerts that still need someone"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "event",
+                    "condition"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "epoch seconds; last activity at or after",
+              "title": "Since"
+            },
+            "description": "epoch seconds; last activity at or after"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Alert"
+                  },
+                  "title": "Response Get Alerts Api Alerts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{alert_id}/ack": {
+      "post": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "Ack Alert",
+        "description": "Acknowledge for everyone (admin). Recorded as ``user:<name>``.",
+        "operationId": "ack_alert_api_alerts__alert_id__ack_post",
+        "parameters": [
+          {
+            "name": "alert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Alert Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/settings": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "Get Alert Settings",
+        "description": "Whether critical alerts also go to Home Assistant (on by default).",
+        "operationId": "get_alert_settings_api_alerts_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "Put Alert Settings",
+        "description": "Switch HA notifications on or off (admin). Off never hides the bridge's modal.",
+        "operationId": "put_alert_settings_api_alerts_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/diagnostics/modbus-writes": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Modbus Writes",
+        "description": "Every SunSpec write: time, register, raw values, the aGate's reply, who asked.\n\nNo serial or IP is in these rows, so nothing needs masking.",
+        "operationId": "modbus_writes_api_diagnostics_modbus_writes_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "epoch seconds",
+              "title": "Since"
+            },
+            "description": "epoch seconds"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "epoch seconds",
+              "title": "Until"
+            },
+            "description": "epoch seconds"
+          },
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/diagnostics/logs": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Export Logs",
+        "description": "The app log for the Logs tab's filter, as a file; serials and IPs masked (#320).\n\nSame filters as ``GET /api/logs``. Oldest first; past ``limit`` the newest are kept.",
+        "operationId": "export_logs_api_diagnostics_logs_get",
+        "parameters": [
+          {
+            "name": "start_ts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "epoch seconds",
+              "title": "Start Ts"
+            },
+            "description": "epoch seconds"
+          },
+          {
+            "name": "end_ts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "epoch seconds",
+              "title": "End Ts"
+            },
+            "description": "epoch seconds"
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          },
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 1,
+              "default": 100000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "text",
+                "json"
+              ],
+              "type": "string",
+              "default": "text",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/support/info": {
       "get": {
         "tags": [
@@ -5663,6 +6516,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SupportInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reader/run": {
+      "post": {
+        "tags": [
+          "reader"
+        ],
+        "summary": "Run Reader",
+        "description": "Run the franklinwh-modbus reader against a gateway. Admin, read-only.",
+        "operationId": "run_reader_api_reader_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReaderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReaderResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -6205,8 +7100,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -6305,8 +7206,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -6321,6 +7228,64 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scheduler/monitor": {
+      "get": {
+        "tags": [
+          "scheduler"
+        ],
+        "summary": "Scheduler Monitor",
+        "description": "Debug monitor: one line per enabled entry per scheduler tick.\n\nKept in memory only (the last ``MONITOR_MAX`` lines, lost on restart).\n``since`` is the last ``seq`` the caller has, so a poll gets only new lines.",
+        "operationId": "scheduler_monitor_api_scheduler_monitor_get",
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Since"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6796,6 +7761,54 @@
         }
       }
     },
+    "/api/ha/bridge-entities": {
+      "get": {
+        "tags": [
+          "home-assistant"
+        ],
+        "summary": "Bridge Entities",
+        "description": "This bridge's published entities and what HA calls them: entity id,\ndiagnostic or not, the bridge dashboard's label, and whether the id is the\nbridge's own form. Read from HA's registries, like the dashboard card.",
+        "operationId": "bridge_entities_api_ha_bridge_entities_get",
+        "parameters": [
+          {
+            "name": "instance",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instance"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tariff/overview": {
       "get": {
         "tags": [
@@ -6810,8 +7823,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -6852,8 +7871,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           },
@@ -7075,8 +8100,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "default",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Gateway"
             }
           }
@@ -7175,7 +8206,7 @@
           "ui"
         ],
         "summary": "Send Command",
-        "description": "Dispatch a control command (same path as MQTT commands).\n\nDefaults to the \"default\" gateway. Use POST /api/gateways/{gw_id}/command\nfor gateway-specific commands (added in MG-3).",
+        "description": "Dispatch a control command (same path as MQTT commands) to the\ngateway named by ``gateway_id`` in the body; 400 if none is named.\n``POST /api/gateways/{gw_id}/command`` does the same with the gateway in\nthe path.",
         "operationId": "send_command_api_command_post",
         "requestBody": {
           "content": {
@@ -7258,6 +8289,199 @@
         "type": "object",
         "title": "AckRequest",
         "description": "``agreed`` false is a real answer, not a no-op.\n\nThe modal's Continue button is enabled either way: refusing to let someone\nclose a dialog is not consent, it is a hostage situation. Declining simply\nisn't recorded, so the notice comes back next time \u2014 which is the behaviour\nasked for, and is honest about what did and didn't happen."
+      },
+      "AckResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "acked_by": {
+            "type": "string",
+            "title": "Acked By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "id",
+          "acked_by"
+        ],
+        "title": "AckResult"
+      },
+      "Alert": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "gateway_id": {
+            "type": "string",
+            "title": "Gateway Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "condition"
+            ],
+            "title": "Kind"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "warning",
+              "critical"
+            ],
+            "title": "Severity"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "opened_ts": {
+            "type": "number",
+            "title": "Opened Ts"
+          },
+          "last_ts": {
+            "type": "number",
+            "title": "Last Ts"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "resolved_ts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Ts"
+          },
+          "acked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acked By"
+          },
+          "acked_ts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acked Ts"
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/Delivery"
+            },
+            "type": "array",
+            "title": "Deliveries",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "gateway_id",
+          "kind",
+          "severity",
+          "code",
+          "title",
+          "message",
+          "opened_ts",
+          "last_ts",
+          "count"
+        ],
+        "title": "Alert"
+      },
+      "AlertSettings": {
+        "properties": {
+          "ha_channel": {
+            "type": "boolean",
+            "title": "Ha Channel"
+          },
+          "ha_configured": {
+            "type": "boolean",
+            "title": "Ha Configured",
+            "default": false
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          },
+          "status_notices": {
+            "type": "boolean",
+            "title": "Status Notices",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "ha_channel"
+        ],
+        "title": "AlertSettings"
+      },
+      "AlertSettingsUpdate": {
+        "properties": {
+          "ha_channel": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ha Channel"
+          },
+          "status_notices": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Notices"
+          }
+        },
+        "type": "object",
+        "title": "AlertSettingsUpdate",
+        "description": "Each field is optional: only those given change."
       },
       "BackupCreateRequest": {
         "properties": {
@@ -7437,6 +8661,17 @@
           "slug": {
             "type": "string",
             "title": "Slug"
+          },
+          "gateway_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway Id"
           },
           "value": {
             "type": "string",
@@ -7678,6 +8913,51 @@
         },
         "type": "object",
         "title": "ConstantsBody"
+      },
+      "Delivery": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "delivered_ts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered Ts"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "status",
+          "attempts"
+        ],
+        "title": "Delivery"
       },
       "DemoRequest": {
         "properties": {
@@ -9396,6 +10676,113 @@
         "type": "object",
         "title": "RateValidateBody"
       },
+      "ReaderRequest": {
+        "properties": {
+          "gateway_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway Id"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{1,5}(:\\d{1,3})?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw",
+            "description": "start:count, e.g. 15500:14 (PDU addresses)"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[\\d,\\-\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models",
+            "description": "e.g. 1,701-704"
+          },
+          "point": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d+\\.\\w+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Point",
+            "description": "e.g. 714.DCW"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "minimal",
+              "basic",
+              "values",
+              "detailed",
+              "full"
+            ],
+            "title": "Detail",
+            "default": "basic"
+          },
+          "nz": {
+            "type": "boolean",
+            "title": "Nz",
+            "default": false
+          },
+          "match": {
+            "type": "boolean",
+            "title": "Match",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ReaderRequest"
+      },
+      "ReaderResult": {
+        "properties": {
+          "output": {
+            "type": "string",
+            "title": "Output"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "elapsed_s": {
+            "type": "number",
+            "title": "Elapsed S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "output",
+          "elapsed_s"
+        ],
+        "title": "ReaderResult"
+      },
       "ScanRequest": {
         "properties": {
           "subnets": {
@@ -9856,6 +11243,62 @@
         },
         "type": "object",
         "title": "SequenceExecRequest"
+      },
+      "SequenceImportRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "paste"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "title": "Overwrite",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "content"
+        ],
+        "title": "SequenceImportRequest"
+      },
+      "SequencePreviewRequest": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "title": "SequencePreviewRequest"
       },
       "SequenceRenameRequest": {
         "properties": {
