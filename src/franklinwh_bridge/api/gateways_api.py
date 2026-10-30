@@ -994,6 +994,14 @@ async def remove_gateway(gw_id: str, request: Request):
         raise HTTPException(403, str(e)) from e
     if not ok:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
+    # Take its device and entities out of Home Assistant now, as add and edit
+    # already sync: it used to stay published until the next restart.
+    sync = getattr(request.app.state, "sync_mqtt_devices", None)
+    if sync is not None:
+        try:
+            await sync()
+        except Exception as exc:  # the gateway is gone; never fail over the side effect
+            logger.warning("MQTT device sync after removing %s failed: %s", gw_id, exc)
     return {"deleted": True}
 
 

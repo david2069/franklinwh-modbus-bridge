@@ -149,12 +149,11 @@ result shows in the dialog. On the default gateway this section says so instead.
 
 ![Remove gateway confirmation](../../images/ui/remove-gateway-confirm.png)
 
-!!! warning "Switch Publish off before removing a gateway"
-    The dialog says the gateway's MQTT entities will be unpublished. In 0.2.8 removing a
-    gateway does **not** yet remove its entities from Home Assistant straight away (#151):
-    they stay until the next time the bridge syncs its MQTT devices (for example after a
-    restart). To remove them cleanly, first switch off **Publish this gateway to Home
-    Assistant**, Save, then remove the gateway.
+!!! note "What removing a gateway clears in Home Assistant"
+    The gateway's device and entities are removed from Home Assistant straight away, as
+    switching off **Publish this gateway to Home Assistant** does. Its last values stay on
+    the MQTT broker as retained messages, which Home Assistant no longer shows. Up to
+    0.2.48 the entities stayed until the bridge restarted (#151).
 
 ### Battery power rating
 

@@ -80,9 +80,12 @@ It loads each time you open the sub-tab; **Refresh** reloads it.
 | Column | Meaning |
 |---|---|
 | Time | When it was sent, in the bridge's timezone. |
+| Gateway | Which aGate it went to: the gateway's name, with its aGate serial below. Hover for the gateway ID. A gateway since removed shows its ID. |
 | Register | The register address, and its name when it is a model 704 point. |
 | Raw values | The values written, as sent. |
 | aGate reply | **OK**, or the error the aGate answered. |
 | Sent by | Who asked for it, for example `schedule:<entry id>` or `user:<account>`. |
 
 **Download CSV** and **Download JSON** save the audit trail, up to the last 100,000 writes.
+Each row carries the gateway's ID (`gateway_id`), not its serial, so the files can be
+shared without one.

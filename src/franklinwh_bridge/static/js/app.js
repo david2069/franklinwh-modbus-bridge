@@ -955,8 +955,16 @@ document.addEventListener('alpine:init', () => {
     // or second aGate polling, showing an empty placeholder with empty cards
     // is the least useful thing we could do.
     autoSelectGateway() {
-      if (this.gatewayChosen) return;
       const dflt = this.gatewayList.find(g => g.is_default) || this.gatewayList[0];
+      // The gateway on view was removed (here or elsewhere): every request for
+      // it would answer 404 from now on. Fall back to the default, whoever chose it.
+      if (dflt && !this.gatewayList.some(g => g.id === this.activeGateway)) {
+        this.gatewayChosen = false;
+        this.activeGateway = dflt.id;
+        this.refresh();
+        return;
+      }
+      if (this.gatewayChosen) return;
       if (dflt && dflt.polling) {
         if (dflt.id !== this.activeGateway) { this.activeGateway = dflt.id; this.refresh(); }
         return;
