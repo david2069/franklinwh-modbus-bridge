@@ -22,6 +22,7 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.api.scheduler_api import _gateway_points
 from franklinwh_bridge.gateway.energy_flow import (
     BATTERY_IDLE_KWH,
@@ -70,13 +71,14 @@ async def energy_flow(
     day: str | None = None,
     start: float | None = None,
     end: float | None = None,
-    gateway: str = "default",
+    gateway: str | None = None,
 ):
     """Directional energy flows for a day (default today) or an explicit span.
 
     ``day`` is the common case and what the dashboards use. ``start``/``end``
     epoch seconds cover week/month/year views without a second endpoint.
     """
+    gateway = await named_gateway(request, gateway, "?gateway=")
     db: aiosqlite.Connection = request.app.state.db
 
     if start is not None and end is not None:
@@ -152,7 +154,7 @@ class BatteryHoursResponse(BaseModel):
 async def battery_hours(
     request: Request,
     day: str | None = None,
-    gateway: str = "default",
+    gateway: str | None = None,
 ) -> BatteryHoursResponse:
     """Per-hour battery charge/discharge for a local day (default today).
 
@@ -161,6 +163,7 @@ async def battery_hours(
     directions) — an estimate from sampled power, not a meter reading.
     Hours after now carry ``state: null``.
     """
+    gateway = await named_gateway(request, gateway, "?gateway=")
     db: aiosqlite.Connection = request.app.state.db
     span_start, span_end, label = _day_bounds(day)
 
@@ -193,7 +196,7 @@ async def battery_hours(
 
 
 @router.get("/totals")
-async def energy_totals_endpoint(request: Request, gateway: str = "default"):
+async def energy_totals_endpoint(request: Request, gateway: str | None = None):
     """Lifetime and period kWh, straight from the aGate's own counters.
 
     Measured, not reconstructed — these are the figures to trust when they
@@ -204,6 +207,7 @@ async def energy_totals_endpoint(request: Request, gateway: str = "default"):
     derivation is a second thing to drift: the whole point of these being the
     trustworthy numbers is that there is exactly one of them.
     """
+    gateway = await named_gateway(request, gateway, "?gateway=")
     # Ask the registry, not the points dict. _gateway_points merges several
     # gateway-independent sources (constants, billing, demand), so it is never
     # empty — a typo'd gateway would otherwise return a full page of nulls and

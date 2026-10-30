@@ -58,8 +58,7 @@ function solarForecastCard() {
     },
 
     _gateway() {
-      const g = this.$store.app.activeGateway;
-      return g || 'default';
+      return this.$store.app.activeGateway;
     },
 
     async load(force) {

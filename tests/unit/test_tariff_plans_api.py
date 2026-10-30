@@ -229,7 +229,7 @@ async def test_a_period_reports_the_plan_in_force(client):
         "/api/tariff/plans", json={"valid_from": SWITCH, "retailer": "AGL Energy"}
     )
 
-    periods = (await client.get("/api/tariff/history")).json()["periods"]
+    periods = (await client.get("/api/tariff/history?gateway=default")).json()["periods"]
 
     october = next(p for p in periods if p["period_start"] == OCT_START)
     assert [pl["retailer"] for pl in october["plans"]] == ["AGL Energy"]
@@ -246,7 +246,7 @@ async def test_a_period_straddling_the_switch_is_flagged(client):
         "/api/tariff/plans", json={"valid_from": SWITCH, "retailer": "AGL Energy"}
     )
 
-    periods = (await client.get("/api/tariff/history")).json()["periods"]
+    periods = (await client.get("/api/tariff/history?gateway=default")).json()["periods"]
 
     september = next(p for p in periods if p["period_start"] == SEP_START)
     assert september["spans_switch"] is True
@@ -258,7 +258,7 @@ async def test_history_still_works_with_no_plans_at_all(client):
     deployment whose service was never set up."""
     await _seed_period(OCT_START, ts(2026, 11, 1))
 
-    resp = await client.get("/api/tariff/history?service=")
+    resp = await client.get("/api/tariff/history?service=&gateway=default")
 
     assert resp.status_code == 200, resp.text
     assert len(resp.json()["periods"]) == 1

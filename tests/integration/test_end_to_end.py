@@ -440,7 +440,7 @@ async def test_app_points_after_sample(client, default_gateway_bus):
     bus = await default_gateway_bus(app)
     await bus.publish(sample)
 
-    resp = await client.get("/api/points")
+    resp = await client.get("/api/points?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["points"]["soc"] == 85
@@ -449,7 +449,7 @@ async def test_app_points_after_sample(client, default_gateway_bus):
 
 async def test_app_battery_limits_endpoint(client):
     """No trusted rating yet: limits are unknown, never an assumed 5000 W (#133, #134)."""
-    resp = await client.get("/api/battery/limits")
+    resp = await client.get("/api/battery/limits?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["max_charge_w"] is None and data["max_discharge_w"] is None

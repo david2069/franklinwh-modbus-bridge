@@ -422,11 +422,11 @@ async def test_energy_costs_overview_and_history_show_pricing(client):
     from franklinwh_bridge.store.db import insert_billing_period
 
     assert (await client.patch("/api/modules/energy_costs", json={"enabled": True})).is_success
-    static = (await client.get("/api/tariff/overview")).json()["pricing"]
+    static = (await client.get("/api/tariff/overview?gateway=default")).json()["pricing"]
     assert static["kind"] == "static" and static["buy_rate"] is None
     await client.patch("/api/services/service1", json={"pricing": NEM_PLAN})
     await app.state.nem_pricing.client.spot_price("NSW1")
-    ov = (await client.get("/api/tariff/overview")).json()
+    ov = (await client.get("/api/tariff/overview?gateway=default")).json()
     assert ov["pricing"]["kind"] == "dynamic"
     assert ov["pricing"]["label"] == "Wholesale (live) · AEMO NEM NSW1"
     assert ov["pricing"]["buy_rate"] == pytest.approx(0.1234)
@@ -445,9 +445,9 @@ async def test_energy_costs_overview_and_history_show_pricing(client):
             "unpriced_import_kwh": 0.5,
         },
     )
-    (row,) = (await client.get("/api/tariff/history")).json()["periods"]
+    (row,) = (await client.get("/api/tariff/history?gateway=default")).json()["periods"]
     assert row["pricing_kind"] == "dynamic" and row["unpriced_import_kwh"] == 0.5
-    csv = (await client.get("/api/tariff/history.csv")).text
+    csv = (await client.get("/api/tariff/history.csv?gateway=default")).text
     assert "pricing_label" in csv.splitlines()[0] and "AEMO NEM NSW1" in csv
 
 

@@ -133,8 +133,16 @@ with a control character or `\` is refused with `422` and what is wrong with it.
 refusal is logged in the bridge's log (Logs tab), with the user. A gateway that exists but
 is stopped still answers `404 … not running` on routes that need it polling.
 
-`GET /api/points` is the same for the **default** gateway only. Use the per-gateway route
-when you have more than one, or a demo.
+`GET /api/points?gateway=<ID or serial>` is the same for the gateway it names.
+
+**Every route names its gateway.** No route falls back to the gateway with ID `default`
+(#296 item 43). Routes outside `/api/gateways/{gw_id}/…` take the gateway as
+`?gateway=` (points, battery limits, sensors, condition tests, point history, energy,
+tariff and solar), `?gateway_id=` (gateway address and test, SunSpec models, catalog,
+export, model read and refresh) or a `"gateway_id"` body field (`/api/command`,
+`/api/sequence/execute`, which also takes `"all"`, and `/api/reader/run`). A request that
+names none gets `400` and *"This request names no gateway: add …"*; a malformed one `422`
+and an unknown one `404`, as above. Each refusal is logged with the user.
 
 ### Send a battery command
 
@@ -165,8 +173,8 @@ trusted. An unknown slug is refused, not ignored.
 | `self_reserve_pct`, `tou_reserve_pct` | 0–100 | Writes that mode's reserve now. |
 | `battery_command_power_pct` | — | Removed in 0.2.8: refused unless sent by a schedule saved before then. |
 
-`POST /api/command` takes the same body and always targets the **default** gateway. It is
-kept for older clients.
+`POST /api/command` takes the same body plus `"gateway_id"` (ID or serial), which is
+required. It is kept for older clients.
 
 What the commands do to the aGate, and why to leave its mode alone, is in
 [Battery dispatch: best practice](../user/battery-dispatch-best-practice.md).

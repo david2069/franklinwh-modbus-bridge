@@ -19,6 +19,7 @@ from franklinwh_bridge.api.auth import (
     require_capability,
 )
 from franklinwh_bridge.api.disclaimer_api import _client_ip
+from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.api.gateways_api import require_known_slug, send_user_command
 from franklinwh_bridge.gateway.modules import API_ONLY_ROLES
 
@@ -51,6 +52,8 @@ def _cache_bust() -> str:
 
 class CommandRequest(BaseModel):
     slug: str
+    # The gateway, by ID or serial. Required: no silent default (#296 item 43).
+    gateway_id: str | None = None
     # See GatewayCommandRequest: numeric commands (watts/seconds/percent)
     # must not 422 just because the client sent a JSON number.
     value: str
@@ -179,30 +182,25 @@ async def send_command(
     request: Request,
     _user: dict = Depends(_REQUIRE_CONTROL),
 ):
-    """Dispatch a control command (same path as MQTT commands).
-
-    Defaults to the "default" gateway. Use POST /api/gateways/{gw_id}/command
-    for gateway-specific commands (added in MG-3).
+    """Dispatch a control command (same path as MQTT commands) to the
+    gateway named by ``gateway_id`` in the body; 400 if none is named.
+    ``POST /api/gateways/{gw_id}/command`` does the same with the gateway in
+    the path.
     """
     require_known_slug(body.slug)
-    # Resolve command handler from registry (or legacy fallback)
+    gw_id = await named_gateway(request, body.gateway_id, '"gateway_id": ')
     registry = getattr(request.app.state, "registry", None)
-    command_handler = None
-    if registry:
-        inst = registry.get("default")
-        if inst:
-            command_handler = inst.command_handler
-    if command_handler is None:
-        command_handler = getattr(request.app.state, "command_handler", None)
+    inst = registry.get(gw_id) if registry else None
+    command_handler = inst.command_handler if inst else None
     if command_handler is None:
         logger.warning(
-            "Command %s=%s refused: the default gateway has no command handler "
-            "(not configured or not running)", body.slug, body.value,
+            "Command %s=%s refused: gateway %s has no command handler "
+            "(not configured or not running)", body.slug, body.value, gw_id,
         )
         return {"ok": False, "slug": body.slug, "result": "Command handler not available"}
 
     outcome = await send_user_command(
-        request, "default", command_handler, body.slug, body.value, _user)
+        request, gw_id, command_handler, body.slug, body.value, _user)
     # This call's outcome, never the handler's leftover state (#97).
     return {"ok": outcome["ok"], "slug": body.slug, "result": outcome["result"]}
 

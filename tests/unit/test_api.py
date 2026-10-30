@@ -84,7 +84,7 @@ async def test_config_all(client):
 
 
 async def test_models_empty(client):
-    resp = await client.get("/api/models")
+    resp = await client.get("/api/models?gateway_id=default")
     assert resp.status_code == 200
     assert resp.json()["models"] == []
 
@@ -98,7 +98,7 @@ async def test_models_after_capture(client):
     gateway_id = app.state.gateway_id
     await capture_catalog(device_info, db, gateway_id)
 
-    resp = await client.get("/api/models")
+    resp = await client.get("/api/models?gateway_id=default")
     assert resp.status_code == 200
     models = resp.json()["models"]
     assert len(models) == 17
@@ -110,7 +110,7 @@ async def test_models_after_capture(client):
 
 
 async def test_points_empty(client):
-    resp = await client.get("/api/points")
+    resp = await client.get("/api/points?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["points"] == {}
@@ -123,24 +123,26 @@ async def test_points_after_publish(client, default_gateway_bus):
     bus = await default_gateway_bus(app)
     await bus.publish(sample)
 
-    resp = await client.get("/api/points")
+    resp = await client.get("/api/points?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["points"]["soc"] == 85
     assert data["quality"] == "ok"
 
 
-async def test_single_point(client):
+async def test_single_point(client, default_gateway_bus):
     sample = Sample.now("default", {"soc": 85, "power": -1200})
-    await app.state.sample_bus.publish(sample)
+    # The named gateway's own bus (#296 item 43), never the global one.
+    bus = await default_gateway_bus(app)
+    await bus.publish(sample)
 
-    resp = await client.get("/api/points/soc")
+    resp = await client.get("/api/points/soc?gateway=default")
     assert resp.status_code == 200
     assert resp.json()["value"] == 85
 
 
 async def test_single_point_not_found(client):
-    resp = await client.get("/api/points/nonexistent")
+    resp = await client.get("/api/points/nonexistent?gateway=default")
     assert resp.status_code == 404
 
 
@@ -151,12 +153,12 @@ async def test_logs(client):
 
 
 async def test_refresh_models_no_reader(client):
-    resp = await client.post("/api/models/refresh")
+    resp = await client.post("/api/models/refresh?gateway_id=default")
     assert resp.status_code == 503
 
 
 async def test_sensors_endpoint(client):
-    resp = await client.get("/api/sensors")
+    resp = await client.get("/api/sensors?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     ids = {s["id"] for s in data["sensors"]}
@@ -171,7 +173,7 @@ async def test_scheduler_evaluate_endpoint(client):
     # time.month always resolves from the clock (no gateway points needed), so
     # this exercises the full evaluate path end to end.
     body = {"match": "ALL", "conditions": [{"sensor": "time.month", "op": ">=", "value": 1}]}
-    resp = await client.post("/api/scheduler/evaluate", json=body)
+    resp = await client.post("/api/scheduler/evaluate?gateway=default", json=body)
     assert resp.status_code == 200
     data = resp.json()
     assert data["result"] is True
@@ -190,7 +192,7 @@ async def test_scheduler_monitor_endpoint(client):
 
 async def test_scheduler_evaluate_fails_closed_on_missing_sensor(client):
     body = {"match": "ALL", "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 50}]}
-    resp = await client.post("/api/scheduler/evaluate", json=body)
+    resp = await client.post("/api/scheduler/evaluate?gateway=default", json=body)
     assert resp.status_code == 200
     data = resp.json()
     # no live poll data in a hardware-less test → soc is None → fails closed
