@@ -935,12 +935,18 @@ document.addEventListener('alpine:init', () => {
       this.refresh();
     },
 
-    // Until the user picks one, view a gateway that is actually producing
-    // data: with the primary gateway unconfigured (or offline) and a mock or
-    // second aGate polling, showing an empty placeholder with empty cards is the
-    // least useful thing we could do.
+    // Until the user picks one, the page shows the designated default (#296
+    // item 43; the list puts it first). If it isn't producing data, view a
+    // gateway that is: with the default unconfigured (or offline) and a mock
+    // or second aGate polling, showing an empty placeholder with empty cards
+    // is the least useful thing we could do.
     autoSelectGateway() {
       if (this.gatewayChosen) return;
+      const dflt = this.gatewayList.find(g => g.is_default) || this.gatewayList[0];
+      if (dflt && dflt.polling) {
+        if (dflt.id !== this.activeGateway) { this.activeGateway = dflt.id; this.refresh(); }
+        return;
+      }
       const current = this.gatewayList.find(g => g.id === this.activeGateway);
       if (current && current.polling) return;
       const polling = this.gatewayList.find(g => g.polling);

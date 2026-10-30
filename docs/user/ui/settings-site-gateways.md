@@ -16,9 +16,16 @@ Cards on this page:
 ## Gateways
 
 Each gateway is one FranklinWH aGate reached over Modbus TCP, or a **mock** (simulated)
-gateway. The first one, ID `default`, is the **primary** gateway. It always exists and
-cannot be removed. On a new install its address is empty until you run the setup wizard
-or edit it.
+gateway. The first one, ID `default`, is the **primary** gateway: it owns the primary
+Home Assistant device. It always exists and can't be removed yet. On a new install its
+address is empty until you run the setup wizard or edit it.
+
+One gateway is the **default**: a designation, marked **default** in the table. It's
+listed first everywhere, and the page opens on it. At first it's the primary gateway; to
+choose another, open its **Edit** dialog and click **Make default**. Nothing else
+changes: every gateway still polls, publishes and runs its schedules, and no Home
+Assistant device or entity changes. If you remove the default gateway, the next one in
+the list becomes the default.
 
 At the top of the card: the number of gateways, **Run setup again** (reopens the setup
 wizard, admins only) and **+ Add Gateway**.
@@ -128,6 +135,11 @@ Modbus link. Every poll interval change is recorded (see [Admin actions](#admin-
 !!! note
     On a mock gateway, Test and Diagnose have nothing real to test, so their results are
     not meaningful (the screenshot shows ✗ marks for the demo).
+
+#### Default gateway
+
+**Make default** designates this gateway the default (see [Gateways](#gateways)); the
+result shows in the dialog. On the default gateway this section says so instead.
 
 #### Danger Zone
 

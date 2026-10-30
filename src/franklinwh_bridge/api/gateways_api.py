@@ -30,6 +30,7 @@ from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import dispatch_outcomes
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store.db import (
+    DEFAULT_ID_UNDELETABLE,
     create_gateway,
     create_service,
     delete_gateway,
@@ -41,6 +42,7 @@ from franklinwh_bridge.store.db import (
     get_services,
     get_site_config,
     service_has_history,
+    set_default_gateway,
     start_new_plan,
     update_gateway,
     update_service,
@@ -954,9 +956,15 @@ async def patch_gateway(
 
 @router.delete("/gateways/{gw_id}")
 async def remove_gateway(gw_id: str, request: Request):
-    """Remove a gateway. Default gateway cannot be removed."""
+    """Remove a gateway. The row with ID 'default' can't be removed yet (D1);
+    if the designated default goes, the next gateway becomes the default."""
     db: aiosqlite.Connection = request.app.state.db
     registry = _registry(request)
+
+    # Refuse before stopping anything: the refusal used to come after the
+    # gateway had been stopped and its samples cleared.
+    if gw_id == "default":
+        raise HTTPException(403, DEFAULT_ID_UNDELETABLE)
 
     # Stop instance if running
     if registry.get(gw_id):
@@ -975,6 +983,19 @@ async def remove_gateway(gw_id: str, request: Request):
     if not ok:
         raise HTTPException(404, f"Gateway '{gw_id}' not found")
     return {"deleted": True}
+
+
+@router.post("/gateways/{gw_id}/default")
+async def make_default_gateway(
+    gw_id: str, request: Request, user: dict | None = _CURRENT_USER,
+):
+    """Designate the default gateway (#296 item 43): listed first, and the
+    page opens on it. A designation only; no gateway's identity changes."""
+    db: aiosqlite.Connection = request.app.state.db
+    if not await set_default_gateway(db, gw_id):
+        raise HTTPException(404, f"Gateway '{gw_id}' not found")
+    await _admin_action(request, user, gw_id, f"Gateway {gw_id} made the default")
+    return {"default": gw_id}
 
 
 # ── Gateway lifecycle ─────────────────────────────────────────
