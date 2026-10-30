@@ -23,6 +23,29 @@ lands, not backfilled later.
   them off (`status_notices` in `GET/PUT /api/alerts/settings`, whose fields are now
   each optional).
 
+### Changed
+
+- **`/api/mqtt/topics` names its gateway** (`?gateway=`; `400` without one), like the
+  other routes (#296 item 43). Its flat `topics` are that gateway's, empty if it isn't
+  publishing; it used to fall back to the first gateway.
+- **`/api/status` no longer describes only the gateway with ID `default`:** its poller
+  component lists every gateway by ID, and `?gateway=` adds one as the flat fields. It
+  still answers with no gateway named, since it is the add-on's health check.
+- **Settings → Site & Gateways:** a gateway the bridge has refused (a different aGate
+  answered, or its serial is another gateway's) shows a red **serial refused** label in
+  the table, with the reason on hover. It used to show only in the pop-up.
+- The REST API reference (`docs/dev/api-reference.md`, `openapi.json`) is regenerated
+  for this version.
+- The docs' top-bar gateway selector screenshot shows the current selector (All gateways…, each gateway with its state).
+
+### Fixed
+
+- **AEMO price fetch failures logged no reason** when the error had no text (a
+  timeout): the log now names the error.
+- **Log export over-masked the demo gateway:** its `mock` host and `MOCK-DEMO` serial
+  were masked, so every "mock" and "MOCK" in the export became a placeholder. A demo
+  gateway identifies no one and is no longer masked; real serials and addresses still are.
+
 ## [0.2.48] — 2026-10-30
 
 ### Added

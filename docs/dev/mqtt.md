@@ -60,11 +60,13 @@ For the default gateway the same entities sit under `fwh_mb/<serial8>/…` and
 To see everything a bridge publishes, with each topic:
 
 ```bash
-curl -s -b jar.txt http://192.0.2.10:8100/api/mqtt/topics
+curl -s -b jar.txt "http://192.0.2.10:8100/api/mqtt/topics?gateway=demo"
 ```
 
 It returns one block per publishing gateway (`gateways[]`, each with `short_id` and
 `topics[]`: slug, name, `ha_type`, source point, state, discovery and command topics).
+The flat `topics` and `short_id` are the named gateway's: empty if it isn't publishing.
+With no `?gateway=` it answers `400`.
 
 ## Discovery payload
 

@@ -169,7 +169,7 @@ async def test_mqtt_detect_broker_dev_mode(client):
 
 
 async def test_mqtt_topics_no_device_info(client):
-    resp = await client.get("/api/mqtt/topics")
+    resp = await client.get("/api/mqtt/topics?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["topics"] == [] or "note" in data
@@ -179,7 +179,7 @@ async def test_mqtt_topics_with_device_info(client):
     publisher = app.state.mqtt_publisher
     publisher.set_device_info(DeviceInfo(serial="10060006A02F00000001"))
 
-    resp = await client.get("/api/mqtt/topics")
+    resp = await client.get("/api/mqtt/topics?gateway=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["short_id"] == "00000001"
@@ -192,6 +192,21 @@ async def test_mqtt_topics_with_device_info(client):
     # Verify source annotation is included in API response
     soc_topic = next(t for t in topics if t["slug"] == "battery_soc")
     assert soc_topic["source"] == "713.SoC"
+
+
+async def test_mqtt_topics_names_its_gateway(client):
+    """#296 item 43: no silent fallback to the first gateway."""
+    app.state.mqtt_publisher.set_device_info(DeviceInfo(serial="10060006A02F00000001"))
+    resp = await client.get("/api/mqtt/topics")
+    assert resp.status_code == 400
+    assert "names no gateway: add ?gateway=" in resp.json()["detail"]
+    assert (await client.get("/api/mqtt/topics?gateway=nope")).status_code == 404
+    # A gateway that exists but isn't publishing: its own (empty) topics, not another's.
+    await client.post("/api/gateways", json={"gateway_id": "gw2", "name": "Two",
+                                             "host": "192.0.2.2"})
+    data = (await client.get("/api/mqtt/topics?gateway=gw2")).json()
+    assert (data["gateway_id"], data["topics"], data["entity_count"]) == ("gw2", [], 0)
+    assert [g["gateway_id"] for g in data["gateways"]] == ["default"]
 
 
 async def test_mqtt_test_connection_api(client):

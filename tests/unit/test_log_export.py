@@ -35,6 +35,20 @@ def test_redactor_masks_serials_and_ips_only():
     assert red.lines_changed == 2
 
 
+def test_a_demo_gateway_is_not_masked():
+    """Its "mock" host and MOCK-DEMO serial identify no one; masking them hid every
+    "mock" and "MOCK" in the export. A real gateway beside it still is masked."""
+    known = log_export.known_identifiers([
+        {"id": "demo", "host": "mock", "serial": "MOCK-DEMO", "mock": 1},
+        {"id": "gw1", "host": "192.0.2.10", "serial": SERIAL},
+    ])
+    red = log_export.Redactor(known)
+    line = "Gateway demo: connected to mock (serial MOCK-DEMO, firmware MOCK)"
+    assert red(line) == line
+    assert red(f"Connected to aGate {SERIAL} at 192.0.2.10:502") == (
+        "Connected to aGate <serial> at <ip>:502")
+
+
 @pytest.fixture
 async def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ALLOW_INSECURE_AUTH", "1")

@@ -1217,17 +1217,26 @@ async def lifespan(app: FastAPI):
 
 
 def _poller_health(registry: GatewayRegistry) -> dict:
-    """Build health data for the poller component."""
-    default = registry.get("default")
-    if default and default.poller:
-        p = default.poller
-        return {
-            "status": "running" if p.state.connected else "disconnected",
-            "polls_total": p.state.polls_total,
-            "last_poll_ts": p.state.last_poll_ts,
-            "last_error": p.state.last_error,
+    """Health data for the poller component: every gateway, by ID. It used to
+    describe the gateway with ID 'default' only (#296 item 43);
+    ``/api/status?gateway=`` picks one."""
+    gateways: dict[str, dict] = {}
+    for gw_id in registry.list_all():
+        inst = registry.get(gw_id)
+        p = inst.poller if inst else None
+        if p is None:
+            gateways[gw_id] = {"status": "not_running"}
+            continue
+        # A demo gateway's poller state carries only last_poll_ts: take
+        # "connected" from the gateway's own status, and leave what it lacks empty.
+        connected = getattr(p.state, "connected", inst.status.connected)
+        gateways[gw_id] = {
+            "status": "running" if connected else "disconnected",
+            "polls_total": getattr(p.state, "polls_total", None),
+            "last_poll_ts": getattr(p.state, "last_poll_ts", None),
+            "last_error": getattr(p.state, "last_error", None) or inst.status.last_error,
         }
-    return {"status": "not_configured"}
+    return {"gateways": gateways}
 
 
 app = FastAPI(

@@ -154,6 +154,16 @@ async def test_failure_returns_stale_then_none_never_raises():
     assert out["stale"] is True and out["price_c_kwh"] == 12.35
 
 
+async def test_failure_with_no_text_still_says_why(caplog):
+    """A timeout's text is empty: the log line named no reason at all."""
+    async def timeout() -> dict:
+        raise httpx.ReadTimeout("")
+
+    caplog.set_level("WARNING", logger="franklinwh_bridge.gateway.aemo_nem")
+    assert await NemSpotClient(fetcher=timeout).spot_price("NSW1") is None
+    assert "AEMO NEM fetch failed: ReadTimeout" in caplog.text
+
+
 async def test_region_missing_from_response_is_none():
     c = NemSpotClient(fetcher=_Fetcher(_summary()))
     assert await c.spot_price("TAS1") is None

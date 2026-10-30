@@ -46,6 +46,32 @@ async def test_status(client):
     assert "mqtt" in data["components"]
 
 
+async def test_status_lists_every_gateway_and_names_one_on_request(client):
+    """#296 item 43: the poller component is every gateway, not 'default' alone.
+    No gateway named still answers: it is the add-on's health check."""
+    poller = (await client.get("/api/status")).json()["components"]["poller"]
+    assert isinstance(poller["gateways"], dict) and "status" not in poller
+    named = (await client.get("/api/status?gateway=default")).json()["components"]["poller"]
+    assert named["gateway_id"] == "default"
+    assert named["status"] == named["gateways"].get("default", {"status": "not_running"})["status"]
+    assert (await client.get("/api/status?gateway=nope")).status_code == 404
+    assert (await client.get("/api/status?gateway=a%01b")).status_code == 422
+
+
+async def test_status_reports_a_demo_gateway(client):
+    """A demo's poller state has only last_poll_ts; that must not break the component."""
+    from franklinwh_bridge.main import app
+
+    resp = await client.post("/api/gateways", json={"gateway_id": "demo", "name": "Demo",
+                                                    "mock": True})
+    assert resp.status_code == 201
+    poller = (await client.get("/api/status?gateway=demo")).json()["components"]["poller"]
+    assert "error" not in poller, poller
+    assert poller["gateway_id"] == "demo"
+    assert poller["status"] == ("running" if app.state.registry.get("demo").status.connected
+                                else "disconnected")
+
+
 async def test_connectivity_endpoint(client):
     resp = await client.get("/api/health/connectivity")
     assert resp.status_code == 200

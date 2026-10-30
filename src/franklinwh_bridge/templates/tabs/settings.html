@@ -323,6 +323,11 @@
                 <span x-show="gw.mock" class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">mock</span>
                 <span x-show="gw.is_default" data-testid="gw-default-chip" title="The default gateway: listed first, and the page opens on it"
                       class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-cyan-500/20 text-cyan-300">default</span>
+                <!-- A different aGate answered, or its serial is another gateway's:
+                     the bridge has stopped talking to it. Stays until it's fixed,
+                     not only in the pop-up; hover for the reason. -->
+                <span x-show="gw.serial_refused" data-testid="gw-serial-refused" :title="gw.serial_refused"
+                      class="text-[9px] uppercase font-semibold ml-1 px-1 py-0.5 rounded bg-red-500/20 text-red-300">serial refused</span>
                 <span x-show="gw.description && gw.health !== 'unconfigured'" class="text-[10px] text-slate-600 ml-1" x-text="'— ' + gw.description"></span>
               </td>
               <td class="font-mono" :class="gw.health === 'unconfigured' ? 'text-amber-400' : 'text-slate-400'"
