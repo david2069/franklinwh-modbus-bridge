@@ -473,7 +473,7 @@ async def test_condition_sensors_reach_api_sensors(client):
     await client.put("/api/solar/settings", json={"pv_latitude": 12.34, "pv_longitude": 56.78})
     await client.get("/api/solar/forecast?gateway=default")  # warms the cache
     r = await client.get("/api/sensors?gateway=default")
-    if r.status_code != 200:  # automations module gate off in this env
+    if r.status_code == 403:  # automations module gate off in this env
         pytest.skip(f"/api/sensors unavailable: {r.status_code}")
     cat = {s["id"]: s for s in r.json()["sensors"]}
     assert "solar_forecast.tomorrow_kwh" in cat

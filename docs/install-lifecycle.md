@@ -41,7 +41,7 @@ them was defined against a full set of install paths, so each one left something
 | "Change namespace" reports 65 removed; 34–49 stay; duplicate devices | 0.2.4 feature, QoS 0 and unverified (#136, open) |
 | Fresh installs given `fwh_mb` before the user could choose | 0.2.4 (#121); PR #130 open |
 | Entities stay "available" with frozen values after stop or uninstall | no MQTT last-will (LWT) message and no offline message on stop (all versions) |
-| Deleted gateway's entities stay in HA | `DELETE /api/gateways/{id}` never removes anything (all versions) |
+| Deleted gateway's entities stay in HA | `DELETE /api/gateways/{id}` removed nothing (0.2.48 and earlier; from 0.2.49 it tombstones as E3 does, see E5) |
 | 19 of 65 demo entities "unknown" in HA | mock point names ≠ entity `stat_key` |
 | Branch tested in the add-on store ran the last release | `BRIDGE_REF` pin (#140) |
 
@@ -151,7 +151,7 @@ In-life events, each with a required outcome:
 | E2 | Demo is opt-in (wizard **and** API); labelled "(mock)"; entities have values. | wizard: off by default; **`POST /api/gateways` defaults publish_to_ha=True**; 19/65 entities unknown | M10, M11 |
 | E3 | Off → verified removal of config, state and availability; on → same unique_ids, so HA re-links entity_ids. | off: config tombstoned (QoS 0); state left; extra gateways get `offline` instead of an empty payload | M1, M5 |
 | E4 | Disable or stop → **unavailable** (offline), not removed. Same for `default`. | default: nothing; stop: nothing (stays `online`) | M2 |
-| E5 | Verified removal before the row is deleted (BR-23), dry run shown. | **nothing removed**; the UI says it will be | M5 |
+| E5 | Verified removal before the row is deleted (BR-23), dry run shown. | from 0.2.49: config tombstoned and availability `offline` just **after** the row is deleted, as E3 (QoS 0); state left; unverified; no dry run | M5 |
 | E6 | Verified removal of the old namespace (configs, state, availability; promoted points; v0.1.0 form), then publish under the new one; HA ends with one device per gateway. | QoS 0, unverified, enumerated topics only, state and availability left (#136) | M1, M3 |
 | E7 | Ask: purge from the old broker (if reachable) or leave; then publish to the new one. | old broker left as is | M4 scoped to a broker |
 | E8 | Disabled → offline; enabled → online. | holds | — |

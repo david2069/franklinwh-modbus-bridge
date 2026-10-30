@@ -321,8 +321,8 @@ async def test_route_settings_round_trip_and_spot(client):
     other = (await client.get("/api/tariff/spot?region=QLD1")).json()
     assert other["spot"]["price_c_kwh"] == 8.0 and other["active"]["buy_c_kwh"] == 12.35
     # Reaches the condition sensors via /api/sensors.
-    r = await client.get("/api/sensors")
-    if r.status_code != 200:  # automations module gate off in this env
+    r = await client.get("/api/sensors?gateway=default")  # every request names its gateway
+    if r.status_code == 403:  # automations module gate off in this env
         pytest.skip(f"/api/sensors unavailable: {r.status_code}")
     cat = {s["id"]: s for s in r.json()["sensors"]}
     assert cat["tariff.spot_price"]["value"] == 12.35

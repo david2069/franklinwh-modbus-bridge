@@ -1406,6 +1406,7 @@ function settingsTab() {
           if (this.editGw?.id === gw.id) this.editGw = null;  // close the edit modal it was opened from
           Alpine.store('app').toast(`Gateway "${gw.name}" removed`, 'info');  // after closing (#351)
           await this.loadGateways();
+          await Alpine.store('app').refresh();  // off it now if it was the one on view
         } else {
           this.deleteGwResult = { ok: false, msg: 'Remove failed: ' + (data?.detail || data?.error || 'unknown') };
         }

@@ -13,12 +13,6 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
-### Changed
-
-- **Logs → Battery-control writes has a Gateway column** (owner, 2026-10-30): which aGate
-  each write went to, by gateway name with its aGate serial below (the ID on hover). The
-  downloads already carried `gateway_id` and still carry no serial.
-
 ### Added
 
 - **Status notices in Home Assistant (owner, 2026-10-30; modelled on the Energipays
@@ -31,6 +25,9 @@ lands, not backfilled later.
 
 ### Changed
 
+- **Logs → Battery-control writes has a Gateway column** (owner, 2026-10-30): which aGate
+  each write went to, by gateway name with its aGate serial below (the ID on hover). The
+  downloads already carried `gateway_id` and still carry no serial.
 - **`/api/mqtt/topics` names its gateway** (`?gateway=`; `400` without one), like the
   other routes (#296 item 43). Its flat `topics` are that gateway's, empty if it isn't
   publishing; it used to fall back to the first gateway.
@@ -46,6 +43,14 @@ lands, not backfilled later.
 
 ### Fixed
 
+- **Removing a gateway left its device and entities in Home Assistant until the bridge
+  restarted** (#151): the delete never synced MQTT, unlike add and edit. It now removes
+  them at once, as switching Publish off does (config tombstoned, availability offline;
+  retained state stays on the broker). Found in 0.2.49 release testing, where the
+  Settings page then asked for the deleted gateway's topics and got 404.
+- **A page left on a removed gateway kept asking for it** (404 every 10 s) when no other
+  gateway was polling, or when the user had picked it. The page now moves to the default
+  gateway as soon as the one on view is gone; removing it in Settings does so at once.
 - **AEMO price fetch failures logged no reason** when the error had no text (a
   timeout): the log now names the error.
 - **Log export over-masked the demo gateway:** its `mock` host and `MOCK-DEMO` serial

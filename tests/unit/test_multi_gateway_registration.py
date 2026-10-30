@@ -84,3 +84,33 @@ def test_every_gateway_is_named_by_its_short_serial():
     # Distinct identifiers: never one merged device.
     ids = {d.ha_device_block()["identifiers"][0] for d in (primary, extra, mock)}
     assert len(ids) == 3
+
+
+async def test_removing_a_gateway_takes_its_device_out_of_home_assistant(started, monkeypatch):
+    """DELETE /api/gateways/{id} now syncs MQTT like add and edit do: the deleted
+    gateway's device is tombstoned at once, not left published until a restart."""
+    app = started
+    pub = app.state.mqtt_publisher
+    inst = await _add_real_gateway(app, "shed", monkeypatch)
+    inst.device_info = DeviceInfo(serial="TESTSERIAL00000002", gateway_id="shed")
+    await app.state.sync_mqtt_devices()
+    assert pub.get_device("shed") is not None
+
+    calls = []
+    real_unregister = pub.unregister_device
+
+    async def unregister(gw_id, tombstone=True):
+        calls.append((gw_id, tombstone))
+        await real_unregister(gw_id, tombstone=tombstone)
+
+    async def stop(gw_id):
+        return None
+
+    monkeypatch.setattr(pub, "unregister_device", unregister)
+    monkeypatch.setattr(app.state.registry, "stop_gateway", stop)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete("/api/gateways/shed")
+    assert resp.status_code == 200, resp.text
+    assert ("shed", True) in calls
+    assert pub.get_device("shed") is None
