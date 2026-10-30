@@ -13,7 +13,7 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
-## [0.2.49] — 2026-10-30
+## [0.2.49] — 2026-10-31
 
 ### Added
 
