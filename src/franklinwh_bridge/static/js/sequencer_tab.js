@@ -27,7 +27,7 @@ function sequencerTab() {
     validationError: null,
     showSyntaxRef: false,
     editing: false,
-    seqGateway: 'default',  // target gateway: 'default', gateway_id, or 'all'
+    seqGateway: '',  // target gateway: a gateway_id or 'all'; starts on the default one
 
     // Import dialog (#294): fetch/paste → check → preview → save. Never runs.
     showImport: false,

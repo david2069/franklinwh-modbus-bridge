@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **A designated default gateway (#296 item 43):** **Make default** in Edit Gateway marks
+  one gateway the default (migration 63, `POST /api/gateways/{id}/default`, logged as an
+  admin action). It's listed first, marked **default** in the gateway table, and the page
+  opens on it; the Sequencer starts on it. A designation only: the gateway with ID
+  `default` keeps its Home Assistant device and topics. Removing the default gateway makes
+  the next one the default.
+
 ### Changed
 
 - **Every API request names its gateway (#296 item 43):** routes that used the gateway
@@ -27,6 +36,13 @@ lands, not backfilled later.
   the default isn't polling, as the main page does; it used to read and command
   `default` only. **REST clients that call these routes without a gateway must add
   one.**
+
+### Fixed
+
+- **Removing the gateway with ID `default`** stopped it and cleared its samples before
+  answering 403; it's now refused first, with the reason (it owns the primary Home
+  Assistant device; removing it waits for a later release).
+- **The Sequencer listed the default gateway twice** ("Primary aGate" and its name).
 
 ## [0.2.47] — 2026-10-30
 

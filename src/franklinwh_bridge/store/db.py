@@ -46,9 +46,18 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 62
+CURRENT_SCHEMA_VERSION = 63
 
 MIGRATIONS: dict[int, str] = {
+    63: """
+    -- The designated default gateway (#296 item 43): always listed first, and
+    -- the page opens on it. A designation only: the gateway with ID 'default'
+    -- keeps its HA identity whichever gateway is designated. Marks the first
+    -- gateway in today's order when none is marked yet.
+    UPDATE gateways SET is_default = 1
+     WHERE id = (SELECT id FROM gateways ORDER BY display_order, id LIMIT 1)
+       AND NOT EXISTS (SELECT 1 FROM gateways WHERE is_default = 1);
+    """,
     62: """
     -- Modbus write audit trail (#342 part 1): every SunSpec write as sent and
     -- as answered. values = JSON list of the raw register words (int16).
@@ -1217,6 +1226,7 @@ MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
         ("billing_periods", "unpriced_import_kwh", "REAL NOT NULL DEFAULT 0"),
         ("billing_periods", "unpriced_export_kwh", "REAL NOT NULL DEFAULT 0"),
     ],
+    63: [("gateways", "is_default", "INTEGER NOT NULL DEFAULT 0")],
 }
 
 
@@ -1432,18 +1442,47 @@ async def load_control_state(
 
 # ── Gateway CRUD ──────────────────────────────────────────────
 
+#: The row with ID 'default' owns the primary Home Assistant device and its
+#: topics, and start-up recreates it; deleting it waits for the purge release
+#: (D1, #296 item 43). Any other gateway, designated default or not, can go.
+DEFAULT_ID_UNDELETABLE = (
+    "The gateway with ID 'default' can't be deleted yet: it owns the primary "
+    "Home Assistant device and topics. That waits for a later release."
+)
+
 
 async def get_gateways(db: aiosqlite.Connection) -> list[dict]:
-    """List all gateways."""
+    """List all gateways, the designated default first (#296 item 43).
+
+    When none is marked (a fresh install creates its first gateway after the
+    migrations run), the first in order is the default and is reported so.
+    """
     db.row_factory = aiosqlite.Row
     try:
         rows = []
-        async with db.execute("SELECT * FROM gateways ORDER BY display_order, id") as cursor:
+        async with db.execute(
+            "SELECT * FROM gateways ORDER BY is_default DESC, display_order, id"
+        ) as cursor:
             async for row in cursor:
                 rows.append(dict(row))
+        if rows and not any(r.get("is_default") for r in rows):
+            rows[0]["is_default"] = 1
         return rows
     finally:
         db.row_factory = aiosqlite.Row
+
+
+async def set_default_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
+    """Designate ``gateway_id`` the default; the mark moves off any other.
+    Returns False if there is no such gateway."""
+    if await get_gateway(db, gateway_id) is None:
+        return False
+    await db.execute(
+        "UPDATE gateways SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END",
+        (gateway_id,),
+    )
+    await db.commit()
+    return True
 
 
 async def get_gateway(db: aiosqlite.Connection, gateway_id: str) -> dict | None:
@@ -1537,7 +1576,7 @@ async def delete_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
     Delete them in dependency order first, then purge metrics, then the row.
     """
     if gateway_id == "default":
-        raise ValueError("Cannot delete the default gateway")
+        raise ValueError(DEFAULT_ID_UNDELETABLE)
 
     # device_points references device_models — delete points before models.
     with contextlib.suppress(aiosqlite.OperationalError):
@@ -1556,6 +1595,12 @@ async def delete_gateway(db: aiosqlite.Connection, gateway_id: str) -> bool:
             )
 
     cur = await db.execute("DELETE FROM gateways WHERE id = ?", (gateway_id,))
+    # The designated default went: the next in order becomes the default.
+    await db.execute(
+        "UPDATE gateways SET is_default = 1 "
+        "WHERE id = (SELECT id FROM gateways ORDER BY display_order, id LIMIT 1) "
+        "AND NOT EXISTS (SELECT 1 FROM gateways WHERE is_default = 1)"
+    )
     await db.commit()
     return cur.rowcount > 0
 
