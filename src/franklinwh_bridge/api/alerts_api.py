@@ -11,7 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from franklinwh_bridge import alert_delivery
+from franklinwh_bridge import alert_delivery, status_notices
 from franklinwh_bridge.api.auth import require_auth, require_role
 from franklinwh_bridge.store import alerts as alert_store
 
@@ -87,10 +87,14 @@ class AlertSettings(BaseModel):
     ha_configured: bool = False
     #: The standing warning the settings page shows while the HA channel is off.
     warning: str | None = None
+    #: Bridge started/stopping and gateway paused/resumed notices to HA (on by default).
+    status_notices: bool = True
 
 
 class AlertSettingsUpdate(BaseModel):
-    ha_channel: bool
+    """Each field is optional: only those given change."""
+    ha_channel: bool | None = None
+    status_notices: bool | None = None
 
 
 async def _settings(request: Request) -> AlertSettings:
@@ -102,7 +106,8 @@ async def _settings(request: Request) -> AlertSettings:
         warning = "Critical alerts reach only the bridge UI."
     elif not configured:
         warning = "No Home Assistant is set up: critical alerts reach only the bridge UI."
-    return AlertSettings(ha_channel=on, ha_configured=configured, warning=warning)
+    return AlertSettings(ha_channel=on, ha_configured=configured, warning=warning,
+                         status_notices=await status_notices.status_notices_on(_db(request)))
 
 
 @router.get("/alerts/settings", response_model=AlertSettings,
@@ -115,5 +120,8 @@ async def get_alert_settings(request: Request) -> AlertSettings:
 @router.put("/alerts/settings", response_model=AlertSettings, dependencies=[Depends(_ADMIN)])
 async def put_alert_settings(body: AlertSettingsUpdate, request: Request) -> AlertSettings:
     """Switch HA notifications on or off (admin). Off never hides the bridge's modal."""
-    await alert_delivery.set_ha_channel(_db(request), body.ha_channel)
+    if body.ha_channel is not None:
+        await alert_delivery.set_ha_channel(_db(request), body.ha_channel)
+    if body.status_notices is not None:
+        await status_notices.set_status_notices(_db(request), body.status_notices)
     return await _settings(request)

@@ -160,7 +160,8 @@ async def client(tmp_path, monkeypatch):
 async def test_settings_api(client):
     await client.post("/api/auth/login", json={"username": "vee", "password": "pw"})
     r = await client.get("/api/alerts/settings")
-    assert r.json() == {"ha_channel": True, "ha_configured": True, "warning": None}
+    assert r.json() == {"ha_channel": True, "ha_configured": True, "warning": None,
+                        "status_notices": True}
     assert (await client.put("/api/alerts/settings", json={"ha_channel": False})
             ).status_code == 403
     await client.post("/api/auth/login", json={"username": "root", "password": "pw"})

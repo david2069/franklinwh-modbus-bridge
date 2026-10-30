@@ -32,6 +32,26 @@ until it is on again.
 The per-gateway switch is the same setting as **Publish this gateway to Home Assistant**
 in the [Edit Gateway](settings-site-gateways.md#edit-gateway) dialog.
 
+## Status notices
+
+One switch, **on** by default. While it's on, the bridge posts a notification in Home
+Assistant (its notification panel, the bell) when:
+
+| When | Notification | Says |
+|---|---|---|
+| The bridge has started | *FranklinWH Modbus Bridge: started* | The version, how many gateways it is polling and how often, and any that aren't polling. |
+| The bridge is shutting down | *FranklinWH Modbus Bridge: stopped* | Polling stops and any battery command is released. |
+| A gateway is paused with **Stop** | *FranklinWH Modbus Bridge: <gateway> paused* | Who paused it. It stays paused across restarts until someone presses **Start**. |
+| A paused gateway polls again (**Start**, or **Restart** of a paused gateway) | *FranklinWH Modbus Bridge: <gateway> polling* | Who started it. |
+
+The bridge's notice replaces its previous one, and each gateway has one of its own, so
+they don't pile up. Each notice is sent once and is also a line in the
+[app log](logs.md), sent or not, with the reason when it wasn't sent: the switch is
+off, no Home Assistant is set up, or Home Assistant didn't answer.
+
+These are information only. Critical alerts are separate and are sent whatever this
+switch says.
+
 ## MQTT Broker
 
 The connection to the MQTT broker that Home Assistant listens to.
