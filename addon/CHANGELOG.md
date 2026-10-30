@@ -7,6 +7,24 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.48 — 2026-10-30
+
+### Added
+- **A default gateway.** **Make default** in Edit Gateway marks one gateway as
+  the default. It's listed first with a **default** tag, and the page opens on it.
+  Removing it makes the next gateway the default.
+
+### Changed
+- **Every API request must name its gateway.** A request that names none is
+  refused with the reason, instead of quietly using the first gateway. The web
+  pages already name it. Scripts that call the API without a gateway must add one.
+- **Logs has two sub-tabs**, **App log** and **Battery-control writes**, each
+  with its own link.
+
+### Fixed
+- Removing the gateway with ID `default` is refused before anything is stopped.
+- The Sequencer listed the default gateway twice.
+
 ## 0.2.47 — 2026-10-30
 
 ### Fixed

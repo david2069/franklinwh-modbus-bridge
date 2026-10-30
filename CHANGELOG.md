@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.48] — 2026-10-30
+
 ### Added
 
 - **A designated default gateway (#296 item 43):** **Make default** in Edit Gateway marks
