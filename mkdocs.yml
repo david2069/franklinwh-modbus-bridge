@@ -139,6 +139,7 @@ nav:
     - "Data in: HA entities over WebSocket": dev/ha-websocket.md
     - "Use case: Scheduler integration": dev/scheduler-integration.md
     - Scheduler test plan: dev/scheduler-test-plan.md
+    - Polling and query inventory: dev/polling-inventory.md
   - Policies:
     - Install lifecycle: install-lifecycle.md
     - Issue policy: issue-policy.md
