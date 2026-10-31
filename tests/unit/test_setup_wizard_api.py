@@ -263,6 +263,41 @@ async def test_wizard_real_path_end_to_end(fresh_client, monkeypatch):
     assert (await client.get("/api/setup/state")).json()["state"] == "done_real"
 
 
+async def test_scan_sweeps_each_port_asked(fresh_client, monkeypatch):
+    """#420: search assumed 502; the gateway emulator listens on 5020 and up."""
+    swept: list[tuple[str, int]] = []
+
+    def fake_scan(subnet, *, port, port_check, on_result, allow_public=False, **kw):
+        swept.append((subnet, port))
+        if port == 5021 and port_check("192.168.77.30", port, 0.3):
+            on_result(discovery.DiscoveryResult(
+                host="192.168.77.30", port=port, status=discovery.SUNSPEC,
+                manufacturer="FranklinWH", model="aGate X", serial="MOCK0001"))
+        return []
+
+    monkeypatch.setattr(discovery, "scan", fake_scan)
+    monkeypatch.setattr(discovery, "port_open", lambda h, p, t: True)
+
+    resp = await fresh_client.post("/api/setup/scan", json={
+        "subnets": ["192.168.77.0/24"], "ports": [502, 5020, 5021, 5021]})
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["ports"] == [502, 5020, 5021]
+    assert resp.json()["hosts_total"] == 254 * 3
+    body = await _wait_scan(fresh_client, resp.json()["scan_id"])
+    assert swept == [("192.168.77.0/24", 502), ("192.168.77.0/24", 5020),
+                     ("192.168.77.0/24", 5021)]
+    assert [(r["host"], r["port"], r["kind"]) for r in body["results"]] == [
+        ("192.168.77.30", 5021, "agate")]
+
+    # One port as before, and the limits.
+    resp = await fresh_client.post("/api/setup/scan", json={"subnets": ["192.168.77.0/24"]})
+    assert resp.json()["ports"] == [502]
+    too_many = {"subnets": ["192.168.77.0/24"], "ports": list(range(5020, 5029))}
+    assert (await fresh_client.post("/api/setup/scan", json=too_many)).status_code == 422
+    bad = {"subnets": ["192.168.77.0/24"], "ports": [0]}
+    assert (await fresh_client.post("/api/setup/scan", json=bad)).status_code == 422
+
+
 async def test_wizard_scan_demo_skip_and_checklist(fresh_client, monkeypatch):
     client = fresh_client
     swept: list[str] = []

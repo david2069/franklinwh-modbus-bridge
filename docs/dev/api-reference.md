@@ -1610,6 +1610,7 @@ Request body (`application/json`): **ScanRequest**
 |---|---|---|---|
 | `subnets` | list of string | yes |  |
 | `port` | integer | no | 502 |
+| `ports` | list of integer or null | no |  |
 | `unit_id` | integer | no | 1 |
 
 ### `GET /api/setup/scan/{scan_id}` { #get-api-setup-scan-scan-id }

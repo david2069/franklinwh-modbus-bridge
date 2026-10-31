@@ -85,6 +85,14 @@
                   <p x-show="!subnets.length && !busy" class="text-[11px] text-slate-500">
                     The bridge couldn't tell which network your aGate is on. Enter its subnet, or use <em>Enter address</em>.
                   </p>
+                  <label class="block text-xs text-slate-400">Modbus port(s)
+                    <input type="text" x-model="portInput" placeholder="502" inputmode="numeric"
+                           data-testid="scan-ports" class="form-control mt-1 block w-40" :disabled="busy">
+                  </label>
+                  <p class="text-[11px] text-slate-500">
+                    An aGate answers on 502. Others, comma-separated or as a range, e.g.
+                    <span class="font-mono">502, 5020-5025</span> (up to 8).
+                  </p>
                   <button type="button" @click="startScan()" :disabled="busy"
                           class="btn btn-sm btn-primary disabled:opacity-50">
                     <span x-text="scan && scan.status === 'running' ? 'Searching…' : 'Search'"></span>
@@ -101,18 +109,19 @@
                                  class="mt-0.5 w-4 h-4 accent-cyan-500 shrink-0">
                           <span>
                             <span class="font-semibold text-cyan-300">FranklinWH aGate</span>
-                            <span class="font-mono text-xs text-slate-400" x-text="row.host"></span><br>
+                            <span class="font-mono text-xs text-slate-400" x-text="hostPort(row)"></span><br>
                             <span class="text-xs text-slate-400" x-text="rowText(row)"></span>
                           </span>
                         </label>
                       </template>
                       <template x-for="row in scanOthers" :key="row.host + ':' + row.port">
                         <p class="text-xs text-slate-500 px-3">
-                          <span class="font-mono" x-text="row.host"></span> — <span x-text="rowText(row)"></span>
+                          <span class="font-mono" x-text="hostPort(row)"></span> — <span x-text="rowText(row)"></span>
                         </p>
                       </template>
                       <p x-show="scan.status === 'done' && !scan.results.length" class="text-xs text-amber-300">
-                        No aGate found on <span x-text="scan.subnets.join(', ')"></span>.
+                        No aGate found on <span x-text="scan.subnets.join(', ')"></span>,
+                        port <span x-text="(scan.ports || [502]).join(', ')"></span>.
                         Check the list under <em>Before you start</em>, or try <em>Enter address</em>.
                       </p>
                     </div>

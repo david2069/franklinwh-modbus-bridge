@@ -26,7 +26,7 @@ from typing import Any, Literal
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Request
 from franklinwh_modbus import discovery
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from franklinwh_bridge.api.auth import _is_ingress, is_guessable, require_role
 from franklinwh_bridge.api.gateways_api import (
@@ -71,6 +71,9 @@ SETUP_USE_HA_KEY = "setup_use_ha"
 #: Tailscale's CGNAT range is not "private", but an aGate reached over a tailnet
 #: lives there — scanned only when the user types it.
 _TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
+
+#: Ports one search may sweep: each is a full pass over every subnet.
+MAX_SCAN_PORTS = 8
 
 #: Finished scans kept for polling; older ones are dropped.
 _MAX_SCANS = 5
@@ -207,9 +210,9 @@ def _configured_row(host: str, port: int, gw: dict) -> dict[str, Any]:
 
 def _host_key(row: dict) -> tuple:
     try:
-        return (0, int(ipaddress.ip_address(row["host"])))
+        return (0, int(ipaddress.ip_address(row["host"])), row.get("port", 0))
     except ValueError:
-        return (1, row["host"])
+        return (1, row["host"], row.get("port", 0))
 
 
 def _resolve(host: str) -> str:
@@ -243,7 +246,7 @@ async def _polled_hosts(request: Request) -> dict[tuple[str, int], dict]:
 class _Scan:
     id: str
     subnets: list[str]
-    port: int
+    ports: list[int]
     hosts_total: int
     hosts_done: int = 0
     status: str = "running"  # running | done | error
@@ -258,6 +261,7 @@ class _Scan:
             return {
                 "scan_id": self.id,
                 "subnets": self.subnets,
+                "ports": self.ports,
                 "status": self.status,
                 "hosts_total": self.hosts_total,
                 "hosts_done": self.hosts_done,
@@ -285,10 +289,11 @@ def _run_scan(scan: _Scan, plans: list[tuple[str, bool]], skip: dict, unit_id: i
             scan.results.append(result_row(res))
 
     try:
-        for subnet, allow_public in plans:
+        for (subnet, allow_public), port in (
+                (plan, port) for port in scan.ports for plan in plans):
             discovery.scan(
                 subnet,
-                port=scan.port,
+                port=port,
                 unit_id=unit_id,
                 probe_timeout=_SCAN_PROBE_TIMEOUT_S,
                 allow_public=allow_public,
@@ -306,8 +311,21 @@ def _run_scan(scan: _Scan, plans: list[tuple[str, bool]], skip: dict, unit_id: i
 class ScanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     subnets: list[str] = Field(..., min_length=1, max_length=4)
+    #: One port: the aGate's Modbus TCP server listens on 502.
     port: int = Field(default=502, ge=1, le=65535)
+    #: Several ports, each swept on every subnet (#420): an aGate behind port
+    #: forwarding, or the gateway emulator (5020 and up). Replaces ``port``.
+    ports: list[int] | None = Field(default=None, min_length=1, max_length=MAX_SCAN_PORTS)
     unit_id: int = Field(default=1, ge=1, le=247)
+
+    @field_validator("ports")
+    @classmethod
+    def _valid_ports(cls, v: list[int] | None) -> list[int] | None:
+        if v is None:
+            return v
+        if any(not 1 <= p <= 65535 for p in v):
+            raise ValueError("each port must be 1-65535")
+        return list(dict.fromkeys(v))
 
 
 def _scans(request: Request) -> dict[str, _Scan]:
@@ -322,11 +340,12 @@ async def start_scan(body: ScanRequest, request: Request):
     """Search subnets for aGates in the background; poll ``GET /scan/{id}``."""
     plans = [normalise_subnet(s) for s in body.subnets]
     plans = list(dict.fromkeys(plans))  # de-duplicate, keep order
-    total = sum(ipaddress.ip_network(s).num_addresses - 2 for s, _ in plans)
+    ports = body.ports or [body.port]
+    total = sum(ipaddress.ip_network(s).num_addresses - 2 for s, _ in plans) * len(ports)
     scan = _Scan(
         id=uuid.uuid4().hex[:12],
         subnets=[s for s, _ in plans],
-        port=body.port,
+        ports=ports,
         hosts_total=total,
     )
     scans = _scans(request)
@@ -338,7 +357,8 @@ async def start_scan(body: ScanRequest, request: Request):
     task = asyncio.create_task(asyncio.to_thread(_run_scan, scan, plans, skip, body.unit_id))
     # Keep a reference so the task isn't garbage-collected mid-run.
     request.app.state.setup_scan_task = task
-    logger.info("Setup scan %s started: %s", scan.id, ", ".join(scan.subnets))
+    logger.info("Setup scan %s started: %s, port %s", scan.id, ", ".join(scan.subnets),
+                ", ".join(str(p) for p in ports))
     return scan.to_dict()
 
 

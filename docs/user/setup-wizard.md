@@ -22,7 +22,11 @@ On a fresh install the bridge first shows the **Unofficial software** notice: ti
 
     The wizard proposes the subnet Home Assistant (or the host) is on. Add another,
     e.g. `192.0.2.0/24`, if the aGate is on a different network or reached over a VPN.
-    A found aGate shows its model, serial and firmware.
+    **Modbus port(s)** is 502, the aGate's port. To search other ports too, list them or
+    give a range, e.g. `502, 5020-5025` (up to 8): an aGate behind port forwarding, or the
+    gateway emulator, which listens on 5020 and up. Each port is a full pass over the
+    subnets, so more ports take longer.
+    A found aGate shows its model, serial and firmware, and its port when that isn't 502.
 
     ![Search my network](../images/wizard/wizard-search.png)
 
