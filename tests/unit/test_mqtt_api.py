@@ -148,7 +148,8 @@ async def test_mqtt_status_api(client):
     assert "entity_count" in data
 
 
-async def test_mqtt_reconnect_api(client):
+async def test_mqtt_reconnect_api(client, monkeypatch):
+    monkeypatch.setenv("MQTT_HOST", "broker.example")  # a broker is set (#414)
     resp = await client.post("/api/mqtt/reconnect")
     assert resp.status_code == 200
     assert resp.json()["status"] == "reconnecting"

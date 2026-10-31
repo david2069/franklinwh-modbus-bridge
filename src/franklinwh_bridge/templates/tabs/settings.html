@@ -768,6 +768,12 @@
            target="_blank" rel="noopener" class="text-cyan-300 underline">Mosquitto broker app</a>
         — the bridge connects to it automatically.
       </div>
+      <div x-show="$store.app.mqttBroker?.source === 'none' && !$store.app.mqttBroker?.waiting_for_broker" x-cloak
+           data-testid="mqtt-no-broker"
+           class="mb-3 text-xs rounded border px-3 py-2 bg-slate-500/10 border-slate-700 text-slate-300">
+        No MQTT broker set, so nothing is published to Home Assistant. MQTT is optional.
+        To publish, enter a broker below and <em>Save &amp; Reconnect</em>, or set <code>MQTT_HOST</code>.
+      </div>
       <div x-show="$store.app.mqttBroker?.source === 'supervisor'" x-cloak
            class="mb-3 text-xs text-slate-500">Configured automatically from Home Assistant's MQTT service.</div>
 
@@ -775,8 +781,9 @@
       <div x-show="!mqttEditing" class="space-y-2 text-sm">
         <div class="flex justify-between">
           <span class="text-slate-500">Connection</span>
-          <span class="font-medium" :class="mqtt.connected ? 'text-emerald-400' : (mqttConfig.enabled === false ? 'text-slate-500' : 'text-red-400')"
-                x-text="mqtt.connected ? 'Connected' : (mqttConfig.enabled === false ? 'Disabled' : 'Disconnected')"></span>
+          <span class="font-medium" data-testid="mqtt-connection"
+                :class="mqtt.connected ? 'text-emerald-400' : (mqttConfig.enabled === false || $store.app.mqttBroker?.source === 'none' ? 'text-slate-500' : 'text-red-400')"
+                x-text="mqtt.connected ? 'Connected' : (mqttConfig.enabled === false ? 'Disabled' : ($store.app.mqttBroker?.source === 'none' ? 'No broker' : 'Disconnected'))"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Broker Host</span>
