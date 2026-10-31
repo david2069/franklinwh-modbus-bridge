@@ -110,12 +110,28 @@ def read_password(args) -> str:
 
 
 def retained_topics(host: str, port: int, wanted: set[str], timeout: float) -> set[str]:
-    """The topics in `wanted` that the broker holds retained."""
+    """The topics in `wanted` that the broker holds retained.
+
+    Fresh snapshots, each a new subscription that sees only what the broker
+    retains, until all are there or the time runs out. A subscription made
+    before the bridge publishes gets its messages live, not as retained, so
+    one subscription alone can't tell "retained" from "sent and dropped".
+    """
+    end = time.monotonic() + timeout
+    seen: set[str] = set()
+    while True:
+        seen = _retained_snapshot(host, port, wanted, 5)
+        if seen >= wanted or time.monotonic() > end:
+            return seen
+        time.sleep(3)
+
+
+def _retained_snapshot(host: str, port: int, wanted: set[str], timeout: float) -> set[str]:
     import paho.mqtt.client as mqtt
 
     seen: set[str] = set()
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                         client_id=f"install-smoke-{int(time.time())}")
+                         client_id=f"install-smoke-{time.monotonic_ns()}")
     # One wildcard subscription: some brokers mishandle a long topic list.
     client.on_connect = lambda c, *_: c.subscribe("homeassistant/#")
     client.on_message = lambda c, u, msg: (msg.retain and msg.payload
