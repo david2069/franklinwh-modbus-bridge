@@ -74,3 +74,43 @@ def test_podman_container_detected(monkeypatch):
         assert environment.in_container()
         assert detect_environment() == "docker"
         assert str(get_data_dir()) == "/data"
+
+
+def _host_files(files: dict[str, str]):
+    """Path stand-in: only `files` exist, with that text."""
+
+    class FakePath:
+        def __init__(self, p):
+            self._p = str(p)
+
+        def exists(self):
+            return self._p in files
+
+        def read_text(self):
+            return files[self._p]
+
+    return FakePath
+
+
+def test_pip_install_on_a_host_running_containers_is_dev():
+    """#413: a host running Docker containers lists their overlay mounts in its
+    own /proc/self/mountinfo. A pip-installed bridge took that for "inside
+    Docker", chose /data and failed to start (PermissionError)."""
+    host = {
+        "/proc/1/cgroup": "0::/init.scope\n",
+        "/proc/self/mountinfo": "1234 29 0:52 / /var/lib/docker/overlay2/abc/merged rw "
+                                "shared:300 - overlay overlay rw\n",
+    }
+    with patch.dict(os.environ, {}, clear=True), patch(
+        "franklinwh_bridge.config.environment.Path", side_effect=_host_files(host)
+    ):
+        assert detect_environment() == "dev"
+
+
+def test_docker_still_detected_from_pid1_cgroup():
+    """cgroup v1 containers without /.dockerenv still name docker in PID 1's cgroup."""
+    container = {"/proc/1/cgroup": "12:pids:/docker/0123abcd\n"}
+    with patch.dict(os.environ, {}, clear=True), patch(
+        "franklinwh_bridge.config.environment.Path", side_effect=_host_files(container)
+    ):
+        assert detect_environment() == "docker"
