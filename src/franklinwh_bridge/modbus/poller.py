@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import struct
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -121,7 +122,7 @@ class ModbusPoller:
         self._startup_points: dict[str, Any] = {}
         self._ac_type: int = 0  # 0=Single, 1=Split, 2=Three-Phase
         self._battery_port_count: int = 1  # M714 NPrt (1 = single battery)
-        self._vreg_client: Any | None = None  # cached pymodbus client
+        self._vendor_read_failing = False  # logged once per run of failures (#426)
         self._ever_connected = False  # a later connect counts as a reconnect
         self._last_good_ext: dict[str, int | float] = {}  # previous good extension values
         self._ext_seen = False  # the 15500-15509 block has arrived at least once
@@ -247,7 +248,6 @@ class ModbusPoller:
 
     async def _disconnect(self) -> None:
         async with self._modbus_lock:
-            self._close_vreg_client()
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(self._controller.disconnect)
             self._state.connected = False
@@ -777,93 +777,58 @@ class ModbusPoller:
                 req.check(result)
             return result
 
-    def _get_vreg_client(self) -> Any:
-        """Get or create a reusable pymodbus client for vendor register reads.
-
-        Reusing one TCP connection (instead of connect/close every poll cycle)
-        reduces concurrent Modbus connections to the aGate, lowering the risk
-        of 0xFFFF register corruption from firmware concurrency issues.
-        """
-        from pymodbus.client import ModbusTcpClient
-
-        if self._vreg_client is None or not self._vreg_client.connected:
-            if self._vreg_client is not None:
-                with contextlib.suppress(Exception):
-                    self._vreg_client.close()
-            self._vreg_client = ModbusTcpClient(
-                self._controller.ip_address, port=self._controller.port,
-                timeout=self._timeout,
-            )
-            link_stats.note_connection(self._gateway_id, "vendor")
-            self._vreg_client.connect()
-        return self._vreg_client
-
-    def _close_vreg_client(self) -> None:
-        """Close the cached pymodbus client (called during disconnect)."""
-        if self._vreg_client is not None:
-            with contextlib.suppress(Exception):
-                self._vreg_client.close()
-            self._vreg_client = None
+    def _read_regs(self, addr: int, count: int) -> list[int]:
+        """Holding registers ``addr``.. as uint16, over the library's own
+        connection (its pysunspec2 client). One client per aGate, the bridge
+        included: a second TCP connection is refused by an aGate that serves
+        one, and these reads then went missing without a word (#426)."""
+        raw = self._tracked(
+            lambda: self._controller.dev.client.read(addr, count),
+            "vreg_read", "poller", check=False,
+        )
+        return list(struct.unpack(f">{count}H", bytes(raw)[: 2 * count]))
 
     def _read_vendor_registers(self, points: dict[str, Any]) -> None:
-        """Read FranklinWH vendor extension registers via raw Modbus.
+        """Read FranklinWH vendor extension registers.
 
-        Three ranges on a reusable pymodbus connection:
+        Three ranges, each on the library's connection (#426):
         - 15000-15039: Undocumented registers (raw values only)
         - 15510-15513: PV energy uint32 composites (the library doesn't
           return these as named keys)
         - 16000-16002: High-resolution extension registers
 
         Registers 15500-15509 are NOT read here — the library already reads
-        them via _read_extension_solar().  Removing this duplicate read
-        eliminates concurrent access to the same registers, which was the
-        primary trigger for 0xFFFF corruption on the aGate firmware.
+        them via _read_extension_solar().
 
         Raw vreg_155xx keys for the SunSpec Explorer are derived from the
         library's named keys via _derive_vreg_from_library().
+
+        A range that fails is skipped for this poll; the first failure after a
+        success is logged at WARNING, so missing values are never silent.
         """
-        try:
-            client = self._get_vreg_client()
-            uid = self._controller.unit_id
-
-            # Range 1: 15000-15039 (undocumented vendor range)
-            r1 = self._tracked(
-                lambda: client.read_holding_registers(15000, count=40, device_id=uid),
-                "vreg_read", "poller",
-            )
-            if not r1.isError():
-                for i, val in enumerate(r1.registers):
-                    # int16, as the aGate means it. 0xFFFF stays as read: it is
-                    # also the aGate's not-available marker, which history skips.
-                    if 15000 + i in SIGNED_VREGS and 0x8000 <= val < 0xFFFF:
-                        val -= 0x10000
-                    points[f"vreg_{15000 + i}"] = val
-
-            # Range 2: 15510-15513 (PV energy counters — uint32 high:low pairs)
-            # Only these 4 registers; 15500-15509 handled by library.
-            r2 = self._tracked(
-                lambda: client.read_holding_registers(15510, count=4, device_id=uid),
-                "vreg_read", "poller",
-            )
-            if not r2.isError():
-                for i, val in enumerate(r2.registers):
-                    points[f"vreg_{15510 + i}"] = val
-                points["pv_energy_total_wh"] = (r2.registers[0] << 16) | r2.registers[1]
-                points["pv_energy_proximal_wh"] = (r2.registers[2] << 16) | r2.registers[3]
-
-            # Range 3: 16000-16002 (high-resolution extension registers)
-            r3 = self._tracked(
-                lambda: client.read_holding_registers(16000, count=3, device_id=uid),
-                "vreg_read", "poller",
-            )
-            if not r3.isError():
-                for i, val in enumerate(r3.registers):
-                    points[f"vreg_{16000 + i}"] = val
-
-        except Exception as exc:
-            logger.debug("Vendor register reads failed: %s", exc)
-            # Connection may be broken — force reconnect next cycle
-            self._close_vreg_client()
+        ranges = ((15000, 40), (15510, 4), (16000, 3))
+        failed: list[str] = []
+        for start, count in ranges:
+            try:
+                regs = self._read_regs(start, count)
+            except Exception as exc:
+                failed.append(f"{start}-{start + count - 1}: {str(exc) or type(exc).__name__}")
+                continue
+            for i, val in enumerate(regs):
+                # int16, as the aGate means it. 0xFFFF stays as read: it is
+                # also the aGate's not-available marker, which history skips.
+                if start + i in SIGNED_VREGS and 0x8000 <= val < 0xFFFF:
+                    val -= 0x10000
+                points[f"vreg_{start + i}"] = val
+            if start == 15510:  # PV energy counters: uint32 high:low pairs
+                points["pv_energy_total_wh"] = (regs[0] << 16) | regs[1]
+                points["pv_energy_proximal_wh"] = (regs[2] << 16) | regs[3]
+        if failed and not self._vendor_read_failing:
+            logger.warning("Gateway %s: vendor register reads failed (%s)",
+                           self._gateway_id, "; ".join(failed))
+        elif failed:
+            logger.debug("Vendor register reads failed: %s", "; ".join(failed))
+        self._vendor_read_failing = bool(failed)
 
         # Derive 15500-range vreg_ keys from library data (no extra Modbus traffic)
         self._derive_vreg_from_library(points)

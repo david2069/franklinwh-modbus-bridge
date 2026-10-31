@@ -36,6 +36,18 @@ lands, not backfilled later.
   that sets the last will; some brokers drop that (seen on amqtt, not on Mosquitto), and it
   wasn't sent again.
 
+- **Vendor registers went missing on an aGate that serves one Modbus client** (#426).
+  The bridge read 15000–15039, 15510–15513 and 16000–16002 over a second TCP connection
+  of its own. Where that was refused, the reads failed with only a DEBUG line, and these
+  values were missing:
+  - 16001: the Emergency Backup active reserve (#311);
+  - 16000: home load at high resolution;
+  - the PV energy totals;
+  - the raw 15000 range.
+
+  They now go over the library's connection. A failed range is skipped for that poll and
+  logged once at WARNING.
+
 ## [0.2.49] — 2026-10-31
 
 ### Added

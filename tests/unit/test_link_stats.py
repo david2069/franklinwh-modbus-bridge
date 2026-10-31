@@ -17,8 +17,12 @@ from httpx import ASGITransport, AsyncClient
 
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.gateway.link_stats import LinkCollector, classify
+from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.store import link_stats as store
 from franklinwh_bridge.store.db import create_gateway, init_db
+
+#: Captured at import, before the suite's autouse stub (conftest) replaces it.
+_REAL_READ_REGS = ModbusPoller._read_regs
 
 
 class Clock:
@@ -366,7 +370,7 @@ async def test_a_poll_records_model_and_vendor_reads(monkeypatch):
     ranges is a tracked request, and the poll itself is counted."""
     from unittest.mock import MagicMock
 
-    from franklinwh_bridge.modbus.poller import POLL_METHODS, ModbusPoller
+    from franklinwh_bridge.modbus.poller import POLL_METHODS
     from franklinwh_bridge.modbus.sample import SampleBus
 
     ctrl = MagicMock()
@@ -377,14 +381,10 @@ async def test_a_poll_records_model_and_vendor_reads(monkeypatch):
         getattr(ctrl, name).return_value = {"x": 1}
     getattr(ctrl, POLL_METHODS[-1]).return_value = {}  # counted as empty, not ok
 
-    resp = MagicMock()
-    resp.isError.return_value = False
-    resp.registers = [0] * 40
-    vclient = MagicMock()
-    vclient.read_holding_registers.return_value = resp
+    ctrl.dev.client.read.side_effect = lambda addr, count: bytes(2 * count)
 
     poller = ModbusPoller(controller=ctrl, sample_bus=SampleBus(), gateway_id="gwp")
-    monkeypatch.setattr(poller, "_get_vreg_client", lambda: vclient)
+    monkeypatch.setattr(poller, "_read_regs", _REAL_READ_REGS.__get__(poller))
     monkeypatch.setattr(link_stats, "count_established", lambda *a, **k: None)
     await poller.poll_once()
 

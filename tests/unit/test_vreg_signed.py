@@ -5,26 +5,26 @@ across zero were nonsense. 0xFFFF stays as read: it is also the aGate's
 not-available marker.
 """
 
+import struct
 from unittest.mock import MagicMock
 
 from franklinwh_bridge.modbus.poller import ModbusPoller
 from franklinwh_bridge.modbus.sample import SampleBus
+
+#: Captured at import, before the suite's autouse stub (conftest) replaces it.
+_REAL_READ_REGS = ModbusPoller._read_regs
 
 
 def _read(regs_15000):
     ctrl = MagicMock()
     ctrl.unit_id = 1
     p = ModbusPoller(controller=ctrl, sample_bus=SampleBus(), gateway_id="gw")
-    client = MagicMock()
+    def read(addr, count):
+        regs = list(regs_15000) if addr == 15000 else [0] * count
+        return struct.pack(f">{count}H", *regs)
 
-    def read(addr, count, device_id):
-        r = MagicMock()
-        r.isError.return_value = False
-        r.registers = list(regs_15000) if addr == 15000 else [0] * count
-        return r
-
-    client.read_holding_registers.side_effect = read
-    p._get_vreg_client = lambda: client
+    ctrl.dev.client.read.side_effect = read
+    p._read_regs = _REAL_READ_REGS.__get__(p)  # the real read, not the suite's stub
     points = {}
     p._read_vendor_registers(points)
     return points
