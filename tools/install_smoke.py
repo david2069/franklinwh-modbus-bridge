@@ -116,8 +116,10 @@ def retained_topics(host: str, port: int, wanted: set[str], timeout: float) -> s
     seen: set[str] = set()
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                          client_id=f"install-smoke-{int(time.time())}")
-    client.on_connect = lambda c, *_: c.subscribe([(t, 0) for t in sorted(wanted)])
-    client.on_message = lambda c, u, msg: msg.retain and seen.add(msg.topic)
+    # One wildcard subscription: some brokers mishandle a long topic list.
+    client.on_connect = lambda c, *_: c.subscribe("homeassistant/#")
+    client.on_message = lambda c, u, msg: (msg.retain and msg.payload
+                                           and msg.topic in wanted and seen.add(msg.topic))
     client.connect(host, port)
     client.loop_start()
     try:
