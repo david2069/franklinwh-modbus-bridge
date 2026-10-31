@@ -69,7 +69,8 @@ jobs:
 
       - name: Mask the generated password in the log
         if: always()
-        run: test -f app.log && sed -i -E 's/(GENERATED password: )[^ ]+/\1<masked>/' app.log || true
+        run: |
+          test -f app.log && sed -i -E 's/(GENERATED password: )[^ ]+/\1<masked>/' app.log || true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -128,7 +129,8 @@ jobs:
 
       - name: Mask the generated password in the log
         if: always()
-        run: test -f bridge.log && sed -i -E 's/(GENERATED password: )[^ ]+/\1<masked>/' bridge.log || true
+        run: |
+          test -f bridge.log && sed -i -E 's/(GENERATED password: )[^ ]+/\1<masked>/' bridge.log || true
 
       - uses: actions/upload-artifact@v4
         if: always()
