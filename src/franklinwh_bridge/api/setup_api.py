@@ -198,6 +198,8 @@ def result_row(res: discovery.DiscoveryResult) -> dict[str, Any]:
 
 
 def _configured_row(host: str, port: int, gw: dict) -> dict[str, Any]:
+    """A gateway set up here, with the Model 1 details its own startup read
+    found (#421): it is never probed while it polls."""
     return {
         "host": host,
         "port": port,
@@ -205,6 +207,11 @@ def _configured_row(host: str, port: int, gw: dict) -> dict[str, Any]:
         "gateway_id": gw["id"],
         "name": gw.get("name"),
         "summary": f"{gw.get('name') or gw['id']} — already set up in this bridge",
+        "manufacturer": gw.get("manufacturer"),
+        "model": gw.get("model"),
+        "options": gw.get("options"),
+        "version": gw.get("firmware"),
+        "serial": gw.get("serial"),
     }
 
 
@@ -233,10 +240,19 @@ async def _polled_hosts(request: Request) -> dict[tuple[str, int], dict]:
     if registry is None:
         return out
     for gw in await get_gateways(request.app.state.db):
-        if gw.get("mock") or gateway_is_unconfigured(gw) or registry.get(gw["id"]) is None:
+        inst = registry.get(gw["id"])
+        if gw.get("mock") or gateway_is_unconfigured(gw) or inst is None:
             continue
         ip = await asyncio.to_thread(_resolve, str(gw["host"]))
-        out[(ip, int(gw.get("port") or 502))] = gw
+        st = inst.status
+        out[(ip, int(gw.get("port") or 502))] = {
+            **gw,
+            "manufacturer": st.manufacturer,
+            "options": st.options,
+            "model": st.model or gw.get("model"),
+            "firmware": st.firmware or gw.get("firmware"),
+            "serial": st.serial or gw.get("serial"),
+        }
     return out
 
 

@@ -250,6 +250,16 @@ async def test_wizard_real_path_end_to_end(fresh_client, monkeypatch):
     assert row["kind"] == "configured" and row["gateway_id"] == "default"
     assert probed == []
 
+    # ...with the Model 1 details from the gateway's own startup read (#421).
+    st = app.state.registry.get("default").status
+    st.manufacturer, st.model, st.options = "FranklinWH", "aGate X", "Emulator 0.2.0"
+    st.firmware, st.serial = "V10R01B04D00", "MOCK0000000000000001"
+    row = (await client.post("/api/setup/probe", json={"host": "192.0.2.110"})).json()
+    assert {k: row[k] for k in ("manufacturer", "model", "options", "version", "serial")} == {
+        "manufacturer": "FranklinWH", "model": "aGate X", "options": "Emulator 0.2.0",
+        "version": "V10R01B04D00", "serial": "MOCK0000000000000001"}
+    assert probed == []
+
     # A second aGate is added alongside, not over the primary.
     resp = await client.post("/api/setup/connect", json={
         "host": "192.0.2.111", "name": "Garage aGate"})

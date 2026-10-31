@@ -19,6 +19,11 @@ lands, not backfilled later.
   **Modbus port(s)** field: 502 by default, or a list and ranges such as `502, 5020-5025`
   (up to 8). It finds an aGate behind port forwarding, or the gateway emulator (5020 and up).
   Results show the port when it isn't 502. API: `POST /api/setup/scan` takes `ports`.
+- **Setup wizard: search results in groups, with Model 1 details** (#421): **New aGates
+  found** (to tick), **Already set up here** (not contacted, with a link to Site & Gateways)
+  and **Other devices**. Each aGate shows its SunSpec Model 1 nameplate as read:
+  manufacturer, model, firmware and serial, plus Options (Opt) for those already set up.
+  When only set-up aGates answer, the wizard says no *new* aGate was found.
 
 ### Fixed
 

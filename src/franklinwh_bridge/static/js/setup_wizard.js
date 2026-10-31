@@ -241,7 +241,23 @@
       },
 
       get scanAgates() { return (this.scan?.results || []).filter(r => r.kind === 'agate'); },
-      get scanOthers() { return (this.scan?.results || []).filter(r => r.kind !== 'agate'); },
+      get scanConfigured() { return (this.scan?.results || []).filter(r => r.kind === 'configured'); },
+      get scanOthers() {
+        return (this.scan?.results || []).filter(r => !['agate', 'configured'].includes(r.kind));
+      },
+
+      // Model 1 as read (#421). Options shows once the search reports it.
+      nameplate(row) {
+        const rows = [['Manufacturer', row.manufacturer], ['Model', row.model]];
+        if ('options' in row) rows.push(['Options', row.options]);
+        rows.push(['Firmware', row.version], ['Serial', row.serial]);
+        return rows.map(([k, v]) => [k, v || '—']);
+      },
+
+      openGateways() {
+        this.close();
+        Alpine.store('app').setTab('settings', { section: 'gateways' });
+      },
 
       async probeManual() {
         if (!this.manual.host.trim()) { this.error = 'Enter the aGate address'; return; }

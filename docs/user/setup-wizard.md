@@ -26,7 +26,14 @@ On a fresh install the bridge first shows the **Unofficial software** notice: ti
     give a range, e.g. `502, 5020-5025` (up to 8): an aGate behind port forwarding, or the
     gateway emulator, which listens on 5020 and up. Each port is a full pass over the
     subnets, so more ports take longer.
-    A found aGate shows its model, serial and firmware, and its port when that isn't 502.
+    Results come in groups:
+
+    - **New aGates found**: tick the ones to add. Each shows its port when that isn't 502,
+      and its SunSpec Model 1 nameplate as read: manufacturer, model, firmware and serial.
+    - **Already set up here**: aGates this bridge already polls, with the same details,
+      plus Options, from the bridge's own last read. They are not contacted by the search.
+      **Open in Settings** goes to Site & Gateways.
+    - **Other devices**: anything else that answered.
 
     ![Search my network](../images/wizard/wizard-search.png)
 

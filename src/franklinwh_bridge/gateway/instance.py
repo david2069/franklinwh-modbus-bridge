@@ -214,6 +214,10 @@ class GatewayStatus:
     serial: str | None = None
     model: str | None = None
     firmware: str | None = None
+    # Model 1 Mn and Opt as read (#421); the gateway emulator writes
+    # "Emulator <version>" in Opt.
+    manufacturer: str | None = None
+    options: str | None = None
     ac_type: int = 0
     # Why this gateway was refused for its serial (#296 item 42), else None.
     serial_refused: str | None = None
@@ -528,6 +532,8 @@ class GatewayInstance:
                 self.status.serial = nameplate["serial"]
                 self.status.model = nameplate.get("model")
                 self.status.firmware = nameplate.get("version")
+                self.status.manufacturer = nameplate.get("manufacturer")
+                self.status.options = nameplate.get("options")
 
                 # Persist device info to gateway record
                 await update_gateway(

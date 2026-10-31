@@ -103,24 +103,44 @@
                       <div x-show="scan.status === 'running'" class="h-1.5 rounded bg-slate-700 overflow-hidden">
                         <div class="h-full bg-cyan-500" :style="`width: ${scanPct}%`"></div>
                       </div>
+                      <p x-show="scanAgates.length" class="text-xs font-semibold uppercase tracking-wide text-slate-300"
+                         data-testid="scan-group-new">New aGates found</p>
                       <template x-for="row in scanAgates" :key="row.host + ':' + row.port">
-                        <label class="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer border-cyan-500/40 hover:bg-cyan-500/10">
+                        <label class="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer border-cyan-500/40 hover:bg-cyan-500/10"
+                               data-testid="scan-row-new">
                           <input type="checkbox" :checked="isPicked(row)" @change="togglePick(row)"
                                  class="mt-0.5 w-4 h-4 accent-cyan-500 shrink-0">
                           <span>
                             <span class="font-semibold text-cyan-300">FranklinWH aGate</span>
-                            <span class="font-mono text-xs text-slate-400" x-text="hostPort(row)"></span><br>
-                            <span class="text-xs text-slate-400" x-text="rowText(row)"></span>
+                            <span class="font-mono text-xs text-slate-400" x-text="hostPort(row)"></span>
+                            <template x-for="[k, v] in nameplate(row)" :key="k">
+                              <span class="block text-xs text-slate-400"><span class="text-slate-500" x-text="k + ':'"></span> <span x-text="v"></span></span>
+                            </template>
                           </span>
                         </label>
                       </template>
+                      <p x-show="scanConfigured.length" class="text-xs font-semibold uppercase tracking-wide text-slate-300"
+                         data-testid="scan-group-configured">Already set up here</p>
+                      <template x-for="row in scanConfigured" :key="row.host + ':' + row.port">
+                        <div class="rounded-lg border border-slate-700 px-3 py-2" data-testid="scan-row-configured">
+                          <span class="font-semibold text-slate-300" x-text="row.name || row.gateway_id"></span>
+                          <span class="font-mono text-xs text-slate-400" x-text="hostPort(row)"></span>
+                          <template x-for="[k, v] in nameplate(row)" :key="k">
+                            <span class="block text-xs text-slate-400"><span class="text-slate-500" x-text="k + ':'"></span> <span x-text="v"></span></span>
+                          </template>
+                          <button type="button" class="text-xs text-cyan-400 underline" @click="openGateways()">
+                            Open in Settings → Site &amp; Gateways</button>
+                        </div>
+                      </template>
+                      <p x-show="scanOthers.length" class="text-xs font-semibold uppercase tracking-wide text-slate-300">Other devices</p>
                       <template x-for="row in scanOthers" :key="row.host + ':' + row.port">
                         <p class="text-xs text-slate-500 px-3">
                           <span class="font-mono" x-text="hostPort(row)"></span> — <span x-text="rowText(row)"></span>
                         </p>
                       </template>
-                      <p x-show="scan.status === 'done' && !scan.results.length" class="text-xs text-amber-300">
-                        No aGate found on <span x-text="scan.subnets.join(', ')"></span>,
+                      <p x-show="scan.status === 'done' && !scanAgates.length" class="text-xs text-amber-300"
+                         data-testid="scan-none-new">
+                        No <span x-show="scanConfigured.length">new</span> aGate found on <span x-text="scan.subnets.join(', ')"></span>,
                         port <span x-text="(scan.ports || [502]).join(', ')"></span>.
                         Check the list under <em>Before you start</em>, or try <em>Enter address</em>.
                       </p>
