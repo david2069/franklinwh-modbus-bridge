@@ -10801,6 +10801,22 @@
             "title": "Port",
             "default": 502
           },
+          "ports": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array",
+                "maxItems": 8,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ports"
+          },
           "unit_id": {
             "type": "integer",
             "maximum": 247.0,

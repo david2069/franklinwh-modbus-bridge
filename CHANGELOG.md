@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **Setup wizard: search other Modbus ports** (#420). *Search my network* has a
+  **Modbus port(s)** field: 502 by default, or a list and ranges such as `502, 5020-5025`
+  (up to 8). It finds an aGate behind port forwarding, or the gateway emulator (5020 and up).
+  Results show the port when it isn't 502. API: `POST /api/setup/scan` takes `ports`.
+
 ### Fixed
 
 - **A pip install on a Linux machine running Docker containers didn't start** (#413): the

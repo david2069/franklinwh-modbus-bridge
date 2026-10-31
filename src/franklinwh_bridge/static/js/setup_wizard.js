@@ -36,6 +36,25 @@
     configured_gateway: 'an aGate already set up here',
   };
 
+  //: Ports one search may sweep (setup_api.MAX_SCAN_PORTS).
+  const MAX_SCAN_PORTS = 8;
+
+  // '502, 5020-5022' -> [502, 5020, 5021, 5022], or a message saying what's wrong.
+  function parsePorts(text) {
+    const ports = [];
+    for (const part of (text || '').split(',').map(s => s.trim()).filter(Boolean)) {
+      const m = part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+      if (!m) return `"${part}" isn't a port or a range like 5020-5025`;
+      const lo = +m[1], hi = m[2] ? +m[2] : lo;
+      if (lo < 1 || hi > 65535 || hi < lo) return `"${part}": ports run 1-65535, low to high`;
+      for (let p = lo; p <= hi; p++) {
+        if (!ports.includes(p)) ports.push(p);
+        if (ports.length > MAX_SCAN_PORTS) return `Up to ${MAX_SCAN_PORTS} ports per search`;
+      }
+    }
+    return ports.length ? ports : [502];
+  }
+
   // Shared, so the Dashboard and Settings can show state / open the wizard.
   document.addEventListener('alpine:init', () => {
     Alpine.store('setup', {
@@ -86,6 +105,7 @@
       tab: 'search',             // search | address
       subnets: [],               // [{subnet, source}]
       subnetInput: '',
+      portInput: '502',          // ports to search (#420): '502, 5020-5025'
       scan: null,                // GET /scan/{id} body
       manual: { host: '', port: 502, unit_id: 1 },
       probeRow: null,
@@ -148,7 +168,7 @@
       reset() {
         Object.assign(this, {
           step: 'intent', busy: false, error: '', tab: 'search', subnets: [],
-          subnetInput: '', scan: null, manual: { host: '', port: 502, unit_id: 1 },
+          subnetInput: '', portInput: '502', scan: null, manual: { host: '', port: 502, unit_id: 1 },
           probeRow: null, picks: [], connected: [], reading: null,
           demo: { name: 'Demo aGate', ac_type: 0 }, demoId: null, checklist: [], gatewayPublish: [], namespace: null,
           accounts: null, pw: { current: '', next: '', confirm: '' }, pwDone: false,
@@ -188,14 +208,19 @@
 
       sourceLabel(src) { return SOURCE_LABELS[src] || src; },
 
+      // The aGate's own port goes unsaid; any other is shown.
+      hostPort(row) { return row.port && row.port !== 502 ? `${row.host}:${row.port}` : row.host; },
+
       async startScan() {
         const subnets = this.subnetInput.split(',').map(s => s.trim()).filter(Boolean);
         if (!subnets.length) { this.error = 'Enter a subnet, e.g. 192.168.1.0/24'; return; }
+        const ports = parsePorts(this.portInput);
+        if (typeof ports === 'string') { this.error = ports; return; }
         this.error = '';
         this.picks = [];
         this.busy = true;
         try {
-          this.scan = await api('scan', { method: 'POST', body: { subnets } });
+          this.scan = await api('scan', { method: 'POST', body: { subnets, ports } });
           while (this.open && this.scan && this.scan.status === 'running') {
             await sleep(SCAN_POLL_MS);
             this.scan = await api(`scan/${this.scan.scan_id}`);
