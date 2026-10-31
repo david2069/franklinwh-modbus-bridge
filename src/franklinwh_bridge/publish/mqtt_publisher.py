@@ -957,6 +957,11 @@ class MqttPublisher:
                     logger.info("MQTT connected to %s:%d", self._host, self._port)
 
                     await self._publish_availability(client, online=True)
+                    # Discovery goes out on every connection, as bridge discovery
+                    # does. Sent at QoS 0 just before a reconnect for the will, it
+                    # was dropped with the old connection and never sent again:
+                    # a gateway added after start got no entities in HA (#412).
+                    self._state.discovery_published = False
                     if (self._has_discoverable() and not self._state.discovery_published
                             and not self._discovery_paused):
                         await self._publish_discovery(client)

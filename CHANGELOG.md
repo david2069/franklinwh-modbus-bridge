@@ -19,6 +19,10 @@ lands, not backfilled later.
   bridge read the host's mount list, which names the containers' overlay mounts, took
   itself for Docker, chose `/data` and failed with `PermissionError`. It now decides from
   the container markers and PID 1's cgroup only. Workaround before this: `APP_ENV=dev`.
+- **Discovery now goes out on every MQTT connection** (#412), as the bridge's own discovery
+  already did. A gateway added after start had its discovery sent just before the reconnect
+  that sets the last will; some brokers drop that (seen on amqtt, not on Mosquitto), and it
+  wasn't sent again.
 
 ## [0.2.49] — 2026-10-31
 
