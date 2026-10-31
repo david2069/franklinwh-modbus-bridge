@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pip install on a Linux machine running Docker containers didn't start** (#413): the
+  bridge read the host's mount list, which names the containers' overlay mounts, took
+  itself for Docker, chose `/data` and failed with `PermissionError`. It now decides from
+  the container markers and PID 1's cgroup only. Workaround before this: `APP_ENV=dev`.
+
 ## [0.2.49] — 2026-10-31
 
 ### Added

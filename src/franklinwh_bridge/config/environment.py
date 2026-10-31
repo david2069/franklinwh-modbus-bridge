@@ -44,13 +44,9 @@ def detect_environment() -> Environment:
     except Exception:
         pass
 
-    try:
-        mountinfo = Path("/proc/self/mountinfo")
-        if mountinfo.exists() and "docker" in mountinfo.read_text().lower():
-            return "docker"
-    except Exception:
-        pass
-
+    # Not /proc/self/mountinfo: on a host running containers it lists their
+    # overlay mounts too, so a pip install there took itself for Docker and
+    # chose /data (#413).
     return "dev"
 
 
