@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.50] — 2026-10-31
+
 ### Added
 
 - **Setup wizard: search other Modbus ports** (#420). *Search my network* has a

@@ -3,7 +3,7 @@
   "info": {
     "title": "franklinwh-modbus-bridge",
     "description": "**Unofficial software.** `franklinwh-modbus-bridge` is not endorsed, supported, or\naffiliated with FranklinWH in any way. Provided **\"AS IS\"**, for educational\nand informational purposes only, without warranty of any kind, express or\nimplied. The authors and contributors accept no responsibility or liability\nfor any consequences of its use.\n\nThis API issues **write commands to grid-connected battery hardware**. You\nassume all risk, including risk to your hardware, your warranty and your\nelectricity supply.\n\n**Compliance.** Keep your system compliant with the settings your official\nFranklinWH app or installer configured \u2014 they may enforce battery and gateway\nsafety, your local grid profile and import/export limits, or incentive/VPP\nprogramme conditions. Using this API to bypass them is entirely at your own\nrisk and is neither condoned nor encouraged.\n\n**Do not contact FranklinWH support about this software.** Report bugs and\nrequest features at [https://github.com/david2069/franklinwh-modbus-bridge/issues](https://github.com/david2069/franklinwh-modbus-bridge/issues).\n\nFull terms: [LICENSE](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE) \u00b7 SunSpec conformance:\n[PICS SM-000028](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx)\n",
-    "version": "0.2.49"
+    "version": "0.2.50"
   },
   "paths": {
     "/api/health": {
