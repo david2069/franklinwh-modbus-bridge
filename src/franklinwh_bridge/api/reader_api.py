@@ -122,11 +122,6 @@ async def run_reader(body: ReaderRequest, request: Request) -> ReaderResult:
         # the poller reconnects under the same lock afterwards.
         if inst.controller is not None:
             await asyncio.to_thread(inst.controller.disconnect)
-        # The poller's own vendor-register connection (pymodbus, #243) too, or
-        # the reader would be a third client.
-        close_vreg = getattr(getattr(inst, "poller", None), "_close_vreg_client", None)
-        if close_vreg is not None:
-            await asyncio.to_thread(close_vreg)
         logger.info("Reader run on gateway %s: raw=%s models=%s point=%s nz=%s match=%s",
                     body.gateway_id, body.raw, body.models, body.point, body.nz, body.match)
         try:

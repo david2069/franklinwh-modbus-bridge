@@ -34,22 +34,22 @@ def _auth_bypass():
 def _no_raw_vendor_register_connections(request, monkeypatch):
     """Keep unit tests off the network.
 
-    ``ModbusPoller._read_vendor_registers`` opens its own pymodbus client to
-    ``controller.ip_address`` — and test controllers carry real-looking LAN
+    ``ModbusPoller._read_vendor_registers`` reads raw registers over the
+    controller's connection (#426), and test controllers carry real-looking LAN
     addresses (192.168.1.100). On a network where that address doesn't answer,
     every poll waited out the TCP timeout, which turned a ~10-minute suite into
-    one that seemed to hang. Failing the connect immediately takes the same
-    path as an unreachable aGate (the error is logged at debug and the vendor
-    points are simply absent). Hardware tests still connect for real.
+    one that seemed to hang. Failing the read immediately takes the same path
+    as an unreachable aGate (the vendor points are simply absent). Hardware
+    tests still connect for real.
     """
     if request.node.get_closest_marker("hardware"):
         return
     from franklinwh_bridge.modbus.poller import ModbusPoller
 
-    def _refuse(self):
+    def _refuse(self, addr, count):
         raise ConnectionError("unit tests do not open Modbus connections")
 
-    monkeypatch.setattr(ModbusPoller, "_get_vreg_client", _refuse)
+    monkeypatch.setattr(ModbusPoller, "_read_regs", _refuse)
 
 
 @pytest.fixture(autouse=True)
