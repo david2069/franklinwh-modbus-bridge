@@ -15,11 +15,10 @@ lands, not backfilled later.
 
 ### Fixed
 
-- **A gateway added after the bridge connected to MQTT got no Home Assistant entities**
-  (#412, since 0.2.35): its discovery configs went out just before the reconnect that sets
-  the last will, at QoS 0, so the broker kept none, and they were not sent again. Discovery
-  now goes out on every connection, as the bridge's own discovery already did. Existing
-  installs kept configs retained before 0.2.35; discovery changes since then now reach HA too.
+- **Discovery now goes out on every MQTT connection** (#412), as the bridge's own discovery
+  already did. A gateway added after start had its discovery sent just before the reconnect
+  that sets the last will; some brokers drop that (seen on amqtt, not on Mosquitto), and it
+  wasn't sent again.
 
 ## [0.2.49] — 2026-10-31
 
