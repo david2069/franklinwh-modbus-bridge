@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Install smoke check for a standalone bridge: Docker Compose or a plain pip install.
 
+Follows the shared spec in david2069/fwh-tools README, "install-smoke"; the
+Direct Connect bridge carries the same script with its own BRIDGE values.
+
 Run against a bridge that has just been installed and started, with or without an
 MQTT broker. It signs in, adds a demo gateway that publishes to Home Assistant,
 and checks:
@@ -18,9 +21,9 @@ The API answers are saved to ``--out``. The generated admin password, when read
 from the log, is never written out.
 
 Exit status 0 when every check passes, 1 otherwise. Uses only the standard
-library, plus ``aiomqtt`` for ``--mqtt`` (a dependency of the bridge).
+library, plus ``paho-mqtt`` for ``--mqtt`` (a dependency of the bridge).
 
-    python tools/install_smoke.py --url http://127.0.0.1:8100 --version 0.2.49 \\
+    python tools/install_smoke.py --base http://127.0.0.1:8100 --version 0.2.49 \\
         --env docker --password-from-log app.log --mqtt 127.0.0.1:1886 \\
         --log app.log --out smoke-out
 """
@@ -28,7 +31,6 @@ library, plus ``aiomqtt`` for ``--mqtt`` (a dependency of the bridge).
 from __future__ import annotations
 
 import argparse
-import asyncio
 import http.cookiejar
 import json
 import re
@@ -38,8 +40,18 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-GATEWAY = "smoke"
-_PASSWORD_LINE = re.compile(r"GENERATED password: (\S+)")
+# What differs between the bridges (spec: fwh-tools README, "install-smoke").
+BRIDGE = {
+    "health": "/api/health",
+    "login": "/api/auth/login",
+    "add_gateway": ("/api/gateways", {"gateway_id": "smoke", "name": "Smoke demo",
+                                      "mock": True, "publish_to_ha": True}),
+    "gateway": "smoke",
+    # The bridge lists the exact discovery topics it publishes for a gateway.
+    "topics": "/api/mqtt/topics?gateway=smoke",
+    "password_line": re.compile(r"GENERATED password: (\S+)"),
+}
+GATEWAY = BRIDGE["gateway"]
 
 
 class Bridge:
@@ -90,29 +102,31 @@ def wait_for(fn, timeout: float, interval: float = 2.0):
 def read_password(args) -> str:
     if args.password:
         return args.password
-    found = _PASSWORD_LINE.findall(Path(args.password_from_log).read_text(errors="replace"))
+    log = Path(args.password_from_log).read_text(errors="replace")
+    found = BRIDGE["password_line"].findall(log)
     if not found:
         sys.exit(f"no generated admin password in {args.password_from_log}")
     return found[-1]
 
 
-async def retained_topics(host: str, port: int, wanted: set[str], timeout: float) -> set[str]:
+def retained_topics(host: str, port: int, wanted: set[str], timeout: float) -> set[str]:
     """The topics in `wanted` that the broker holds retained."""
-    import aiomqtt
+    import paho.mqtt.client as mqtt
 
     seen: set[str] = set()
-    async with aiomqtt.Client(host, port, identifier=f"install-smoke-{int(time.time())}") as client:
-        for topic in wanted:
-            await client.subscribe(topic)
-        try:
-            async with asyncio.timeout(timeout):
-                async for msg in client.messages:
-                    if msg.retain:
-                        seen.add(str(msg.topic))
-                    if seen >= wanted:
-                        break
-        except TimeoutError:
-            pass
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+                         client_id=f"install-smoke-{int(time.time())}")
+    client.on_connect = lambda c, *_: c.subscribe([(t, 0) for t in sorted(wanted)])
+    client.on_message = lambda c, u, msg: msg.retain and seen.add(msg.topic)
+    client.connect(host, port)
+    client.loop_start()
+    try:
+        end = time.monotonic() + timeout
+        while time.monotonic() < end and not seen >= wanted:
+            time.sleep(0.2)
+    finally:
+        client.loop_stop()
+        client.disconnect()
     return seen
 
 
@@ -131,7 +145,7 @@ def log_problems(text: str, no_broker: bool) -> tuple[list[str], list[str]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--url", required=True)
+    ap.add_argument("--base", required=True, help="the bridge's base URL")
     ap.add_argument("--version", required=True, help="the version the bridge must report")
     ap.add_argument("--env", required=True, choices=["docker", "dev"],
                     help="the environment the bridge must report")
@@ -147,31 +161,30 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=180)
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    c, b = Checks(args.out), Bridge(args.url)
+    c, b = Checks(args.out), Bridge(args.base)
 
     def healthy():
         try:
-            status, body = b.call("GET", "/api/health")
+            status, body = b.call("GET", BRIDGE["health"])
         except OSError:
             return None
         return body if status == 200 else None
 
     health = wait_for(healthy, args.timeout)
     c.save("api_health", health)
-    if not c.check("bridge answers /api/health", bool(health)):
+    if not c.check(f"bridge answers {BRIDGE['health']}", bool(health)):
         return 1
     c.check("reports the version under test", health.get("version") == args.version,
             health.get("version"))
     c.check(f"reports environment {args.env}", health.get("environment") == args.env,
             health.get("environment"))
 
-    status, body = b.call("POST", "/api/auth/login",
+    status, body = b.call("POST", BRIDGE["login"],
                           {"username": args.user, "password": read_password(args)})
     if not c.check("admin signs in", status == 200, status):
         return 1
 
-    status, body = b.call("POST", "/api/gateways", {
-        "gateway_id": GATEWAY, "name": "Smoke demo", "mock": True, "publish_to_ha": True})
+    status, body = b.call("POST", *BRIDGE["add_gateway"])
     c.save("api_gateways_post", body)
     c.check("demo gateway added", status == 201, status)
 
@@ -191,7 +204,7 @@ def main() -> int:
         c.check("broker is the configured one", broker.get("source") == "configured", broker)
 
         def listed():
-            status, body = b.call("GET", f"/api/mqtt/topics?gateway={GATEWAY}")
+            status, body = b.call("GET", BRIDGE["topics"])
             return body if status == 200 and body.get("topics") else None
 
         topics = wait_for(listed, 60)
@@ -199,7 +212,7 @@ def main() -> int:
         if c.check("bridge lists the demo's topics", bool(topics)):
             wanted = {t["discovery_topic"] for t in topics["topics"]}
             try:
-                seen = asyncio.run(retained_topics(host, int(port), wanted, 30))
+                seen = retained_topics(host, int(port), wanted, 30)
             except Exception as exc:
                 c.check(f"checker reaches the broker at {args.mqtt}", False, exc)
                 seen = set()
