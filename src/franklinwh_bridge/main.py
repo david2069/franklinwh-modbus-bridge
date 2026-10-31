@@ -346,6 +346,14 @@ async def lifespan(app: FastAPI):
             "bridge will connect to it automatically. Until then nothing is "
             "published to Home Assistant."
         )
+    elif mqtt_sources["host"] == "default":
+        # Docker or pip with no broker set (#414): MQTT is optional, so say so
+        # once and don't try localhost (it logged an ERROR and retried forever).
+        mqtt_broker = {"source": "none", "waiting_for_broker": False}
+        logger.info(
+            "No MQTT broker set: nothing is published to Home Assistant. Set "
+            "MQTT_HOST, or a broker in Settings → Home Assistant → MQTT Broker."
+        )
     app.state.mqtt_broker = mqtt_broker
 
     mqtt_publisher = MqttPublisher.from_db_config(
@@ -360,7 +368,8 @@ async def lifespan(app: FastAPI):
 
     await mqtt_publisher.sync_groups(db)
 
-    if mqtt_config.get("enabled", True) and not mqtt_broker["waiting_for_broker"]:
+    if (mqtt_config.get("enabled", True) and not mqtt_broker["waiting_for_broker"]
+            and mqtt_broker["source"] != "none"):
         await mqtt_publisher.start()
 
     async def _await_supervisor_broker() -> None:

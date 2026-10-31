@@ -15,7 +15,7 @@ from franklinwh_bridge.api.auth import get_current_user
 from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.config.environment import detect_environment
 from franklinwh_bridge.config.mqtt_broker import ENV_VARS, env_values, resolve_broker
-from franklinwh_bridge.config.supervisor import discover_mqtt
+from franklinwh_bridge.config.supervisor import discover_mqtt, supervisor_token
 from franklinwh_bridge.publish.namespace import NamespaceError, change_namespace, namespace_info
 from franklinwh_bridge.store.db import get_mqtt_config, set_app_config, set_mqtt_config
 
@@ -129,8 +129,9 @@ async def _apply_enabled(request: Request, enabled: bool) -> None:
         return
     if enabled:
         broker = getattr(request.app.state, "mqtt_broker", None) or {}
-        if broker.get("waiting_for_broker"):
-            # The Supervisor watcher starts it once Mosquitto appears.
+        if broker.get("waiting_for_broker") or broker.get("source") == "none":
+            # The Supervisor watcher starts it once Mosquitto appears; with no
+            # broker set, Save & Reconnect does once one is (#414).
             return
         await publisher.start()
         return
@@ -208,6 +209,15 @@ async def reconnect(request: Request):
     resolved, sources = await resolve_broker(stored, lambda: discover_mqtt(quiet=True))
     publisher.set_broker(resolved)
     request.app.state.mqtt_sources = sources
+    if sources["host"] == "default" and not supervisor_token():
+        # Still no broker set (#414): nothing to connect to.
+        request.app.state.mqtt_broker = {"source": "none", "waiting_for_broker": False}
+        return {"status": "no_broker"}
+    if not (getattr(request.app.state, "mqtt_broker", None) or {}).get("waiting_for_broker"):
+        request.app.state.mqtt_broker = {
+            "source": "supervisor" if sources["host"] == "supervisor" else "configured",
+            "waiting_for_broker": False,
+        }
     # A disabled publisher stays stopped: reconnecting must not override
     # "Enabled" off (#96).
     if not stored.get("enabled", True):

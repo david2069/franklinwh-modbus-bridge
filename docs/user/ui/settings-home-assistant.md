@@ -60,11 +60,14 @@ The connection to the MQTT broker that Home Assistant listens to.
 **Mosquitto broker** app. The bridge then configures itself from Home Assistant's MQTT
 service (the card says *Configured automatically from Home Assistant's MQTT service*). If no
 broker is installed yet, it says *Waiting for a broker* with a link to install one; the
-bridge connects as soon as it is running. With Docker, enter the broker's details here.
+bridge connects as soon as it is running. With Docker or a Python install, enter the broker's
+details here, or set `MQTT_HOST`. MQTT is optional there: with no broker set, the card says
+*No MQTT broker set* and nothing is published to Home Assistant. For a broker on the same
+machine, enter `127.0.0.1`: `localhost`, the field's default, counts as not set.
 
 | Field | Meaning |
 |---|---|
-| Connection | *Connected*, *Disconnected*, or *Disabled* (MQTT publishing off). |
+| Connection | *Connected*, *Disconnected*, *Disabled* (MQTT publishing off), or *No broker* (none set; Docker and Python only). |
 | Broker Host, Port | Where the broker is. Default `localhost`, `1883`. |
 | Username | Or *(anonymous)*. |
 | TLS Mode | *off*, *tls*, or *tls_insecure* (TLS without checking the certificate). |

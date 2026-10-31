@@ -67,8 +67,10 @@ async def test_waits_for_a_broker_then_configures_itself(addon_client):
 
 
 async def test_not_waiting_outside_an_addon(tmp_path, monkeypatch):
-    """Docker/dev: no Supervisor, so the configured broker is used as-is."""
+    """Docker/dev: no Supervisor, so the configured broker is used as-is.
+    (With none set it reports none: test_mqtt_status_broker, #414.)"""
     monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("MQTT_HOST", "broker.example")
     monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
     monkeypatch.delenv("HASSIO_TOKEN", raising=False)
     monkeypatch.chdir(tmp_path)

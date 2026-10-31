@@ -12,9 +12,7 @@ and checks:
 - the demo gateway polls;
 - with ``--mqtt HOST:PORT``: the broker is the configured one and connected, and
   every discovery topic the bridge lists for the demo is retained on the broker;
-  without it: the bridge still runs. With no broker set it tries the default,
-  localhost:1883 (``config/mqtt_broker.py``), so it reports that broker and logs
-  the refused connection; the check prints those lines as NOTE;
+  without it: the bridge still runs and reports no broker (#414);
 - with ``--log FILE``: the bridge's log has no traceback and no ERROR line.
 
 The API answers are saved to ``--out``. The generated admin password, when read
@@ -239,7 +237,7 @@ def main() -> int:
             c.check(f"all {len(wanted)} discovery topics retained on the broker",
                     not missing, f"{len(missing)} missing, e.g. {missing[:3]}" if missing else "")
     else:
-        print(f"NOTE no broker set; the bridge reports {broker}")
+        c.check("reports no broker", broker.get("source") == "none", broker)
 
     if args.log:
         problems, notes = log_problems(Path(args.log).read_text(errors="replace"),

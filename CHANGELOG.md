@@ -35,6 +35,12 @@ lands, not backfilled later.
   already did. A gateway added after start had its discovery sent just before the reconnect
   that sets the last will; some brokers drop that (seen on amqtt, not on Mosquitto), and it
   wasn't sent again.
+- **With no MQTT broker set, a Docker or Python install no longer tries localhost** (#414).
+  It reported the broker as "configured", tried `localhost:1883` and logged an ERROR on
+  every retry. MQTT is optional: the bridge now reports *No broker* (`/api/health`
+  `mqtt_broker.source: "none"`), logs one INFO line, and connects once a broker is set
+  (Settings → *Save & Reconnect*, or `MQTT_HOST`). For a broker on the same machine use
+  `127.0.0.1`: a stored `localhost` counts as not set.
 
 - **Vendor registers went missing on an aGate that serves one Modbus client** (#426).
   The bridge read 15000–15039, 15510–15513 and 16000–16002 over a second TCP connection
