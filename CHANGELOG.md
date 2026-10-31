@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A gateway added after the bridge connected to MQTT got no Home Assistant entities**
+  (#412, since 0.2.35): its discovery configs went out just before the reconnect that sets
+  the last will, at QoS 0, so the broker kept none, and they were not sent again. Discovery
+  now goes out on every connection, as the bridge's own discovery already did. Existing
+  installs kept configs retained before 0.2.35; discovery changes since then now reach HA too.
+
 ## [0.2.49] — 2026-10-31
 
 ### Added
