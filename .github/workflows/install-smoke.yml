@@ -1,0 +1,139 @@
+name: Install smoke
+# The standalone install paths in INSTALL.md, each on a fresh runner with a demo
+# gateway (no aGate): Docker Compose as documented (bridge + its Mosquitto),
+# the Docker image with no broker, and a plain pip install into a clean venv,
+# with and without a broker. tools/install_smoke.py signs in, adds the demo and
+# checks health, polling, MQTT discovery on the broker and the log.
+#
+# The HAOS add-on has its own acceptance run (G1, on the HAOS VM); this covers
+# the paths G1 does not. Logs are uploaded with the generated admin password
+# masked.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    name: docker-${{ matrix.mqtt && 'mqtt' || 'nomqtt' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mqtt: [true, false]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version under test
+        run: echo "VERSION=$(python -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')" >> "$GITHUB_ENV"
+
+      - name: Install the checker's MQTT client
+        if: matrix.mqtt
+        run: pip install -c constraints.txt aiomqtt
+
+      # INSTALL.md §2 as written: .env from the example with TZ set and
+      # ADMIN_PASSWORD empty, so the first admin's password is generated.
+      - name: docker compose up -d --build
+        if: matrix.mqtt
+        run: |
+          cp .env.example .env
+          sed -i 's/^TZ=$/TZ=Etc\/UTC/' .env
+          docker compose up -d --build
+          docker compose logs -f app > app.log 2>&1 &
+
+      # The same image with no broker anywhere.
+      - name: docker run with no broker
+        if: ${{ !matrix.mqtt }}
+        run: |
+          docker build -t fwhbridge-smoke .
+          docker run -d --name fwhbridge-smoke -p 8100:8099 -v smoke-data:/data \
+            -e TZ=Etc/UTC -e ALLOW_INSECURE_AUTH=1 fwhbridge-smoke
+          docker logs -f fwhbridge-smoke > app.log 2>&1 &
+
+      - name: Smoke check
+        run: |
+          python tools/install_smoke.py --url http://127.0.0.1:8100 --version "$VERSION" \
+            --env docker --password-from-log app.log --log app.log --out smoke-out \
+            ${{ matrix.mqtt && '--mqtt 127.0.0.1:1886' || '' }}
+
+      - name: Mask the generated password in the log
+        if: always()
+        run: test -f app.log && sed -i -E 's/(GENERATED password: )[^ ]+/\1<masked>/' app.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-smoke-docker-${{ matrix.mqtt && 'mqtt' || 'nomqtt' }}
+          path: |
+            app.log
+            smoke-out/
+
+  python:
+    name: python-${{ matrix.mqtt && 'mqtt' || 'nomqtt' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mqtt: [true, false]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The oldest Python pyproject.toml allows; the image runs 3.12.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Version under test
+        run: echo "VERSION=$(python -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')" >> "$GITHUB_ENV"
+
+      - name: Broker
+        if: matrix.mqtt
+        run: |
+          docker run -d --name mosquitto -p 1883:1883 \
+            -v "$PWD/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" eclipse-mosquitto:2
+
+      # A clean venv outside the checkout; franklinwh-modbus comes from PyPI,
+      # as it does for anyone installing this way.
+      - name: pip install into a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -c constraints.txt .
+
+      - name: bridge run
+        run: |
+          mkdir -p "$RUNNER_TEMP/site/data"
+          cd "$RUNNER_TEMP/site"
+          ALLOW_INSECURE_AUTH=1 TZ=Etc/UTC \
+            ${{ matrix.mqtt && 'MQTT_HOST=127.0.0.1 MQTT_PORT=1883' || '' }} \
+            nohup "$RUNNER_TEMP/venv/bin/bridge" run --host 127.0.0.1 --port 8100 \
+            > "$GITHUB_WORKSPACE/bridge.log" 2>&1 &
+
+      - name: Smoke check
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" tools/install_smoke.py --url http://127.0.0.1:8100 \
+            --version "$VERSION" --env dev --password-from-log bridge.log --log bridge.log \
+            --out smoke-out ${{ matrix.mqtt && '--mqtt 127.0.0.1:1883' || '' }}
+
+      - name: Mask the generated password in the log
+        if: always()
+        run: test -f bridge.log && sed -i -E 's/(GENERATED password: )[^ ]+/\1<masked>/' bridge.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-smoke-python-${{ matrix.mqtt && 'mqtt' || 'nomqtt' }}
+          path: |
+            bridge.log
+            smoke-out/
