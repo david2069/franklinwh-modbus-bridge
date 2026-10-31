@@ -7,6 +7,23 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.50 — 2026-10-31
+
+### Added
+- **Setup wizard: search other Modbus ports**: *Search my network* has a
+  **Modbus port(s)** field, 502 by default, or a list and ranges such as
+  `502, 5020-5025` (up to 8).
+- **Setup wizard: search results in groups**: *New aGates found*, *Already set
+  up here* and *Other devices*, each aGate with its manufacturer, model,
+  firmware and serial as read.
+
+### Fixed
+- **Vendor values were missing on an aGate that serves one Modbus client**
+  (Emergency Backup reserve, high-resolution home load, PV energy totals). The
+  bridge now reads them over its one connection.
+- Discovery goes out on every MQTT connection, so a gateway added after start
+  always gets its entities.
+
 ## 0.2.49 — 2026-10-31
 
 ### Added
