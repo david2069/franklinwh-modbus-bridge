@@ -5,21 +5,35 @@ franklinwh-system-view overlay.
 sample: no Modbus I/O, so opening the view sends nothing to an aGate. Values
 are as read; anything the bridge can't read over Modbus is left out or named
 in ``unavailable`` (smart circuits and the generator have no Modbus points).
+The site's name and weather come from the solar forecast's cache (no fetch
+while a request waits), and the user's Customise diagram answers, saved by
+``PUT /api/system/customise``, are applied last (as the DC bridge, #428).
 
 Signs follow the points: ``grid_power_w`` > 0 imports, ``battery_power_w`` > 0
 discharges, the same as the package.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import aiosqlite
 import franklinwh_system_view as sv
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
-from franklinwh_bridge.store.db import gateway_is_unconfigured, get_gateways, get_site_config
+from franklinwh_bridge.store.db import (
+    gateway_is_unconfigured,
+    get_app_config,
+    get_gateways,
+    set_app_config,
+)
 
 router = APIRouter(prefix="/api", tags=["system-view"])
+
+CUSTOMISE_KEY = "system_view_customise"  # app_config: the Customise answers, as JSON
+INTRO = ("Where no reading tells the bridge how your site is built, tell it here. Empty or "
+         "Automatic uses the readings. Saved in the bridge, so every browser shows the same "
+         "diagram.")
 
 W = 50  # below this, a solar input counts as not producing (meter noise)
 
@@ -132,17 +146,76 @@ def gateway_payload(row: dict, inst: Any) -> dict:
             "solar": _solar(gw_id, pts)}
 
 
-@router.get("/system")
-async def get_system(request: Request) -> dict:
-    """The System view payload: every set-up gateway, default first, with both
-    layouts. Disabled and unconfigured gateways are left out; a stopped one is
-    drawn offline."""
+def place(tz: Any) -> str | None:
+    """A timezone's place: ``Australia/Sydney`` → ``Sydney``."""
+    if not isinstance(tz, str) or "/" not in tz:
+        return None
+    return tz.rsplit("/", 1)[1].replace("_", " ")
+
+
+def site_payload(forecast: dict | None) -> dict:
+    """The site from the solar forecast's cache: its place and the weather now.
+    No forecast location set, or none fetched yet: no name and no weather."""
+    out: dict[str, Any] = {}
+    if not forecast:
+        return out
+    name = place(forecast.get("timezone"))
+    if name:
+        out["name"], out["timezone"] = name, forecast["timezone"]
+    cur = forecast.get("current") or {}
+    if isinstance(cur.get("code"), int) and not isinstance(cur.get("code"), bool):
+        out["weather"] = {"code": cur["code"], "condition": cur.get("condition"),
+                          "temp_c": _n(cur.get("temp_c"))}
+    return out
+
+
+async def raw_payload(request: Request) -> dict:
+    """Every set-up gateway, default first, from readings alone (before the
+    user's answers). Disabled and unconfigured gateways are left out; a stopped
+    one is drawn offline."""
     db: aiosqlite.Connection = request.app.state.db
     registry = getattr(request.app.state, "registry", None)
-    site = await get_site_config(db)
+    fc = getattr(request.app.state, "solar_forecast", None)
     gateways = [gateway_payload(row, registry.get(row["id"]) if registry else None)
                 for row in await get_gateways(db)
                 if row.get("enabled") and not gateway_is_unconfigured(row)]
-    return sv.build({"version": sv.SCHEMA_VERSION,
-                     "site": {"name": site.get("name") or "FranklinWH"},
-                     "gateways": gateways})
+    return {"version": sv.SCHEMA_VERSION,
+            "site": site_payload(fc.cached() if fc is not None else None),
+            "gateways": gateways}
+
+
+async def load_saved(db: aiosqlite.Connection) -> dict:
+    """The Customise answers; none saved, or unreadable, is no answers."""
+    try:
+        data = json.loads(await get_app_config(db, CUSTOMISE_KEY) or "{}")
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+@router.get("/system")
+async def get_system(request: Request) -> dict:
+    """The System view payload, with the Customise answers applied, both layouts
+    and the Customise diagram form."""
+    raw = await raw_payload(request)
+    saved = await load_saved(request.app.state.db)
+    out = sv.customise.apply(raw, saved)
+    out["customise"] = {"endpoint": "api/system/customise", "intro": INTRO,
+                        "fields": sv.customise.fields(raw, saved)}
+    return sv.build(out)
+
+
+@router.put("/system/customise")
+async def put_system_customise(request: Request) -> dict:
+    """Save the Customise diagram answers. Bridge settings only: nothing is sent
+    to an aGate. Replaces the saved answers; an empty answer means Automatic."""
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="expected a JSON object") from exc
+    try:
+        values = sv.customise.clean(body, await raw_payload(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await set_app_config(request.app.state.db, CUSTOMISE_KEY, json.dumps(values))
+    return {"ok": True, "saved": values}

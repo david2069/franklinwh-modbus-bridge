@@ -509,30 +509,35 @@
 })();
 
 // The System view's gateway buttons follow the top bar's gateway picker, and
-// the other way round. Both name a gateway the same way (its name, else its id).
+// the other way round. The package draws one button per gateway in its
+// payload's order and says nothing of ids, and Customise can rename a gateway,
+// so the ids come from the same payload, read again whenever the buttons change.
 (() => {
   const app = () => window.Alpine && Alpine.store("app");
-  const idByName = (name) => ((app() && app().gatewayList) || []).find((g) => (g.name || g.id) === name);
-  const activeName = () => {
-    const s = app(), g = s && s.gatewayList.find((x) => x.id === s.activeGateway);
-    return g ? (g.name || g.id) : null;
-  };
-  const followPicker = () => {
-    const want = activeName();
-    const chips = [...document.querySelectorAll(".fwhsv .fwhsv-chips [role=tab]")];
-    const on = chips.find((b) => b.getAttribute("aria-selected") === "true");
-    if (!want || (on && on.textContent === want)) return;
-    const b = chips.find((x) => x.textContent === want);
-    if (b) b.click();
+  const chipSel = ".fwhsv .fwhsv-chips [role=tab]";
+  let ids = [], names = [], asking = null;
+  const chips = () => [...document.querySelectorAll(chipSel)];
+  const current = () => { const c = chips(); return c.length === names.length && c.every((b, i) => b.textContent === names[i]); };
+  const learn = () => asking || (asking = fetch("api/system", { credentials: "same-origin" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.gateways) { ids = d.gateways.map((g) => g.id); names = d.gateways.map((g) => g.name); } })
+    .catch(() => {}).finally(() => { asking = null; }));
+  const followPicker = async () => {
+    if (!chips().length) return;
+    if (!current()) { await learn(); if (!current()) return; }
+    const s = app(), i = s ? ids.indexOf(s.activeGateway) : -1;
+    const b = chips()[i];
+    if (b && b.getAttribute("aria-selected") !== "true") b.click();
   };
   // Capture phase: the package redraws the buttons in its own click handler.
   document.addEventListener("click", (e) => {
-    const b = e.target.closest && e.target.closest(".fwhsv .fwhsv-chips [role=tab]");
-    const g = b && idByName(b.textContent);
-    if (g && g.id !== app().activeGateway) app().setGateway(g.id);
+    const b = e.target.closest && e.target.closest(chipSel);
+    if (!b || !current()) return;
+    const id = ids[+b.dataset.i], s = app();
+    if (id && s && id !== s.activeGateway) s.setGateway(id);
   }, true);
-  // The overlay is added to <body> on first open and redraws its buttons on each poll.
-  // (It is there already when the page starts on the System view.)
+  // The overlay is added to <body> on first open and redraws its buttons on each
+  // poll. (It is there already when the page starts on the System view.)
   let watched = null;
   const watch = () => {
     const root = document.querySelector(".fwhsv");
