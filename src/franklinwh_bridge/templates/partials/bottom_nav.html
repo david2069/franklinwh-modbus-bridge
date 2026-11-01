@@ -29,6 +29,13 @@
             <span x-text="t.short"></span>
           </button>
         </template>
+        <!-- System view (DC bridge #428), named here: on a phone the top bar's icon is easy to miss. -->
+        <button type="button" data-testid="more-system-view"
+                @click="$store.app.moreOpen = false; window.FWHSystemView && FWHSystemView.open()"
+                style="min-height: 48px" class="flex items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-slate-700/40 text-sm text-slate-200">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="8" width="6" height="8" rx="1"/><path stroke-linecap="round" d="M3 12h6M15 12h6M12 3v5M12 16v5"/></svg>
+          <span>System view</span>
+        </button>
         <a :href="$store.app.guideUrl" target="_blank" rel="noopener noreferrer" data-testid="more-guide"
            @click="$store.app.moreOpen = false"
            style="min-height: 48px" class="flex items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-slate-700/40 text-sm text-slate-200">

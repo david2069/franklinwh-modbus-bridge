@@ -90,7 +90,7 @@ for the full date and time of the last poll.
 
 ## System view
 
-The **System view** button (also in the sidebar) opens a picture of the site over the
+The **System view** button (also in the sidebar, and on a phone in the **More** sheet) opens a picture of the site over the
 dashboard: the grid, the aGate, the home, the batteries and each solar input, with live
 values and flows. Hover over an object for a sentence; click it for details. **−**, **Fit**
 and **+** zoom; **Standard dashboard ✕**, Esc or Back closes it. **Start on System view**

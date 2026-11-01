@@ -110,7 +110,7 @@ def test_page_mounts_the_overlay_and_offers_it_in_both_navs():
     assert 'FWHSystemView.mount({endpoint: "api/system"' in index
     assert 'href="system-view/system-view.css' in index
     assert 'src="system-view/system-view.js' in index
-    for part in ("partials/sidebar.html", "partials/topbar.html"):
+    for part in ("partials/sidebar.html", "partials/topbar.html", "partials/bottom_nav.html"):
         assert "FWHSystemView.open()" in (TPL / part).read_text(), part
 
 
