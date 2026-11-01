@@ -7,6 +7,21 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.52 — 2026-11-02
+
+### Added
+- **System view: Customise**: rename the items in the diagram to suit your site.
+- **System view: site name and weather**, from the forecast location in
+  Settings → Site & Gateways.
+- **System view on a phone**: now named in the **More** sheet.
+
+### Fixed
+- **System view follows the gateway picker**: it opens on the gateway chosen in
+  the top bar, and choosing a gateway in either one changes the other.
+- **System view on a phone**: a tap no longer leaves a tip box covering the ✕,
+  so the details panel can be closed.
+- **Sidebar logo lines up** with the top bar when the top bar takes two rows.
+
 ## 0.2.51 — 2026-11-01
 
 ### Added
