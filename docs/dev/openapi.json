@@ -2242,6 +2242,30 @@
         }
       }
     },
+    "/api/system": {
+      "get": {
+        "tags": [
+          "system-view"
+        ],
+        "summary": "Get System",
+        "description": "The System view payload: every set-up gateway, default first, with both\nlayouts. Disabled and unconfigured gateways are left out; a stopped one is\ndrawn offline.",
+        "operationId": "get_system_api_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get System Api System Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/mqtt/config": {
       "get": {
         "tags": [

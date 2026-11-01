@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **System view** (DC bridge #428): a picture of the site (grid, aGate, home, batteries,
+  solar inputs) over the dashboard, from the shared `franklinwh-system-view` package. It
+  opens from the top bar or the sidebar. `GET /api/system` builds its payload from each
+  gateway's last sample, with no Modbus I/O. Smart circuits and the generator are marked
+  unavailable (no Modbus points).
+
 ## [0.2.50] — 2026-10-31
 
 ### Added

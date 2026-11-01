@@ -43,6 +43,10 @@
   <script src="static/js/sequencer_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/live_points_panel.js?v={{ cache_bust }}"></script>
 
+  <!-- System view overlay (DC bridge #428), served from the franklinwh-system-view package -->
+  <link rel="stylesheet" href="system-view/system-view.css?v={{ cache_bust }}">
+  <script src="system-view/system-view.js?v={{ cache_bust }}"></script>
+
   <!-- Alpine.js — local -->
   <script defer src="static/js/alpinejs-3.14.1.min.js"></script>
 </head>
@@ -494,5 +498,6 @@
 {% include "partials/logged_out_modal.html" %}
 {% include "partials/setup_wizard.html" %}
 {% include "partials/all_gateways_modal.html" %}
+<script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav[data-testid=bottom-nav]"});</script>
 </body>
 </html>

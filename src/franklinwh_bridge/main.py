@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import franklinwh_system_view
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -45,6 +46,7 @@ from franklinwh_bridge.api.schedules_api import router as schedules_router
 from franklinwh_bridge.api.setup_api import router as setup_router
 from franklinwh_bridge.api.solar_api import router as solar_router
 from franklinwh_bridge.api.support_api import router as support_router
+from franklinwh_bridge.api.system_view_api import router as system_view_router
 from franklinwh_bridge.api.tariff_api import router as tariff_router
 from franklinwh_bridge.api.ui import router as ui_router
 from franklinwh_bridge.api.users_api import router as users_router
@@ -1272,6 +1274,9 @@ app.add_middleware(GatewayRefMiddleware)
 # Mount static files
 _static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+# The System view overlay's page files (DC bridge #428), from the shared package.
+app.mount("/system-view", StaticFiles(directory=str(franklinwh_system_view.static_dir())),
+          name="system-view")
 
 # Open routers: health/status probes + auth (login is how you get a session).
 app.include_router(health_router)
@@ -1287,6 +1292,7 @@ app.include_router(auth_router)
 _ADMIN_WRITES = Depends(require_admin_for_writes)
 _AUTH = [Depends(require_auth), _ADMIN_WRITES]
 app.include_router(admin_router, dependencies=_AUTH)
+app.include_router(system_view_router, dependencies=_AUTH)
 app.include_router(mqtt_router, dependencies=_AUTH)
 app.include_router(groups_router, dependencies=_AUTH)
 # A gateway in the path is its ID or serial; a bad one is rejected after auth.
