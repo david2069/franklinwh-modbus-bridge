@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.51] — 2026-11-01
+
 ### Added
 
 - **System view** (DC bridge #428): a picture of the site (grid, aGate, home, batteries,

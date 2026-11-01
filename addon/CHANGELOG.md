@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.51 — 2026-11-01
+
+### Added
+- **System view**: a picture of your site over the dashboard: the grid, the
+  aGate, the home, the batteries and each solar input, with live values and
+  flows. Open it from the top bar or the sidebar; *Start on System view* opens
+  it whenever the page loads. Smart circuits and the generator aren't shown:
+  they can't be read over Modbus.
+
 ## 0.2.50 — 2026-10-31
 
 ### Added
