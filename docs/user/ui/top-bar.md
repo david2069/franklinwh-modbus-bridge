@@ -105,7 +105,19 @@ nothing to the aGate. Only what the bridge reads is drawn:
 - **Solar**: each input (aGate, Remote 1, Remote 2) once it has produced since the bridge
   started. A site with lifetime solar energy but nothing producing yet shows one idle array.
 - **Batteries**: one card per aPower when the aGate reports more than one battery port.
-- **Smart circuits and the generator** are not drawn: they have no Modbus points.
+- **Smart circuits and the generator** are drawn grey, "Not available here": they have no
+  Modbus points.
+
+Above the diagram, the site's name and the weather now come from the solar forecast's
+location ([Settings → Site & Gateways → Location & Solar](settings-site-gateways.md#location-solar)): the place from its time zone, such as "Sydney".
+Without a forecast location, neither is shown.
+
+**Customise diagram** (admins) tells the bridge what no reading can: the site's and each
+gateway's name in the view, the service legs, the battery model, where the solar is wired,
+whether a generator is fitted, and whether to show the weather. An empty answer, or
+Automatic, uses the readings. The answers are saved in the bridge, so every browser shows
+the same diagram; they change only the System view, never the aGate. A renamed gateway's
+chip still follows the top bar's picker.
 
 The view comes from the shared `franklinwh-system-view` package, the same as the Direct
 Connect bridge's.

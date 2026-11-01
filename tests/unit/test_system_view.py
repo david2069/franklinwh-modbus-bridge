@@ -83,26 +83,94 @@ async def test_offline_when_disconnected_or_error_or_stopped():
         assert sv.validate({"version": 1, "gateways": [g]}) == []
 
 
-async def test_route_lists_enabled_configured_gateways_with_scenes(monkeypatch):
+FORECAST = {"timezone": "Australia/Sydney",
+            "current": {"temp_c": 21.4, "condition": "Partly cloudy", "code": 2}}
+
+
+class _Db:
+    """app_config only: what the System view reads and writes."""
+
+    def __init__(self):
+        self.kv = {}
+
+
+def _request(monkeypatch, *, forecast=FORECAST, body=None):
     rows = [{"id": "gw1", "name": "Garage", "enabled": 1, "host": "192.0.2.10"},
             {"id": "off", "name": "Off", "enabled": 0, "host": "192.0.2.11"},
             {"id": "default", "name": "aGate", "enabled": 1, "host": ""}]
+    db = _Db()
 
-    async def _rows(db):
+    async def _rows(_db):
         return rows
 
-    async def _site(db):
-        return {"name": "Home"}
+    async def _get(_db, key, default=None):
+        return _db.kv.get(key, default)
+
+    async def _set(_db, key, value):
+        _db.kv[key] = value
 
     monkeypatch.setattr(svapi, "get_gateways", _rows)
-    monkeypatch.setattr(svapi, "get_site_config", _site)
-    inst = await _inst(POINTS)
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
-        db=None, registry=SimpleNamespace(get=lambda gid: inst if gid == "gw1" else None))))
-    out = await svapi.get_system(request)
-    assert out["site"] == {"name": "Home"}
+    monkeypatch.setattr(svapi, "get_app_config", _get)
+    monkeypatch.setattr(svapi, "set_app_config", _set)
+
+    async def _json():
+        if isinstance(body, Exception):
+            raise body
+        return body
+
+    def make(inst):
+        fc = SimpleNamespace(cached=lambda: forecast)
+        return SimpleNamespace(json=_json, app=SimpleNamespace(state=SimpleNamespace(
+            db=db, solar_forecast=fc,
+            registry=SimpleNamespace(get=lambda gid: inst if gid == "gw1" else None))))
+    return db, make
+
+
+async def test_route_lists_enabled_configured_gateways_with_scenes(monkeypatch):
+    _, make = _request(monkeypatch)
+    out = await svapi.get_system(make(await _inst(POINTS)))
     assert [g["id"] for g in out["gateways"]] == ["gw1"]
     assert set(out["gateways"][0]["scenes"]) == {"landscape", "portrait"}
+    assert out["customise"]["endpoint"] == "api/system/customise"
+    keys = {f["key"] for f in out["customise"]["fields"] if f["scope"] == "gw1"}
+    assert keys >= {"name", "solar"}
+
+
+async def test_site_name_and_weather_from_the_forecast_cache(monkeypatch):
+    _, make = _request(monkeypatch)
+    out = await svapi.get_system(make(await _inst(POINTS)))
+    assert out["site"]["name"] == "Sydney" and out["site"]["weather"]["code"] == 2
+    assert out["strip"]["name"] == "Sydney" and "Partly cloudy" in out["strip"]["weather"]["text"]
+
+
+async def test_no_forecast_no_site_name_or_weather(monkeypatch):
+    _, make = _request(monkeypatch, forecast=None)
+    out = await svapi.get_system(make(await _inst(POINTS)))
+    assert out["site"] == {} and out["strip"] == {"name": ""}
+
+
+async def test_customise_saved_and_applied(monkeypatch):
+    db, make = _request(monkeypatch, body={"site": {"name": "Home"},
+                                           "gw1": {"name": "Shed", "legs": "", "solar": "apbox"}})
+    inst = await _inst(POINTS)
+    saved = await svapi.put_system_customise(make(inst))
+    assert saved == {"ok": True, "saved": {"site": {"name": "Home"},
+                                           "gw1": {"name": "Shed", "solar": "apbox"}}}
+    out = await svapi.get_system(make(inst))
+    assert out["site"]["name"] == "Home" and out["gateways"][0]["name"] == "Shed"
+    assert {s["where"] for s in out["gateways"][0]["solar"]} == {"apbox"}
+    # The form shows the reading beside the answer.
+    name = next(f for f in out["customise"]["fields"] if f["scope"] == "gw1" and f["key"] == "name")
+    assert name["value"] == "Shed" and name["auto"] == "Garage"
+
+
+async def test_customise_rejects_unknown_settings_and_bad_json(monkeypatch):
+    from fastapi import HTTPException
+    for body in ({"gw1": {"colour": "red"}}, {"nope": {}}, ["x"], ValueError("bad json")):
+        db, make = _request(monkeypatch, body=body)
+        with pytest.raises(HTTPException) as e:
+            await svapi.put_system_customise(make(await _inst(POINTS)))
+        assert e.value.status_code == 400 and db.kv == {}
 
 
 def test_page_mounts_the_overlay_and_offers_it_in_both_navs():
@@ -117,5 +185,5 @@ def test_page_mounts_the_overlay_and_offers_it_in_both_navs():
 def test_chips_follow_the_picker_and_the_logo_lines_up_with_the_top_bar():
     index = (TPL / "index.html").read_text()
     assert '"--topbar-h"' in index and ".fwhsv-chips [role=tab]" in index
-    assert "setGateway(" in index
+    assert "setGateway(" in index and 'fetch("api/system"' in index
     assert "min-height: var(--topbar-h" in (TPL / "partials/sidebar.html").read_text()
