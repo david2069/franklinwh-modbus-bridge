@@ -95,7 +95,9 @@ dashboard: the grid, the aGate, the home, the batteries and each solar input, wi
 values and flows. Hover over an object for a sentence; click it for details. **−**, **Fit**
 and **+** zoom; **Standard dashboard ✕**, Esc or Back closes it. **Start on System view**
 opens it whenever this browser loads the bridge. With more than one gateway, a chip per
-gateway switches between them.
+gateway switches between them. The chips and the top bar's gateway picker follow each
+other: the view opens on the gateway the picker shows, and choosing a chip changes the
+picker.
 
 Values are as the aGate reports them, from the bridge's last poll; opening the view sends
 nothing to the aGate. Only what the bridge reads is drawn:

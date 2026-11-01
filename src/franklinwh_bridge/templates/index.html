@@ -499,5 +499,56 @@
 {% include "partials/setup_wizard.html" %}
 {% include "partials/all_gateways_modal.html" %}
 <script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav[data-testid=bottom-nav]"});</script>
+<script>
+// The top bar's height, for the sidebar logo (partials/sidebar.html).
+(() => {
+  const header = document.querySelector("header");
+  if (!header || !window.ResizeObserver) return;
+  new ResizeObserver(() => document.documentElement.style.setProperty(
+    "--topbar-h", header.getBoundingClientRect().height + "px")).observe(header);
+})();
+
+// The System view's gateway buttons follow the top bar's gateway picker, and
+// the other way round. Both name a gateway the same way (its name, else its id).
+(() => {
+  const app = () => window.Alpine && Alpine.store("app");
+  const idByName = (name) => ((app() && app().gatewayList) || []).find((g) => (g.name || g.id) === name);
+  const activeName = () => {
+    const s = app(), g = s && s.gatewayList.find((x) => x.id === s.activeGateway);
+    return g ? (g.name || g.id) : null;
+  };
+  const followPicker = () => {
+    const want = activeName();
+    const chips = [...document.querySelectorAll(".fwhsv .fwhsv-chips [role=tab]")];
+    const on = chips.find((b) => b.getAttribute("aria-selected") === "true");
+    if (!want || (on && on.textContent === want)) return;
+    const b = chips.find((x) => x.textContent === want);
+    if (b) b.click();
+  };
+  // Capture phase: the package redraws the buttons in its own click handler.
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest(".fwhsv .fwhsv-chips [role=tab]");
+    const g = b && idByName(b.textContent);
+    if (g && g.id !== app().activeGateway) app().setGateway(g.id);
+  }, true);
+  // The overlay is added to <body> on first open and redraws its buttons on each poll.
+  // (It is there already when the page starts on the System view.)
+  let watched = null;
+  const watch = () => {
+    const root = document.querySelector(".fwhsv");
+    if (root && root !== watched) {
+      watched = root;
+      new MutationObserver(followPicker).observe(root.querySelector(".fwhsv-chips") || root,
+                                                 { childList: true, subtree: true });
+    }
+  };
+  watch();
+  new MutationObserver(watch).observe(document.body, { childList: true });
+  document.addEventListener("alpine:initialized", () => Alpine.effect(() => {
+    const s = app();
+    if (s) { s.activeGateway; s.gatewayList; followPicker(); }
+  }));
+})();
+</script>
 </body>
 </html>
