@@ -498,7 +498,9 @@
 {% include "partials/logged_out_modal.html" %}
 {% include "partials/setup_wizard.html" %}
 {% include "partials/all_gateways_modal.html" %}
-<script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav[data-testid=bottom-nav]"});</script>
+<script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav[data-testid=bottom-nav]",
+  gateway: () => window.Alpine && Alpine.store("app").activeGateway,
+  onGateway: (id) => { const s = Alpine.store("app"); if (id !== s.activeGateway) s.setGateway(id); }});</script>
 <script>
 // The top bar's height, for the sidebar logo (partials/sidebar.html).
 (() => {
@@ -508,52 +510,13 @@
     "--topbar-h", header.getBoundingClientRect().height + "px")).observe(header);
 })();
 
-// The System view's gateway buttons follow the top bar's gateway picker, and
-// the other way round. The package draws one button per gateway in its
-// payload's order and says nothing of ids, and Customise can rename a gateway,
-// so the ids come from the same payload, read again whenever the buttons change.
-(() => {
-  const app = () => window.Alpine && Alpine.store("app");
-  const chipSel = ".fwhsv .fwhsv-chips [role=tab]";
-  let ids = [], names = [], asking = null;
-  const chips = () => [...document.querySelectorAll(chipSel)];
-  const current = () => { const c = chips(); return c.length === names.length && c.every((b, i) => b.textContent === names[i]); };
-  const learn = () => asking || (asking = fetch("api/system", { credentials: "same-origin" })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => { if (d && d.gateways) { ids = d.gateways.map((g) => g.id); names = d.gateways.map((g) => g.name); } })
-    .catch(() => {}).finally(() => { asking = null; }));
-  const followPicker = async () => {
-    if (!chips().length) return;
-    if (!current()) { await learn(); if (!current()) return; }
-    const s = app(), i = s ? ids.indexOf(s.activeGateway) : -1;
-    const b = chips()[i];
-    if (b && b.getAttribute("aria-selected") !== "true") b.click();
-  };
-  // Capture phase: the package redraws the buttons in its own click handler.
-  document.addEventListener("click", (e) => {
-    const b = e.target.closest && e.target.closest(chipSel);
-    if (!b || !current()) return;
-    const id = ids[+b.dataset.i], s = app();
-    if (id && s && id !== s.activeGateway) s.setGateway(id);
-  }, true);
-  // The overlay is added to <body> on first open and redraws its buttons on each
-  // poll. (It is there already when the page starts on the System view.)
-  let watched = null;
-  const watch = () => {
-    const root = document.querySelector(".fwhsv");
-    if (root && root !== watched) {
-      watched = root;
-      new MutationObserver(followPicker).observe(root.querySelector(".fwhsv-chips") || root,
-                                                 { childList: true, subtree: true });
-    }
-  };
-  watch();
-  new MutationObserver(watch).observe(document.body, { childList: true });
-  document.addEventListener("alpine:initialized", () => Alpine.effect(() => {
-    const s = app();
-    if (s) { s.activeGateway; s.gatewayList; followPicker(); }
-  }));
-})();
+// The System view's gateway buttons and the top bar's gateway picker show the
+// same gateway: the view opens on the picker's, a button changes the picker,
+// and a picker change while it is open moves the view.
+document.addEventListener("alpine:initialized", () => Alpine.effect(() => {
+  const id = Alpine.store("app").activeGateway;
+  if (id) FWHSystemView.showGateway(id);
+}));
 </script>
 </body>
 </html>
