@@ -88,6 +88,26 @@ connection, time and buttons, then the Grid / Solar / Load / battery indicators.
 The clock shows one time, in the bridge's timezone, for example `20:18 AEDT`. Hover over it
 for the full date and time of the last poll.
 
+## System view
+
+The **System view** button (also in the sidebar) opens a picture of the site over the
+dashboard: the grid, the aGate, the home, the batteries and each solar input, with live
+values and flows. Hover over an object for a sentence; click it for details. **−**, **Fit**
+and **+** zoom; **Standard dashboard ✕**, Esc or Back closes it. **Start on System view**
+opens it whenever this browser loads the bridge. With more than one gateway, a chip per
+gateway switches between them.
+
+Values are as the aGate reports them, from the bridge's last poll; opening the view sends
+nothing to the aGate. Only what the bridge reads is drawn:
+
+- **Solar**: each input (aGate, Remote 1, Remote 2) once it has produced since the bridge
+  started. A site with lifetime solar energy but nothing producing yet shows one idle array.
+- **Batteries**: one card per aPower when the aGate reports more than one battery port.
+- **Smart circuits and the generator** are not drawn: they have no Modbus points.
+
+The view comes from the shared `franklinwh-system-view` package, the same as the Direct
+Connect bridge's.
+
 ## Release
 
 ![Battery Control State dialog](../../images/ui/release-modal.png)
@@ -149,7 +169,7 @@ The gear opens **Topbar Preferences**, in three sections:
 
 - **Left**: Sidebar button, Page title, Gateway picker.
 - **Centre Indicators**: Grid, Solar, Load, Battery.
-- **Right**: Connection, Data quality, Clock, Release, SunSpec, User, Theme, Refresh.
+- **Right**: Connection, Data quality, Clock, System view, Release, SunSpec, User, Theme, Refresh.
 
 Untick an item to hide it; you can hide everything. The gear itself always stays, so you can
 turn items back on. *Logged out — log in* still appears when your login has ended. Use

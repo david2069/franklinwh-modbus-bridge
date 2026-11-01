@@ -38,6 +38,16 @@
       <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Dashboard</span>
     </button>
 
+    <!-- System view (DC bridge #428): opens the shared overlay; not a tab. -->
+    <button data-testid="sidebar-system-view" type="button" @click="window.FWHSystemView && FWHSystemView.open()"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'System view'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full border-l-2 border-transparent"
+            :class="$store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="8" width="6" height="8" rx="1"/><path stroke-linecap="round" d="M3 12h6M15 12h6M12 3v5M12 16v5"/></svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>System view</span>
+    </button>
+
     <!-- SunSpec Explorer -->
     <button x-show="$store.app.canSee('explorer')" @click="$store.app.setTab('explorer')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'SunSpec Explorer'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"

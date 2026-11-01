@@ -160,7 +160,7 @@ function topbarDefaults() {
     center: items([['grid', 'Grid'], ['solar', 'Solar'], ['load', 'Load'], ['battery', 'Battery']]),
     right: items([
       ['status', 'Connection'], ['quality', 'Data quality'], ['clock', 'Clock'],
-      ['release', 'Release'], ['sunspec', 'SunSpec'], ['user', 'User'],
+      ['system', 'System view'], ['release', 'Release'], ['sunspec', 'SunSpec'], ['user', 'User'],
       ['theme', 'Theme'], ['refresh', 'Refresh'],
     ]),
   };
