@@ -3,8 +3,11 @@
        :class="$store.app.sidebarCollapsed ? 'w-14' : 'w-56'"
        class="flex flex-col bg-slate-800/50 border-r border-white/[0.08] flex-shrink-0 h-screen transition-all duration-300 relative">
 
-  <!-- Logo -->
-  <div class="flex items-center gap-3 px-3 py-3 border-b border-white/[0.08] overflow-hidden">
+  <!-- Logo: as tall as the top bar (--topbar-h, set in index.html), so the two
+       bottom edges line up when the top bar wraps and the System view, which
+       opens below the top bar, covers the sidebar from the same line. -->
+  <div data-testid="sidebar-logo" style="min-height: var(--topbar-h, auto)"
+       class="flex items-center gap-3 px-3 py-3 border-b border-white/[0.08] overflow-hidden">
     <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer"
          style="background: linear-gradient(135deg, var(--primary-light), var(--primary-dark));"
          @click="$store.app.toggleSidebar()"

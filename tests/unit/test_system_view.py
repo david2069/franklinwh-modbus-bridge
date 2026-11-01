@@ -110,5 +110,12 @@ def test_page_mounts_the_overlay_and_offers_it_in_both_navs():
     assert 'FWHSystemView.mount({endpoint: "api/system"' in index
     assert 'href="system-view/system-view.css' in index
     assert 'src="system-view/system-view.js' in index
-    for part in ("partials/sidebar.html", "partials/topbar.html"):
+    for part in ("partials/sidebar.html", "partials/topbar.html", "partials/bottom_nav.html"):
         assert "FWHSystemView.open()" in (TPL / part).read_text(), part
+
+
+def test_chips_follow_the_picker_and_the_logo_lines_up_with_the_top_bar():
+    index = (TPL / "index.html").read_text()
+    assert '"--topbar-h"' in index and ".fwhsv-chips [role=tab]" in index
+    assert "setGateway(" in index
+    assert "min-height: var(--topbar-h" in (TPL / "partials/sidebar.html").read_text()
