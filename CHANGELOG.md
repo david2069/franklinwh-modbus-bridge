@@ -13,6 +13,29 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.52] — 2026-11-02
+
+### Added
+
+- **System view: Customise, site name and weather** (#439), on `franklinwh-system-view`
+  0.2.1 (now `>=0.2.3,<0.3`). *Customise* renames the diagram's items; the answers are kept
+  in app_config `system_view_customise` and saved with `PUT /api/system/customise` (400 on
+  a bad value). The site strip shows the place from the time zone and the solar-forecast
+  weather (Settings → Site & Gateways → Location). Smart circuits and the generator are
+  drawn grey, "Not available here".
+- **System view in the phone's More sheet** (#438): a labelled entry, as the top bar's icon
+  is easy to miss on a phone.
+
+### Fixed
+
+- **System view follows the gateway picker** (#438, #440): the overlay opens on the picker's
+  gateway, and choosing a gateway in either one moves the other (the package's `gateway` /
+  `onGateway` / `showGateway`, 0.2.2).
+- **System view: a tap on a phone no longer leaves the hover box over the details panel's ✕**
+  (package 0.2.3, #440).
+- **Sidebar logo lines up with a wrapped top bar** (#438): no sidebar strip above the System
+  view when the top bar takes two rows.
+
 ## [0.2.51] — 2026-11-01
 
 ### Added
