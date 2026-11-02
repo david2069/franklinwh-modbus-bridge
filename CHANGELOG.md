@@ -22,6 +22,9 @@ lands, not backfilled later.
   (migration 64 drops the column). Gateways set to *Standard* change from 100 W steps to the
   library's ~1 W value. The *Home Load Source* diagnostic entity and support info still show
   the register in use.
+- **System view leaves out smart circuits and the generator** again, rather than drawing them
+  grey "Not available here": the bridge has no Modbus points for them. A generator set to
+  *Fitted* in Customise is still drawn.
 
 ### Added
 

@@ -49,8 +49,8 @@ async def test_values_as_read_and_valid_for_the_package():
     # Only the input that produces is drawn; remote inputs at 0 W are not.
     assert g["solar"] == [{"id": "pv_proximal", "where": "agate", "name": "Solar (aGate)",
                            "power_w": 4200}]
-    # Smart circuits and the generator have no Modbus points.
-    assert g["circuits"] == [] and g["unavailable"] == ["circuits", "generator"]
+    # Smart circuits and the generator have no Modbus points: left out, not drawn.
+    assert g["circuits"] == [] and "unavailable" not in g and "generator" not in g
     assert sv.validate({"version": 1, "gateways": [g]}) == []
 
 
