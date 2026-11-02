@@ -7,6 +7,19 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.53 — 2026-11-03
+
+### Changed
+- **Home load** is now always the aGate's most precise reading (about 1 W). The
+  *Home Load Register* setting in Add and Edit Gateway is gone. Gateways that were
+  set to *Standard* now show the finer value too.
+- **System view** no longer draws smart circuits and the generator, which the bridge
+  can't read. A generator you mark as *Fitted* in Customise is still drawn.
+
+### Added
+- **System view** draws your solar as soon as the aGate reports it installed, idle
+  until it produces.
+
 ## 0.2.52 — 2026-11-02
 
 ### Added

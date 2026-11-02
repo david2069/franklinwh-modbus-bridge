@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.53] — 2026-11-03
+
 ### Changed
 
 - **Home load is taken as franklinwh-modbus returns it**: 16000 (about 1 W), or 15506
