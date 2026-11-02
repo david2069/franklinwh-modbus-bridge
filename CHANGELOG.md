@@ -13,6 +13,12 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **System view leaves out smart circuits and the generator** again, rather than drawing them
+  grey "Not available here": the bridge has no Modbus points for them. A generator set to
+  *Fitted* in Customise is still drawn.
+
 ## [0.2.52] — 2026-11-02
 
 ### Added

@@ -105,8 +105,8 @@ nothing to the aGate. Only what the bridge reads is drawn:
 - **Solar**: each input (aGate, Remote 1, Remote 2) once it has produced since the bridge
   started. A site with lifetime solar energy but nothing producing yet shows one idle array.
 - **Batteries**: one card per aPower when the aGate reports more than one battery port.
-- **Smart circuits and the generator** are drawn grey, "Not available here": they have no
-  Modbus points.
+- **Smart circuits and the generator** aren't drawn: they have no Modbus points. A generator
+  set to *Fitted* in Customise is drawn, marked "Not reported".
 
 Above the diagram, the site's name and the weather now come from the solar forecast's
 location ([Settings → Site & Gateways → Location & Solar](settings-site-gateways.md#location-solar)): the place from its time zone, such as "Sydney".
