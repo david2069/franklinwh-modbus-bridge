@@ -42,6 +42,11 @@ _PV_INPUTS = (("pv_proximal", "agate", "Solar (aGate)"),
               ("pv_remote1", "apbox", "Remote solar 1"),
               ("pv_remote2", "apbox", "Remote solar 2"))
 
+# 15500 PVUse / 15501 apBoxPVUse: the aGate says solar is installed on that
+# input, so it is drawn even before it produces. 15501 doesn't say which remote
+# input or how many: it draws Remote solar 1; Remote solar 2 once it produces.
+_INSTALLED = {"pv_proximal": "pv_agate_installed", "pv_remote1": "pv_remote_installed"}
+
 # Inputs seen producing since the bridge started, per gateway, so an array
 # stays drawn at night once it has been seen.
 _seen_pv: dict[str, set[str]] = {}
@@ -80,7 +85,7 @@ def _solar(gw_id: str, pts: dict) -> list[dict]:
         p = _n(pts.get(key))
         if p is None:
             continue
-        if p >= W:
+        if p >= W or pts.get(_INSTALLED.get(key, "")) is True:
             seen.add(key)
         if key in seen:
             arrays.append({"id": key, "where": where, "name": name, "power_w": p})

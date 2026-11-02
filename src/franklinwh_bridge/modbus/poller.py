@@ -13,7 +13,7 @@ from typing import Any
 
 from franklinwh_bridge import workers
 from franklinwh_bridge.gateway import link_stats
-from franklinwh_bridge.modbus.home_load import STANDARD, HomeLoadSelector
+from franklinwh_bridge.modbus import home_load
 from franklinwh_bridge.modbus.register_watch import RegisterWatch
 from franklinwh_bridge.modbus.reserves import ActiveReserveReader
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
@@ -104,12 +104,8 @@ class ModbusPoller:
         stats: Any | None = None,
         modbus_lock: asyncio.Lock | None = None,
         timeout: float = 10.0,
-        home_load_source: Callable[[], str] | None = None,
     ) -> None:
         self._controller = controller
-        # Read per poll so a settings change applies without a restart (#35).
-        self._home_load_source = home_load_source or (lambda: STANDARD)
-        self._home_load = HomeLoadSelector(gateway_id)
         self._register_watch = RegisterWatch(gateway_id)
         self._bus = sample_bus
         self._gateway_id = gateway_id
@@ -576,8 +572,8 @@ class ModbusPoller:
             # Reserves: 15508/15509 as read, plus the active mode's reserve.
             self._reserves.apply(points)
 
-            # Home load from the register this gateway is set to use (#35).
-            self._home_load.apply(points, self._home_load_source())
+            # Home load as the library returns it; record which register.
+            home_load.record_source(points)
 
             # Log changes of still-unmapped registers with context (#36).
             self._register_watch.apply(points)
@@ -793,20 +789,20 @@ class ModbusPoller:
 
         Three ranges, each on the library's connection (#426):
         - 15000-15039: Undocumented registers (raw values only)
-        - 15510-15513: PV energy uint32 composites (the library doesn't
-          return these as named keys)
+        - 15500-15513: the library's extension block, read whole for what it
+          doesn't return: 15500 PVUse and 15501 apBoxPVUse (aGate / remote
+          solar installed) and the 15510-15513 PV energy uint32 pairs. One
+          request either way; this used to read 15510-15513 alone.
         - 16000-16002: High-resolution extension registers
 
-        Registers 15500-15509 are NOT read here — the library already reads
-        them via _read_extension_solar().
-
-        Raw vreg_155xx keys for the SunSpec Explorer are derived from the
-        library's named keys via _derive_vreg_from_library().
+        The library's named keys for 15502-15509 stay the values used; any
+        vreg_155xx this read missed is derived from them by
+        _derive_vreg_from_library().
 
         A range that fails is skipped for this poll; the first failure after a
         success is logged at WARNING, so missing values are never silent.
         """
-        ranges = ((15000, 40), (15510, 4), (16000, 3))
+        ranges = ((15000, 40), (15500, 14), (16000, 3))
         failed: list[str] = []
         for start, count in ranges:
             try:
@@ -815,14 +811,20 @@ class ModbusPoller:
                 failed.append(f"{start}-{start + count - 1}: {str(exc) or type(exc).__name__}")
                 continue
             for i, val in enumerate(regs):
+                if 15502 <= start + i <= 15509:
+                    continue  # the library's (sanitised) values; see below
                 # int16, as the aGate means it. 0xFFFF stays as read: it is
                 # also the aGate's not-available marker, which history skips.
                 if start + i in SIGNED_VREGS and 0x8000 <= val < 0xFFFF:
                     val -= 0x10000
                 points[f"vreg_{start + i}"] = val
-            if start == 15510:  # PV energy counters: uint32 high:low pairs
-                points["pv_energy_total_wh"] = (regs[0] << 16) | regs[1]
-                points["pv_energy_proximal_wh"] = (regs[2] << 16) | regs[3]
+            if start == 15500:
+                # Solar inputs installed, as the aGate is configured (1 = yes).
+                points["pv_agate_installed"] = regs[0] == 1
+                points["pv_remote_installed"] = regs[1] == 1
+                # PV energy counters: uint32 high:low pairs
+                points["pv_energy_total_wh"] = (regs[10] << 16) | regs[11]
+                points["pv_energy_proximal_wh"] = (regs[12] << 16) | regs[13]
         if failed and not self._vendor_read_failing:
             logger.warning("Gateway %s: vendor register reads failed (%s)",
                            self._gateway_id, "; ".join(failed))
@@ -841,8 +843,8 @@ class ModbusPoller:
         SunSpec Explorer, avoiding a duplicate Modbus read of those addresses.
 
         Register-to-key mapping (from franklinwh-modbus controller.py):
-          15500: (unnamed, battery-related — not available from library)
-          15501: (unnamed — not available from library)
+          15500: PVUse, aGate solar installed (read by the bridge, not returned)
+          15501: apBoxPVUse, remote solar installed (read by the bridge, not returned)
           15502: pv_total
           15503: pv_proximal
           15504: pv_remote1

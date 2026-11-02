@@ -71,6 +71,20 @@ async def test_solar_stays_drawn_at_night_once_seen():
     assert [s["id"] for s in svapi.gateway_payload(ROW, night)["solar"]] == ["pv_proximal"]
 
 
+async def test_installed_inputs_are_drawn_before_they_produce():
+    """15500/15501 say solar is installed: drawn idle at night from the first poll."""
+    pts = {**POINTS, "pv_proximal": 0, "pv_remote1": 0, "pv_remote2": 0, "total_solar": 0,
+           "pv_agate_installed": True, "pv_remote_installed": True}
+    solar = svapi.gateway_payload(ROW, await _inst(pts))["solar"]
+    assert [(s["id"], s["power_w"]) for s in solar] == [("pv_proximal", 0), ("pv_remote1", 0)]
+
+
+async def test_not_installed_inputs_wait_until_they_produce():
+    pts = {**POINTS, "pv_proximal": 0, "pv_remote1": 0, "pv_remote2": 0, "total_solar": 0,
+           "pv_energy_total_wh": 0, "pv_agate_installed": False, "pv_remote_installed": False}
+    assert svapi.gateway_payload(ROW, await _inst(pts))["solar"] == []
+
+
 async def test_no_solar_drawn_for_a_site_without_solar():
     pts = {**POINTS, "pv_proximal": 0, "total_solar": 0, "pv_energy_total_wh": 0}
     assert svapi.gateway_payload(ROW, await _inst(pts))["solar"] == []

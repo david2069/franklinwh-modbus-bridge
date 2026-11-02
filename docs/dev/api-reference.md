@@ -1268,7 +1268,6 @@ Request body (`application/json`): **GatewayCreate**
 | `timeout` | number | no | 10.0 |
 | `mock` | boolean | no | false |
 | `device_type` | string | no | "agate" |
-| `home_load_source` | string or null | no |  |
 | `publish_to_ha` | boolean | no | true |
 
 ### `GET /api/gateways/{gw_id}` { #get-api-gateways-gw-id }
@@ -1309,7 +1308,6 @@ Request body (`application/json`): **GatewayUpdate**
 | `device_type` | string or null | no |  |
 | `ac_type` | integer or null | no |  |
 | `publish_to_ha` | boolean or null | no |  |
-| `home_load_source` | string or null | no |  |
 
 ### `DELETE /api/gateways/{gw_id}` { #delete-api-gateways-gw-id }
 

@@ -46,9 +46,16 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 63
+CURRENT_SCHEMA_VERSION = 64
 
 MIGRATIONS: dict[int, str] = {
+    64: """
+    -- Home load is taken as franklinwh-modbus returns it (16000, else 15506);
+    -- the per-gateway register choice from migration 53 (#35) is gone. The
+    -- column is added by MIGRATION_COLUMNS[64] first if missing, so a re-run
+    -- is safe. DROP COLUMN needs SQLite 3.35+.
+    ALTER TABLE gateways DROP COLUMN home_load_source;
+    """,
     63: """
     -- The designated default gateway (#296 item 43): always listed first, and
     -- the page opens on it. A designation only: the gateway with ID 'default'
@@ -1227,6 +1234,7 @@ MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
         ("billing_periods", "unpriced_export_kwh", "REAL NOT NULL DEFAULT 0"),
     ],
     63: [("gateways", "is_default", "INTEGER NOT NULL DEFAULT 0")],
+    64: [("gateways", "home_load_source", "TEXT")],
 }
 
 

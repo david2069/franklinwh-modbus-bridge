@@ -118,7 +118,7 @@ function settingsTab() {
     gwList: [],
     gwBusy: false,
     showAddGateway: false,
-    newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false, home_load_source: 'standard' },
+    newGw: { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false },
     gwTestResults: {},     // per-gateway TCP test result, keyed by gateway id
     gwDiagResults: {},     // per-gateway diagnose result, keyed by gateway id
     gwRestartResults: {},  // per-gateway restart result, keyed by gateway id
@@ -1218,7 +1218,7 @@ function settingsTab() {
           body: JSON.stringify(g),
         });
         if (data && !data.error && data.id) {
-          this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false, home_load_source: 'standard' };
+          this.newGw = { gateway_id: '', name: '', host: '', port: 502, unit_id: 1, poll_interval: 10, timeout: 10, description: '', mock: false };
           this.showAddGateway = false;
           Alpine.store('app').toast(`Gateway "${data.name}" added`, 'info');  // after closing (#351)
           await this.loadGateways();
@@ -1434,7 +1434,6 @@ function settingsTab() {
         // Default true for a gateway saved before migration 39.
         publish_to_ha: gw.publish_to_ha !== false && gw.publish_to_ha !== 0,
         ac_type: gw.ac_type ?? 0,
-        home_load_source: gw.home_load_source || 'standard',
         mock: !!gw.mock,
       };
       this.phaseDetect = null;
@@ -1798,7 +1797,6 @@ function settingsTab() {
             // which is how the publish toggle appeared to work and didn't.
             publish_to_ha: g.publish_to_ha,
             ac_type: g.ac_type,
-            home_load_source: g.home_load_source,
           }),
         });
         if (data && !data.error) {
