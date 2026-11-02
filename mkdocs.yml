@@ -135,6 +135,7 @@ nav:
     - REST API & OpenAPI: dev/rest-api.md
     - API reference: dev/api-reference.md
     - How the Web UI uses the API: dev/web-ui.md
+    - "Battery dispatch: what the bridge adds": dev/battery-dispatch.md
     - "Data out: MQTT to Home Assistant": dev/mqtt.md
     - "Data in: HA entities over WebSocket": dev/ha-websocket.md
     - "Use case: Scheduler integration": dev/scheduler-integration.md
