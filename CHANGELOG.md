@@ -13,6 +13,24 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Home load is taken as franklinwh-modbus returns it**: 16000 (about 1 W), or 15506
+  (100 W steps) when 16000 reads 0. The per-gateway *Home Load Register* setting (#35) and the
+  bridge's own 15506 agreement check are removed: from the add and edit gateway forms, the
+  API (`home_load_source` on `POST`/`PATCH /api/gateways` is now refused) and the database
+  (migration 64 drops the column). Gateways set to *Standard* change from 100 W steps to the
+  library's ~1 W value. The *Home Load Source* diagnostic entity and support info still show
+  the register in use.
+
+### Added
+
+- **System view draws installed solar before it produces**: the bridge now reads 15500
+  (PVUse, aGate solar installed) and 15501 (apBoxPVUse, remote solar installed) in the same
+  request as the 15510–15513 PV energy counters (15500–15513, one request as before). An
+  installed input is drawn idle from the first poll; 15501 draws Remote solar 1. The
+  `poller.py` note that called 15500 "battery-related" is corrected.
+
 ## [0.2.52] — 2026-11-02
 
 ### Added

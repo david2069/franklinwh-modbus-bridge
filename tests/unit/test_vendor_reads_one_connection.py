@@ -45,10 +45,25 @@ def test_vendor_reads_use_the_library_connection(monkeypatch):
     p._read_vendor_registers(points)
 
     assert [c.args for c in ctrl.dev.client.read.call_args_list] == [
-        (15000, 40), (15510, 4), (16000, 3)]
+        (15000, 40), (15500, 14), (16000, 3)]
     assert points["vreg_16001"] == 1 and points["vreg_16000"] == 0
     assert points["vreg_15039"] == 39
     assert points["pv_energy_total_wh"] == (510 << 16) | 511
+    # 15502-15509 are the library's values, not this read's.
+    assert points["vreg_15500"] == 500 and "vreg_15502" not in points
+
+
+def test_solar_installed_flags_from_15500_15501():
+    def regs(addr, count):
+        vals = [0] * count
+        if addr == 15500:
+            vals[0], vals[1] = 1, 0  # aGate solar yes, remote solar no
+        return struct.pack(f">{count}H", *vals)
+
+    p, _ = _poller(regs)
+    points: dict = {}
+    p._read_vendor_registers(points)
+    assert points["pv_agate_installed"] is True and points["pv_remote_installed"] is False
 
 
 def test_a_failed_range_warns_once_and_the_others_still_read(caplog):

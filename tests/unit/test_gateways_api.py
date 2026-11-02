@@ -203,23 +203,15 @@ async def test_gateway_restart_and_healthcheck(client):
     await client.delete("/api/gateways/restartmock")
 
 
-async def test_home_load_source_set_validated_applied_and_logged(client, caplog):
-    """#35: chosen at add, changed later; invalid values are refused, a change
-    reaches the running poller without a restart, and it is logged for support."""
-    import logging
-
+async def test_home_load_source_is_no_longer_a_setting(client):
+    """Home load is taken as the library returns it: the per-gateway register
+    choice (#35) is gone, and the API refuses the old field."""
     resp = await client.post("/api/gateways", json={
         "gateway_id": "hl1", "name": "HL", "mock": True, "home_load_source": "high_res",
     })
-    assert resp.status_code == 201
-    assert resp.json()["home_load_source"] == "high_res"
-
-    resp = await client.patch("/api/gateways/hl1", json={"home_load_source": "16000"})
     assert resp.status_code == 422
-
-    with caplog.at_level(logging.WARNING):
-        resp = await client.patch("/api/gateways/hl1", json={"home_load_source": "standard"})
-    assert resp.status_code == 200
-    assert resp.json()["home_load_source"] == "standard"
-    assert any("home load source changed high_res → standard" in m for m in caplog.messages)
-    assert app.state.registry.get("hl1").config.home_load_source == "standard"
+    resp = await client.post("/api/gateways",
+                             json={"gateway_id": "hl1", "name": "HL", "mock": True})
+    assert resp.status_code == 201 and "home_load_source" not in resp.json()
+    resp = await client.patch("/api/gateways/hl1", json={"home_load_source": "standard"})
+    assert resp.status_code == 422

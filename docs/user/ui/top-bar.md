@@ -103,7 +103,10 @@ Values are as the aGate reports them, from the bridge's last poll; opening the v
 nothing to the aGate. Only what the bridge reads is drawn:
 
 - **Solar**: each input (aGate, Remote 1, Remote 2) once it has produced since the bridge
-  started. A site with lifetime solar energy but nothing producing yet shows one idle array.
+  started. An input the aGate reports as installed (registers 15500 and 15501) is drawn from
+  the start, idle until it produces; 15501 doesn't say how many remote inputs there are, so
+  it draws Remote 1. A site with lifetime solar energy but nothing producing yet shows one
+  idle array.
 - **Batteries**: one card per aPower when the aGate reports more than one battery port.
 - **Smart circuits and the generator** are drawn grey, "Not available here": they have no
   Modbus points.

@@ -663,9 +663,6 @@ class GatewayCreate(BaseModel):
     # 'agate' = full battery system; 'mac1' = Meter Adaptor Collar (metering
     # only, far fewer SunSpec models, no battery to command).
     device_type: str = Field(default="agate", pattern=r"^(agate|mac1)$")
-    # Home load register (#35): 'standard' = 15506 (100 W steps, documented),
-    # 'high_res' = 16000 (~1 W, undocumented, sanity-checked against 15506).
-    home_load_source: str | None = Field(default=None, pattern=r"^(standard|high_res)$")
     # Publish its entities to Home Assistant (#96). Set before the first start,
     # so an opted-out gateway (the setup wizard's demo) never appears in HA.
     publish_to_ha: bool = True
@@ -700,9 +697,6 @@ class GatewayUpdate(BaseModel):
     # Turning it off tombstones its discovery so HA removes the entities rather
     # than leaving them permanently unavailable.
     publish_to_ha: bool | None = None
-    # Home load register (#35): 'standard' = 15506 (100 W steps, documented),
-    # 'high_res' = 16000 (~1 W, undocumented, sanity-checked against 15506).
-    home_load_source: str | None = Field(default=None, pattern=r"^(standard|high_res)$")
 
 
 async def _after_gateway_started(request: Request, gw_id: str) -> None:
@@ -819,8 +813,6 @@ async def add_gateway(body: GatewayCreate, request: Request):
         device_type=body.device_type,
         publish_to_ha=body.publish_to_ha,
     )
-    if body.home_load_source and body.home_load_source != gw.get("home_load_source"):
-        gw = await update_gateway(db, body.gateway_id, home_load_source=body.home_load_source)
 
     # Onboard immediately so the gateway starts polling without an app restart.
     # start_gateway is non-blocking (connect/discover runs in a background
@@ -923,22 +915,6 @@ async def patch_gateway(
                 await sync()
             except Exception as exc:  # never fail the edit over the side effect
                 logger.warning("MQTT device sync after gateway edit failed: %s", exc)
-
-    # Home load register: apply live (the poller reads it each poll) and record
-    # the change — it alters the published numbers, so support needs to see it.
-    if "home_load_source" in updates and before is not None:
-        old = before.get("home_load_source")
-        new = updates["home_load_source"]
-        if old != new:
-            logger.warning(
-                "Gateway %s: home load source changed %s → %s (%s)",
-                gw_id, old, new,
-                "high-res 16000" if new == "high_res" else "standard 15506",
-            )
-        registry = getattr(request.app.state, "registry", None)
-        inst = registry.get(gw_id) if registry else None
-        if inst is not None:
-            inst.config.home_load_source = new
 
     # Poll interval: apply live and record it. Polling faster loads the aGate.
     if "poll_interval" in updates and before is not None:
