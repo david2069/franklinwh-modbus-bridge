@@ -3,8 +3,8 @@ franklinwh-system-view overlay.
 
 ``GET /api/system`` builds the package's payload from each gateway's cached
 sample: no Modbus I/O, so opening the view sends nothing to an aGate. Values
-are as read; anything the bridge can't read over Modbus is left out or named
-in ``unavailable`` (smart circuits and the generator have no Modbus points).
+are as read; anything the bridge can't read over Modbus is left out (smart
+circuits and the generator have no Modbus points, so neither is drawn).
 The site's name and weather come from the solar forecast's cache (no fetch
 while a request waits), and the user's Customise diagram answers, saved by
 ``PUT /api/system/customise``, are applied last (as the DC bridge, #428).
@@ -122,7 +122,7 @@ def gateway_payload(row: dict, inst: Any) -> dict:
     online = bool(inst is not None and inst.status.connected
                   and last is not None and last.quality != "error")
     base = {"id": gw_id, "name": name, "kind": "agate", "online": online,
-            "circuits": [], "unavailable": ["circuits", "generator"]}
+            "circuits": []}
     if not online:
         return {**base, "mode": None, "inverter": None,
                 "grid": {"state": "unknown", "power_w": None}, "home": {"power_w": None},
