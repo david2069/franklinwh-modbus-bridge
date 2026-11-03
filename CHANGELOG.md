@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Home Load Register setting restored** (#35; owner, 2026-11-03: it stays until per-vendor and
+  per-firmware quirks exist). The per-gateway choice is back in Add and Edit Gateway and on
+  `POST`/`PATCH /api/gateways` (`home_load_source`: `standard` = 15506, `high_res` = 16000
+  checked against 15506), with a line on the forms saying what changing it does. Migration 64
+  is now a no-op, so an install updating from before 0.2.53 keeps its choice; migration 65
+  re-adds the column on 0.2.53 installs as *Standard* (15506). A gateway that was on
+  *High-res* before 0.2.53 needs it chosen again.
+
 ## [0.2.53] — 2026-11-03
 
 ### Changed

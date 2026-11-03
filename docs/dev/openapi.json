@@ -9269,6 +9269,18 @@
             "title": "Device Type",
             "default": "agate"
           },
+          "home_load_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(standard|high_res)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Load Source"
+          },
           "publish_to_ha": {
             "type": "boolean",
             "title": "Publish To Ha",
@@ -9454,6 +9466,18 @@
               }
             ],
             "title": "Publish To Ha"
+          },
+          "home_load_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(standard|high_res)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Load Source"
           }
         },
         "additionalProperties": false,
