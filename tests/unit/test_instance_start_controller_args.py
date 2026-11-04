@@ -1,6 +1,6 @@
 """A real gateway's start() must call the library with only its own arguments.
 
-Regression for the #35 deploy (2026-10-09): a poller argument was passed to
+Regression for the #35 deploy (2026-10-09): ``home_load_source`` was passed to
 FranklinWHController instead of ModbusPoller, so the real aGate failed to start
 with "unexpected keyword argument" while every unit test (which mocks the
 controller) passed.
@@ -31,11 +31,15 @@ async def test_real_gateway_start_passes_only_controller_args(monkeypatch):
     fake.FranklinWHController = _StrictController
     monkeypatch.setitem(sys.modules, "franklinwh_modbus", fake)
 
-    cfg = GatewayConfig(gateway_id="gw", name="GW", host="192.0.2.1")
+    cfg = GatewayConfig(gateway_id="gw", name="GW", host="192.0.2.1",
+                        home_load_source="high_res")
     inst = GatewayInstance(cfg, db=None, global_bus=SampleBus())
     await inst.start()  # raised TypeError before the fix
     try:
         assert isinstance(inst.controller, _StrictController)
+        assert inst.poller._home_load_source() == "high_res"
+        cfg.home_load_source = "standard"  # live change reaches the poller
+        assert inst.poller._home_load_source() == "standard"
     finally:
         task = getattr(inst, "_init_task", None)
         if task is not None:

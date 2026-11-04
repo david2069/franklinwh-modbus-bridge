@@ -81,6 +81,7 @@ wizard, admins only) and **+ Add Gateway**.
 | Poll Interval (s) | 10 | How often the bridge reads the aGate, 1–300 s. |
 | Timeout (s) | 10 | Modbus connect/read timeout, 1–60 s. Raise it on a flaky link. |
 | Description | empty | Free text. |
+| Home Load Register | Standard — 15506 | See [Home Load Register](#edit-gateway). Hidden for a mock. |
 | Mock gateway | Off | Simulated data, no hardware. Host and port are ignored. Safe to run beside real gateways. |
 
 **Add Gateway** (or **Add Mock Gateway**) saves it and starts polling at once.
@@ -110,6 +111,7 @@ refuses, because one aGate can only hold one Modbus session.
 | **Utility Service** | — none — | Links the gateway to a [utility service](settings-energy-automation.md#utility-services-and-tariffs) (meter and tariff). Schedules that act on a *service* act on its gateways. |
 | **Phase** | All phases | Which phase(s) the gateway is on: All, L1, L2, L3, L1+L2, L1+L2+L3. Used to group gateways in the site total (All gateways). **Auto-detect** reads it from Model 701 and says whether it matches your choice. |
 | **Phase View** | Both | Only for split- or three-phase aGates: publish *aggregate + per-phase*, *aggregate only* or *per-phase* values. |
+| **Home Load Register** | Standard — 15506 | Which register gives home load. *Standard 15506* is documented, in 100 W steps. *High resolution 16000* is about 1 W, but undocumented and verified on one site only. The bridge checks it against 15506 every poll and uses 15506 while they disagree. Changing it changes the published Home figures, so it is logged. Hidden for a mock. |
 | **Publish this gateway to Home Assistant** | On | Whether this gateway gets its own device and entities in Home Assistant. **Off removes its entities from Home Assistant** (rather than leaving them unavailable). The same switch is in [Settings → Home Assistant](settings-home-assistant.md#publish-to-home-assistant). |
 | **Battery power rating** | — | See [below](#battery-power-rating). Hidden for a mock. |
 

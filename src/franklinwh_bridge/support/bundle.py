@@ -168,15 +168,6 @@ def _git_commit() -> str | None:
     return sha if out.returncode == 0 and sha else None
 
 
-def _home_load_in_use(inst: Any) -> str | None:
-    """The register this poll's home load came from (15506 or 16000), if known."""
-    try:
-        points = inst.latest_points() if inst is not None else None
-    except Exception:
-        return None
-    return points.get("home_load_source") if isinstance(points, dict) else None
-
-
 def _utc_offset() -> str:
     off = time.localtime().tm_gmtoff
     sign = "+" if off >= 0 else "-"
@@ -355,7 +346,7 @@ async def build_support_info(state: Any, *, now: float | None = None) -> dict[st
             "phase": g.get("phase"),
             "battery_ports": getattr(poller, "battery_port_count", None),
             "publish_to_ha": bool(g.get("publish_to_ha", 1)),
-            "home_load_source": _home_load_in_use(inst),
+            "home_load_source": g.get("home_load_source"),
             "poll_interval_s": g.get("poll_interval"),
             "running": inst is not None,
             "health": getattr(status, "health", None),

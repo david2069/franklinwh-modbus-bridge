@@ -89,9 +89,8 @@ The four main power figures, in watts.
 | Battery | Positive = discharging, negative = charging | *Discharging*, *Charging* or *Standby* |
 | Grid | Positive = importing, negative = exporting | *Importing*, *Exporting* or *Neutral* |
 
-The Home figure is home load as franklinwh-modbus reads it: register 16000 (about 1 W),
-or 15506 (100 W steps) when 16000 reads 0. The diagnostic entity *Home Load Source* shows
-which register was used.
+The Home figure comes from the home load register chosen for the gateway
+([Home Load Register](settings-site-gateways.md#edit-gateway)).
 
 ### AC Power
 
