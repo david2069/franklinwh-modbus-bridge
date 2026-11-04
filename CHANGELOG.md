@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.54] — 2026-11-04
+
 ### Changed
 
 - **Home Load Register setting restored** (#35; owner, 2026-11-03: it stays until per-vendor and
