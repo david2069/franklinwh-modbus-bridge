@@ -1,5 +1,14 @@
 # franklinwh-modbus-bridge
 
+[![version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdavid2069/franklinwh-modbus-bridge%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version&color=blue)](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
+[![Install smoke](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-modbus-bridge/install-smoke.yml?branch=main&label=build)](https://github.com/david2069/franklinwh-modbus-bridge/actions/workflows/install-smoke.yml)
+[![Docs](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-modbus-bridge/docs.yml?branch=main&label=docs)](https://github.com/david2069/franklinwh-modbus-bridge/actions/workflows/docs.yml)
+[![Add-on image](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-modbus-bridge/publish-image.yml?branch=main&label=image)](https://github.com/david2069/franklinwh-modbus-bridge/actions/workflows/publish-image.yml)
+[![python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE)
+[![installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanalytics.home-assistant.io%2Faddons.json&query=%24%5B%275bda6fbc_franklinwh_modbus_bridge%27%5D.total&label=installs&logo=homeassistant&logoColor=white&color=41BDF5)](https://analytics.home-assistant.io/)
+[![commit activity](https://img.shields.io/github/commit-activity/y/david2069/franklinwh-modbus-bridge)](https://github.com/david2069/franklinwh-modbus-bridge/commits/main)
+
 FranklinWH aGate Modbus TCP bridge -- polls SunSpec data and publishes
 Home Assistant entities via MQTT Discovery.
 
