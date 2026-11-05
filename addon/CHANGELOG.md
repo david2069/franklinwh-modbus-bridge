@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.54 — 2026-11-04
+
+### Changed
+- **Home Load Register setting is back** in Add and Edit Gateway. *Standard*
+  (the documented register, 100 W steps) is the default; *High-res* (about 1 W)
+  is checked against Standard on every reading. A line on the forms says what
+  changing it does to your Home figures.
+- If you updated from before 0.2.53, your earlier choice is kept. If you
+  installed 0.2.53 fresh, or chose *High-res* before 0.2.53 and then updated to
+  0.2.53, your gateways are on *Standard*: choose *High-res* again if you want it.
+
 ## 0.2.53 — 2026-11-03
 
 ### Changed
