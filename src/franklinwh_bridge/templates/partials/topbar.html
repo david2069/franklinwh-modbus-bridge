@@ -64,17 +64,27 @@
        says what each one is. Icons drawn for this project. -->
   <div class="items-center gap-3 text-xs font-semibold tabular-nums"
        :class="$store.app.phoneNav ? 'flex order-last' : 'flex'">
-    <!-- Grid -->
+    <!-- Grid (#296 item 49): kW without a sign at a fixed width, so the text never moves,
+         and a mark for the direction: ↑ green exporting, ↓ orange importing, – amber idle,
+         ✕ red when the grid is not connected (islanded). -->
     <div x-show="$store.app.tbShow('center', 'grid')" :style="$store.app.tbOrder('center', 'grid')"
-         data-testid="topbar-grid" class="flex items-center gap-1"
-         :title="'Grid power: ' + fmt.kw($store.app.gridPowerW) + ' kW, '
-                + ($store.app.gridPowerW > 0 ? 'importing' : ($store.app.gridPowerW < 0 ? 'exporting' : 'neutral'))
-                + '. Grid ' + ($store.app.points.connection_state === 'Connected' ? 'connected' : 'not connected') + '.'">
+         data-testid="topbar-grid" class="flex items-center gap-1" :data-dir="$store.app.gridDir"
+         :title="'Grid power: ' + fmt.kw($store.app.gridPowerW == null ? null : Math.abs($store.app.gridPowerW)) + ' kW, '
+                + ({export: 'exporting', import: 'importing', idle: 'idle', down: 'grid not connected'}[$store.app.gridDir] || 'no reading') + '.'">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-           :class="$store.app.points.connection_state === 'Connected' ? 'text-emerald-400' : 'text-amber-400'">
+           :class="$store.app.gridDir === 'down' ? 'text-red-400' : 'text-emerald-400'">
         <path d="M12 2 7 22M12 2l5 20M4 6h16M6.5 10h11M4 6v2M20 6v2M6.5 10v2M17.5 10v2M10 10l5.4 5.5M14 10l-5.4 5.5M8.6 15.5h6.8M7 22h10"/>
       </svg>
-      <span class="text-slate-300" x-text="fmt.kw($store.app.gridPowerW) + ' kW'"></span>
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"
+           data-testid="topbar-grid-dir" aria-hidden="true"
+           :class="{export: 'text-emerald-400', import: 'text-orange-400', idle: 'text-amber-400', down: 'text-red-400'}[$store.app.gridDir] || 'text-slate-500'">
+        <path x-show="$store.app.gridDir === 'export'" d="M12 19V5M6 11l6-6 6 6"/>
+        <path x-show="$store.app.gridDir === 'import'" d="M12 5v14M6 13l6 6 6-6"/>
+        <path x-show="$store.app.gridDir === 'idle' || $store.app.gridDir == null" d="M6 12h12"/>
+        <path x-show="$store.app.gridDir === 'down'" d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+      <span class="text-slate-300 text-right whitespace-nowrap" style="min-width:4.4em"
+            x-text="fmt.kw($store.app.gridPowerW == null ? null : Math.abs($store.app.gridPowerW)) + ' kW'"></span>
     </div>
     <!-- Solar -->
     <div x-show="$store.app.tbShow('center', 'solar')" :style="$store.app.tbOrder('center', 'solar')"
@@ -84,7 +94,7 @@
            :class="($store.app.solarPowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
         <path d="M6 3h12l3 11H3z"/><path d="M10 3 9 14M14 3l1 11M4.5 8.5h15M12 14v7M8 21h8"/>
       </svg>
-      <span class="text-slate-300" x-text="fmt.kw($store.app.solarPowerW) + ' kW'"></span>
+      <span class="text-slate-300 whitespace-nowrap" x-text="fmt.kw($store.app.solarPowerW) + ' kW'"></span>
     </div>
     <!-- Load -->
     <div x-show="$store.app.tbShow('center', 'load')" :style="$store.app.tbOrder('center', 'load')"
@@ -94,27 +104,34 @@
            :class="($store.app.homePowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
         <path d="M3 11 12 3l9 8"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>
       </svg>
-      <span class="text-slate-300" x-text="fmt.kw($store.app.homePowerW) + ' kW'"></span>
+      <span class="text-slate-300 whitespace-nowrap" x-text="fmt.kw($store.app.homePowerW) + ' kW'"></span>
     </div>
-    <!-- Battery: state of charge. Red at or below 5% (critical), amber at or
-         below the active reserve; otherwise the state's colour. -->
+    <!-- Battery (#296 item 49): the % is coloured by level only (red at or below 5%,
+         amber at or below the active reserve, otherwise green); a mark gives the
+         direction: ↑ green charging, ↓ orange discharging, – amber idle. -->
     <div x-show="$store.app.tbShow('center', 'battery')" :style="$store.app.tbOrder('center', 'battery')"
-         data-testid="topbar-battery" class="flex items-center gap-1"
-         :title="'Battery state of charge: ' + fmt.pct($store.app.batterySoc) + ', ' + ($store.app.points.battery_state || 'Standby').toLowerCase() + '.'
+         data-testid="topbar-battery" class="flex items-center gap-1" :data-dir="$store.app.batteryDir"
+         :data-level="$store.app.batteryLevel || 'ok'"
+         :title="'Battery state of charge: ' + fmt.pct($store.app.batterySoc) + ', '
+                + ({charge: 'charging', discharge: 'discharging', idle: 'idle'}[$store.app.batteryDir] || 'no reading') + '.'
                 + ($store.app.batteryLevel === 'critical' ? ' Critical: at or below 5%.'
                    : $store.app.batteryLevel === 'low' ? ' At or below the active reserve (' + fmt.pct($store.app.points.active_reserve_pct) + ').' : '')">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-           :class="$store.app.batteryLevel === 'critical' ? 'text-red-400' :
-                   $store.app.batteryLevel === 'low' ? 'text-amber-400' :
-                   $store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
-                   $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-500'">
+           :class="$store.app.batterySoc == null ? 'text-slate-500' : $store.app.batteryLevel === 'critical' ? 'text-red-400' :
+                   $store.app.batteryLevel === 'low' ? 'text-amber-400' : 'text-emerald-400'">
         <rect x="7" y="4" width="10" height="17" rx="2"/><path d="M10 2h4M10 13h4M10 16.5h4"/>
       </svg>
-      <span :class="$store.app.batteryLevel === 'critical' ? 'text-red-400' :
-                    $store.app.batteryLevel === 'low' ? 'text-amber-400' :
-                    $store.app.points.battery_state === 'Charging' ? 'text-emerald-400' :
-                    $store.app.points.battery_state === 'Discharging' ? 'text-orange-400' : 'text-slate-300'"
+      <span class="text-right whitespace-nowrap" style="min-width:2.6em"
+            :class="$store.app.batterySoc == null ? 'text-slate-300' : $store.app.batteryLevel === 'critical' ? 'text-red-400' :
+                    $store.app.batteryLevel === 'low' ? 'text-amber-400' : 'text-emerald-400'"
             x-text="fmt.pct($store.app.batterySoc)"></span>
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"
+           data-testid="topbar-battery-dir" aria-hidden="true"
+           :class="{charge: 'text-emerald-400', discharge: 'text-orange-400', idle: 'text-amber-400'}[$store.app.batteryDir] || 'text-slate-500'">
+        <path x-show="$store.app.batteryDir === 'charge'" d="M12 19V5M6 11l6-6 6 6"/>
+        <path x-show="$store.app.batteryDir === 'discharge'" d="M12 5v14M6 13l6 6 6-6"/>
+        <path x-show="$store.app.batteryDir !== 'charge' && $store.app.batteryDir !== 'discharge'" d="M6 12h12"/>
+      </svg>
       <span x-show="$store.app.forcedDispatch" x-cloak
             class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
                    bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse"

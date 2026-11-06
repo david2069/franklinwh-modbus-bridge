@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Top bar: Grid and Battery direction marks** (#296 item 49). Grid shows its kW without
+  a sign, at a fixed width (no more "-0.00" shifting the bar), with ↑ green exporting,
+  ↓ orange importing, – amber idle (under 5 W) or ✕ red when the grid isn't connected.
+  Battery's % is coloured by level only (red ≤ 5%, amber ≤ the active reserve, else
+  green), with ↑ green charging, ↓ orange discharging or – amber idle. Guide: *Top bar*
+  and *Colours*.
+
 ## [0.2.57] — 2026-11-07
 
 ### Changed
