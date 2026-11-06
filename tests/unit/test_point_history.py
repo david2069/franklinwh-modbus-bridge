@@ -251,6 +251,18 @@ async def test_raw_vendor_registers_are_recorded_and_0xffff_is_not(db):
 
 
 @pytest.mark.asyncio
+async def test_charging_15013_is_recorded_negative(db):
+    """The poller decodes 15013 as int16 (negative = charging); history kept only
+    0..65534, so every charging reading was dropped (found from the 2026-11-06 HA Live
+    export: 28,695 rows against ~56,840, and 1 charging row)."""
+    for i, v in enumerate((-4998, -32768, 32767, 500)):
+        assert await record_points(db, {"vreg_15013": v}, ts=float(i)) == 1
+    assert await record_points(db, {"vreg_15013": 0xFFFF}, ts=9.0) == 0
+    async with db.execute("SELECT value FROM metric_samples ORDER BY ts") as cur:
+        assert [r[0] for r in await cur.fetchall()] == [-4998.0, -32768.0, 32767.0, 500.0]
+
+
+@pytest.mark.asyncio
 async def test_raw_dermode_is_recorded_so_forming_and_clipped_can_be_told_apart(db):
     """#76: the grid_mode label maps raw 4 and raw 6 both to "PV Clipped"."""
     assert await record_points(db, {"701.DERMode": 6, "vreg_15016": 3}, ts=1.0) == 2
