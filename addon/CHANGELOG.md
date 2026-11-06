@@ -7,6 +7,22 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.55 — 2026-11-06
+
+### Added
+- **Notifications** in Settings → Home Assistant: one **Push notifications** switch,
+  with **Status notices** under it; a **Notifications check** that says whether a
+  notification would reach you; **Companion devices** to add your phone (the Home
+  Assistant Companion app) with **Discover**, **Test** and **Test with buttons**; a
+  **Broadcast**; and **Recent notifications**. Alerts to your phone come in a later
+  release.
+
+### Changed
+- **Status notices** now also follow the Push notifications switch.
+- **SunSpec Explorer** names the FranklinWH extension registers the franklinwh-modbus
+  library has confirmed (solar power, home load, battery power, grid voltage, grid energy
+  in and out, battery charge).
+
 ## 0.2.54 — 2026-11-04
 
 ### Changed

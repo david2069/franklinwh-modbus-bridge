@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.55] — 2026-11-06
+
 ### Added
 
 - **Phone notifications, part 2: the Notifications card** (#296 item 48, phase 1), in
