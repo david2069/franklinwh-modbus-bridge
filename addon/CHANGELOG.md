@@ -7,6 +7,13 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.56 — 2026-11-06
+
+### Fixed
+- **Point history** now keeps the battery-power register 15013 while charging. Before,
+  every charging reading was dropped from the history (the live value was fine).
+  History from before this update can't be filled in.
+
 ## 0.2.55 — 2026-11-06
 
 ### Added

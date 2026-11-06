@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.56] — 2026-11-06
+
 ### Fixed
 
 - **Point history kept no charging readings of 15013.** The poller reads 15013 as signed
