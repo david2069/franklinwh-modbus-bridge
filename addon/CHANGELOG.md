@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.57 — 2026-11-07
+
+### Changed
+- **Companion devices** work as in the FranklinWH Direct Connect Bridge. **Discover** lists
+  each device by the name Home Assistant gives it, with its `notify.…` service and when it
+  was last seen; picking one fills in the alias. The Add dialog has a **Type** (phone,
+  tablet, TV, speaker, other) and **Send test** before you save. Devices you already
+  added keep working and get a type.
+
 ## 0.2.56 — 2026-11-06
 
 ### Fixed
