@@ -65,15 +65,24 @@ one gateway but sent its commands and Release to the `default` gateway.
 
 ## Grid, Solar, Load and Battery
 
-Each shows an icon and its live value. The icon's colour is its state, following the
-[colour rule](colours.md). Hover over one to see what it is and its state.
+Each shows an icon and its live value. Grid and Battery also show a **direction mark**.
+Colours follow the [colour rule](colours.md). Hover over one to see what it is and its state.
 
 | Item | Shows | Colour | Hover text, for example |
 |---|---|---|---|
-| **Grid** | Grid power, kW | Green when the aGate reports the grid as connected; **amber** when it isn't (the aGate is islanded). | "Grid power: 0.24 kW, importing. Grid connected." |
+| **Grid** | Grid power, kW, without a sign, then a direction mark | The tower is green while the grid is connected and **red** when it isn't (the aGate is islanded). | "Grid power: 0.24 kW, importing." |
 | **Solar** | Solar power, kW | Green when generating, grey when not. | "Solar power: 0.00 kW, not generating." |
 | **Load** | Home load, kW | Green when there is load, grey when there isn't. | "Home load: 0.98 kW, consuming." |
-| **Battery** | State of charge, % | **Red** at or below 5%; **amber** at or below the active reserve; otherwise green when charging, orange when discharging and grey on standby. | "Battery state of charge: 31%, discharging." It adds "At or below the active reserve (20%)." or "Critical: at or below 5%." |
+| **Battery** | State of charge, %, then a direction mark | The % and the icon show the **level only**: **red** at or below 5%, **amber** at or below the active reserve, otherwise green. | "Battery state of charge: 31%, discharging." It adds "At or below the active reserve (20%)." or "Critical: at or below 5%." |
+
+| Mark | Grid | Battery |
+|---|---|---|
+| **↑** green | Exporting | Charging |
+| **↓** orange | Importing | Discharging |
+| **–** amber | Idle: under 5 W either way, shown as 0.00 kW | Idle (standby) |
+| **✕** red | Grid not connected (islanded) | — |
+
+The values keep a fixed width, so the bar doesn't shift when a reading changes.
 
 When you have sent a force command (from the Dashboard, the simple dashboard or a
 schedule), an amber **Forced** badge appears next to the battery. This is different from

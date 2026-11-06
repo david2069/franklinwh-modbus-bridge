@@ -1201,6 +1201,20 @@ document.addEventListener('alpine:init', () => {
       if (reserve != null && soc <= reserve) return 'low';
       return null;
     },
+    // Top-bar direction marks (#296 item 49). Grid: 'down' when the aGate reports the
+    // grid not connected (islanded), else 'export' / 'import' / 'idle'. Idle is what
+    // shows as 0.00 kW (under 5 W either way), so the mark never disagrees with the number.
+    get gridDir() {
+      if (this.points.connection_state != null && this.points.connection_state !== 'Connected') return 'down';
+      const w = this.gridPowerW;
+      if (w == null) return null;
+      return w <= -5 ? 'export' : w >= 5 ? 'import' : 'idle';
+    },
+    get batteryDir() {
+      const st = this.points.battery_state;
+      if (st == null) return null;
+      return st === 'Charging' ? 'charge' : st === 'Discharging' ? 'discharge' : 'idle';
+    },
     get acTypeCode() { return this.points.ac_type_code ?? 0; },
     get acTypeName() {
       const names = { 0: 'Single Phase', 1: 'Split Phase', 2: 'Three Phase' };
