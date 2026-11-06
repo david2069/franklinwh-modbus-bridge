@@ -31,16 +31,31 @@ const VENDOR_EXT_16000 = [
   { addr: 16002, name: 'BBBackupSoc',  desc: 'Backup SoC (BBBackupSoc, VPP?), not the TOU reserve (unconfirmed)', keys: ['vreg_16002'], unit: '%', access: 'R', type: 'uint16' },
 ];
 
-// 15000-15039 is undocumented. These are what one site's recorded readings
-// suggest (PR #73, #76, #77) — NOT FranklinWH documentation. Values stay raw;
-// the description says what was observed so it can be tested, not trusted.
+// 15000-15039 is undocumented by FranklinWH. The registers marked confirmed were
+// confirmed by franklinwh-modbus (FRANKLINWH_MODBUS_EXTENSIONS.md, 2026-11-03
+// correlation run); the rest are one site's readings (PR #73, #76, #77).
+// Values stay raw, as the aGate reports them.
 const VENDOR_EXT_15000_NOTES = {
-  15013: { name: 'BatteryPowerRaw', unit: 'W', type: 'int16',
-           desc: 'Battery power at ~1 W (unconfirmed; one site). Signed: negative = charging, as M714 DCW (−4998 vs DCW −5000; +500 vs +500)' },
+  15003: { name: 'PVPower', unit: 'W',
+           desc: 'PV power, equal to M502 OutPw (confirmed)' },
+  15011: { name: 'HomeLoad', unit: 'W',
+           desc: 'Home load, equal to 16000 (confirmed)' },
+  15013: { name: 'BatteryPower', unit: 'W', type: 'int16',
+           desc: 'Battery power at ~1 W, negative = charging; tracks M714 DCW (confirmed)' },
   15016: { name: 'StatusRaw',
            desc: 'Status code (unconfirmed; one site): 2 on-grid, 6 with WSet active, 1 seen during two aGate service restarts on 2026-10-21 (V12; meaning unconfirmed; an earlier note said 3 islanded)' },
-  15035: { name: 'SocX10Raw', unit: '‰',
-           desc: 'State of charge ×10 (unconfirmed; one site)' },
+  15025: { name: 'GridVoltageX10', unit: 'V×10',
+           desc: 'Grid voltage ×10, M701 LNV (confirmed)' },
+  15029: { name: 'TotWhInjHi',
+           desc: 'Grid energy exported, high word of M701 TotWhInj (uint32 with 15030; confirmed)' },
+  15030: { name: 'TotWhInjLo',
+           desc: 'Grid energy exported, low word of M701 TotWhInj (confirmed)' },
+  15033: { name: 'TotWhAbsHi',
+           desc: 'Grid energy imported, high word of M701 TotWhAbs (uint32 with 15034; confirmed)' },
+  15034: { name: 'TotWhAbsLo',
+           desc: 'Grid energy imported, low word of M701 TotWhAbs (confirmed)' },
+  15035: { name: 'SocX10', unit: '‰',
+           desc: 'State of charge ×10, 0.1 % steps (confirmed)' },
 };
 
 // PICS status codes and cycle order

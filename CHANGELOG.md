@@ -32,6 +32,14 @@ lands, not backfilled later.
   - Removing an HA instance removes its devices.
   - The screen follows in part 2.
 
+### Changed
+
+- **Confirmed FranklinWH extension registers named** in the Explorer: 15003 (PV power), 15011
+  (home load), 15013 (battery power), 15025 (grid voltage ×10), 15029–15030 (grid energy
+  exported), 15033–15034 (grid energy imported) and 15035 (SoC ×10), as confirmed by
+  franklinwh-modbus (FRANKLINWH_MODBUS_EXTENSIONS.md, 2026-11-03). Values stay as read. The
+  Metrics chart drops "raw" from the 15013 and 15035 lines; 15016 stays unconfirmed.
+
 ## [0.2.54] — 2026-11-04
 
 ### Changed
