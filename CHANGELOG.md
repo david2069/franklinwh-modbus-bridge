@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Point history kept no charging readings of 15013.** The poller reads 15013 as signed
+  (negative = charging), but history kept only 0–65534, so every charging sample was
+  dropped. Found from the HA Live export: 28,695 rows for 15013 against ~56,840 for the
+  other points. Now kept from −32768 to 32767; the not-available marker (65535) is still
+  skipped. Charging history recorded before this release can't be recovered.
+
 ## [0.2.55] — 2026-11-06
 
 ### Added
