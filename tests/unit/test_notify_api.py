@@ -109,7 +109,9 @@ def test_supervisor_instance_reads_its_token_on_every_call(monkeypatch):
 
 async def test_devices_add_edit_remove_and_admin_only(client):
     did = await _add_phone(client)
-    rows = (await client.get("/api/notify/devices")).json()["devices"]
+    listing = (await client.get("/api/notify/devices")).json()
+    assert listing["instances"] == [{"id": "ha_home", "name": "Home", "enabled": True}]
+    rows = listing["devices"]
     assert [(r["alias"], r["service"], r["buttons"], r["kind"], r["instance_name"])
             for r in rows] == [("Phone", "mobile_app_pixel", True, "phone", "Home")]
     again = await client.post("/api/notify/devices", json={

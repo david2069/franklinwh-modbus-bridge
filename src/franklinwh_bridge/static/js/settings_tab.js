@@ -27,9 +27,6 @@ function settingsTab() {
     nsError: '',
     nsResult: null,
     publishBusy: false,
-    // Status notices to HA: started, stopping, paused, resumed (owner, 2026-10-30).
-    statusNotices: true,
-    statusNoticesBusy: false,
     poller: {},
     gateway: {},
     gwTesting: false,
@@ -149,7 +146,6 @@ function settingsTab() {
     async init() {
       await this.loadAll();
       await this.loadMqttConfig();
-      await this.loadStatusNotices();
       await this.loadMetricsSettings();
       await this.loadStorage();
       await this.loadPointHistory();
@@ -1159,29 +1155,6 @@ function settingsTab() {
         }
       } finally {
         this.publishBusy = false;
-      }
-    },
-
-    async loadStatusNotices() {
-      const data = await fetchJSON('api/alerts/settings');
-      if (data && typeof data.status_notices === 'boolean') this.statusNotices = data.status_notices;
-    },
-
-    async toggleStatusNotices() {
-      const next = !this.statusNotices;
-      this.statusNoticesBusy = true;
-      try {
-        const data = await fetchJSON('api/alerts/settings', {
-          method: 'PUT', body: JSON.stringify({ status_notices: next }),
-        });
-        if (data && typeof data.status_notices === 'boolean') {
-          this.statusNotices = data.status_notices;
-          Alpine.store('app').toast(`Status notices ${next ? 'on' : 'off'}`, 'info');
-        } else {
-          Alpine.store('app').toast('Failed: ' + (data?.detail || data?.error || 'unknown'), 'error');
-        }
-      } finally {
-        this.statusNoticesBusy = false;
       }
     },
 

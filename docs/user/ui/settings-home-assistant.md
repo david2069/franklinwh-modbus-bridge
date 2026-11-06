@@ -8,10 +8,11 @@ Assistant over MQTT, and which Home Assistant instances it reads from.
 Cards on this page:
 
 1. [Publish to Home Assistant](#publish-to-home-assistant)
-2. [MQTT Broker](#mqtt-broker)
-3. [Home Assistant instances](#home-assistant-instances)
-4. [Publishing Groups](#publishing-groups)
-5. [Entities](#entities)
+2. [Notifications](#notifications)
+3. [MQTT Broker](#mqtt-broker)
+4. [Home Assistant instances](#home-assistant-instances)
+5. [Publishing Groups](#publishing-groups)
+6. [Entities](#entities)
 
 How the bridge's entities are named, moved and cleaned up is covered in
 [Fixing, moving and removing entities](../home-assistant-entities.md).
@@ -32,10 +33,32 @@ until it is on again.
 The per-gateway switch is the same setting as **Publish this gateway to Home Assistant**
 in the [Edit Gateway](settings-site-gateways.md#edit-gateway) dialog.
 
-## Status notices
+## Notifications
 
-One switch, **on** by default. While it's on, the bridge posts a notification in Home
-Assistant (its notification panel, the bell) when:
+Notifications to your phone and to Home Assistant's own notification panel (the bell).
+Phones use the [Home Assistant Companion app](https://companion.home-assistant.io/); a
+phone's notifications can carry buttons you tap to answer.
+
+**Everything goes from the bridge to Home Assistant.** A button tap comes back over the
+bridge's own signed-in connection to Home Assistant. You don't need a webhook, YAML, an
+open port or a URL for the bridge.
+
+### Push notifications
+
+The one switch for all of it, **on** by default.
+
+| | On | Off |
+|---|---|---|
+| Phones and other devices below | Receive notifications | Get nothing. **Test** on a device's row still sends, to check it. |
+| Home Assistant's notification panel | Gets critical alerts and, if switched on, status notices | Gets nothing. Critical alerts reach only the bridge's own window. |
+
+It is the same setting the bridge has always used for critical alerts to Home Assistant,
+so an update keeps your choice.
+
+### Status notices
+
+Under the switch, its own setting, **on** by default. While both are on, the bridge
+posts a notification in Home Assistant when:
 
 | When | Notification | Says |
 |---|---|---|
@@ -46,11 +69,57 @@ Assistant (its notification panel, the bell) when:
 
 The bridge's notice replaces its previous one, and each gateway has one of its own, so
 they don't pile up. Each notice is sent once and is also a line in the
-[app log](logs.md), sent or not, with the reason when it wasn't sent: the switch is
-off, no Home Assistant is set up, or Home Assistant didn't answer.
+[app log](logs.md), sent or not, with the reason when it wasn't sent: status notices
+off, push notifications off, no Home Assistant is set up, or Home Assistant didn't
+answer.
 
-These are information only. Critical alerts are separate and are sent whatever this
-switch says.
+### Notifications check
+
+Answers "would a notification reach me?". Each line is **Pass**, **Fail** or **Not set
+up**, with the fix. **Check again** runs it again.
+
+| Line | Passes when |
+|---|---|
+| Push notifications switch | The switch is on. |
+| Default HA instance | The [default Home Assistant instance](#home-assistant-instances) answers and accepts its token. |
+| Button taps listener: *name* | The bridge is connected to that instance and listening for taps. One line per enabled instance. |
+| Phones (mobile_app_*) | At least one enabled phone is set up. Only phones show buttons. |
+| Last Test with buttons | The last **Test with buttons** was answered on the phone. |
+
+### Companion devices
+
+A device is one of Home Assistant's `notify.*` services, with a name you choose. A phone
+with the Companion app has a service called `notify.mobile_app_<phone>`: that is the
+usual choice, and the only kind that shows buttons. Any other service (an email, a TV)
+gets the text only.
+
+1. Install the Companion app on your phone, sign in to your Home Assistant and allow
+   notifications.
+2. Press **+ Add device**. It needs a [Home Assistant instance](#home-assistant-instances);
+   as an add-on, *This Home Assistant* is there already.
+3. Give it an **Alias**, such as "Phone", and pick the **HA instance**.
+4. Press **Discover**. It lists every `notify.*` service on that Home Assistant, phones
+   first. A service ending `_2` that repeats another is marked *duplicate of …*: pick the
+   one without the number unless you know you need it.
+5. **Save**.
+
+Each device's row has:
+
+- **Test:** one plain message, sent even while Push notifications is off. The row says
+  whether Home Assistant took it.
+- **Test with buttons** (phones only): "Test with buttons" with **Yes** and **No**. Tap one
+  within 2 minutes; the row then says *Round trip works: you tapped Yes*, or *No reply
+  within 120 s*. It needs Push notifications on.
+- **Edit**, remove (**×**) and an on/off switch. A device that is off gets nothing.
+
+**Broadcast** sends one message of your own to every enabled device.
+
+Removing a Home Assistant instance removes its devices too.
+
+### Recent notifications
+
+The last 20 notifications sent and taps received, newest first, with how each went.
+Notifications from alerts, triggers and schedules come in later releases.
 
 ## MQTT Broker
 

@@ -2844,6 +2844,9 @@ Access: admin role.
 
 ### `GET /api/notify/devices` { #get-api-notify-devices }
 
+The devices, and the HA instances a device can be on (for the Add form, which
+must work with the HA Entities module off).
+
 Access: any signed-in role.
 
 ### `POST /api/notify/devices` { #post-api-notify-devices }
