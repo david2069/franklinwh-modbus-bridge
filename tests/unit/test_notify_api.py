@@ -178,7 +178,8 @@ async def test_type_is_saved_and_editable(client):
     did = await _add_phone(client)
     r = await client.patch(f"/api/notify/devices/{did}", json={"kind": "tablet"})
     assert r.json()["kind"] == "tablet"
-    assert (await client.patch(f"/api/notify/devices/{did}", json={"kind": "car"})).status_code == 422
+    bad = await client.patch(f"/api/notify/devices/{did}", json={"kind": "car"})
+    assert bad.status_code == 422
 
 
 @respx.mock
@@ -253,7 +254,8 @@ async def test_devices_saved_before_types_get_one(tmp_path):
         await dbmod.run_migrations(conn)
     finally:
         dbmod.MIGRATIONS = all_migrations
-    for i, svc in enumerate(("mobile_app_dsh_iphone", "mobile_app_davids_ipad_mini", "alexa_media_x")):
+    services = ("mobile_app_dsh_iphone", "mobile_app_davids_ipad_mini", "alexa_media_x")
+    for i, svc in enumerate(services):
         await conn.execute("INSERT INTO notify_devices (id, alias, instance_id, service) "
                            "VALUES (?, ?, 'local', ?)", (f"nd{i}", svc, svc))
     await conn.commit()
