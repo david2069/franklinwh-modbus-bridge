@@ -91,7 +91,11 @@ def _sent(res) -> dict:
 
 @router.get("/devices", dependencies=[Depends(require_auth)])
 async def list_devices(request: Request):
-    return {"devices": await _device_rows(request)}
+    """The devices, and the HA instances a device can be on (for the Add form, which
+    must work with the HA Entities module off)."""
+    instances = [{"id": r["id"], "name": r["name"], "enabled": r["enabled"]}
+                 for r in await get_ha_instances(_db(request))]
+    return {"devices": await _device_rows(request), "instances": instances}
 
 
 @router.post("/devices", status_code=201, dependencies=[Depends(_ADMIN)])

@@ -14,6 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from franklinwh_bridge import status_notices as sn
+from franklinwh_bridge.alert_delivery import set_ha_channel
 from franklinwh_bridge.main import app
 from franklinwh_bridge.store.db import init_db
 
@@ -73,6 +74,7 @@ async def test_sent_once_as_a_persistent_notification_and_logged(db, caplog):
 
 @pytest.mark.parametrize("setup, reason", [
     ("off", "status notices off"),
+    ("push_off", "push notifications off"),
     ("no_ha", "no Home Assistant configured"),
     ("fails", "502"),
 ])
@@ -81,10 +83,12 @@ async def test_not_sent_says_why_in_the_log(db, caplog, setup, reason):
     ha = FakeHa(ok=setup != "fails")
     if setup == "off":
         await sn.set_status_notices(db, False)
+    if setup == "push_off":  # the one Push notifications switch covers these too (#296 item 48)
+        await set_ha_channel(db, False)
     reg = _registry(None if setup == "no_ha" else ha)
     assert not await sn.send(db, reg, "x", "t", "the message", T0)
     assert f"Status notice not sent to Home Assistant ({reason}): the message" in caplog.text
-    if setup == "off":
+    if setup in ("off", "push_off"):
         assert ha.calls == []
 
 

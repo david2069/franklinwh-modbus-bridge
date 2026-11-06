@@ -6287,6 +6287,7 @@
           "notifications"
         ],
         "summary": "List Devices",
+        "description": "The devices, and the HA instances a device can be on (for the Add form, which\nmust work with the HA Entities module off).",
         "operationId": "list_devices_api_notify_devices_get",
         "responses": {
           "200": {

@@ -8,7 +8,9 @@ app log, sent or not.
 - **Where:** a persistent notification in the primary Home Assistant. The bridge's
   own notice replaces the last one (``fwh_mb_bridge_status``); each gateway has one
   of its own (``fwh_mb_gateway_<id>``), so they don't pile up.
-- **Switch:** ``notify.status_notices`` in app_config, "on" (default) or "off".
+- **Switch:** ``notify.status_notices`` in app_config, "on" (default) or "off". Sent only
+  while the Push notifications switch (``alerts.ha_channel``) is on too: one switch covers
+  phones and Home Assistant notices (#296 item 48).
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from franklinwh_bridge.alert_delivery import NOTIFICATION_TITLE, site_time
+from franklinwh_bridge.alert_delivery import NOTIFICATION_TITLE, ha_channel_on, site_time
 from franklinwh_bridge.store.db import get_app_config, set_app_config
 
 if TYPE_CHECKING:
@@ -84,6 +86,8 @@ async def send(db: aiosqlite.Connection, ha: HaRegistry | None, notification_id:
         inst = ha.primary() if ha is not None else None
         if not await status_notices_on(db):
             reason = "status notices off"
+        elif not await ha_channel_on(db):
+            reason = "push notifications off"
         elif inst is None:
             reason = "no Home Assistant configured"
         if reason is None:

@@ -15,6 +15,13 @@ lands, not backfilled later.
 
 ### Added
 
+- **Phone notifications, part 2: the Notifications card** (#296 item 48, phase 1), in
+  Settings → Home Assistant. It holds the **Push notifications** switch with **Status
+  notices** under it, the **Notifications check**, **Companion devices** (Add with
+  Discover, Test, Test with buttons, Edit, on/off, remove, Broadcast) and **Recent
+  notifications**. It replaces the Status notices card. `GET /api/notify/devices` also
+  lists the HA instances, so Add works with the HA Entities module off.
+
 - **Phone notifications, part 1: devices and checks, API only** (#296 item 48, phase 1).
   Through [franklinwh-ha-notify](https://github.com/david2069/franklinwh-ha-notify), as in
   the Direct Connect bridge. `/api/notify/*`:
@@ -33,6 +40,10 @@ lands, not backfilled later.
   - The screen follows in part 2.
 
 ### Changed
+
+- **Status notices follow the Push notifications switch too** (#296 item 48: one switch
+  covers phones and Home Assistant notices). Off, they are logged as "push notifications
+  off".
 
 - **Confirmed FranklinWH extension registers named** in the Explorer: 15003 (PV power), 15011
   (home load), 15013 (battery power), 15025 (grid voltage ×10), 15029–15030 (grid energy
