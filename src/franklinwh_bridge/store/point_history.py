@@ -151,8 +151,10 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "ambient_temp_c": (-40.0, 120.0),
     "battery_1_voltage_v": (0.0, 1500.0),
     "battery_current_a": (-1000.0, 1000.0),
-    # 0xFFFF is the aGate's "not available" marker, not a reading.
-    "vreg_15013": (0.0, 65534.0),
+    # 0xFFFF is the aGate's "not available" marker, not a reading. 15013 is stored
+    # signed (the poller decodes it as int16: negative = charging), so its range is
+    # int16's; 0xFFFF reaches here undecoded as 65535 and is still rejected.
+    "vreg_15013": (-32768.0, 32767.0),
     "vreg_15035": (0.0, 1000.0),
     "vreg_15016": (0.0, 65534.0),
     # bitfield32: 0xFFFFFFFF is SunSpec's not-implemented value.
