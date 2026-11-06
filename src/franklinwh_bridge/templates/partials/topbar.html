@@ -83,7 +83,7 @@
         <path x-show="$store.app.gridDir === 'idle' || $store.app.gridDir == null" d="M6 12h12"/>
         <path x-show="$store.app.gridDir === 'down'" d="M6 6l12 12M18 6L6 18"/>
       </svg>
-      <span class="text-slate-300 text-right" style="min-width:4.4em"
+      <span class="text-slate-300 text-right whitespace-nowrap" style="min-width:4.4em"
             x-text="fmt.kw($store.app.gridPowerW == null ? null : Math.abs($store.app.gridPowerW)) + ' kW'"></span>
     </div>
     <!-- Solar -->
@@ -94,7 +94,7 @@
            :class="($store.app.solarPowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
         <path d="M6 3h12l3 11H3z"/><path d="M10 3 9 14M14 3l1 11M4.5 8.5h15M12 14v7M8 21h8"/>
       </svg>
-      <span class="text-slate-300" x-text="fmt.kw($store.app.solarPowerW) + ' kW'"></span>
+      <span class="text-slate-300 whitespace-nowrap" x-text="fmt.kw($store.app.solarPowerW) + ' kW'"></span>
     </div>
     <!-- Load -->
     <div x-show="$store.app.tbShow('center', 'load')" :style="$store.app.tbOrder('center', 'load')"
@@ -104,7 +104,7 @@
            :class="($store.app.homePowerW ?? 0) > 0 ? 'text-emerald-400' : 'text-slate-500'">
         <path d="M3 11 12 3l9 8"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>
       </svg>
-      <span class="text-slate-300" x-text="fmt.kw($store.app.homePowerW) + ' kW'"></span>
+      <span class="text-slate-300 whitespace-nowrap" x-text="fmt.kw($store.app.homePowerW) + ' kW'"></span>
     </div>
     <!-- Battery (#296 item 49): the % is coloured by level only (red at or below 5%,
          amber at or below the active reserve, otherwise green); a mark gives the
@@ -121,7 +121,7 @@
                    $store.app.batteryLevel === 'low' ? 'text-amber-400' : 'text-emerald-400'">
         <rect x="7" y="4" width="10" height="17" rx="2"/><path d="M10 2h4M10 13h4M10 16.5h4"/>
       </svg>
-      <span class="text-right" style="min-width:2.6em"
+      <span class="text-right whitespace-nowrap" style="min-width:2.6em"
             :class="$store.app.batterySoc == null ? 'text-slate-300' : $store.app.batteryLevel === 'critical' ? 'text-red-400' :
                     $store.app.batteryLevel === 'low' ? 'text-amber-400' : 'text-emerald-400'"
             x-text="fmt.pct($store.app.batterySoc)"></span>
