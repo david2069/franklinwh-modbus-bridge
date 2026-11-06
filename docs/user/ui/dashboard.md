@@ -340,7 +340,7 @@ The **Chart** buttons on the AC Power and Battery cards open a chart you can con
 | Chart | Series (default on in **bold**) |
 |---|---|
 | AC Power | **Voltage**, **Current**, **Frequency**, Power factor, Apparent, Reactive, Grid power, Voltage L1–L3, Current L1–L3, PF L1, DERMode (raw bits) |
-| DC / Inverter | **DC power**, **Battery DC**, **SoC**, Battery volts, Battery amps, State of health, Cabinet temp, Ambient temp, three raw vendor registers (15013, 15035, 15016) |
+| DC / Inverter | **DC power**, **Battery DC**, **SoC**, Battery volts, Battery amps, State of health, Cabinet temp, Ambient temp, three vendor registers as read (15013 battery W and 15035 SoC ×10, both confirmed; 15016 status, unconfirmed) |
 
 !!! info "History needs Point History"
     History mode is empty until you switch on
