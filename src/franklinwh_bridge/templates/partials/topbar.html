@@ -75,7 +75,7 @@
            :class="$store.app.gridDir === 'down' ? 'text-red-400' : 'text-emerald-400'">
         <path d="M12 2 7 22M12 2l5 20M4 6h16M6.5 10h11M4 6v2M20 6v2M6.5 10v2M17.5 10v2M10 10l5.4 5.5M14 10l-5.4 5.5M8.6 15.5h6.8M7 22h10"/>
       </svg>
-      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"
            data-testid="topbar-grid-dir" aria-hidden="true"
            :class="{export: 'text-emerald-400', import: 'text-orange-400', idle: 'text-amber-400', down: 'text-red-400'}[$store.app.gridDir] || 'text-slate-500'">
         <path x-show="$store.app.gridDir === 'export'" d="M12 19V5M6 11l6-6 6 6"/>
@@ -125,7 +125,7 @@
             :class="$store.app.batterySoc == null ? 'text-slate-300' : $store.app.batteryLevel === 'critical' ? 'text-red-400' :
                     $store.app.batteryLevel === 'low' ? 'text-amber-400' : 'text-emerald-400'"
             x-text="fmt.pct($store.app.batterySoc)"></span>
-      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"
            data-testid="topbar-battery-dir" aria-hidden="true"
            :class="{charge: 'text-emerald-400', discharge: 'text-orange-400', idle: 'text-amber-400'}[$store.app.batteryDir] || 'text-slate-500'">
         <path x-show="$store.app.batteryDir === 'charge'" d="M12 19V5M6 11l6-6 6 6"/>
