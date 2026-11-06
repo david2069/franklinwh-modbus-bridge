@@ -13,6 +13,25 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+
+- **Phone notifications, part 1: devices and checks, API only** (#296 item 48, phase 1).
+  Through [franklinwh-ha-notify](https://github.com/david2069/franklinwh-ha-notify), as in
+  the Direct Connect bridge. `/api/notify/*`:
+  - **Devices:** add, edit and remove.
+  - **Discover:** every `notify.*` service on an HA instance, phones first, `_2`
+    duplicates marked.
+  - **Test** (plain, sent even with the switch off), **Test with buttons** (Yes/No, a
+    2-minute round trip) and **Broadcast**.
+  - The **Notifications check** and **Recent notifications**.
+  - Button taps come back over the library's own authenticated WebSocket to each HA
+    instance; nothing on the bridge accepts an unauthenticated call.
+  - **One Push notifications switch:** it is the critical-alert channel's existing setting,
+    so each install keeps its choice.
+  - Migration 66 adds `notify_devices`, `notify_ledger` and `notify_requests`.
+  - Removing an HA instance removes its devices.
+  - The screen follows in part 2.
+
 ## [0.2.54] — 2026-11-04
 
 ### Changed

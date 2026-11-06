@@ -46,9 +46,51 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 65
+CURRENT_SCHEMA_VERSION = 66
 
 MIGRATIONS: dict[int, str] = {
+    66: """
+    -- Phone notifications with buttons (#296 item 48), through franklinwh-ha-notify.
+    -- notify_ledger and notify_requests are that library's SCHEMA (version 2),
+    -- copied here so this migration never changes with the library. notify_devices
+    -- is ours: one HA notify service on one HA instance, with an alias.
+    CREATE TABLE IF NOT EXISTS notify_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts REAL NOT NULL,
+        direction TEXT NOT NULL,
+        event TEXT NOT NULL,
+        gateway TEXT,
+        request_id TEXT,
+        status TEXT,
+        title TEXT,
+        message TEXT,
+        delivered INTEGER,
+        total INTEGER,
+        detail TEXT
+    );
+    CREATE INDEX IF NOT EXISTS notify_ledger_ts ON notify_ledger (ts);
+    CREATE TABLE IF NOT EXISTS notify_requests (
+        id TEXT PRIMARY KEY,
+        event TEXT NOT NULL,
+        gateway TEXT,
+        buttons TEXT NOT NULL,
+        expires_at REAL NOT NULL,
+        meta TEXT,
+        used INTEGER NOT NULL DEFAULT 0,
+        answer_verb TEXT,
+        answer_reply TEXT
+    );
+    CREATE TABLE IF NOT EXISTS notify_devices (
+        id          TEXT PRIMARY KEY,
+        alias       TEXT NOT NULL,
+        instance_id TEXT NOT NULL,
+        service     TEXT NOT NULL,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        created_at  REAL NOT NULL DEFAULT 0,
+        updated_at  REAL NOT NULL DEFAULT 0,
+        UNIQUE (instance_id, service)
+    );
+    """,
     65: """
     -- Home load register choice restored (#35; owner, 2026-11-03: it stays until
     -- per-vendor/firmware quirks exist). Migration 64 (0.2.53) dropped it; the
@@ -2299,6 +2341,76 @@ async def delete_ha_instance(db: aiosqlite.Connection, ha_id: str) -> bool:
     cur = await db.execute("DELETE FROM ha_instances WHERE id = ?", (ha_id,))
     # Cascade: drop the instance's exposed-entity allowlist too.
     await db.execute("DELETE FROM ha_exposed_entities WHERE instance_id = ?", (ha_id,))
+    # ...and its notification devices, which can't send without it.
+    await db.execute("DELETE FROM notify_devices WHERE instance_id = ?", (ha_id,))
+    await db.commit()
+    return cur.rowcount > 0
+
+
+# ── Notification devices (#296 item 48) ──
+
+_NOTIFY_DEVICE_FIELDS = ("alias", "instance_id", "service", "enabled")
+
+
+def _decode_notify_device(row: dict) -> dict:
+    d = dict(row)
+    d["enabled"] = bool(d.get("enabled", 1))
+    return d
+
+
+async def get_notify_devices(db: aiosqlite.Connection) -> list[dict]:
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT * FROM notify_devices ORDER BY alias, id") as cur:
+        return [_decode_notify_device(dict(r)) async for r in cur]
+
+
+async def get_notify_device(db: aiosqlite.Connection, device_id: str) -> dict | None:
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT * FROM notify_devices WHERE id = ?", (device_id,)) as cur:
+        row = await cur.fetchone()
+        return _decode_notify_device(dict(row)) if row else None
+
+
+async def create_notify_device(
+    db: aiosqlite.Connection, alias: str, instance_id: str, service: str, enabled: bool = True,
+) -> dict:
+    """Raises aiosqlite.IntegrityError when that service on that instance is already saved."""
+    import uuid
+
+    device_id = f"nd_{uuid.uuid4().hex[:8]}"
+    now = time.time()
+    await db.execute(
+        "INSERT INTO notify_devices (id, alias, instance_id, service, enabled, created_at, "
+        "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (device_id, alias, instance_id, service, int(enabled), now, now),
+    )
+    await db.commit()
+    return await get_notify_device(db, device_id)  # type: ignore[return-value]
+
+
+async def update_notify_device(
+    db: aiosqlite.Connection, device_id: str, **kwargs: object
+) -> dict | None:
+    existing = await get_notify_device(db, device_id)
+    if existing is None:
+        return None
+    updates = {k: v for k, v in kwargs.items() if k in _NOTIFY_DEVICE_FIELDS}
+    if not updates:
+        return existing
+    if "enabled" in updates:
+        updates["enabled"] = int(bool(updates["enabled"]))
+    updates["updated_at"] = time.time()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    await db.execute(
+        f"UPDATE notify_devices SET {set_clause} WHERE id = ?",  # noqa: S608
+        [*updates.values(), device_id],
+    )
+    await db.commit()
+    return await get_notify_device(db, device_id)
+
+
+async def delete_notify_device(db: aiosqlite.Connection, device_id: str) -> bool:
+    cur = await db.execute("DELETE FROM notify_devices WHERE id = ?", (device_id,))
     await db.commit()
     return cur.rowcount > 0
 

@@ -6281,6 +6281,470 @@
         }
       }
     },
+    "/api/notify/devices": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List Devices",
+        "operationId": "list_devices_api_notify_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Add Device",
+        "operationId": "add_device_api_notify_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/devices/{device_id}": {
+      "patch": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Edit Device",
+        "operationId": "edit_device_api_notify_devices__device_id__patch",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Remove Device",
+        "operationId": "remove_device_api_notify_devices__device_id__delete",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/discover": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Discover Services",
+        "description": "Every ``notify.*`` service on one HA instance, phones first.",
+        "operationId": "discover_services_api_notify_discover_get",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Instance Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/devices/{device_id}/test": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Device",
+        "description": "One plain message to this device, even with Push notifications off.",
+        "operationId": "test_device_api_notify_devices__device_id__test_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/devices/{device_id}/test-buttons": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Device Buttons",
+        "description": "Yes and No to this phone; poll the request id for the tap (2 minutes).",
+        "operationId": "test_device_buttons_api_notify_devices__device_id__test_buttons_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/test-buttons/{request_id}": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Buttons Result",
+        "operationId": "test_buttons_result_api_notify_test_buttons__request_id__get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/broadcast": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Broadcast",
+        "operationId": "broadcast_api_notify_broadcast_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BroadcastBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/settings": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Get Settings",
+        "operationId": "get_settings_api_notify_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Put Settings",
+        "operationId": "put_settings_api_notify_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/checks": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Checks",
+        "description": "\"Would a notification reach me?\" One line per check: pass, fail or not set up,\nwith the fix.",
+        "operationId": "checks_api_notify_checks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/log": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Recent",
+        "description": "Recent sends and taps, newest first.",
+        "operationId": "recent_api_notify_log_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/diagnostics/modbus-writes": {
       "get": {
         "tags": [
@@ -8677,6 +9141,33 @@
         ],
         "title": "Body_import_metrics_endpoint_api_metrics_import_post"
       },
+      "BroadcastBody": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "BroadcastBody"
+      },
       "CalibrationRequest": {
         "properties": {
           "action": {
@@ -9027,6 +9518,82 @@
         "additionalProperties": false,
         "type": "object",
         "title": "DemoRequest"
+      },
+      "DeviceCreate": {
+        "properties": {
+          "alias": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Alias"
+          },
+          "instance_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Instance Id"
+          },
+          "service": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Service"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "alias",
+          "instance_id",
+          "service"
+        ],
+        "title": "DeviceCreate"
+      },
+      "DeviceUpdate": {
+        "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
+          "service": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "title": "DeviceUpdate"
       },
       "DynamicLive": {
         "properties": {
@@ -11786,6 +12353,19 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ServiceUpdate"
+      },
+      "SettingsUpdate": {
+        "properties": {
+          "push": {
+            "type": "boolean",
+            "title": "Push"
+          }
+        },
+        "type": "object",
+        "required": [
+          "push"
+        ],
+        "title": "SettingsUpdate"
       },
       "SetupStateUpdate": {
         "properties": {
