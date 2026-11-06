@@ -65,10 +65,10 @@
         { key: 'soh',                 label: 'State of health', unit: '%', colour: '#a78bfa' },
         { key: 'cabinet_temp_c',      label: 'Cabinet temp',  unit: '°C', colour: '#f472b6' },
         { key: 'ambient_temp_c',      label: 'Ambient temp',  unit: '°C', colour: '#fb923c' },
-        // Raw vendor registers (one site's readings, undocumented): 15013 is
-        // battery W at 1 W, 15035 is SoC x10. Labelled raw on purpose.
-        { key: 'vreg_15013', label: 'Battery W (15013, raw)', unit: 'W',  colour: '#2dd4bf' },
-        { key: 'vreg_15035', label: 'SoC ×10 (15035, raw)',   unit: '‰',  colour: '#facc15' },
+        // Vendor registers, values as read. 15013 (battery W at ~1 W) and 15035
+        // (SoC x10) confirmed by franklinwh-modbus on 2026-11-03; 15016 is not.
+        { key: 'vreg_15013', label: 'Battery W (15013)',      unit: 'W',  colour: '#2dd4bf' },
+        { key: 'vreg_15035', label: 'SoC ×10 (15035)',        unit: '‰',  colour: '#facc15' },
         { key: 'vreg_15016', label: 'Status (15016, raw)',    unit: 'code', colour: '#c084fc' },
       ],
     },

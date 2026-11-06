@@ -108,7 +108,8 @@ outside the SunSpec models. Click its header to show or hide it.
 
 - **Search registers…** filters by name or description.
 - **All / Identified / Unknown** shows every register, only the ones with a name (from
-  FranklinWH documentation, or from site notes marked *unconfirmed*), or only the unnamed
+  FranklinWH documentation, from registers the franklinwh-modbus library has confirmed, marked
+  *confirmed*, or from site notes marked *unconfirmed*), or only the unnamed
   ones (`Reg15xxx`, description *Unknown*).
 - **Hide zeros** hides registers that read 0.
 - **JSON / CSV** download the list as filtered here. **Export…** at the top can also include them with the models (*Include FranklinWH extensions*).
