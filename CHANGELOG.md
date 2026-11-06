@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.57] — 2026-11-07
+
 ### Changed
 
 - **Companion devices as the Direct Connect bridge has them** (owner, 2026-11-07). Discover
