@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from franklinwh_bridge import __version__, disclaimer, status_notices, workers
+from franklinwh_bridge.actionable import Actionable
 from franklinwh_bridge.alert_delivery import AlertDelivery
 from franklinwh_bridge.alert_monitor import AlertMonitor
 from franklinwh_bridge.api.admin import router as admin_router
@@ -39,6 +40,7 @@ from franklinwh_bridge.api.modules_api import require_module
 from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
 from franklinwh_bridge.api.nem_api import router as nem_router
+from franklinwh_bridge.api.notify_api import router as notify_router
 from franklinwh_bridge.api.point_history_api import router as point_history_router
 from franklinwh_bridge.api.reader_api import router as reader_router
 from franklinwh_bridge.api.scheduler_api import router as scheduler_router
@@ -645,6 +647,9 @@ async def lifespan(app: FastAPI):
     # ── Multi-HA entity access — inbound HA entity states as condition sensors ──
     ha_registry = HaRegistry(db)
     app.state.ha_registry = ha_registry
+    # Phone notifications with buttons (#296 item 48).
+    actionable = Actionable(db, config.db_path)
+    app.state.actionable = actionable
 
     # ── User-defined automation constants (min/max/demand SoC) ────────
     constants = ConstantsStore(db)
@@ -1033,6 +1038,9 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("HA registry start failed: %s", exc)
 
+        # After the Supervisor instance exists; never raises.
+        await actionable.start()
+
         try:
             # After the HA registry, so the first pass knows where HA is.
             await alert_delivery.start()
@@ -1167,6 +1175,7 @@ async def lifespan(app: FastAPI):
     await alert_monitor.stop()
     await alert_delivery.stop()
     await health_checker.stop()
+    await actionable.stop()
     await ha_registry.stop()
     solar_forecast_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
@@ -1310,6 +1319,7 @@ app.include_router(nem_router, dependencies=_AUTH)
 app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(alerts_router)  # GET any signed-in role; ack admin-only (#324)
+app.include_router(notify_router)  # reads any signed-in role; changes admin-only
 app.include_router(diagnostics_router)  # admin-only via its own require_role dep (#342)
 app.include_router(support_router)  # admin-only via its own require_role dep
 app.include_router(

@@ -121,7 +121,12 @@ async def get_alert_settings(request: Request) -> AlertSettings:
 async def put_alert_settings(body: AlertSettingsUpdate, request: Request) -> AlertSettings:
     """Switch HA notifications on or off (admin). Off never hides the bridge's modal."""
     if body.ha_channel is not None:
-        await alert_delivery.set_ha_channel(_db(request), body.ha_channel)
+        # The same setting is the Push notifications switch (#296 item 48).
+        act = getattr(request.app.state, "actionable", None)
+        if act is not None:
+            await act.set_enabled(body.ha_channel)
+        else:
+            await alert_delivery.set_ha_channel(_db(request), body.ha_channel)
     if body.status_notices is not None:
         await status_notices.set_status_notices(_db(request), body.status_notices)
     return await _settings(request)

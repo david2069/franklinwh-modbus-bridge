@@ -74,6 +74,10 @@ async def _reload(request: Request) -> None:
     reg = _registry(request)
     if reg is not None:
         await reg.reload()
+    # The notification tap listeners follow the instances too (#296 item 48).
+    act = getattr(request.app.state, "actionable", None)
+    if act is not None:
+        await act.sync_instances()
 
 
 def _redact(row: dict) -> dict:
