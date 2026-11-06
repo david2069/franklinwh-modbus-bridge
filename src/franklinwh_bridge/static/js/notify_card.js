@@ -20,19 +20,21 @@ function notifyCard() {
     instances: [],
     log: [],
     error: '',
-    // Per-device row results: id -> {ok, msg}
+    loaded: false,
+    // Per-device row results (Test with buttons): id -> {kind, text}
     rowResult: {},
     // Test with buttons in flight: id -> request_id
     waiting: {},
-    // Add / Edit dialog
+    // Add / Edit dialog, as the Direct Connect bridge's
     dlg: false,
-    form: { id: null, alias: '', instance_id: '', service: '', enabled: true },
+    form: { id: null, alias: '', instance_id: '', service: '', kind: 'other' },
     found: [],
     filter: '',
-    discovering: false,
-    dlgResult: null,
+    pickerOpen: false,
+    dlgMsg: null,
     // Broadcast dialog
     bc: false,
+    bcTitle: 'FranklinWH',
     bcMessage: '',
     bcResult: null,
 
@@ -49,6 +51,7 @@ function notifyCard() {
         this.statusNotices = a.status_notices;
         this.devices = d.devices;
         this.instances = d.instances;
+        this.loaded = true;
       } catch (e) {
         this.error = 'Could not load notifications: ' + e.message;
       }
@@ -96,9 +99,7 @@ function notifyCard() {
       return { pass: 'Pass', fail: 'Fail', not_set_up: 'Not set up' }[s] || s;
     },
 
-    kindIcon(kind) {
-      return { phone: '📱', tablet: '📱', tv: '📺', speaker: '🔊' }[kind] || '🔔';
-    },
+    docsUrl(path) { return DOCS_URL + path; },
 
     // ── devices ──
     async toggleDevice(d) {
@@ -106,59 +107,48 @@ function notifyCard() {
         await fetchJSON(`api/notify/devices/${d.id}`, {
           method: 'PATCH', body: JSON.stringify({ enabled: !d.enabled }) });
         await this.loadAll();
-      } catch (e) {
-        this.rowResult = { ...this.rowResult, [d.id]: { ok: false, msg: e.message } };
-      }
+      } catch (e) { Alpine.store('app').toast('Failed: ' + e.message, 'error'); }
     },
 
     async removeDevice(d) {
       if (!await Alpine.store('app').confirm({
-        title: 'Remove device?', message: `${d.alias} stops receiving notifications.`,
+        title: 'Remove this device?', message: `Remove "${d.alias}"? It will stop receiving notifications.`,
         confirmLabel: 'Remove', danger: true,
       })) return;
       try {
         await fetchJSON(`api/notify/devices/${d.id}`, { method: 'DELETE' });
         await this.loadAll();
-        Alpine.store('app').toast(`${d.alias} removed`, 'info');
-      } catch (e) {
-        this.rowResult = { ...this.rowResult, [d.id]: { ok: false, msg: e.message } };
-      }
+      } catch (e) { Alpine.store('app').toast('Failed: ' + e.message, 'error'); }
     },
 
     async testDevice(d) {
-      this.rowResult = { ...this.rowResult, [d.id]: { ok: true, msg: 'Sending…' } };
+      this.busy = true;
       try {
         const r = await fetchJSON(`api/notify/devices/${d.id}/test`, { method: 'POST' });
-        this.rowResult = { ...this.rowResult, [d.id]: r.delivered
-          ? { ok: true, msg: 'Test sent' }
-          : { ok: false, msg: 'Not sent: ' + (r.errors[0] || r.summary) } };
-      } catch (e) {
-        this.rowResult = { ...this.rowResult, [d.id]: { ok: false, msg: e.message } };
-      }
-      this.loadLog();
+        Alpine.store('app').toast(r.delivered ? 'Sent to ' + d.alias : 'Failed: ' + (r.errors[0] || r.summary),
+                                  r.delivered ? 'success' : 'error');
+      } catch (e) { Alpine.store('app').toast('Failed: ' + e.message, 'error'); }
+      finally { this.busy = false; this.loadLog(); }
     },
 
+    // Yes / No test: the tapped answer shows on the device's row and stays there.
     async testButtons(d) {
-      this.rowResult = { ...this.rowResult, [d.id]: { ok: true, msg: 'Sent: tap Yes or No on the phone (2 min)' } };
+      const say = (kind, text) => { this.rowResult = { ...this.rowResult, [d.id]: { kind, text } }; };
+      say('info', 'Sending…');
+      let rid;
       try {
-        const r = await fetchJSON(`api/notify/devices/${d.id}/test-buttons`, { method: 'POST' });
-        this.waiting = { ...this.waiting, [d.id]: r.request_id };
-        this.pollTest(d, r.request_id);
-      } catch (e) {
-        this.rowResult = { ...this.rowResult, [d.id]: { ok: false, msg: e.message } };
-      }
-    },
-
-    async pollTest(d, rid) {
-      for (let i = 0; i < 70; i++) {
+        rid = (await fetchJSON(`api/notify/devices/${d.id}/test-buttons`, { method: 'POST' })).request_id;
+      } catch (e) { say('danger', 'Not sent: ' + e.message); this.loadChecks(); return; }
+      say('info', `Sent — tap Yes or No on ${d.alias}…`);
+      this.waiting = { ...this.waiting, [d.id]: rid };
+      for (let i = 0; i < 65; i++) {
         await new Promise(res => setTimeout(res, 2000));
         let r;
         try { r = await fetchJSON(`api/notify/test-buttons/${rid}`, { background: true }); }
         catch (_) { continue; }
         if (r.result === 'waiting') continue;
-        const msg = r.result === 'no reply' ? 'No reply within 120 s'
-          : `Round trip works: you tapped ${r.result === 'yes' ? 'Yes' : 'No'}`;
-        this.rowResult = { ...this.rowResult, [d.id]: { ok: r.result !== 'no reply', msg } };
+        if (r.result === 'no reply') say('warn', 'No reply within 120 s');
+        else say('ok', 'Round trip works: you tapped ' + (r.result === 'yes' ? 'Yes' : 'No'));
         break;
       }
       const w = { ...this.waiting }; delete w[d.id]; this.waiting = w;
@@ -168,67 +158,100 @@ function notifyCard() {
 
     // ── add / edit dialog ──
     openAdd() {
-      const inst = this.instances.find(i => i.enabled) || this.instances[0];
-      this.form = { id: null, alias: '', instance_id: inst ? inst.id : '', service: '', enabled: true };
-      this.found = []; this.filter = ''; this.dlgResult = null; this.dlg = true;
+      const inst = this.instances.find(i => i.enabled);
+      this.form = { id: null, alias: '', instance_id: inst ? inst.id : '', service: '', kind: 'other' };
+      this.found = []; this.filter = ''; this.pickerOpen = false; this.dlgMsg = null; this.dlg = true;
     },
 
-    openEdit(d) {
-      this.form = { id: d.id, alias: d.alias, instance_id: d.instance_id, service: d.service,
-                    enabled: d.enabled };
-      this.found = []; this.filter = ''; this.dlgResult = null; this.dlg = true;
+    openEdit(d) {   // rename / re-target an existing device
+      this.form = { id: d.id, alias: d.alias, instance_id: d.instance_id,
+                    service: 'notify.' + d.service, kind: d.kind || 'other' };
+      this.found = []; this.filter = ''; this.pickerOpen = false; this.dlgMsg = null; this.dlg = true;
     },
 
+    say(kind, text) { this.dlgMsg = { kind, text }; },
+
+    // Ask the CHOSEN instance only: a notification goes to exactly one Home Assistant.
     async discover() {
-      this.discovering = true; this.dlgResult = null;
+      this.busy = true; this.dlgMsg = null;
       try {
         this.found = (await fetchJSON(
           `api/notify/discover?instance_id=${encodeURIComponent(this.form.instance_id)}`)).services;
-        if (!this.found.length) this.dlgResult = { ok: false, msg: 'This Home Assistant has no notify services' };
+        if (!this.found.length) { this.say('warn', 'No notify services found on that instance'); return; }
+        this.filter = ''; this.pickerOpen = true;
       } catch (e) {
         this.found = [];
-        this.dlgResult = { ok: false, msg: 'Discover failed: ' + e.message };
-      } finally { this.discovering = false; }
+        this.say('danger', 'Discover failed: ' + e.message);
+      } finally { this.busy = false; }
     },
 
-    get filteredFound() {
-      const f = this.filter.trim().toLowerCase();
-      return f ? this.found.filter(s => s.service.includes(f) || s.label.toLowerCase().includes(f))
-               : this.found;
+    get picker() {
+      const q = this.filter.trim().toLowerCase();
+      return this.found
+        .map(t => ({ service: t.service, label: t.friendly_name, kind: t.kind || 'other',
+                     seen: this.fmtSeen(t.last_updated), shadows: t.duplicate_of || '',
+                     saved: t.saved }))
+        .filter(x => !q || x.service.toLowerCase().includes(q) || x.label.toLowerCase().includes(q));
     },
 
-    pick(s) {
-      this.form.service = s.service;
-      if (!this.form.alias) this.form.alias = s.label.startsWith('Send a notification')
-        ? s.service.replace(/^mobile_app_/, '').replace(/_/g, ' ') : s.label;
+    //: "seen 2 h ago" / "seen just now" / '' when Home Assistant does not report it.
+    fmtSeen(iso) {
+      if (!iso) return '';
+      const then = Date.parse(iso);
+      if (!then) return '';
+      const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+      if (mins < 2) return 'seen just now';
+      if (mins < 60) return `seen ${mins} min ago`;
+      const hrs = Math.round(mins / 60);
+      if (hrs < 48) return `seen ${hrs} h ago`;
+      return `seen ${Math.round(hrs / 24)} d ago`;
+    },
+
+    // Take Home Assistant's own friendly name across as the alias, and its type.
+    pick(opt) {
+      this.form.service = 'notify.' + opt.service;
+      this.form.kind = opt.kind;
+      if (!this.form.alias) this.form.alias = opt.label;
+      this.pickerOpen = false;
+    },
+
+    async testNew() {
+      const f = this.form;
+      if (!f.instance_id || !f.service) { this.say('warn', 'Pick an instance and a notify service first'); return; }
+      this.busy = true; this.dlgMsg = null;
+      try {
+        const r = await fetchJSON('api/notify/test', { method: 'POST',
+          body: JSON.stringify({ instance_id: f.instance_id, service: f.service }) });
+        if (r.delivered) this.say('ok', 'Test sent to ' + f.service + ' — check your device');
+        else this.say('danger', 'Test failed: ' + (r.errors[0] || r.summary));
+      } catch (e) { this.say('danger', 'Test failed: ' + e.message); }
+      finally { this.busy = false; this.loadLog(); }
     },
 
     async save() {
-      this.dlgResult = null;
       const f = this.form;
-      try {
-        if (f.id) {
-          await fetchJSON(`api/notify/devices/${f.id}`, { method: 'PATCH',
-            body: JSON.stringify({ alias: f.alias, service: f.service, enabled: f.enabled }) });
-        } else {
-          await fetchJSON('api/notify/devices', { method: 'POST', body: JSON.stringify(f) });
-        }
-        this.dlg = false;
-        Alpine.store('app').toast(`${f.alias} saved`, 'info');
-        await this.loadAll();
-      } catch (e) {
-        this.dlgResult = { ok: false, msg: 'Not saved: ' + e.message };
+      if (!f.alias.trim() || !f.instance_id || !f.service.trim()) {
+        this.say('warn', 'Alias, HA instance and notify service are all required'); return;
       }
+      this.dlgMsg = null;
+      const body = { alias: f.alias, instance_id: f.instance_id, service: f.service, kind: f.kind || 'other' };
+      try {
+        if (f.id) await fetchJSON(`api/notify/devices/${f.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+        else await fetchJSON('api/notify/devices', { method: 'POST', body: JSON.stringify(body) });
+        this.dlg = false;
+        Alpine.store('app').toast(f.id ? 'Device updated' : 'Device added', 'success');
+        await this.loadAll();
+      } catch (e) { this.say('danger', 'Not saved: ' + e.message); }
     },
 
     // ── broadcast ──
-    openBroadcast() { this.bcMessage = ''; this.bcResult = null; this.bc = true; },
+    openBroadcast() { this.bcTitle = 'FranklinWH'; this.bcMessage = ''; this.bcResult = null; this.bc = true; },
 
     async sendBroadcast() {
       this.bcResult = { ok: true, msg: 'Sending…' };
       try {
         const r = await fetchJSON('api/notify/broadcast', { method: 'POST',
-          body: JSON.stringify({ message: this.bcMessage }) });
+          body: JSON.stringify({ title: this.bcTitle, message: this.bcMessage }) });
         this.bcResult = { ok: r.delivered > 0, msg: `Sent to ${r.delivered} of ${r.total} device(s)` };
       } catch (e) {
         this.bcResult = { ok: false, msg: 'Not sent: ' + e.message };

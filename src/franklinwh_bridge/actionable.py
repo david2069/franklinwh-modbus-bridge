@@ -41,6 +41,7 @@ from franklinwh_ha_notify import (
     Target,
     Templates,
     discover,
+    friendly,
     send,
 )
 
@@ -78,21 +79,20 @@ _TEMPLATES.register(
 )
 
 _DUPLICATE = re.compile(r"^(.*)_(\d+)$")
-_KINDS = (
-    ("tablet", ("ipad", "tablet", "_tab", "galaxy_tab")),
-    ("tv", ("tv", "webos", "bravia", "shield")),
-    ("speaker", ("alexa", "echo", "speaker", "sonos", "google_home", "nest_hub")),
-    ("phone", ("iphone", "pixel", "phone", "galaxy", "android", "mobile_app_")),
-)
+KINDS = ("phone", "tablet", "tv", "speaker", "other")
 
 
-def device_kind(service: str) -> str:
-    """phone, tablet, tv, speaker or other, guessed from the service name (for an icon)."""
-    s = service.lower()
-    for kind, words in _KINDS:
-        if any(w in s for w in words):
+def device_kind(service: str, name: str = "") -> str:
+    """phone, tablet, tv, speaker or other, from the notify service and HA's name for it.
+    The Direct Connect bridge's rule (notify_engine.kind_of), so both bridges agree. The
+    user can change it in the Add dialog."""
+    words = set(re.split(r"[^a-z0-9]+", f"{service} {name}".lower()))
+    for kind, hints in (("tablet", {"tablet", "ipad", "tab"}),
+                        ("tv", {"tv", "shield", "chromecast", "firestick"}),
+                        ("speaker", {"speaker", "echo", "alexa", "homepod", "sonos", "nest"})):
+        if words & hints:
             return kind
-    return "other"
+    return "phone" if service.removeprefix("notify.").startswith("mobile_app_") else "other"
 
 
 def mark_duplicates(services: list[str]) -> dict[str, str]:
@@ -208,25 +208,51 @@ class Actionable:
                 and d["instance_id"] in live]
 
     async def discover(self, instance_id: str) -> list[dict]:
-        """Every ``notify.*`` service on one enabled instance, phones first, with
-        ``buttons``, ``kind``, ``duplicate_of`` and ``saved`` (already a device)."""
+        """Every ``notify.*`` service on one enabled instance, phones first, with what tells
+        near-duplicates apart, as the Direct Connect bridge shows them: HA's friendly name
+        for the device (from its ``notify.*`` entity, else one made from the service),
+        ``kind``, ``last_updated`` (the only sign of which of ``x`` and ``x_2`` is live),
+        ``duplicate_of`` and ``saved`` (already a device)."""
         if self.notifier is None or instance_id not in self.notifier.instances:
             raise LookupError("HA instance not found or switched off")
-        found = await discover(self.notifier.instances[instance_id])
+        ha = self.notifier.instances[instance_id]
+        found = await discover(ha)
+        meta: dict[str, dict] = {}
+        try:  # metadata only: a service with no matching entity is still a target
+            async with ha.client() as c:
+                r = await c.get("/api/states")
+                r.raise_for_status()
+                for st in r.json():
+                    eid = st.get("entity_id", "")
+                    if eid.startswith("notify."):
+                        meta[eid.removeprefix("notify.")] = {
+                            "name": (st.get("attributes") or {}).get("friendly_name") or "",
+                            "last_updated": st.get("last_updated") or st.get("last_changed")}
+        except Exception as exc:
+            logger.debug("Discover: no notify entity metadata from %s: %s", instance_id, exc)
         dups = mark_duplicates([t.service for t in found])
         saved = {d["service"] for d in await get_notify_devices(self._db)
                  if d["instance_id"] == instance_id}
-        return [{"service": t.service, "label": t.label, "buttons": t.buttons,
-                 "kind": device_kind(t.service), "duplicate_of": dups.get(t.service),
-                 "saved": t.service in saved} for t in found]
+        out = []
+        for t in found:
+            m = meta.get(t.service, {})
+            name = m.get("name") or friendly(t.service)
+            out.append({"service": t.service, "friendly_name": name, "buttons": t.buttons,
+                        "kind": device_kind(t.service, name),
+                        "last_updated": m.get("last_updated"),
+                        "duplicate_of": dups.get(t.service),
+                        "saved": t.service in saved})
+        return out
 
     async def test(self, device: dict) -> SendResult:
-        """One plain message straight to the device. Sends with the switch off, so a
-        device can be checked before notifications are switched on. Recorded."""
+        """One plain message straight to the device, or to an unsaved ``{instance_id,
+        service}`` from the Add dialog. Sends with the switch off, so a device can be
+        checked before it is saved or notifications are switched on. Recorded."""
         if self.notifier is None:
             return SendResult()
         title, message = _TEMPLATES.render(EVENT_TEST)
-        target = Target(device["instance_id"], device["service"], device["alias"])
+        target = Target(device["instance_id"], device["service"],
+                        device.get("alias") or device["service"])
         res = await send(self.notifier.instances, [target], title, message)
         await self.notifier.ledger.arecord(
             "SENT" if res.delivered else "ERROR", EVENT_TEST, status=res.summary,

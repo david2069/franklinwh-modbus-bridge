@@ -83,15 +83,20 @@ async def client(tmp_path, monkeypatch):
 
 async def _add_phone(client) -> str:
     r = await client.post("/api/notify/devices", json={
-        "alias": "Phone", "instance_id": "ha_home", "service": "notify.mobile_app_pixel"})
+        "alias": "Phone", "instance_id": "ha_home", "service": "notify.mobile_app_pixel",
+        "kind": "phone"})
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
 def test_kind_and_duplicates():
+    """The Direct Connect bridge's rule, word by word, so both bridges agree."""
     assert device_kind("mobile_app_davids_iphone") == "phone"
-    assert device_kind("mobile_app_ipad") == "tablet"
+    assert device_kind("mobile_app_davids_ipad_mini") == "tablet"
     assert device_kind("living_room_tv") == "tv"
+    assert device_kind("alexa_media_bathroom_sonos") == "speaker"
+    assert device_kind("mobile_app_pixel_tablet") == "tablet"
+    assert device_kind("mobile_app_x", "Kitchen Echo Show") == "speaker"
     assert device_kind("email") == "other"
     assert mark_duplicates(["mobile_app_x", "mobile_app_x_2", "lone_3"]) == {
         "mobile_app_x_2": "mobile_app_x"}
@@ -138,16 +143,43 @@ async def test_removing_an_ha_instance_removes_its_devices(client):
 
 
 @respx.mock
-async def test_discover_lists_phones_first_marks_duplicates_and_saved(client):
+async def test_discover_lists_friendly_names_phones_first_duplicates_and_saved(client):
     respx.get(f"{HA}/api/services").mock(return_value=httpx.Response(200, json=SERVICES))
+    respx.get(f"{HA}/api/states").mock(return_value=httpx.Response(200, json=[
+        {"entity_id": "notify.mobile_app_pixel", "state": "unknown",
+         "attributes": {"friendly_name": "David's Pixel 9"},
+         "last_updated": "2026-11-06T10:00:00+00:00"},
+        {"entity_id": "sensor.other", "state": "1", "attributes": {}},
+    ]))
     await _add_phone(client)
     r = await client.get("/api/notify/discover", params={"instance_id": "ha_home"})
     got = {s["service"]: s for s in r.json()["services"]}
     assert set(got) == {"mobile_app_pixel", "mobile_app_pixel_2", "living_room_tv"}
     assert [s["buttons"] for s in r.json()["services"]] == [True, True, False]
+    assert got["mobile_app_pixel"]["friendly_name"] == "David's Pixel 9"   # HA's own name
+    assert got["mobile_app_pixel"]["last_updated"] == "2026-11-06T10:00:00+00:00"
+    assert got["mobile_app_pixel_2"]["friendly_name"] == "Pixel 2"          # made from the service
     assert got["mobile_app_pixel_2"]["duplicate_of"] == "mobile_app_pixel"
     assert got["mobile_app_pixel"]["saved"] is True
     assert got["living_room_tv"]["kind"] == "tv"
+
+
+@respx.mock
+async def test_send_test_before_saving(client):
+    route = respx.post(f"{HA}/api/services/notify/mobile_app_new").mock(
+        return_value=httpx.Response(200, json=[]))
+    r = await client.post("/api/notify/test", json={"instance_id": "ha_home",
+                                                     "service": "notify.mobile_app_new"})
+    assert r.json()["delivered"] == 1 and route.call_count == 1
+    assert await get_notify_devices(client.db) == []   # nothing saved
+
+
+async def test_type_is_saved_and_editable(client):
+    did = await _add_phone(client)
+    r = await client.patch(f"/api/notify/devices/{did}", json={"kind": "tablet"})
+    assert r.json()["kind"] == "tablet"
+    bad = await client.patch(f"/api/notify/devices/{did}", json={"kind": "car"})
+    assert bad.status_code == 422
 
 
 @respx.mock
@@ -206,3 +238,30 @@ async def test_test_with_buttons_needs_the_switch_and_a_phone(client):
         "alias": "TV", "instance_id": "ha_home", "service": "living_room_tv"})).json()["id"]
     r = await client.post(f"/api/notify/devices/{tv}/test-buttons")
     assert r.status_code == 409 and "mobile_app" in r.json()["detail"]
+
+
+async def test_devices_saved_before_types_get_one(tmp_path):
+    """Migration 67: devices saved on 0.2.55/0.2.56 (no type) get one from their service."""
+    import aiosqlite
+
+    from franklinwh_bridge.store import db as dbmod
+
+    conn = await aiosqlite.connect(tmp_path / "m67.db")
+    await conn.executescript("CREATE TABLE schema_version (version INTEGER, applied_at REAL);")
+    all_migrations = dbmod.MIGRATIONS
+    try:
+        dbmod.MIGRATIONS = {k: v for k, v in all_migrations.items() if k <= 66}
+        await dbmod.run_migrations(conn)
+    finally:
+        dbmod.MIGRATIONS = all_migrations
+    services = ("mobile_app_dsh_iphone", "mobile_app_davids_ipad_mini", "alexa_media_x")
+    for i, svc in enumerate(services):
+        await conn.execute("INSERT INTO notify_devices (id, alias, instance_id, service) "
+                           "VALUES (?, ?, 'local', ?)", (f"nd{i}", svc, svc))
+    await conn.commit()
+    await dbmod.run_migrations(conn)
+    async with conn.execute("SELECT service, kind FROM notify_devices ORDER BY id") as cur:
+        assert [tuple(r) for r in await cur.fetchall()] == [
+            ("mobile_app_dsh_iphone", "phone"), ("mobile_app_davids_ipad_mini", "tablet"),
+            ("alexa_media_x", "other")]
+    await conn.close()

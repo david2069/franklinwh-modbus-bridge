@@ -46,9 +46,19 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 66
+CURRENT_SCHEMA_VERSION = 67
 
 MIGRATIONS: dict[int, str] = {
+    67: """
+    -- A notification device's type (phone, tablet, tv, speaker, other), chosen in the Add
+    -- dialog as in the Direct Connect bridge; the column is added by MIGRATION_COLUMNS[67].
+    -- Devices saved on 0.2.55/0.2.56 get a type from their service name.
+    UPDATE notify_devices SET kind = CASE
+        WHEN service LIKE '%ipad%' OR service LIKE '%tablet%' THEN 'tablet'
+        WHEN service LIKE 'mobile_app_%' THEN 'phone'
+        ELSE 'other' END
+     WHERE kind = 'other';
+    """,
     66: """
     -- Phone notifications with buttons (#296 item 48), through franklinwh-ha-notify.
     -- notify_ledger and notify_requests are that library's SCHEMA (version 2),
@@ -1283,6 +1293,7 @@ MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
     ],
     63: [("gateways", "is_default", "INTEGER NOT NULL DEFAULT 0")],
     65: [("gateways", "home_load_source", "TEXT NOT NULL DEFAULT 'standard'")],
+    67: [("notify_devices", "kind", "TEXT NOT NULL DEFAULT 'other'")],
 }
 
 
@@ -2349,7 +2360,7 @@ async def delete_ha_instance(db: aiosqlite.Connection, ha_id: str) -> bool:
 
 # ── Notification devices (#296 item 48) ──
 
-_NOTIFY_DEVICE_FIELDS = ("alias", "instance_id", "service", "enabled")
+_NOTIFY_DEVICE_FIELDS = ("alias", "instance_id", "service", "enabled", "kind")
 
 
 def _decode_notify_device(row: dict) -> dict:
@@ -2373,6 +2384,7 @@ async def get_notify_device(db: aiosqlite.Connection, device_id: str) -> dict | 
 
 async def create_notify_device(
     db: aiosqlite.Connection, alias: str, instance_id: str, service: str, enabled: bool = True,
+    kind: str = "other",
 ) -> dict:
     """Raises aiosqlite.IntegrityError when that service on that instance is already saved."""
     import uuid
@@ -2380,9 +2392,9 @@ async def create_notify_device(
     device_id = f"nd_{uuid.uuid4().hex[:8]}"
     now = time.time()
     await db.execute(
-        "INSERT INTO notify_devices (id, alias, instance_id, service, enabled, created_at, "
-        "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (device_id, alias, instance_id, service, int(enabled), now, now),
+        "INSERT INTO notify_devices (id, alias, instance_id, service, enabled, kind, "
+        "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (device_id, alias, instance_id, service, int(enabled), kind, now, now),
     )
     await db.commit()
     return await get_notify_device(db, device_id)  # type: ignore[return-value]
