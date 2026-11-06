@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **Companion devices as the Direct Connect bridge has them** (owner, 2026-11-07). Discover
+  lists Home Assistant's own name for each device, its `notify.…` service and when it was
+  last seen, duplicates marked, with no icons; picking one fills the alias. The Add dialog
+  has a **Type** (phone, tablet, TV, speaker, other) and **Send test** before saving. Rows
+  show the switch with On/Off, a line icon for the type, the alias, and the service and
+  instance. Broadcast has a title. Migration 67 adds the type and sets it for devices
+  already saved; `POST /api/notify/test` tests an unsaved service.
+
 ## [0.2.56] — 2026-11-06
 
 ### Fixed

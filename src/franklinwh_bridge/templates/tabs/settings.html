@@ -807,55 +807,71 @@
       </div>
     </div>
 
-    <!-- Companion Devices -->
-    <div class="mt-4 pt-4 border-t border-white/10" data-testid="notify-devices">
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
-        <div class="card-label !mb-0">Companion devices</div>
+    <!-- Companion Devices: as the Direct Connect bridge's (owner, 2026-11-07: "the same as DC
+         Bridge"). Wraps on a phone: links and buttons drop to their own lines. -->
+    <div class="mt-4 pt-4 border-t border-white/10 space-y-2" data-testid="notify-devices">
+      <div class="flex flex-wrap items-center justify-between gap-2" data-testid="companion-header">
+        <span class="card-label !mb-0">Companion Devices</span>
+        <span class="flex flex-wrap gap-x-3 gap-y-1 mr-auto">
+          <a href="https://companion.home-assistant.io/" target="_blank" rel="noopener"
+             class="text-xs underline" style="color:var(--text-secondary)">Get the Companion app</a>
+          <a :href="docsUrl('user/ui/settings-home-assistant/#companion-devices')" target="_blank" rel="noopener"
+             class="text-xs underline" style="color:var(--text-secondary)" title="Opens the user guide at this topic">How to add a device</a>
+        </span>
         <div class="flex gap-2" x-show="$store.app.isAdmin">
-          <button type="button" class="btn btn-secondary !py-1 !text-xs" @click="openBroadcast()"
-                  :disabled="!devices.some(d => d.enabled)" data-testid="notify-broadcast">Broadcast</button>
-          <button type="button" class="btn btn-primary !py-1 !text-xs" @click="openAdd()"
-                  :disabled="!instances.length" data-testid="notify-add-device"
-                  :title="instances.length ? '' : 'Add a Home Assistant instance first'">+ Add device</button>
+          <button type="button" @click="openBroadcast()" :disabled="!devices.some(d => d.enabled)"
+                  class="btn btn-secondary btn-sm" title="Send a message to all enabled devices"
+                  data-testid="notify-broadcast">Broadcast</button>
+          <button type="button" @click="openAdd()" :disabled="!instances.length"
+                  class="btn btn-secondary btn-sm" data-testid="notify-add-device"
+                  :title="instances.length ? 'Add a device' : 'Add an HA instance first'">+ Add device</button>
         </div>
       </div>
-      <p class="text-xs text-slate-500 mb-2">
-        A phone with the Home Assistant Companion app (<span class="font-mono">notify.mobile_app_…</span>)
-        shows buttons; any other notify service gets the text only.
-      </p>
-      <p x-show="!devices.length" class="text-xs text-slate-500 italic">No devices yet.</p>
-      <div class="space-y-1.5">
-        <template x-for="d in devices" :key="d.id">
-          <div class="rounded bg-slate-700/30 px-3 py-2" data-testid="notify-device-row">
-            <div class="flex flex-wrap items-center gap-2">
-              <span x-text="kindIcon(d.kind)" aria-hidden="true"></span>
-              <span class="text-sm text-slate-200" x-text="d.alias"></span>
-              <span class="text-xs font-mono text-slate-500 break-all" x-text="'notify.' + d.service"></span>
-              <span class="text-[10px] text-slate-500" x-text="d.instance_name || d.instance_id"></span>
-              <span x-show="d.buttons" class="text-[10px] uppercase rounded px-1.5 bg-cyan-500/15 text-cyan-400">buttons</span>
-              <span x-show="!d.instance_enabled" class="text-[10px] uppercase rounded px-1.5 bg-amber-500/15 text-amber-400">instance disabled</span>
-              <div class="flex flex-wrap items-center gap-2 ml-auto" x-show="$store.app.isAdmin">
-                <button type="button" class="btn btn-secondary !py-0.5 !text-xs" @click="testDevice(d)">Test</button>
-                <button type="button" class="btn btn-secondary !py-0.5 !text-xs" x-show="d.buttons"
-                        @click="testButtons(d)" :disabled="!!waiting[d.id]">Test with buttons</button>
-                <button type="button" class="btn btn-secondary !py-0.5 !text-xs" @click="openEdit(d)">Edit</button>
-                <button type="button" class="btn btn-secondary !py-0.5 !text-xs" @click="removeDevice(d)"
-                        :aria-label="'Remove ' + d.alias">&times;</button>
-                <button type="button" @click="toggleDevice(d)" :aria-pressed="d.enabled"
-                        :aria-label="(d.enabled ? 'Switch off ' : 'Switch on ') + d.alias"
-                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                        :class="d.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
-                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                        :class="d.enabled ? 'translate-x-4' : 'translate-x-1'"></span>
-                </button>
+      <div x-show="loaded && !devices.length" class="text-xs text-slate-500">
+        No companion devices yet — Add device, Discover its notify service, Test, then Save.
+      </div>
+      <template x-for="d in devices" :key="d.id">
+        <div class="flex flex-wrap items-center justify-between rounded px-3 py-2 gap-x-3 gap-y-2"
+             style="background:var(--surface-1)" data-testid="notify-device-row">
+          <div class="flex-1 min-w-0 flex items-center gap-3" style="min-width:16rem">
+            <button type="button" @click="toggleDevice(d)" role="switch" :aria-checked="d.enabled"
+                    :disabled="!$store.app.isAdmin" :aria-label="(d.enabled ? 'Mute ' : 'Unmute ') + d.alias"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition shrink-0"
+                    :class="d.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="d.enabled ? 'Mute' : 'Unmute'">
+              <span class="inline-block h-4 w-4 rounded-full bg-white transition"
+                    :class="d.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
+            </button>
+            <span class="text-[11px] w-6 shrink-0" :class="d.enabled ? 'text-emerald-400' : 'text-slate-500'"
+                  x-text="d.enabled ? 'On' : 'Off'"></span>
+            <svg class="w-5 h-5 shrink-0 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.8"
+                 viewBox="0 0 24 24" :data-kind="d.kind || 'other'" data-testid="device-kind-icon" aria-hidden="true">
+              <path x-show="(d.kind || 'other') === 'phone'" d="M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zm3 17h2"/>
+              <path x-show="d.kind === 'tablet'" d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm6 15h2"/>
+              <path x-show="d.kind === 'tv'" d="M3 5h18v11H3zM8 20h8M12 16v4"/>
+              <path x-show="d.kind === 'speaker'" d="M7 2h10a1 1 0 011 1v18a1 1 0 01-1 1H7a1 1 0 01-1-1V3a1 1 0 011-1zm5 13a3 3 0 100-.01M12 6h.01"/>
+              <path x-show="(d.kind || 'other') === 'other'" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0"/>
+            </svg>
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate" style="color:var(--text-primary)" x-text="d.alias"></div>
+              <div class="text-[11px] font-mono truncate text-slate-500">
+                <span x-text="'notify.' + d.service"></span> · <span x-text="d.instance_name || d.instance_id"></span>
+                <span x-show="!d.instance_enabled" class="chip warn ml-1">instance disabled</span>
               </div>
             </div>
-            <div x-show="rowResult[d.id]" class="text-xs mt-1"
-                 :class="rowResult[d.id]?.ok ? 'text-emerald-400' : 'text-red-400'"
-                 x-text="rowResult[d.id]?.msg"></div>
           </div>
-        </template>
-      </div>
+          <div class="flex flex-wrap items-center gap-2" x-show="$store.app.isAdmin">
+            <button type="button" @click="openEdit(d)" class="btn btn-secondary btn-sm">Edit</button>
+            <button type="button" @click="testDevice(d)" :disabled="busy" class="btn btn-secondary btn-sm">Test</button>
+            <button type="button" x-show="d.buttons" @click="testButtons(d)" :disabled="!!waiting[d.id]"
+                    class="btn btn-secondary btn-sm" title="Sends Yes / No buttons and shows which one you tap">Test with buttons</button>
+            <button type="button" @click="removeDevice(d)" class="text-slate-500 hover:text-red-400" title="Remove"
+                    :aria-label="'Remove ' + d.alias"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+          <div x-show="rowResult[d.id]" class="w-full text-xs" data-testid="notify-rt"
+               :class="{ok:'text-emerald-400', warn:'text-amber-400', danger:'text-red-400', info:'text-slate-400'}[(rowResult[d.id]||{}).kind]"
+               x-text="(rowResult[d.id]||{}).text"></div>
+        </div>
+      </template>
     </div>
 
     <!-- Recent notifications -->
@@ -873,57 +889,80 @@
       </div>
     </div>
 
-    <!-- Add / Edit device dialog -->
-    <div x-show="dlg" x-cloak @keydown.escape.window="dlg = false" @click.self="dlg = false"
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" data-testid="notify-device-dialog">
-      <div class="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4"
+    <!-- Add / Edit device dialog: Discover + Send test before saving, as the Direct Connect
+         bridge's. The backdrop does not close it (an alias, an instance and a tested service
+         are work); Escape and Cancel do. Results stay in the dialog. -->
+    <div x-show="dlg" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="dlg = false" data-testid="notify-device-dialog">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+      <div class="relative w-full max-w-md rounded-xl border shadow-2xl max-h-[90vh] overflow-auto"
+           style="background:var(--surface-0,#0f172a);border-color:var(--border)"
            role="dialog" aria-modal="true" aria-labelledby="notify-dlg-title">
-        <div class="flex items-center justify-between mb-3">
-          <span id="notify-dlg-title" class="text-xs uppercase text-amber-400 font-semibold"
-                x-text="form.id ? 'Edit device' : 'Add device'"></span>
-          <button @click="dlg = false" class="text-slate-500 hover:text-slate-300 text-lg leading-none" aria-label="Close">&times;</button>
+        <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+          <div id="notify-dlg-title" class="text-sm font-semibold" style="color:var(--text-primary)"
+               x-text="form.id ? 'Edit companion device' : 'Add companion device'"></div>
+          <button type="button" class="text-slate-400 hover:text-slate-200" @click="dlg = false" aria-label="Close"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
-        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Alias</label>
-        <input type="text" x-model="form.alias" class="form-control !py-1 !text-xs w-full mb-2" placeholder="Phone">
-        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">HA instance</label>
-        <select x-model="form.instance_id" :disabled="!!form.id" class="form-control !py-1 !text-xs w-full mb-2">
-          <template x-for="i in instances" :key="i.id">
-            <option :value="i.id" x-text="i.name + (i.enabled ? '' : ' (disabled)')"></option>
-          </template>
-        </select>
-        <label class="text-[10px] uppercase text-slate-500 font-semibold mb-0.5 block">Notify service</label>
-        <div class="flex gap-2 mb-2">
-          <input type="text" x-model="form.service" class="form-control !py-1 !text-xs w-full font-mono"
-                 placeholder="mobile_app_my_phone">
-          <button type="button" class="btn btn-secondary !py-1 !text-xs flex-shrink-0" @click="discover()"
-                  :disabled="discovering || !form.instance_id" data-testid="notify-discover"
-                  x-text="discovering ? 'Finding…' : 'Discover'"></button>
-        </div>
-        <div x-show="found.length" class="mb-2">
-          <input type="text" x-model="filter" class="form-control !py-1 !text-xs w-full mb-1" placeholder="filter services…">
-          <div class="max-h-48 overflow-y-auto space-y-1">
-            <template x-for="s in filteredFound" :key="s.service">
-              <button type="button" @click="pick(s)"
-                      class="w-full text-left rounded px-2 py-1 text-xs hover:bg-slate-700/60"
-                      :class="form.service === s.service ? 'bg-slate-700/60' : ''">
-                <span x-text="kindIcon(s.kind)" aria-hidden="true"></span>
-                <span class="font-mono text-slate-200 break-all" x-text="s.service"></span>
-                <span x-show="s.buttons" class="text-[10px] uppercase text-cyan-400">buttons</span>
-                <span x-show="s.duplicate_of" class="text-[10px] text-amber-400" x-text="'duplicate of ' + s.duplicate_of"></span>
-                <span x-show="s.saved" class="text-[10px] text-slate-500">already added</span>
-              </button>
-            </template>
+        <div class="px-5 py-4 space-y-3">
+          <label class="text-xs text-slate-500 block">Alias
+            <input class="form-control !py-1 !text-xs block mt-1 w-full" x-model="form.alias" placeholder="David's iPhone"></label>
+          <label class="text-xs text-slate-500 block">HA instance
+            <select class="form-control !py-1 !text-xs block mt-1 w-full" x-model="form.instance_id">
+              <!-- A disabled instance delivers nothing: offering it would make a device that never fires. -->
+              <template x-for="i in instances.filter(i => i.enabled)" :key="i.id">
+                <option :value="i.id" x-text="i.name"></option>
+              </template>
+            </select></label>
+          <label class="text-xs text-slate-500 block">Type
+            <select class="form-control !py-1 !text-xs block mt-1 w-full" x-model="form.kind" data-testid="device-kind">
+              <option value="phone">Phone</option>
+              <option value="tablet">Tablet</option>
+              <option value="tv">TV</option>
+              <option value="speaker">Speaker</option>
+              <option value="other">Other</option>
+            </select></label>
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-slate-500">Notify service</span>
+              <button type="button" @click="discover()" :disabled="busy || !form.instance_id"
+                      class="btn btn-secondary btn-sm" data-testid="notify-discover">Discover</button>
+            </div>
+            <input class="form-control !py-1 !text-xs block mt-1 w-full font-mono" x-model="form.service"
+                   placeholder="notify.mobile_app_...">
+            <div x-show="pickerOpen" x-cloak class="mt-2 rounded border border-white/10 max-h-52 overflow-auto"
+                 style="background:var(--surface-1)" data-testid="notify-picker">
+              <input class="form-control !py-1 !text-xs w-full" x-model="filter" placeholder="filter services…">
+              <template x-for="opt in picker" :key="opt.service">
+                <button type="button" @click="pick(opt)" class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/5">
+                  <div class="flex justify-between gap-2">
+                    <span x-text="opt.label"></span>
+                    <span class="font-mono text-slate-500 truncate" x-text="'notify.' + opt.service"></span>
+                  </div>
+                  <div class="flex justify-between gap-2 text-[10px]" style="color:var(--text-faint)">
+                    <span x-show="opt.shadows" style="color:#fbbf24">
+                      duplicate of <span class="font-mono" x-text="'notify.' + opt.shadows"></span>
+                    </span>
+                    <span x-show="opt.saved">already added</span>
+                    <span class="ml-auto" x-text="opt.seen"></span>
+                  </div>
+                </button>
+              </template>
+            </div>
+          </div>
+          <div x-show="dlgMsg" x-cloak role="alert" aria-live="polite" class="text-xs rounded px-3 py-2 border"
+               style="border-color:currentColor"
+               :class="{ok:'text-emerald-400', warn:'text-amber-400', danger:'text-red-400', info:'text-slate-400'}[(dlgMsg||{}).kind]"
+               x-text="dlgMsg && dlgMsg.text" data-testid="notify-dlg-msg"></div>
+          <div class="text-[11px] text-slate-500" data-testid="test-before-save">Send a test notification to confirm this device receives alerts before saving</div>
+          <div class="flex justify-between gap-2 pt-1">
+            <button type="button" @click="testNew()" :disabled="busy" class="btn btn-secondary btn-sm"
+                    data-testid="notify-send-test">Send test</button>
+            <div class="flex gap-2">
+              <button type="button" @click="dlg = false" class="btn btn-secondary btn-sm">Cancel</button>
+              <button type="button" @click="save()" class="btn btn-primary btn-sm" data-testid="notify-device-save">Save</button>
+            </div>
           </div>
         </div>
-        <div x-show="dlgResult" class="text-xs mb-2" :class="dlgResult?.ok ? 'text-emerald-400' : 'text-red-400'"
-             x-text="dlgResult?.msg"></div>
-        <div class="flex justify-end gap-2">
-          <button type="button" class="btn btn-secondary !py-1 !text-xs" @click="dlg = false">Cancel</button>
-          <button type="button" class="btn btn-primary !py-1 !text-xs" @click="save()"
-                  :disabled="!form.alias.trim() || !form.service.trim() || !form.instance_id"
-                  data-testid="notify-device-save">Save</button>
-        </div>
-        <p class="text-[11px] text-slate-500 mt-2">After saving, use <b>Test</b> on the device's row.</p>
       </div>
     </div>
 
@@ -936,8 +975,10 @@
           <span id="notify-bc-title" class="text-xs uppercase text-amber-400 font-semibold">Broadcast to every enabled device</span>
           <button @click="bc = false" class="text-slate-500 hover:text-slate-300 text-lg leading-none" aria-label="Close">&times;</button>
         </div>
-        <textarea x-model="bcMessage" rows="3" maxlength="1000" class="form-control !text-xs w-full mb-2"
-                  placeholder="Message"></textarea>
+        <label class="text-xs text-slate-500 block mb-2">Title
+          <input x-model="bcTitle" maxlength="120" class="form-control !py-1 !text-xs block mt-1 w-full"></label>
+        <label class="text-xs text-slate-500 block mb-2">Message
+          <textarea x-model="bcMessage" rows="3" maxlength="1000" class="form-control !text-xs block mt-1 w-full"></textarea></label>
         <div x-show="bcResult" class="text-xs mb-2" :class="bcResult?.ok ? 'text-emerald-400' : 'text-red-400'"
              x-text="bcResult?.msg"></div>
         <div class="flex justify-end gap-2">

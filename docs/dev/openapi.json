@@ -6508,6 +6508,46 @@
         }
       }
     },
+    "/api/notify/test": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Target",
+        "description": "Send test from the Add dialog: one plain message to a service not saved yet.",
+        "operationId": "test_target_api_notify_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetTest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notify/devices/{device_id}/test-buttons": {
       "post": {
         "tags": [
@@ -9543,6 +9583,12 @@
             "type": "boolean",
             "title": "Enabled",
             "default": true
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^(phone|tablet|tv|speaker|other)$",
+            "title": "Kind",
+            "default": "other"
           }
         },
         "type": "object",
@@ -9568,6 +9614,18 @@
             ],
             "title": "Alias"
           },
+          "instance_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Id"
+          },
           "service": {
             "anyOf": [
               {
@@ -9591,6 +9649,18 @@
               }
             ],
             "title": "Enabled"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(phone|tablet|tv|speaker|other)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
           }
         },
         "type": "object",
@@ -12789,6 +12859,27 @@
         ],
         "title": "SupportInfo",
         "description": "The bundle (``info``) and the same as ready-to-paste Markdown."
+      },
+      "TargetTest": {
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Instance Id"
+          },
+          "service": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Service"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instance_id",
+          "service"
+        ],
+        "title": "TargetTest"
       },
       "TariffImportBundle": {
         "properties": {

@@ -93,26 +93,32 @@ with the Companion app has a service called `notify.mobile_app_<phone>`: that is
 usual choice, and the only kind that shows buttons. Any other service (an email, a TV)
 gets the text only.
 
-1. Install the Companion app on your phone, sign in to your Home Assistant and allow
-   notifications.
+1. Install the [Companion app](https://companion.home-assistant.io/) on your phone, sign in
+   to your Home Assistant and allow notifications.
 2. Press **+ Add device**. It needs a [Home Assistant instance](#home-assistant-instances);
    as an add-on, *This Home Assistant* is there already.
-3. Give it an **Alias**, such as "Phone", and pick the **HA instance**.
-4. Press **Discover**. It lists every `notify.*` service on that Home Assistant, phones
-   first. A service ending `_2` that repeats another is marked *duplicate of …*: pick the
-   one without the number unless you know you need it.
-5. **Save**.
+3. Pick the **HA instance**.
+4. Press **Discover** next to **Notify service**. It lists every `notify.*` service on that
+   Home Assistant, phones first: the name Home Assistant gives the device, its
+   `notify.…` service, and when Home Assistant last saw it. A service ending `_2` that
+   repeats another is marked *duplicate of …*: pick the one seen most recently. **filter
+   services…** finds yours.
+5. Pick one. Its name becomes the **Alias** (change it if you like) and its **Type**
+   (phone, tablet, TV, speaker or other) is guessed; change it if it's wrong.
+6. Press **Send test** to check the device receives it, before saving.
+7. **Save**.
 
-Each device's row has:
+Each device's row has an on/off switch, an icon for its type, its alias, and its service
+and Home Assistant instance, then:
 
-- **Test:** one plain message, sent even while Push notifications is off. The row says
-  whether Home Assistant took it.
+- **Edit:** change the alias, type, instance or service.
+- **Test:** one plain message, sent even while Push notifications is off.
 - **Test with buttons** (phones only): "Test with buttons" with **Yes** and **No**. Tap one
   within 2 minutes; the row then says *Round trip works: you tapped Yes*, or *No reply
   within 120 s*. It needs Push notifications on.
-- **Edit**, remove (**×**) and an on/off switch. A device that is off gets nothing.
+- **×** removes it.
 
-**Broadcast** sends one message of your own to every enabled device.
+**Broadcast** sends a title and message of your own to every enabled device.
 
 Removing a Home Assistant instance removes its devices too.
 

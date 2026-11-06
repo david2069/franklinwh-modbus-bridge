@@ -10,7 +10,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from franklinwh_bridge.actionable import Actionable, device_kind
+from franklinwh_bridge.actionable import Actionable
 from franklinwh_bridge.api.auth import require_auth, require_role
 from franklinwh_bridge.store.db import (
     create_notify_device,
@@ -25,17 +25,28 @@ router = APIRouter(prefix="/api/notify", tags=["notifications"])
 _ADMIN = require_role("admin")
 
 
+_KIND = r"^(phone|tablet|tv|speaker|other)$"
+
+
 class DeviceCreate(BaseModel):
     alias: str = Field(min_length=1, max_length=80)
     instance_id: str = Field(min_length=1)
     service: str = Field(min_length=1, max_length=200)
     enabled: bool = True
+    kind: str = Field(default="other", pattern=_KIND)
 
 
 class DeviceUpdate(BaseModel):
     alias: str | None = Field(default=None, min_length=1, max_length=80)
+    instance_id: str | None = Field(default=None, min_length=1)
     service: str | None = Field(default=None, min_length=1, max_length=200)
     enabled: bool | None = None
+    kind: str | None = Field(default=None, pattern=_KIND)
+
+
+class TargetTest(BaseModel):
+    instance_id: str = Field(min_length=1)
+    service: str = Field(min_length=1, max_length=200)
 
 
 class SettingsUpdate(BaseModel):
@@ -69,8 +80,7 @@ async def _device_rows(request: Request) -> list[dict]:
         inst = instances.get(d["instance_id"])
         out.append({**d, "instance_name": inst["name"] if inst else None,
                     "instance_enabled": bool(inst and inst["enabled"]),
-                    "buttons": d["service"].startswith("mobile_app_"),
-                    "kind": device_kind(d["service"])})
+                    "buttons": d["service"].startswith("mobile_app_")})
     return out
 
 
@@ -104,7 +114,7 @@ async def add_device(body: DeviceCreate, request: Request):
         raise HTTPException(400, "HA instance not found")
     try:
         row = await create_notify_device(_db(request), body.alias.strip(), body.instance_id,
-                                         _service(body.service), body.enabled)
+                                         _service(body.service), body.enabled, body.kind)
     except aiosqlite.IntegrityError as exc:
         raise HTTPException(409, "That service on that HA instance is already a device") from exc
     return row
@@ -114,6 +124,9 @@ async def add_device(body: DeviceCreate, request: Request):
 async def edit_device(device_id: str, body: DeviceUpdate, request: Request):
     await _device(request, device_id)
     updates = body.model_dump(exclude_unset=True)
+    if "instance_id" in updates and not any(
+            r["id"] == updates["instance_id"] for r in await get_ha_instances(_db(request))):
+        raise HTTPException(400, "HA instance not found")
     if "service" in updates:
         updates["service"] = _service(updates["service"])
     if "alias" in updates:
@@ -146,6 +159,13 @@ async def discover_services(instance_id: str, request: Request):
 async def test_device(device_id: str, request: Request):
     """One plain message to this device, even with Push notifications off."""
     return _sent(await _act(request).test(await _device(request, device_id)))
+
+
+@router.post("/test", dependencies=[Depends(_ADMIN)])
+async def test_target(body: TargetTest, request: Request):
+    """Send test from the Add dialog: one plain message to a service not saved yet."""
+    return _sent(await _act(request).test({"instance_id": body.instance_id,
+                                           "service": _service(body.service)}))
 
 
 @router.post("/devices/{device_id}/test-buttons", dependencies=[Depends(_ADMIN)])
