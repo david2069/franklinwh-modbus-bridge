@@ -18,6 +18,13 @@ itself has its own switch, ``health.daily`` ("on" by default).
 
 If the bridge was down at 07:00, the day's report runs on the first pass after it
 starts. Rules for the colours are in :func:`grade`.
+
+Phase 2: the **weekly battery report**, Monday 07:00, for the week Monday to Sunday just
+ended, per gateway, from the daily snapshot: state of health and its trend, round-trip
+efficiency, equivalent full cycles, the week's energy totals as the aGate counts them, and
+charge cycles by depth (rainflow, from the SoC history). Its level is ``info``: the flags
+for unusual changes come in phase 3. Switch: ``health.weekly``. If the bridge was down on
+Monday at 07:00, it runs on the first pass after that in the same week.
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
+import rainflow
 
 from franklinwh_bridge import workers
 from franklinwh_bridge.alert_delivery import NOTIFICATION_TITLE, ha_channel_on, site_time
@@ -51,6 +59,18 @@ logger = logging.getLogger(__name__)
 
 DAILY_KEY = "health.daily"
 DAILY_AT = (7, 0)  # site time
+WEEKLY_KEY = "health.weekly"
+WEEKLY_AT = (0, 7, 0)  # Monday (weekday 0), 07:00 site time
+WEEKLY_NOTIFICATION_ID = "fwh_mb_health_weekly"
+#: Round-trip efficiency only over a span whose two ends are this close in SoC (points).
+EFFICIENCY_SOC_MATCH = 5.0
+#: …and at least this much charged in between, so a quiet week gives no figure.
+EFFICIENCY_MIN_WH = 1000.0
+#: A SoH trend needs at least this many days between its first and last reading.
+SOH_TREND_MIN_DAYS = 28
+#: Cycle depth bands, in SoC points: (label, low, high).
+DEPTH_BANDS = (("under 20", 0, 20), ("20 to 50", 20, 50), ("50 to 80", 50, 80),
+               ("80 and over", 80, 101))
 INTERVAL_S = 60
 WORKER_NAME = "health_report"
 NOTIFICATION_ID = "fwh_mb_health_daily"
@@ -59,8 +79,8 @@ REPORT_RETENTION_DAYS = 400
 FRESH_S = 300
 SEND_TIMEOUT_S = 10.0
 
-GREEN, AMBER, RED = "green", "amber", "red"
-_RANK = {GREEN: 0, AMBER: 1, RED: 2}
+GREEN, AMBER, RED, INFO = "green", "amber", "red", "info"
+_RANK = {INFO: 0, GREEN: 0, AMBER: 1, RED: 2}
 
 # Log patterns: a pattern this often in 24 h counts for the colour.
 PATTERN_MIN = 10
@@ -131,6 +151,15 @@ async def daily_on(db: aiosqlite.Connection) -> bool:
 async def set_daily(db: aiosqlite.Connection, on: bool) -> None:
     await set_app_config(db, DAILY_KEY, "on" if on else "off")
     logger.info("Daily health report switched %s", "on" if on else "off")
+
+
+async def weekly_on(db: aiosqlite.Connection) -> bool:
+    return (await get_app_config(db, WEEKLY_KEY, "on")) != "off"
+
+
+async def set_weekly(db: aiosqlite.Connection, on: bool) -> None:
+    await set_app_config(db, WEEKLY_KEY, "on" if on else "off")
+    logger.info("Weekly battery report switched %s", "on" if on else "off")
 
 
 # ── snapshot ──────────────────────────────────────────────────
@@ -412,6 +441,178 @@ async def build_daily(db: aiosqlite.Connection, now: float,
     return report
 
 
+# ── the weekly battery report ─────────────────────────────────
+
+
+def _days_between(a: str, b: str) -> int:
+    return (datetime.strptime(b, "%Y-%m-%d") - datetime.strptime(a, "%Y-%m-%d")).days
+
+
+def _kwh(a: dict, b: dict, col: str) -> float | None:
+    if a.get(col) is None or b.get(col) is None:
+        return None
+    return round((b[col] - a[col]) / 1000, 2)
+
+
+def _nearest(rows: list[dict], day: str, col: str, within: int) -> dict | None:
+    """The row with ``col`` closest to ``day`` and at most ``within`` days from it."""
+    best = None
+    for r in rows:
+        if r.get(col) is None:
+            continue
+        d = abs(_days_between(r["day"], day))
+        if d <= within and (best is None or d < best[0]):
+            best = (d, r)
+    return best[1] if best else None
+
+
+def efficiency(rows: list[dict]) -> dict | None:
+    """Round-trip efficiency, battery DC energy out ÷ in, over the longest span among
+    ``rows`` (oldest first) whose two ends are within ``EFFICIENCY_SOC_MATCH`` SoC points,
+    so the charge left in the battery hardly counts. None without such a span."""
+    usable = [r for r in rows if None not in (r.get("soc"), r.get("battery_charged_wh"),
+                                              r.get("battery_discharged_wh"))]
+    best = None
+    for i, a in enumerate(usable):
+        for b in usable[i + 1:]:
+            if abs(b["soc"] - a["soc"]) > EFFICIENCY_SOC_MATCH:
+                continue
+            charged = b["battery_charged_wh"] - a["battery_charged_wh"]
+            if charged < EFFICIENCY_MIN_WH:
+                continue
+            span = _days_between(a["day"], b["day"])
+            if best is None or span > best["days"]:
+                out = b["battery_discharged_wh"] - a["battery_discharged_wh"]
+                best = {"pct": round(100 * out / charged, 1), "days": span,
+                        "from": a["day"], "to": b["day"], "soc_from": a["soc"],
+                        "soc_to": b["soc"], "in_kwh": round(charged / 1000, 2),
+                        "out_kwh": round(out / 1000, 2)}
+    return best
+
+
+def soc_cycles(socs: list[float]) -> dict:
+    """Charge cycles from a SoC series, counted by rainflow (ASTM E1049-85): how many,
+    how deep on average, and how many in each depth band. Half cycles count 0.5."""
+    series = [float(v) for v in socs if v is not None]
+    if len(series) < 3:
+        return {"cycles": 0.0, "mean_depth": None, "bands": {b[0]: 0.0 for b in DEPTH_BANDS}}
+    counted = rainflow.count_cycles(series)
+    bands = {b[0]: 0.0 for b in DEPTH_BANDS}
+    total = depth_sum = 0.0
+    for depth, n in counted:
+        if depth < 1:  # SoC noise, not a cycle
+            continue
+        total += n
+        depth_sum += depth * n
+        for label, lo, hi in DEPTH_BANDS:
+            if lo <= depth < hi:
+                bands[label] += n
+    return {"cycles": round(total, 1),
+            "mean_depth": round(depth_sum / total, 1) if total else None,
+            "bands": {k: round(v, 1) for k, v in bands.items()}}
+
+
+async def _soc_series(db: aiosqlite.Connection, gw: str, start: float, end: float) -> list:
+    """SoC over the span, from the metrics kept (raw, then 5-minute averages)."""
+    out = []
+    for table in ("metrics_archive", "metrics"):
+        with contextlib.suppress(aiosqlite.OperationalError):
+            async with db.execute(
+                f"SELECT ts, soc FROM {table} WHERE gateway_id = ? AND ts >= ? AND ts < ? "
+                "AND soc IS NOT NULL", (gw, start, end)) as cur:
+                out += [(r[0], r[1]) for r in await cur.fetchall()]
+    out.sort()
+    return [v for _, v in out]
+
+
+async def build_weekly(db: aiosqlite.Connection, now: float) -> dict:
+    """The weekly battery report for the week (Monday to Sunday) before ``now``'s week."""
+    local = datetime.fromtimestamp(now)
+    this_monday = _midnight(local) - timedelta(days=local.weekday())
+    monday = this_monday - timedelta(days=7)
+    sunday = this_monday - timedelta(days=1)
+    # The counters at the end of the Sunday before, through the end of this Sunday.
+    first, last = _day(monday - timedelta(days=1)), _day(sunday)
+    gws = [g for g in await get_gateways(db)
+           if g.get("enabled", 1) and not gateway_is_unconfigured(g)]
+    sections = []
+    for g in gws:
+        async with db.execute(
+            "SELECT * FROM health_daily WHERE gateway_id = ? AND day <= ? ORDER BY day",
+            (g["id"], last)) as cur:
+            history = [dict(r) for r in await cur.fetchall()]
+        week = [r for r in history if first <= r["day"] <= last]
+        sec: dict[str, Any] = {"gateway": g["id"], "name": g.get("name") or g["id"],
+                               "snapshots": len(week)}
+        latest = week[-1] if week else None
+        soh_now = _nearest(history, last, "soh", 7)
+        sec["soh"] = {
+            "now": soh_now and soh_now["soh"],
+            "day": soh_now and soh_now["day"],
+            "week_ago": (r := _nearest(history, _day(sunday - timedelta(days=7)), "soh", 3))
+            and r["soh"],
+            "four_weeks_ago": (r := _nearest(history, _day(sunday - timedelta(days=28)), "soh", 7))
+            and r["soh"],
+            "year_ago": (r := _nearest(history, _day(sunday - timedelta(days=365)), "soh", 14))
+            and r["soh"],
+            "per_month": None,
+        }
+        with_soh = [r for r in history if r.get("soh") is not None
+                    and _days_between(r["day"], last) <= 365]
+        if len(with_soh) >= 2:
+            span = _days_between(with_soh[0]["day"], with_soh[-1]["day"])
+            if span >= SOH_TREND_MIN_DAYS:
+                sec["soh"]["per_month"] = round(
+                    (with_soh[-1]["soh"] - with_soh[0]["soh"]) / span * 30, 2)
+        rated = next((r["wh_rating"] for r in reversed(history) if r.get("wh_rating")), None)
+        sec["capacity"] = {"rated_kwh": rated and round(rated / 1000, 2),
+                           "available_kwh": latest and latest.get("wh_available") is not None
+                           and round(latest["wh_available"] / 1000, 2) or None}
+        if len(week) >= 2:
+            a, b = week[0], week[-1]
+            sec["energy"] = {
+                "from": a["day"], "to": b["day"], "days": _days_between(a["day"], b["day"]),
+                **{k: _kwh(a, b, col) for k, col in (
+                    ("battery_in_kwh", "battery_charged_wh"),
+                    ("battery_out_kwh", "battery_discharged_wh"),
+                    ("grid_import_kwh", "grid_import_wh"),
+                    ("grid_export_kwh", "grid_export_wh"),
+                    ("solar_kwh", "solar_wh"),
+                    ("inverter_out_kwh", "inverter_out_wh"),
+                    ("inverter_in_kwh", "inverter_in_wh"))},
+            }
+        else:
+            sec["energy"] = None
+        sec["efficiency"] = efficiency(week)
+        charged_week = sec["energy"] and sec["energy"]["battery_in_kwh"]
+        sec["full_cycles"] = {
+            "week": round(charged_week * 1000 / rated, 2) if charged_week is not None and rated
+            else None,
+            "lifetime": round(latest["battery_charged_wh"] / rated, 1)
+            if latest and latest.get("battery_charged_wh") is not None and rated else None,
+        }
+        sec["cycles"] = soc_cycles(await _soc_series(db, g["id"], monday.timestamp(),
+                                                     this_monday.timestamp()))
+        sections.append(sec)
+
+    parts = []
+    for sec in sections:
+        bits = []
+        if sec["soh"]["now"] is not None:
+            bits.append(f"SoH {sec['soh']['now']:g}%")
+        if sec["efficiency"]:
+            bits.append(f"efficiency {sec['efficiency']['pct']:g}%")
+        if sec["full_cycles"]["week"] is not None:
+            bits.append(f"{sec['full_cycles']['week']:g} full cycles")
+        if not bits:
+            bits.append("not enough daily snapshots yet")
+        parts.append((f"{sec['name']}: " if len(sections) > 1 else "") + ", ".join(bits))
+    week_of = f"{monday.day} {monday.strftime('%b')}"
+    headline = f"Week of {week_of}: " + ("; ".join(parts) if parts else "no gateway configured")
+    return {"kind": "weekly", "week": {"from": _day(monday), "to": _day(sunday)},
+            "gateways": sections, "level": INFO, "reasons": [], "headline": headline}
+
+
 async def store_report(db: aiosqlite.Connection, report: dict, period: str, now: float) -> int:
     cur = await db.execute(
         "INSERT INTO health_reports (kind, period, ts, level, headline, body) "
@@ -458,12 +659,15 @@ async def list_reports(db: aiosqlite.Connection, kind: str | None = None,
 def notification_text(report: dict) -> tuple[str, str]:
     """``(title, message)``: the headline, then the other reasons."""
     level = report["level"]
+    if report["kind"] == "weekly":
+        return (f"{NOTIFICATION_TITLE}: weekly battery report",
+                f"{report['headline']}\nOpen the bridge → Logs → Health for the full report.")
     title = f"{NOTIFICATION_TITLE}: health {level}"
     lines = [report["headline"]]
     lines += [f"- {r}" for r in report["reasons"][1:6]]
     if len(report["reasons"]) > 6:
         lines.append(f"- and {len(report['reasons']) - 6} more")
-    lines.append("Open the bridge → Health for the full report.")
+    lines.append("Open the bridge → Logs → Health for the full report.")
     return title, "\n".join(lines)
 
 
@@ -519,24 +723,36 @@ class HealthReporter:
         yesterday = today - timedelta(days=1)
         await take_snapshot(self._db, _day(yesterday), yesterday.timestamp(),
                             today.timestamp(), list(self._gateways()), self._points, now)
+        out = None
         due = today.replace(hour=DAILY_AT[0], minute=DAILY_AT[1])
-        if local < due or not await daily_on(self._db):
-            return None
-        async with self._db.execute(
-            "SELECT 1 FROM health_reports WHERE kind = 'daily' AND period = ?",
-            (_day(local),)) as cur:
-            if await cur.fetchone():
-                return None
-        return await self.run(notify=True)
+        if local >= due and await daily_on(self._db) \
+                and not await self._have("daily", _day(local)):
+            out = await self.run(notify=True)
+        monday = today - timedelta(days=today.weekday())
+        due = monday.replace(hour=WEEKLY_AT[1], minute=WEEKLY_AT[2])
+        if local >= due and await weekly_on(self._db) \
+                and not await self._have("weekly", _day(monday - timedelta(days=7))):
+            out = await self.run(notify=True, kind="weekly")
+        return out
 
-    async def run(self, *, notify: bool) -> dict:
-        """Build, store and (when ``notify``) send today's daily report."""
+    async def _have(self, kind: str, period: str) -> bool:
+        async with self._db.execute(
+            "SELECT 1 FROM health_reports WHERE kind = ? AND period = ?", (kind, period)) as cur:
+            return await cur.fetchone() is not None
+
+    async def run(self, *, notify: bool, kind: str = "daily") -> dict:
+        """Build, store and (when ``notify``) send a report: today's daily one, or the
+        weekly one for last week (period = that week's Monday)."""
         async with self._lock:
             now = self._now()
-            report = await build_daily(self._db, now, self._backups, self._db_path)
-            report_id = await store_report(self._db, report, _day(datetime.fromtimestamp(now)),
-                                           now)
-            logger.info("Daily health report: %s", report["headline"])
+            if kind == "weekly":
+                report = await build_weekly(self._db, now)
+                period = report["week"]["from"]
+            else:
+                report = await build_daily(self._db, now, self._backups, self._db_path)
+                period = _day(datetime.fromtimestamp(now))
+            report_id = await store_report(self._db, report, period, now)
+            logger.info("%s health report: %s", kind.capitalize(), report["headline"])
             if notify:
                 await self._deliver(report, now)
             return {"id": report_id, "ts": now, "level": report["level"],
@@ -554,12 +770,13 @@ class HealthReporter:
             if inst is not None:
                 res = await asyncio.wait_for(
                     inst.call_action("persistent_notification", "create", {
-                        "notification_id": NOTIFICATION_ID, "title": title,
+                        "notification_id": WEEKLY_NOTIFICATION_ID if report["kind"] == "weekly"
+                        else NOTIFICATION_ID, "title": title,
                         "message": f"{message}\n\n{site_time(now)}"}),
                     SEND_TIMEOUT_S)
                 if not res["ok"]:
                     logger.info("Health report not sent to Home Assistant: %s", res["error"])
-            if report["level"] != GREEN and self._act is not None:
+            if report["level"] in (AMBER, RED) and self._act is not None:
                 res = await asyncio.wait_for(self._act.notify_health(title, message),
                                              SEND_TIMEOUT_S)
                 logger.info("Health report to phones: %s", getattr(res, "summary", res))

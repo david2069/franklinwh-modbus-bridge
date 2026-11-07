@@ -99,9 +99,14 @@ Access: any signed-in role.
 
 ### `POST /api/health/report` { #post-api-health-report }
 
-Build and store today's daily report now. Sends nothing.
+Build and store a report now: today's daily one, or the weekly one for last week.
+Sends nothing.
 
 Access: admin role.
+
+| Parameter | In | Type | Required |
+|---|---|---|---|
+| `kind` | query | string | no |
 
 ### `GET /api/health/reports` { #get-api-health-reports }
 
@@ -145,7 +150,8 @@ Request body (`application/json`): **franklinwh_bridge__api__health_report_api__
 
 | Field | Type | Required | Default |
 |---|---|---|---|
-| `daily` | boolean | yes |  |
+| `daily` | boolean or null | no |  |
+| `weekly` | boolean or null | no |  |
 
 
 ## Authentication and sessions

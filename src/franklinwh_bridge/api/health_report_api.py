@@ -1,4 +1,5 @@
-"""Scheduled health check (#296 item 51): the daily report and the daily snapshot.
+"""Scheduled health check (#296 item 51): the daily report, the weekly battery report
+and the daily snapshot.
 The work is in ``health_report.py``.
 
 Reads need a signed-in user; running a report now and the switch need admin.
@@ -16,8 +17,12 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 _ADMIN = require_role("admin")
 
 
+_KIND = r"^(daily|weekly)$"
+
+
 class SettingsUpdate(BaseModel):
-    daily: bool
+    daily: bool | None = None
+    weekly: bool | None = None
 
 
 def _reporter(request: Request) -> health_report.HealthReporter:
@@ -28,20 +33,21 @@ def _reporter(request: Request) -> health_report.HealthReporter:
 
 
 @router.get("/report", dependencies=[Depends(require_auth)])
-async def latest(request: Request, kind: str = Query("daily", pattern=r"^daily$")) -> dict:
+async def latest(request: Request, kind: str = Query("daily", pattern=_KIND)) -> dict:
     """The latest report: ``{id, kind, period, ts, level, headline, report}``, or
     ``{report: null}`` before the first one."""
     return await health_report.latest_report(request.app.state.db, kind) or {"report": None}
 
 
 @router.post("/report", dependencies=[Depends(_ADMIN)])
-async def run_now(request: Request) -> dict:
-    """Build and store today's daily report now. Sends nothing."""
-    return await _reporter(request).run(notify=False)
+async def run_now(request: Request, kind: str = Query("daily", pattern=_KIND)) -> dict:
+    """Build and store a report now: today's daily one, or the weekly one for last week.
+    Sends nothing."""
+    return await _reporter(request).run(notify=False, kind=kind)
 
 
 @router.get("/reports", dependencies=[Depends(require_auth)])
-async def reports(request: Request, kind: str | None = Query(None, pattern=r"^daily$"),
+async def reports(request: Request, kind: str | None = Query(None, pattern=_KIND),
                   limit: int = Query(60, ge=1, le=400)) -> dict:
     """Past reports, newest first, without their bodies."""
     return {"reports": await health_report.list_reports(request.app.state.db, kind, limit)}
@@ -64,11 +70,17 @@ async def snapshots(request: Request, gateway: str | None = None,
 
 @router.get("/settings", dependencies=[Depends(require_auth)])
 async def get_settings(request: Request) -> dict:
-    return {"daily": await health_report.daily_on(request.app.state.db),
-            "daily_at": "{:02d}:{:02d}".format(*health_report.DAILY_AT)}
+    db = request.app.state.db
+    return {"daily": await health_report.daily_on(db),
+            "daily_at": "{:02d}:{:02d}".format(*health_report.DAILY_AT),
+            "weekly": await health_report.weekly_on(db),
+            "weekly_at": "Monday {:02d}:{:02d}".format(*health_report.WEEKLY_AT[1:])}
 
 
 @router.put("/settings", dependencies=[Depends(_ADMIN)])
 async def put_settings(request: Request, body: SettingsUpdate) -> dict:
-    await health_report.set_daily(request.app.state.db, body.daily)
+    if body.daily is not None:
+        await health_report.set_daily(request.app.state.db, body.daily)
+    if body.weekly is not None:
+        await health_report.set_weekly(request.app.state.db, body.weekly)
     return await get_settings(request)

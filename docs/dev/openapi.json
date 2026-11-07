@@ -6801,7 +6801,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "pattern": "^daily$",
+              "pattern": "^(daily|weekly)$",
               "default": "daily",
               "title": "Kind"
             }
@@ -6837,8 +6837,21 @@
           "health"
         ],
         "summary": "Run Now",
-        "description": "Build and store today's daily report now. Sends nothing.",
+        "description": "Build and store a report now: today's daily one, or the weekly one for last week.\nSends nothing.",
         "operationId": "run_now_api_health_report_post",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(daily|weekly)$",
+              "default": "daily",
+              "title": "Kind"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6848,6 +6861,16 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Run Now Api Health Report Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -6872,7 +6895,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^daily$"
+                  "pattern": "^(daily|weekly)$"
                 },
                 {
                   "type": "null"
@@ -13472,14 +13495,29 @@
       "franklinwh_bridge__api__health_report_api__SettingsUpdate": {
         "properties": {
           "daily": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Daily"
+          },
+          "weekly": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly"
           }
         },
         "type": "object",
-        "required": [
-          "daily"
-        ],
         "title": "SettingsUpdate"
       },
       "franklinwh_bridge__api__notify_api__SettingsUpdate": {
