@@ -6,6 +6,71 @@
  * deep Proxies; Chart.js has a massive internal object graph, and Alpine's
  * proxy handler recurses infinitely through it → stack overflow.
  */
+// Dashboard cards: defaults, labels and saved choices. Top level, not inside
+// dashboardTab(): the Customise dialog (#296 item 50) and the app store use them too;
+// the store holds the live choices (Alpine.store('app').cards).
+// Default card visibility (Bridge Status hidden by default)
+const DASH_CARD_DEFAULTS = {
+  bridgeStatus: false,
+  powerFlow: true,
+  acPower: true,
+  batterySoc: true,
+  solarInputs: true,
+  solarForecast: true,
+  battery: true,
+  lifetimeEnergy: true,
+  energyFlow: true,
+  batteryControl: true,
+  operatingMode: true,
+  livePoints: true,
+  eventsHistory: true,
+};
+
+// Key -> display label, in default order. Single source: the config panel
+// used to hardcode its own copy of this list, so a card added to one and not
+// the other either lost its label or vanished from the picker.
+const DASH_CARD_LABELS = {
+  bridgeStatus: 'Bridge Status',
+  powerFlow: 'Power Flow',
+  acPower: 'AC Power',
+  batterySoc: 'Battery SoC',
+  solarInputs: 'Solar Inputs',
+  solarForecast: 'Solar Forecast',
+  battery: 'Battery',
+  lifetimeEnergy: 'Lifetime Energy',
+  energyFlow: 'Energy Flow',
+  batteryControl: 'Battery Control',
+  operatingMode: 'Operating Mode',
+  livePoints: 'Live Points',
+  eventsHistory: 'Events History',
+};
+
+const DASH_CARD_ORDER = Object.keys(DASH_CARD_LABELS);
+
+function loadDashCardPrefs() {
+  try {
+    const saved = localStorage.getItem('fwh-dashboard-cards');
+    if (saved) return { ...DASH_CARD_DEFAULTS, ...JSON.parse(saved) };
+  } catch (_) {}
+  return { ...DASH_CARD_DEFAULTS };
+}
+
+function loadDashCardOrder() {
+  try {
+    const saved = localStorage.getItem('fwh-dashboard-order');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Merge: keep saved order, append any new keys not yet in saved order
+      const valid = parsed.filter((k) => k in DASH_CARD_LABELS);
+      const known = new Set(valid);
+      const merged = [...valid];
+      for (const k of DASH_CARD_ORDER) { if (!known.has(k)) merged.push(k); }
+      return merged;
+    }
+  } catch (_) {}
+  return [...DASH_CARD_ORDER];
+}
+
 function dashboardTab() {
   // Chart.js instances — kept outside Alpine's reactive scope (prevents proxy recursion)
   let _chart = null;
@@ -227,77 +292,15 @@ function dashboardTab() {
     },
   };
 
-  // Default card visibility (Bridge Status hidden by default)
-  const DEFAULT_CARDS = {
-    bridgeStatus: false,
-    powerFlow: true,
-    acPower: true,
-    batterySoc: true,
-    solarInputs: true,
-    solarForecast: true,
-    battery: true,
-    lifetimeEnergy: true,
-    energyFlow: true,
-    batteryControl: true,
-    operatingMode: true,
-    livePoints: true,
-    eventsHistory: true,
-  };
-
-  // Key -> display label, in default order. Single source: the config panel
-  // used to hardcode its own copy of this list, so a card added to one and not
-  // the other either lost its label or vanished from the picker.
-  const CARD_LABELS = {
-    bridgeStatus: 'Bridge Status',
-    powerFlow: 'Power Flow',
-    acPower: 'AC Power',
-    batterySoc: 'Battery SoC',
-    solarInputs: 'Solar Inputs',
-    solarForecast: 'Solar Forecast',
-    battery: 'Battery',
-    lifetimeEnergy: 'Lifetime Energy',
-    energyFlow: 'Energy Flow',
-    batteryControl: 'Battery Control',
-    operatingMode: 'Operating Mode',
-    livePoints: 'Live Points',
-    eventsHistory: 'Events History',
-  };
-
-  const DEFAULT_CARD_ORDER = Object.keys(CARD_LABELS);
-
-  function loadCardPrefs() {
-    try {
-      const saved = localStorage.getItem('fwh-dashboard-cards');
-      if (saved) return { ...DEFAULT_CARDS, ...JSON.parse(saved) };
-    } catch (_) {}
-    return { ...DEFAULT_CARDS };
-  }
-
-  function loadCardOrder() {
-    try {
-      const saved = localStorage.getItem('fwh-dashboard-order');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Merge: keep saved order, append any new keys not yet in saved order
-        const valid = parsed.filter((k) => k in CARD_LABELS);
-        const known = new Set(valid);
-        const merged = [...valid];
-        for (const k of DEFAULT_CARD_ORDER) { if (!known.has(k)) merged.push(k); }
-        return merged;
-      }
-    } catch (_) {}
-    return [...DEFAULT_CARD_ORDER];
-  }
-
   return {
     deviceIp: '--',
     deviceUnit: '--',
     showDiagnostics: false,
-    showCardConfig: false,
-    cardVisible: loadCardPrefs(),
+    // The card choices live in the app store, shared with the Customise dialog.
+    get cardVisible() { return Alpine.store('app').cards.visible; },
 
     // Card ordering (drag-to-reorder)
-    cardOrder: loadCardOrder(),
+    get cardOrder() { return Alpine.store('app').cards.order; },
     _dragKey: null,
 
     // Bottom section tab (chart vs sequencer)
@@ -449,55 +452,17 @@ function dashboardTab() {
       );
     },
 
-    toggleCard(key) {
-      this.cardVisible[key] = !this.cardVisible[key];
-      localStorage.setItem('fwh-dashboard-cards', JSON.stringify(this.cardVisible));
-    },
-
-    resetCardDefaults() {
-      this.cardVisible = { ...DEFAULT_CARDS };
-      localStorage.removeItem('fwh-dashboard-cards');
-    },
-
-    resetCardOrder() {
-      this.cardOrder = [...DEFAULT_CARD_ORDER];
-      localStorage.removeItem('fwh-dashboard-order');
-    },
-
     cardLabel(key) {
-      return CARD_LABELS[key] || key;
+      return DASH_CARD_LABELS[key] || key;
     },
 
-    /**
-     * Move a card one place in the order.
-     *
-     * Drag-to-reorder is desktop-only in practice: HTML5 dragstart/dragover
-     * never fire from a touch drag, so on a tablet the order was fixed with no
-     * way to see that anything was meant to be draggable. These buttons are the
-     * only reorder control that works on the device, and they double as the
-     * keyboard-accessible path on desktop.
-     */
-    moveCard(key, delta) {
-      const from = this.cardOrder.indexOf(key);
-      if (from < 0) return;
-      const to = from + delta;
-      if (to < 0 || to >= this.cardOrder.length) return;
-      this.cardOrder.splice(from, 1);
-      this.cardOrder.splice(to, 0, key);
-      this._persistCardOrder();
-    },
+    // Opens the Customise dialog at its cards section (#296 item 50).
+    openCardConfig() { Alpine.store('app').openCustomise('cards'); },
 
-    canMoveCard(key, delta) {
-      const at = this.cardOrder.indexOf(key);
-      return at >= 0 && at + delta >= 0 && at + delta < this.cardOrder.length;
-    },
-
-    _persistCardOrder() {
-      localStorage.setItem('fwh-dashboard-order', JSON.stringify(this.cardOrder));
-    },
-
+    // Drag-to-reorder on the cards themselves (desktop): one undo step a drag.
     dragStart(key) {
       this._dragKey = key;
+      Alpine.store('app').custSnapshot();
     },
 
     dragOver(e, key) {
@@ -512,7 +477,7 @@ function dashboardTab() {
 
     dragEnd() {
       this._dragKey = null;
-      this._persistCardOrder();
+      Alpine.store('app').saveCards();
     },
 
     async _loadGateway() {

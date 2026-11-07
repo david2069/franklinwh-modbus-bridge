@@ -497,7 +497,7 @@ def run(url: str, user: str, password: str) -> int:
                     page.keyboard.press("Escape")
                 page.wait_for_timeout(500)
 
-        # Dashboard → the Cards show/reorder panel. The arrows mutate the same
+        # Dashboard → Cards opens the Customise dialog at its cards. The arrows mutate the same
         # cardOrder the dashboard renders from, so a broken move shows up as a
         # card vanishing rather than a console error — assert the order really
         # changed and really came back.
@@ -537,7 +537,12 @@ def run(url: str, user: str, password: str) -> int:
                 ).first
                 if first_up.count() and first_up.is_enabled():
                     problems.append("dashboard: first card's up arrow is not disabled")
-            cards_btn.click()
+            # The Cards link opens the Customise dialog (#296 item 50); Done closes it.
+            done = page.locator("[data-testid=customise-done]:visible")
+            if not done.count():
+                problems.append("dashboard: Customise dialog has no Done button")
+            else:
+                done.click()
             page.wait_for_timeout(300)
 
         # Settings → the Point History panel that switches recording on. Read

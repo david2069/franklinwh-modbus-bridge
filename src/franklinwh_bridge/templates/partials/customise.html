@@ -1,0 +1,90 @@
+<!-- Customise dialog (#296 item 50): the top bar's items and the Dashboard's cards in one
+     place, opened from the gear and from the Dashboard's Cards link. customise.js. -->
+<div x-data="customiseDialog()" x-show="$store.app.showCustomise" x-cloak
+     class="fixed inset-0 flex items-center justify-center p-4" style="z-index:300"
+     @keydown.escape.window="$store.app.showCustomise = false"
+     @pointermove.window="dragMove($event)" @pointerup.window="dragEnd()" @pointercancel.window="dragEnd()"
+     data-testid="customise-dialog">
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="$store.app.showCustomise = false"></div>
+  <div class="relative w-full max-w-lg rounded-xl border shadow-2xl max-h-[90vh] flex flex-col"
+       style="background:var(--surface-0,#0f172a);border-color:var(--border)"
+       role="dialog" aria-modal="true" aria-labelledby="customise-title">
+    <div class="px-5 pt-4 pb-3 border-b flex items-start justify-between gap-3" style="border-color:var(--border)">
+      <div>
+        <div id="customise-title" class="text-base font-semibold" style="color:var(--text-primary)">Customise</div>
+        <p class="text-xs text-slate-500 mt-1">Show, hide or reorder. Drag a row by its handle, or use the arrows.</p>
+      </div>
+      <button type="button" class="text-slate-400 hover:text-slate-200" @click="$store.app.showCustomise = false"
+              aria-label="Close"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+
+    <!-- Section tabs -->
+    <div class="px-5 pt-3 flex gap-2" role="tablist">
+      <template x-for="t in [['top', 'Top bar'], ['cards', 'Dashboard cards']]" :key="t[0]">
+        <button type="button" role="tab" :aria-selected="$store.app.customiseSection === t[0]"
+                @click="$store.app.customiseSection = t[0]" :data-testid="'customise-tab-' + t[0]"
+                class="px-3 py-1.5 rounded-lg text-sm font-semibold transition"
+                :class="$store.app.customiseSection === t[0] ? 'bg-slate-700 text-cyan-400' : 'text-slate-400 hover:text-slate-200'"
+                x-text="t[1]"></button>
+      </template>
+    </div>
+
+    <div class="px-5 py-3 overflow-y-auto flex-1">
+      <!-- One row: handle, label, up/down, switch. Lists other than 'left' reorder. -->
+      <template x-for="grp in ($store.app.customiseSection === 'top'
+                                 ? [['left', 'Left', false], ['center', 'Centre indicators', true], ['right', 'Right', true]]
+                                 : [['cards', '', true]])" :key="grp[0]">
+        <div class="mb-3">
+          <div x-show="grp[1]" class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1" x-text="grp[1]"></div>
+          <template x-for="item in items(grp[0])" :key="item.key">
+            <div class="flex items-center gap-3 rounded-lg px-2 transition"
+                 style="min-height:52px"
+                 :class="dragging(grp[0], item.key) ? 'bg-slate-700' : ''"
+                 data-cust-row :data-list="grp[0]" :data-key="item.key" data-testid="customise-row">
+              <button type="button" x-show="grp[2]" class="text-slate-500 touch-none select-none shrink-0"
+                      style="width:32px;height:40px;cursor:grab" :aria-label="'Drag ' + item.label"
+                      @pointerdown="dragStart($event, grp[0], item.key)" data-testid="customise-handle">
+                <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 8h14M5 12h14M5 16h14"/></svg>
+              </button>
+              <span class="flex-1 min-w-0 truncate text-sm" :class="item.visible !== false ? 'text-slate-200' : 'text-slate-500'"
+                    x-text="item.label"></span>
+              <template x-if="grp[2]">
+                <div class="flex items-center gap-1 shrink-0">
+                  <button type="button" @click="move(grp[0], item.key, -1)" :disabled="!canMove(grp[0], item.key, -1)"
+                          class="rounded-lg text-slate-300 hover:bg-slate-700 disabled:opacity-25 flex items-center justify-center"
+                          style="width:40px;height:40px" :aria-label="'Move ' + item.label + ' up'" data-testid="customise-up">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 15l6-6 6 6"/></svg>
+                  </button>
+                  <button type="button" @click="move(grp[0], item.key, 1)" :disabled="!canMove(grp[0], item.key, 1)"
+                          class="rounded-lg text-slate-300 hover:bg-slate-700 disabled:opacity-25 flex items-center justify-center"
+                          style="width:40px;height:40px" :aria-label="'Move ' + item.label + ' down'" data-testid="customise-down">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </div>
+              </template>
+              <button type="button" role="switch" :aria-checked="item.visible !== false" @click="toggle(grp[0], item.key)"
+                      :aria-label="(item.visible !== false ? 'Hide ' : 'Show ') + item.label" data-testid="customise-switch"
+                      class="relative inline-flex h-6 items-center rounded-full transition shrink-0" style="width:44px"
+                      :class="item.visible !== false ? 'bg-emerald-500' : 'bg-slate-600'">
+                <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+                      :style="item.visible !== false ? 'transform:translateX(21px)' : 'transform:translateX(2px)'"></span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <div class="px-5 py-3 border-t flex flex-wrap items-center justify-between gap-2" style="border-color:var(--border)">
+      <div class="flex items-center gap-3 text-xs text-slate-500">
+        <span>Saved automatically</span>
+        <button type="button" @click="$store.app.undoCustomise()" :disabled="!$store.app.canUndoCustomise"
+                class="underline hover:text-slate-200 disabled:opacity-25 disabled:no-underline" data-testid="customise-undo">Undo</button>
+        <button type="button" @click="$store.app.resetCustomise($store.app.customiseSection)"
+                class="underline hover:text-amber-400" data-testid="customise-reset"
+                x-text="$store.app.customiseSection === 'cards' ? 'Reset cards' : 'Reset top bar'"></button>
+      </div>
+      <button type="button" @click="$store.app.showCustomise = false" class="btn btn-primary" data-testid="customise-done">Done</button>
+    </div>
+  </div>
+</div>
