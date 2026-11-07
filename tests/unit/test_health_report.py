@@ -125,8 +125,11 @@ async def test_snapshot_waits_for_fresh_points(db):
 
 async def test_green_when_nothing_is_wrong(db):
     workers.REGISTRY.register("poller:default", "poll", 10, scope="default").last_beat_ts = AT_0700
+    await db.execute("INSERT INTO gateways (id, name, host, port, unit_id, enabled, created_at) "
+                     "VALUES ('spare', 'aGate', '', 502, 1, 1, 0)")  # no address yet
     r = await hr.build_daily(db, AT_0700)
     assert r["level"] == hr.GREEN and r["reasons"] == []
+    assert [g["gateway"] for g in r["link"]] == ["default"]
     assert r["headline"].startswith("Green: all 1 workers running")
 
 

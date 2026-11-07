@@ -40,7 +40,12 @@ from franklinwh_bridge import workers
 from franklinwh_bridge.alert_delivery import NOTIFICATION_TITLE, ha_channel_on, site_time
 from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import link_stats as link_stats_store
-from franklinwh_bridge.store.db import get_app_config, get_gateways, set_app_config
+from franklinwh_bridge.store.db import (
+    gateway_is_unconfigured,
+    get_app_config,
+    get_gateways,
+    set_app_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -334,7 +339,9 @@ async def build_daily(db: aiosqlite.Connection, now: float,
         "ORDER BY ts", (since,)) as cur:
         starts = [{"ts": r[0], "detail": r[2]} for r in await cur.fetchall()]
 
-    gws = [g for g in await get_gateways(db) if g.get("enabled", 1)]
+    # Not the placeholder gateway with no address: it never polls.
+    gws = [g for g in await get_gateways(db)
+           if g.get("enabled", 1) and not gateway_is_unconfigured(g)]
     link = []
     for g in gws:
         link.append({"gateway": g["id"], "name": g.get("name") or g["id"],
