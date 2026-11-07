@@ -170,11 +170,14 @@ async def test_log_patterns_new_growing_all_day(db):
     assert not any("Once" in x for x in r["reasons"])  # under PATTERN_MIN
 
 
-async def test_no_secret_in_a_report(db):
+async def test_no_secret_and_no_page_long_line_in_a_report(db):
     await insert_logs(db, _logs("WARNING", "Seeded admin user 'admin' with a GENERATED "
                                 "password: Dhls6n8NoI0u", AT_0700 - 600, 1))
+    await insert_logs(db, _logs("WARNING", "=" * 70 + " UNOFFICIAL SOFTWARE " + "x" * 3000,
+                                AT_0700 - 600, 1))
     r = await hr.build_daily(db, AT_0700)
     assert "Dhls6n8NoI0u" not in json.dumps(r)
+    assert max(len(p["example"]) for p in r["logs"]["patterns"]) == hr.EXAMPLE_MAX
 
 
 async def test_any_error_is_amber(db):
