@@ -375,6 +375,10 @@ def g_pages(browser, url):
                       ("energy_costs", "page-energy-costs")]:
         goto(page, url, tab, wait=2500)
         shot(page, name)
+    # Logs → Health (#296 item 51): make today's report first (it sends nothing).
+    api_json(page, "POST", "/api/health/report")
+    goto(page, url, "logs", "health", wait=2500)
+    shot(page, "page-logs-health")
     page.context.close()
 
 

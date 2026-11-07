@@ -1,11 +1,12 @@
 <!-- ── Logs Tab — filterable log viewer with pagination ── -->
 <div x-data="logsTab()">
 
-  <!-- Sub-tabs (owner, 2026-10-30): the app log and the battery-control
-       writes each get the full page. ?tab=logs&section=app|writes.
-       Writes are admin only, so others see the app log and no tab bar. -->
-  <div x-show="$store.app.isAdmin" class="flex flex-wrap items-center gap-1 mb-3 border-b border-white/[0.08]" role="tablist">
-    <template x-for="t in [['app', 'App log'], ['writes', 'Battery-control writes']]" :key="t[0]">
+  <!-- Sub-tabs (owner, 2026-10-30): the app log, the battery-control writes and
+       the daily health report (#296 item 51) each get the full page.
+       ?tab=logs&section=app|writes|health. Writes are admin only. -->
+  <div class="flex flex-wrap items-center gap-1 mb-3 border-b border-white/[0.08]" role="tablist">
+    <template x-for="t in [['app', 'App log'], ['writes', 'Battery-control writes'], ['health', 'Health']]
+                         .filter(t => t[0] !== 'writes' || $store.app.isAdmin)" :key="t[0]">
       <button type="button" role="tab"
               :data-testid="'logs-section-' + t[0]"
               :aria-selected="$store.app.logsSection === t[0]"
@@ -18,7 +19,8 @@
     </template>
   </div>
 
-  <div x-show="$store.app.logsSection === 'app' || !$store.app.isAdmin" data-testid="logs-app">
+  <div x-show="$store.app.logsSection === 'app' || ($store.app.logsSection === 'writes' && !$store.app.isAdmin)"
+       data-testid="logs-app">
 
   <!-- Level totals as one row of tappable chips. As cards these were five
        ~130px boxes around a single digit — ~270px of chrome on a phone before
@@ -252,6 +254,156 @@
         </tbody>
       </table>
     </div>
+  </div>
+
+  <!-- Health (#296 item 51): the daily bridge-health report, made at 07:00 site time.
+       logs_tab.js healthReport(). -->
+  <div x-show="$store.app.logsSection === 'health'" x-data="healthReport()"
+       x-effect="$store.app.activeTab === 'logs' && $store.app.logsSection === 'health' && load()"
+       data-testid="health-report">
+    <div class="card mb-4">
+      <div class="flex flex-wrap items-start gap-3">
+        <span x-show="current" class="px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide shrink-0"
+              :style="`color:${lv.fg};background:${lv.bg}`" :data-level="current && current.level"
+              data-testid="health-level" x-text="lv.label"></span>
+        <div class="min-w-0" style="flex:1 1 220px">
+          <div class="text-sm font-semibold break-words" style="color:var(--text-primary)" data-testid="health-headline"
+               x-text="current ? headline : (loaded ? 'No report yet' : 'Loading…')"></div>
+          <div class="text-[11px] text-slate-500 mt-0.5">
+            <span x-show="current" x-text="current && (stamp(current.ts) + ' ' + bridgeTime.label() + ' · last 24 hours against the 7 days before')"></span>
+            <span x-show="loaded && !current" x-text="`The first report is made at ${dailyAt} (site time).`"></span>
+          </div>
+        </div>
+        <select x-show="past.length > 1" x-model="pick" @change="show(pick)" aria-label="Past reports"
+                class="form-control !py-1 !text-xs" style="width:auto;max-width:100%" data-testid="health-past">
+          <template x-for="p in past" :key="p.id">
+            <option :value="String(p.id)" x-text="pastLabel(p)"></option>
+          </template>
+        </select>
+      </div>
+      <ul x-show="r && r.reasons.length > 1" class="mt-3 space-y-1 text-xs text-slate-300 list-disc pl-5" data-testid="health-reasons">
+        <template x-for="(why, i) in (r ? r.reasons.slice(1) : [])" :key="i">
+          <li class="break-words" x-text="why"></li>
+        </template>
+      </ul>
+      <div x-show="$store.app.isAdmin" class="mt-3 pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-3 text-xs">
+        <button type="button" @click="runNow()" :disabled="busy" class="btn btn-sm btn-secondary"
+                data-testid="health-run">Run now</button>
+        <label class="flex items-center gap-2 text-slate-400">
+          <button type="button" role="switch" :aria-checked="daily" @click="setDaily(!daily)"
+                  :aria-label="daily ? 'Turn the daily report off' : 'Turn the daily report on'" data-testid="health-daily"
+                  class="relative inline-flex h-6 items-center rounded-full transition shrink-0" style="width:44px"
+                  :class="daily ? 'bg-emerald-500' : 'bg-slate-600'">
+            <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+                  :style="daily ? 'transform:translateX(21px)' : 'transform:translateX(2px)'"></span>
+          </button>
+          <span x-text="`Daily report at ${dailyAt}`"></span>
+        </label>
+        <span class="text-slate-500" x-text="note" data-testid="health-note"></span>
+      </div>
+      <div x-show="error" class="mt-2 text-xs text-red-400" x-text="error"></div>
+    </div>
+
+    <template x-if="r">
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">
+        <!-- Workers -->
+        <div class="card" data-testid="health-workers">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Workers</h3>
+          <div class="text-xs text-slate-300 space-y-1">
+            <div x-text="`${r.workers.count} background tasks; ${r.workers.broken.length + r.workers.stale.length ? 'not all running' : 'all running'}`"></div>
+            <div x-show="r.workers.broken.length" class="text-red-400" x-text="'Crashed: ' + r.workers.broken.join(', ')"></div>
+            <div x-show="r.workers.stale.length" class="text-red-400" x-text="'Stopped beating: ' + r.workers.stale.join(', ')"></div>
+            <div class="text-slate-400" x-text="`Bridge starts in 24 h: ${r.workers.restarts}`"></div>
+          </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="card" data-testid="health-alerts">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Alerts</h3>
+          <div class="text-xs space-y-1">
+            <div x-show="!r.alerts.open.length" class="text-slate-400">None open.</div>
+            <template x-for="a in r.alerts.open" :key="a.id">
+              <div :class="a.severity === 'critical' ? 'text-red-400' : 'text-amber-400'"
+                   x-text="`Open: ${a.title}${a.gateway ? ' (' + a.gateway + ')' : ''} since ${stamp(a.opened_ts)}`"></div>
+            </template>
+            <div class="text-slate-400 pt-1" x-text="r.alerts.raised.length ? 'Raised in 24 h:' : 'None raised in 24 h.'"></div>
+            <template x-for="a in r.alerts.raised" :key="a.code">
+              <div class="text-slate-300" x-text="`${a.title}: ${a.repeats}`"></div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Housekeeping -->
+        <div class="card" data-testid="health-housekeeping">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Housekeeping</h3>
+          <div class="text-xs text-slate-300 space-y-1">
+            <div x-text="'Database: ' + bytes(r.housekeeping.db_bytes)"></div>
+            <div x-text="'Log rows kept: ' + (r.housekeeping.log_rows ?? '–')"></div>
+            <div x-text="'Last backup: ' + ago(r.housekeeping.last_backup_ts)"></div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="r">
+      <div>
+        <!-- Gateway link -->
+        <div class="card !p-0 overflow-hidden mt-4" data-testid="health-link">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 pt-3 pb-2">Gateway link, last 24 h</h3>
+          <div x-show="!r.link.length" class="px-4 pb-3 text-xs text-slate-500">No gateway configured.</div>
+          <div x-show="r.link.length" class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead class="text-slate-500 text-[10px] uppercase">
+                <tr>
+                  <th class="text-left px-4 py-1.5">Gateway</th>
+                  <th class="text-right px-2 py-1.5">Requests</th>
+                  <th class="text-right px-2 py-1.5">Failed</th>
+                  <th class="text-right px-2 py-1.5">Reconnects</th>
+                  <th class="text-right px-2 py-1.5">Retries</th>
+                  <th class="text-right px-4 py-1.5" title="Longest run of failed polls">Longest fail run</th>
+                </tr>
+              </thead>
+              <tbody class="font-mono">
+                <template x-for="g in r.link" :key="g.gateway">
+                  <tr class="border-t border-white/[0.04]">
+                    <td class="px-4 py-1.5 font-sans whitespace-nowrap" x-text="g.name"></td>
+                    <td class="text-right px-2 py-1.5" x-text="g.requests"></td>
+                    <td class="text-right px-2 py-1.5 whitespace-nowrap" :class="(g.failed_share || 0) >= 0.05 ? 'text-amber-400' : ''"
+                        x-text="`${g.failed} (${pct(g.failed_share)})`"></td>
+                    <td class="text-right px-2 py-1.5" x-text="g.reconnects"></td>
+                    <td class="text-right px-2 py-1.5" x-text="g.lib_retries"></td>
+                    <td class="text-right px-4 py-1.5" x-text="g.max_consec_fail"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Log patterns -->
+        <div class="card !p-0 overflow-hidden mt-4" data-testid="health-logs">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 pt-3 pb-1">Warnings and errors, last 24 h</h3>
+          <p class="px-4 pb-2 text-[11px] text-slate-500"
+             x-text="`${r.logs.warnings} warnings and ${r.logs.errors} errors, in ${r.logs.pattern_count} kinds of message (numbers and addresses taken out). New: not seen in the 7 days before. Growing: more than twice the daily average. All day: in 20 or more of the 24 hours.`"></p>
+          <div x-show="!r.logs.patterns.length" class="px-4 pb-3 text-xs text-slate-500">None.</div>
+          <template x-for="(p, i) in r.logs.patterns" :key="i">
+            <div class="px-4 py-2 border-t border-white/[0.04] text-xs" data-testid="health-pattern">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-mono font-semibold" :class="p.level === 'ERROR' ? 'text-red-400' : 'text-amber-400'"
+                      x-text="`${p.count} ×`"></span>
+                <span class="text-[10px] uppercase text-slate-500" x-text="p.level"></span>
+                <template x-for="f in p.flags" :key="f">
+                  <span class="px-1.5 rounded-full text-[10px] font-semibold" style="color:#fbbf24;background:rgba(245,158,11,0.15)" x-text="f"></span>
+                </template>
+                <span class="text-[11px] text-slate-500" x-text="`${p.per_hour} an hour over ${p.hours} h · 7 days before: ${p.prior_7d}`"></span>
+              </div>
+              <div class="mt-1 text-slate-300 break-words" x-text="p.example"></div>
+              <div class="text-[10px] text-slate-500 font-mono break-all" x-text="p.logger + ' · last ' + stamp(p.last_ts)"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
   </div>
 
 </div>

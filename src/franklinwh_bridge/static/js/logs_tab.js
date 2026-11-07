@@ -293,3 +293,110 @@ function modbusWrites() {
     },
   };
 }
+
+/**
+ * Health sub-tab (#296 item 51): the daily bridge-health report, made at 07:00 site time.
+ * Green, amber or red with the reason first; then workers, the gateway link, alerts, log
+ * patterns and housekeeping. Past reports from the list. Admins can run one now and switch
+ * the daily report off. Results show here, not as toasts.
+ */
+const HEALTH_LEVELS = {
+  green: { label: 'Green', fg: '#34d399', bg: 'rgba(16,185,129,0.15)' },
+  amber: { label: 'Amber', fg: '#fbbf24', bg: 'rgba(245,158,11,0.15)' },
+  red:   { label: 'Red',   fg: '#f87171', bg: 'rgba(239,68,68,0.15)' },
+};
+
+function healthReport() {
+  return {
+    loaded: false,
+    error: '',
+    current: null,      // {id, ts, level, headline, report}
+    past: [],           // [{id, ts, level, headline}]
+    pick: '',
+    daily: true,
+    dailyAt: '07:00',
+    busy: false,
+    note: '',
+
+    async load() {
+      try {
+        const [latest, list, settings] = await Promise.all([
+          fetchJSON('api/health/report'),
+          fetchJSON('api/health/reports?limit=60'),
+          fetchJSON('api/health/settings'),
+        ]);
+        this.current = latest && latest.report ? latest : null;
+        this.past = list.reports || [];
+        this.pick = this.current ? String(this.current.id) : '';
+        this.daily = settings.daily;
+        this.dailyAt = settings.daily_at;
+        this.error = '';
+      } catch (e) {
+        this.error = `Could not load the health report: ${e.message}`;
+      }
+      this.loaded = true;
+    },
+
+    async show(id) {
+      try {
+        this.current = await fetchJSON(`api/health/reports/${id}`);
+        this.error = '';
+      } catch (e) {
+        this.error = `Could not load that report: ${e.message}`;
+      }
+    },
+
+    async runNow() {
+      this.busy = true;
+      this.note = '';
+      try {
+        const r = await fetchJSON('api/health/report', { method: 'POST' });
+        await this.load();
+        this.note = `Report made at ${bridgeTime.time(r.ts * 1000)}. Nothing was sent.`;
+      } catch (e) {
+        this.note = `Could not make a report: ${e.message}`;
+      }
+      this.busy = false;
+    },
+
+    async setDaily(on) {
+      this.note = '';
+      try {
+        const s = await fetchJSON('api/health/settings', { method: 'PUT', body: JSON.stringify({ daily: on }) });
+        this.daily = s.daily;
+        this.note = on ? `Daily report on: made at ${this.dailyAt} each day.` : 'Daily report off.';
+      } catch (e) {
+        this.note = `Could not save: ${e.message}`;
+      }
+    },
+
+    get r() { return this.current ? this.current.report : null; },
+    // The badge shows the level, so the headline drops its "Amber: ".
+    get headline() {
+      const h = (this.current && this.current.headline || '').replace(/^(Green|Amber|Red): /, '');
+      return h.charAt(0).toUpperCase() + h.slice(1);
+    },
+    get lv() { return HEALTH_LEVELS[this.current && this.current.level] || HEALTH_LEVELS.green; },
+    levelOf(l) { return HEALTH_LEVELS[l] || HEALTH_LEVELS.green; },
+
+    stamp(ts) {
+      const ms = ts * 1000;
+      const today = bridgeTime.ymd(Date.now()) === bridgeTime.ymd(ms);
+      return `${today ? 'Today' : bridgeTime.dayMon(ms)} ${bridgeTime.time(ms)}`;
+    },
+    pastLabel(p) { return `${this.stamp(p.ts)} · ${this.levelOf(p.level).label}`; },
+    pct(x) {
+      if (x === null || x === undefined) return '–';
+      return x === 0 ? '0%' : `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
+    },
+    bytes(n) {
+      if (n === null || n === undefined) return '–';
+      return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} kB`;
+    },
+    ago(ts) {
+      if (!ts) return 'none';
+      const d = Math.floor((Date.now() / 1000 - ts) / 86400);
+      return `${this.stamp(ts)} (${d === 0 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago'})`;
+    },
+  };
+}
