@@ -46,9 +46,48 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 67
+CURRENT_SCHEMA_VERSION = 68
 
 MIGRATIONS: dict[int, str] = {
+    68: """
+    -- Scheduled health check (#296 item 51). health_daily: one row per gateway per
+    -- site day, kept for good (the 30-day purges don't touch it), read at the end
+    -- of the day; gateway_id '' is the bridge itself (its log counts). ts is when
+    -- the counters were read: normally just after midnight, later if the bridge
+    -- was down then. health_reports: the daily (and later weekly) reports, body
+    -- JSON, kept 400 days.
+    CREATE TABLE IF NOT EXISTS health_daily (
+        gateway_id            TEXT NOT NULL,
+        day                   TEXT NOT NULL,
+        ts                    REAL NOT NULL,
+        soh                   REAL,
+        wh_rating             REAL,
+        wh_available          REAL,
+        soc                   REAL,
+        battery_charged_wh    REAL,
+        battery_discharged_wh REAL,
+        grid_import_wh        REAL,
+        grid_export_wh        REAL,
+        solar_wh              REAL,
+        inverter_out_wh       REAL,
+        inverter_in_wh        REAL,
+        alerts                INTEGER,
+        alarms                INTEGER,
+        log_warnings          INTEGER,
+        log_errors            INTEGER,
+        PRIMARY KEY (gateway_id, day)
+    );
+    CREATE TABLE IF NOT EXISTS health_reports (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind     TEXT NOT NULL,
+        period   TEXT NOT NULL,
+        ts       REAL NOT NULL,
+        level    TEXT NOT NULL,
+        headline TEXT NOT NULL,
+        body     TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_health_reports ON health_reports (kind, ts);
+    """,
     67: """
     -- A notification device's type (phone, tablet, tv, speaker, other), chosen in the Add
     -- dialog as in the Direct Connect bridge; the column is added by MIGRATION_COLUMNS[67].

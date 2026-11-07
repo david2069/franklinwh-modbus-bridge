@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from franklinwh_bridge import __version__, disclaimer, status_notices, workers
+from franklinwh_bridge import __version__, disclaimer, health_report, status_notices, workers
 from franklinwh_bridge.actionable import Actionable
 from franklinwh_bridge.alert_delivery import AlertDelivery
 from franklinwh_bridge.alert_monitor import AlertMonitor
@@ -36,6 +36,7 @@ from franklinwh_bridge.api.groups_api import router as groups_router
 from franklinwh_bridge.api.ha_api import router as ha_router
 from franklinwh_bridge.api.health import register_component
 from franklinwh_bridge.api.health import router as health_router
+from franklinwh_bridge.api.health_report_api import router as health_report_router
 from franklinwh_bridge.api.modules_api import require_module
 from franklinwh_bridge.api.modules_api import router as modules_router
 from franklinwh_bridge.api.mqtt_api import router as mqtt_router
@@ -650,6 +651,12 @@ async def lifespan(app: FastAPI):
     # Phone notifications with buttons (#296 item 48).
     actionable = Actionable(db, config.db_path)
     app.state.actionable = actionable
+    # Scheduled health check (#296 item 51): daily snapshot and report. Read-only.
+    health_reporter = health_report.HealthReporter(
+        db, gateways_fn=lambda: registry.list_all(), points_fn=lambda gw: _schedule_points(gw),
+        ha_registry=ha_registry, actionable=actionable,
+        backups=backup_manager.list_backups, db_path=config.db_path)
+    app.state.health_reporter = health_reporter
 
     # ── User-defined automation constants (min/max/demand SoC) ────────
     constants = ConstantsStore(db)
@@ -1042,6 +1049,12 @@ async def lifespan(app: FastAPI):
         await actionable.start()
 
         try:
+            # After the HA registry and phones, so a report due now can be sent.
+            await health_reporter.start()
+        except Exception as exc:
+            logger.error("Health check start failed: %s", exc)
+
+        try:
             # After the HA registry, so the first pass knows where HA is.
             await alert_delivery.start()
         except Exception as exc:
@@ -1175,6 +1188,7 @@ async def lifespan(app: FastAPI):
     await alert_monitor.stop()
     await alert_delivery.stop()
     await health_checker.stop()
+    await health_reporter.stop()
     await actionable.stop()
     await ha_registry.stop()
     solar_forecast_task.cancel()
@@ -1320,6 +1334,7 @@ app.include_router(disclaimer_router)
 app.include_router(users_router)  # admin-only via its own require_role dep
 app.include_router(alerts_router)  # GET any signed-in role; ack admin-only (#324)
 app.include_router(notify_router)  # reads any signed-in role; changes admin-only
+app.include_router(health_report_router)  # reads any signed-in role; run/switch admin-only
 app.include_router(diagnostics_router)  # admin-only via its own require_role dep (#342)
 app.include_router(support_router)  # admin-only via its own require_role dep
 app.include_router(

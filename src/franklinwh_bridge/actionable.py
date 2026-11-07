@@ -64,6 +64,8 @@ logger = logging.getLogger(__name__)
 EVENT_TEST = "test"
 EVENT_TEST_BUTTONS = "test_buttons"
 EVENT_BROADCAST = "broadcast"
+#: The daily health report, amber or red (#296 item 51).
+EVENT_HEALTH = "health"
 #: How long Test with buttons waits for a tap.
 TEST_BUTTONS_TTL_S = 120
 #: app_config key: the last Test with buttons, JSON, kept across restarts.
@@ -76,6 +78,7 @@ _TEMPLATES.register(
     Event(EVENT_TEST_BUTTONS, f"{NOTIFICATION_TITLE}: test",
           "Test with buttons from Settings → Notifications. Tap Yes or No."),
     Event(EVENT_BROADCAST, "{title}", "{message}", ("title", "message")),
+    Event(EVENT_HEALTH, "{title}", "{message}", ("title", "message")),
 )
 
 _DUPLICATE = re.compile(r"^(.*)_(\d+)$")
@@ -310,6 +313,13 @@ class Actionable:
             return SendResult()
         return await self.notifier.notify(EVENT_BROADCAST, await self.targets(),
                                           title=title or NOTIFICATION_TITLE, message=message)
+
+    async def notify_health(self, title: str, message: str) -> SendResult:
+        """The health report to every enabled device. Follows the switch."""
+        if self.notifier is None:
+            return SendResult()
+        return await self.notifier.notify(EVENT_HEALTH, await self.targets(),
+                                          title=title, message=message)
 
     # ── status ────────────────────────────────────────────────
     def listener_status(self) -> dict[str, dict]:
