@@ -5,8 +5,8 @@ Two things, both read-only (nothing here talks to the aGate or writes to a batte
 - **Daily snapshot** (table ``health_daily``): one row per gateway per site day, read
   in the first pass after midnight with fresh readings from that gateway, plus a row
   for the bridge itself (gateway ``''``) with its log counts. A gateway with no fresh
-  reading all the next day gets no row for that day. Kept for good, so the weekly battery report (phase 2) has a
-  trend longer than the 30-day purges allow.
+  reading all the next day gets no row for that day. Kept for good, so the weekly
+  battery report (phase 2) has a trend longer than the 30-day purges allow.
 - **Daily bridge-health report** (table ``health_reports``) at 07:00 site time: green,
   amber or red, the reason on the first line. It looks at the last 24 hours against
   the 7 days before: workers, the gateway link, alerts, log patterns, housekeeping.
