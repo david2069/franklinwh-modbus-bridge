@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **AEMO price feed failures no longer flood the log** (#296 item 51). While AEMO's
+  service fails, the bridge logs one WARNING, then one "still failing" WARNING an hour, and
+  one INFO line when it works again; the rest go to DEBUG. Tries back off to 4, 8, then
+  15 minutes at most (before, a failing feed was tried again on every request); a forced
+  refresh in Settings still tries at once. Prices stay at the last good value meanwhile.
+
 ### Changed
 
 - **Top bar: Grid and Battery direction marks** (#296 item 49). Grid shows its kW without

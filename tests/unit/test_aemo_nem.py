@@ -147,6 +147,7 @@ async def test_failure_returns_stale_then_none_never_raises():
     f.fail = True
     assert await c.spot_price("NSW1") is None
     f.fail = False
+    clk.t += 240  # after a failure the next try waits (back-off)
     await c.spot_price("NSW1")
     f.fail = True
     clk.t += 300
@@ -162,6 +163,30 @@ async def test_failure_with_no_text_still_says_why(caplog):
     caplog.set_level("WARNING", logger="franklinwh_bridge.gateway.aemo_nem")
     assert await NemSpotClient(fetcher=timeout).spot_price("NSW1") is None
     assert "AEMO NEM fetch failed: ReadTimeout" in caplog.text
+
+
+async def test_a_failing_feed_logs_once_backs_off_and_says_when_it_recovers(caplog):
+    """Owner, 2026-11-07: a 500 every 4 minutes filled the log. One WARNING, then one an
+    hour; tries back off 4, 8, 15 min; one INFO line on recovery; a forced refresh tries."""
+    f, clk = _Fetcher(), _Clock()
+    c = NemSpotClient(fetcher=f, clock=clk)
+    caplog.set_level("DEBUG", logger="franklinwh_bridge.gateway.aemo_nem")
+    f.fail = True
+    tries_at = []
+    for _ in range(80):                      # 80 minutes, asked every minute
+        before = f.calls
+        await c.spot_price("NSW1")
+        if f.calls > before:
+            tries_at.append(clk.t - 1_000_000.0)
+        clk.t += 60
+    assert tries_at[:5] == [0, 240, 720, 1620, 2520]   # waits 4, 8, then 15 min (the cap)
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 2                            # the first, and one an hour later
+    assert "AEMO NEM fetch failed: down" in warnings[0].getMessage()
+    assert "still failing" in warnings[1].getMessage()
+    f.fail = False
+    assert await c.spot_price("NSW1", force=True) is not None   # a forced refresh tries now
+    assert "working again after" in caplog.text
 
 
 async def test_region_missing_from_response_is_none():

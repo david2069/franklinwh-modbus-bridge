@@ -56,6 +56,12 @@ TIMEOUT_S = 12.0
 #: A cached price older than this no longer feeds the condition sensors (they
 #: fail closed). The route still reports it, flagged stale.
 SENSOR_MAX_AGE_S = 1800.0
+#: While AEMO keeps failing, wait longer between tries: 4, 8, then 15 minutes at most.
+#: A forced refresh (the Settings button) still tries at once.
+BACKOFF_MAX_S = 900.0
+#: While it keeps failing, one "still failing" WARNING an hour, not one per try (owner,
+#: 2026-11-07: a 500 every 4 minutes filled the log).
+STILL_FAILING_LOG_S = 3600.0
 #: NEM time (``SETTLEMENTDATE``) is AEST all year: UTC+10, no daylight saving.
 NEM_UTC_OFFSET_S = 10 * 3600
 APP_CONFIG_KEY = "nem_pricing"
@@ -173,6 +179,35 @@ class NemSpotClient:
         self._clock = clock
         self._cache: dict[str, tuple[float, dict]] = {}  # region -> (fetched_at, spot)
         self._lock = asyncio.Lock()
+        # Failures in a row, when the first was, when the next try is allowed, and when
+        # the last WARNING went out: logged once, then hourly, then once on recovery.
+        self._failures = 0
+        self._failing_since: float | None = None
+        self._retry_at = 0.0
+        self._warned_at = 0.0
+
+    def _failed(self, now: float, why: str) -> None:
+        self._failures += 1
+        if self._failures == 1:
+            self._failing_since = now
+            self._warned_at = now
+            logger.warning("AEMO NEM fetch failed: %s. Prices stay at the last good value; "
+                           "retrying less often while it fails.", why)
+        elif now - self._warned_at >= STILL_FAILING_LOG_S:
+            self._warned_at = now
+            logger.warning("AEMO NEM still failing: %d tries over %d min, last: %s",
+                           self._failures, round((now - self._failing_since) / 60), why)
+        else:
+            logger.debug("AEMO NEM fetch failed (%d in a row): %s", self._failures, why)
+        self._retry_at = now + min(CACHE_S * 2 ** (self._failures - 1), BACKOFF_MAX_S)
+
+    def _recovered(self, now: float) -> None:
+        if self._failures:
+            logger.info("AEMO NEM fetch working again after %d failed tries over %d min",
+                        self._failures, round((now - (self._failing_since or now)) / 60))
+        self._failures = 0
+        self._failing_since = None
+        self._retry_at = 0.0
 
     async def spot_price(self, region: str | None, *, force: bool = False) -> dict | None:
         """Current spot for a NEM region: fresh within 240 s, else refetched; on
@@ -185,8 +220,11 @@ class NemSpotClient:
             hit = self._cache.get(region)
             if not force and hit and now - hit[0] < CACHE_S:
                 return hit[1]
+            if not force and now < self._retry_at:  # backing off after failures
+                return {**hit[1], "stale": True} if hit else None
             try:
                 data = await self._fetch()
+                self._recovered(now)
                 # One request carries every region: cache them all.
                 for rg in REGIONS:
                     row = parse_summary(data, rg)
@@ -198,7 +236,7 @@ class NemSpotClient:
                 logger.warning("AEMO NEM summary has no price for %s", region)
             except Exception as exc:
                 # A timeout's text is empty: name the exception so the log says why.
-                logger.warning("AEMO NEM fetch failed: %s", str(exc) or type(exc).__name__)
+                self._failed(now, str(exc) or type(exc).__name__)
             return {**hit[1], "stale": True} if hit else None
 
     def cached(self, region: str | None, *, max_age_s: float | None = None) -> dict | None:
