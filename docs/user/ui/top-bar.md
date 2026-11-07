@@ -187,17 +187,26 @@ wrong value. The setting is stored in this browser.
 
 Shows who is signed in and their role. **Sign out** ends this login.
 
-## Top bar preferences
+## Customise
 
-![Top bar preferences](../../images/ui/topbar-preferences.png)
+![Customise: the top bar's items](../../images/ui/customise-top-bar.png)
 
-The gear opens **Topbar Preferences**, in three sections:
+The gear opens **Customise**, where you choose what the top bar and the Dashboard show.
+It has two tabs: **Top bar** and **Dashboard cards** (see
+[Dashboard](dashboard.md#choosing-and-ordering-cards)).
+
+The top bar's items are in three groups:
 
 - **Left**: Sidebar button, Page title, Gateway picker.
-- **Centre Indicators**: Grid, Solar, Load, Battery.
+- **Centre indicators**: Grid, Solar, Load, Battery.
 - **Right**: Connection, Data quality, Clock, System view, Release, SunSpec, User, Theme, Refresh.
 
-Untick an item to hide it; you can hide everything. The gear itself always stays, so you can
-turn items back on. *Logged out — log in* still appears when your login has ended. Use
-**↑ / ↓** to change the order of the Centre and Right items. **Reset** restores the defaults
-(everything shown, in the order above). These preferences are stored in this browser only.
+Each row has an on/off switch; you can hide everything. The gear itself always stays, so you
+can turn items back on. *Logged out — log in* still appears when your login has ended. To
+move a Centre or Right item, use its **⌃ / ⌄** buttons or drag it by its handle (**≡**); dragging works
+with a finger too.
+
+Every change is **saved at once**. **Undo** steps back through the changes made since you
+opened the dialog, one at a time. **Reset top bar** restores the defaults (everything shown,
+in the order above), and can itself be undone. **Done** closes the dialog. These choices are
+stored in this browser only.

@@ -719,7 +719,9 @@ document.addEventListener('alpine:init', () => {
       return topbarDefaults();
     })(),
 
-    showTopbarPrefs: false,
+    // Dashboard cards: which show and in what order. Here, not in the Dashboard, so the
+    // Customise dialog edits the same objects (#296 item 50).
+    cards: { visible: loadDashCardPrefs(), order: loadDashCardOrder() },
 
     // Is this topbar item switched on, and where does it go?
     tbShow(section, key) {
@@ -735,17 +737,48 @@ document.addEventListener('alpine:init', () => {
       try { localStorage.setItem('fwh-topbar-prefs', JSON.stringify(this.topbarPrefs)); } catch (_) {}
     },
 
-    resetTopbarPrefs() {
-      try { localStorage.removeItem('fwh-topbar-prefs'); } catch (_) {}
-      this.topbarPrefs = topbarDefaults();
+    saveCards() {
+      try {
+        localStorage.setItem('fwh-dashboard-cards', JSON.stringify(this.cards.visible));
+        localStorage.setItem('fwh-dashboard-order', JSON.stringify(this.cards.order));
+      } catch (_) {}
     },
 
-    moveTopbarItem(section, idx, dir) {
-      const arr = this.topbarPrefs[section];
-      const newIdx = idx + dir;
-      if (newIdx < 0 || newIdx >= arr.length) return;
-      const tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+    // ── Customise dialog (#296 item 50): one dialog for the top bar and the cards,
+    // opened from the gear (and the Dashboard's Cards link). Every change saves at once;
+    // Undo steps back through this visit's changes.
+    showCustomise: false,
+    customiseSection: 'top',
+    _custUndo: [],
+    openCustomise(section = 'top') {
+      this.customiseSection = section;
+      this._custUndo = [];
+      this.showCustomise = true;
+    },
+    // Take a snapshot BEFORE a change, so Undo can put it back.
+    custSnapshot() {
+      this._custUndo.push(JSON.stringify({ top: this.topbarPrefs, cards: this.cards }));
+      if (this._custUndo.length > 50) this._custUndo.shift();
+    },
+    get canUndoCustomise() { return this._custUndo.length > 0; },
+    undoCustomise() {
+      const prev = this._custUndo.pop();
+      if (!prev) return;
+      const p = JSON.parse(prev);
+      this.topbarPrefs = p.top;
+      this.cards = p.cards;
       this.saveTopbarPrefs();
+      this.saveCards();
+    },
+    resetCustomise(section) {
+      this.custSnapshot();
+      if (section === 'cards') {
+        this.cards = { visible: { ...DASH_CARD_DEFAULTS }, order: [...DASH_CARD_ORDER] };
+        this.saveCards();
+      } else {
+        this.topbarPrefs = topbarDefaults();
+        this.saveTopbarPrefs();
+      }
     },
 
     // Connection state

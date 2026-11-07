@@ -25,7 +25,7 @@ From top to bottom it has:
 | Grid | Grid mode: *Grid Following* (on-grid) or *Grid Forming* (islanded, the aGate is making its own grid). |
 | Inverter | Inverter state, for example *Running*. |
 | **Info** | Opens **Diagnostics**: about 20 control and health readings in one list (control mode, firmware, setpoints, revert timers, watchdog, last command result, temperatures, capacity). |
-| **Cards** | Opens the card list: show, hide and reorder cards. |
+| **Cards** | Opens **Customise** at its cards: show, hide and reorder them. |
 
 ![Diagnostics dialog](../../images/ui/dashboard-diagnostics.png)
 
@@ -42,15 +42,16 @@ These appear above the cards only when they apply.
 
 ## Choosing and ordering cards
 
-![Cards panel](../../images/ui/dashboard-cards-panel.png)
+![Customise: the Dashboard cards](../../images/ui/customise-cards.png)
 
-Click **Cards** in the info bar.
+Click **Cards** in the info bar, or the gear in the top bar, to open **Customise** at its
+**Dashboard cards** tab.
 
-- Tick or untick a card to show or hide it.
-- Use the **⌃ / ⌄** arrows to move a card up or down. On a desktop you can also drag a card
-  by its body.
-- **Reset Order** puts the cards back in their default order.
-- **Reset Defaults** restores which cards are shown.
+- Each card's switch shows or hides it.
+- Move a card with its **⌃ / ⌄** buttons, or drag it by its handle (**≡**), with a mouse or a
+  finger. On a desktop you can also drag a card by its body on the Dashboard itself.
+- Every change is saved at once; **Undo** steps back one change at a time.
+- **Reset cards** restores the default cards and order.
 
 Card choices are stored **in this browser only**. Another browser or phone keeps its own.
 

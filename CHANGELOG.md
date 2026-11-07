@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+
+- **One Customise dialog** (#296 item 50), opened from the gear (and the Dashboard's
+  **Cards** link, at its cards). Two tabs, **Top bar** and **Dashboard cards**. Each row has
+  a drag handle (works with a finger), big ⌃ / ⌄ buttons and an on/off switch. Every change
+  saves at once; **Undo** steps back one change at a time; **Reset** per tab; **Done**.
+  Replaces the Topbar Preferences dropdown and the Dashboard's Cards panel. Choices are kept
+  as before (this browser). Guide: *Top bar* and *Dashboard*, with new pictures.
+
 ### Fixed
 
 - **AEMO price feed failures no longer flood the log** (#296 item 51). While AEMO's
