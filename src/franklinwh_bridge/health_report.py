@@ -3,8 +3,9 @@
 Two things, both read-only (nothing here talks to the aGate or writes to a battery):
 
 - **Daily snapshot** (table ``health_daily``): one row per gateway per site day, read
-  in the first pass after midnight, plus a row for the bridge itself (gateway ``''``)
-  with its log counts. Kept for good, so the weekly battery report (phase 2) has a
+  in the first pass after midnight with fresh readings from that gateway, plus a row
+  for the bridge itself (gateway ``''``) with its log counts. A gateway with no fresh
+  reading all the next day gets no row for that day. Kept for good, so the weekly battery report (phase 2) has a
   trend longer than the 30-day purges allow.
 - **Daily bridge-health report** (table ``health_reports``) at 07:00 site time: green,
   amber or red, the reason on the first line. It looks at the last 24 hours against
@@ -49,7 +50,7 @@ INTERVAL_S = 60
 WORKER_NAME = "health_report"
 NOTIFICATION_ID = "fwh_mb_health_daily"
 REPORT_RETENTION_DAYS = 400
-#: Counters older than this are not today's: the row keeps them empty.
+#: Readings older than this are not current: the gateway's row waits for a fresh one.
 FRESH_S = 300
 SEND_TIMEOUT_S = 10.0
 
@@ -129,7 +130,8 @@ async def take_snapshot(db: aiosqlite.Connection, day: str, start: float, end: f
                         gateways: list[str], points_fn: Callable[[str], dict],
                         now: float) -> int:
     """Write ``day``'s rows (``start``..``end`` = that day's span) if missing. Returns
-    rows written. A gateway's counters are kept only when its points are fresh."""
+    rows written. A gateway's row waits until its points are fresh (just after a
+    restart they aren't yet), so its counters are never left empty by timing."""
     written = 0
     async with db.execute("SELECT gateway_id FROM health_daily WHERE day = ?", (day,)) as cur:
         have = {r[0] for r in await cur.fetchall()}
@@ -153,10 +155,11 @@ async def take_snapshot(db: aiosqlite.Connection, day: str, start: float, end: f
         with contextlib.suppress(Exception):
             pts = points_fn(gw) or {}
         sample_ts = pts.get("_sample_ts")
-        fresh = sample_ts is not None and now - float(sample_ts) <= FRESH_S
+        if sample_ts is None or now - float(sample_ts) > FRESH_S:
+            continue
         row: dict[str, Any] = {"gateway_id": gw, "day": day, "ts": now}
         for col, key in _COUNTERS.items():
-            v = pts.get(key) if fresh else None
+            v = pts.get(key)
             row[col] = float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
         row["alerts"] = await _count(db, "SELECT COUNT(*) FROM alerts WHERE gateway_id = ? "
                                      "AND opened_ts >= ? AND opened_ts < ?", (gw, start, end))

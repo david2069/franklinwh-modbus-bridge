@@ -106,12 +106,21 @@ async def test_snapshot_written_once_after_midnight(db):
     assert len(await hr.snapshots(db)) == 2
 
 
-async def test_snapshot_keeps_no_stale_counters(db):
+async def test_snapshot_waits_for_fresh_points(db):
+    """Just after a restart the gateway has no fresh reading yet: its row waits."""
+    now = {"t": AT_0005}
+    pts = {"ts": None}
     rep = hr.HealthReporter(db, gateways_fn=lambda: ["default"],
-                            points_fn=_points(AT_0005 - 3600), now_fn=lambda: AT_0005)
+                            points_fn=lambda gw: _points(pts["ts"])(gw), now_fn=lambda: now["t"])
+    await rep.tick()
+    assert [r["gateway_id"] for r in await hr.snapshots(db)] == [""]
+    pts["ts"] = AT_0005 - 3600  # stale
+    await rep.tick()
+    assert await hr.snapshots(db, "default") == []
+    now["t"] = pts["ts"] = AT_0005 + 60
     await rep.tick()
     gw = (await hr.snapshots(db, "default"))[0]
-    assert gw["soh"] is None and gw["grid_import_wh"] is None and gw["ts"] == AT_0005
+    assert gw["day"] == "2026-11-09" and gw["soh"] == 94.8 and gw["ts"] == AT_0005 + 60
 
 
 async def test_green_when_nothing_is_wrong(db):
