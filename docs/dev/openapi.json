@@ -6696,7 +6696,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SettingsUpdate"
+                "$ref": "#/components/schemas/franklinwh_bridge__api__notify_api__SettingsUpdate"
               }
             }
           },
@@ -6770,6 +6770,312 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/report": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Latest",
+        "description": "The latest report: ``{id, kind, period, ts, level, headline, report}``, or\n``{report: null}`` before the first one.",
+        "operationId": "latest_api_health_report_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^daily$",
+              "default": "daily",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Latest Api Health Report Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Run Now",
+        "description": "Build and store today's daily report now. Sends nothing.",
+        "operationId": "run_now_api_health_report_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Run Now Api Health Report Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/reports": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Reports",
+        "description": "Past reports, newest first, without their bodies.",
+        "operationId": "reports_api_health_reports_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^daily$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 400,
+              "minimum": 1,
+              "default": 60,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Reports Api Health Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Report",
+        "operationId": "report_api_health_reports__report_id__get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Report Api Health Reports  Report Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/snapshots": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Snapshots",
+        "description": "Daily snapshot rows, newest first. ``gateway=`` (an ID; empty = the bridge's row).",
+        "operationId": "snapshots_api_health_snapshots_get",
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3660,
+              "minimum": 1,
+              "default": 31,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Snapshots Api Health Snapshots Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/settings": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Get Settings",
+        "operationId": "get_settings_api_health_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Settings Api Health Settings Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Put Settings",
+        "operationId": "put_settings_api_health_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/franklinwh_bridge__api__health_report_api__SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Put Settings Api Health Settings Put"
+                }
               }
             }
           },
@@ -12425,19 +12731,6 @@
         "type": "object",
         "title": "ServiceUpdate"
       },
-      "SettingsUpdate": {
-        "properties": {
-          "push": {
-            "type": "boolean",
-            "title": "Push"
-          }
-        },
-        "type": "object",
-        "required": [
-          "push"
-        ],
-        "title": "SettingsUpdate"
-      },
       "SetupStateUpdate": {
         "properties": {
           "state": {
@@ -13175,6 +13468,32 @@
           "end"
         ],
         "title": "Window"
+      },
+      "franklinwh_bridge__api__health_report_api__SettingsUpdate": {
+        "properties": {
+          "daily": {
+            "type": "boolean",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "daily"
+        ],
+        "title": "SettingsUpdate"
+      },
+      "franklinwh_bridge__api__notify_api__SettingsUpdate": {
+        "properties": {
+          "push": {
+            "type": "boolean",
+            "title": "Push"
+          }
+        },
+        "type": "object",
+        "required": [
+          "push"
+        ],
+        "title": "SettingsUpdate"
       }
     }
   }

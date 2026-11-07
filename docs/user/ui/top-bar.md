@@ -22,7 +22,7 @@ From left to right:
 | **Refresh** | Fetches live data now, without waiting for the next 10-second refresh. |
 | **⚙ (gear)** | Top bar preferences: which items show, and in what order. |
 
-Every item except the gear can be hidden; see [Top bar preferences](#top-bar-preferences).
+Every item except the gear can be hidden; see [Customise](#customise).
 
 ## Gateway selector
 
