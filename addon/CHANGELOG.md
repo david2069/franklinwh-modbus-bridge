@@ -7,6 +7,22 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.58 — 2026-11-07
+
+### Changed
+- **Customise**: the gear opens one dialog for the top bar and the Dashboard cards. Each
+  row has a drag handle (works with a finger), big ⌃ / ⌄ buttons and an on/off switch;
+  changes save at once, with **Undo**. The Dashboard's **Cards** link opens it too.
+- **Top bar**: Grid shows ↑ exporting, ↓ importing, – idle or ✕ not connected, and its kW
+  without a sign, so the bar no longer shifts. Battery's % is coloured by level (red at or
+  below 5%, amber at or below the reserve, else green), with ↑ charging, ↓ discharging or
+  – idle beside it.
+
+### Fixed
+- **AEMO price feed failures** no longer fill the log: one warning, a reminder each hour
+  while it keeps failing, and a line when it works again. Tries back off to every 15
+  minutes.
+
 ## 0.2.57 — 2026-11-07
 
 ### Changed

@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.58] — 2026-11-07
+
 ### Changed
 
 - **One Customise dialog** (#296 item 50), opened from the gear (and the Dashboard's
