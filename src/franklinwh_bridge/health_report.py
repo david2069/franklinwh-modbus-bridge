@@ -90,16 +90,25 @@ _COUNTERS = {
 _SNAP_COLS = ("gateway_id", "day", "ts", *_COUNTERS, "alerts", "alarms",
               "log_warnings", "log_errors")
 
+#: A secret in a log line (the generated admin password, a token) is never copied into a
+#: report, which is kept far longer than the log and may be sent to phones.
+_SECRET = re.compile(r"(?i)\b(password|passwd|token|secret|api[ _-]?key)"
+                     r"(\b[^:=\n]{0,20}?[:=]\s*|\s+)(?!<hidden>)\S+")
 _ADDR = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|https?://\S+")
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 _NUM = re.compile(r"\b0x[0-9a-f]+\b|(?<![\w.])[-+]?\d+(?:\.\d+)?", re.I)
 _SPACE = re.compile(r"\s+")
 
 
+def redact(message: str) -> str:
+    """The message with any password, token or key after its keyword hidden."""
+    return _SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}<hidden>", message or "")
+
+
 def pattern(message: str) -> str:
     """A log message with its numbers, addresses and ids taken out, so repeats of
     one message group together: "Server error '500' … in 4.0 s" → "Server error '#' … in # s"."""
-    s = _ADDR.sub("<addr>", message or "")
+    s = _ADDR.sub("<addr>", redact(message))
     s = _UUID.sub("<id>", s)
     s = _NUM.sub("#", s)
     return _SPACE.sub(" ", s).strip()[:200]
@@ -217,6 +226,7 @@ async def _log_patterns(db: aiosqlite.Connection, now: float) -> list[dict]:
         rows = await cur.fetchall()
     for ts, level, name, message in rows:
         level = "ERROR" if level == "CRITICAL" else level
+        message = redact(message)
         key = (level, pattern(message))
         g = groups.get(key)
         if g is None:

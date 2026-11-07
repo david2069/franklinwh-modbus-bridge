@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -86,6 +87,12 @@ def test_pattern_groups_repeats_and_hides_addresses():
     assert hr.pattern("Gateway default: poll failed after 3.5 s") == \
         hr.pattern("Gateway default: poll failed after 10.0 s")
     assert hr.pattern("connect to 192.0.2.10:502 refused") == "connect to <addr> refused"
+    # Secrets never reach a report.
+    seeded = "Seeded admin user 'admin' with a GENERATED password: Dhls6n8NoI0u — change it"
+    assert hr.redact(seeded) == ("Seeded admin user 'admin' with a GENERATED password: <hidden> "
+                                 "— change it")
+    assert "abc123" not in hr.pattern("HA token abc123 rejected")
+    assert hr.redact("api_key=XYZ failed") == "api_key=<hidden> failed"
     # Names with digits in them stay (M701, v12).
     assert "M701" in hr.pattern("M701 alarm 7 set")
 
@@ -161,6 +168,13 @@ async def test_log_patterns_new_growing_all_day(db):
     assert r["level"] == hr.AMBER and r["logs"]["warnings"] == 373
     assert r["headline"].startswith("Amber: 360 × warning (new, all day): AEMO NEM fetch failed")
     assert not any("Once" in x for x in r["reasons"])  # under PATTERN_MIN
+
+
+async def test_no_secret_in_a_report(db):
+    await insert_logs(db, _logs("WARNING", "Seeded admin user 'admin' with a GENERATED "
+                                "password: Dhls6n8NoI0u", AT_0700 - 600, 1))
+    r = await hr.build_daily(db, AT_0700)
+    assert "Dhls6n8NoI0u" not in json.dumps(r)
 
 
 async def test_any_error_is_amber(db):
