@@ -295,7 +295,8 @@ function modbusWrites() {
 }
 
 /**
- * Health sub-tab (#296 item 51): the daily bridge-health report, made at 07:00 site time.
+ * Health sub-tab (#296 item 51): the daily bridge-health report, made at 07:00 site time,
+ * and the weekly battery report (Monday 07:00), one at a time by the Daily | Weekly choice.
  * Green, amber or red with the reason first; then workers, the gateway link, alerts, log
  * patterns and housekeeping. Past reports from the list. Admins can run one now and switch
  * the daily report off. Results show here, not as toasts.
@@ -304,10 +305,12 @@ const HEALTH_LEVELS = {
   green: { label: 'Green', fg: '#34d399', bg: 'rgba(16,185,129,0.15)' },
   amber: { label: 'Amber', fg: '#fbbf24', bg: 'rgba(245,158,11,0.15)' },
   red:   { label: 'Red',   fg: '#f87171', bg: 'rgba(239,68,68,0.15)' },
+  info:  { label: 'Weekly', fg: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
 };
 
 function healthReport() {
   return {
+    kind: 'daily',      // 'daily' | 'weekly'
     loaded: false,
     error: '',
     current: null,      // {id, ts, level, headline, report}
@@ -315,14 +318,16 @@ function healthReport() {
     pick: '',
     daily: true,
     dailyAt: '07:00',
+    weekly: true,
+    weeklyAt: 'Monday 07:00',
     busy: false,
     note: '',
 
     async load() {
       try {
         const [latest, list, settings] = await Promise.all([
-          fetchJSON('api/health/report'),
-          fetchJSON('api/health/reports?limit=60'),
+          fetchJSON(`api/health/report?kind=${this.kind}`),
+          fetchJSON(`api/health/reports?kind=${this.kind}&limit=60`),
           fetchJSON('api/health/settings'),
         ]);
         this.current = latest && latest.report ? latest : null;
@@ -330,11 +335,22 @@ function healthReport() {
         this.pick = this.current ? String(this.current.id) : '';
         this.daily = settings.daily;
         this.dailyAt = settings.daily_at;
+        this.weekly = settings.weekly;
+        this.weeklyAt = settings.weekly_at;
         this.error = '';
       } catch (e) {
         this.error = `Could not load the health report: ${e.message}`;
       }
       this.loaded = true;
+    },
+
+    setKind(k) {
+      if (k === this.kind) return;
+      this.kind = k;
+      this.current = null;
+      this.loaded = false;
+      this.note = '';
+      this.load();
     },
 
     async show(id) {
@@ -350,7 +366,7 @@ function healthReport() {
       this.busy = true;
       this.note = '';
       try {
-        const r = await fetchJSON('api/health/report', { method: 'POST' });
+        const r = await fetchJSON(`api/health/report?kind=${this.kind}`, { method: 'POST' });
         await this.load();
         this.note = `Report made at ${bridgeTime.time(r.ts * 1000)}. Nothing was sent.`;
       } catch (e) {
@@ -359,21 +375,30 @@ function healthReport() {
       this.busy = false;
     },
 
-    async setDaily(on) {
+    // The switch for the report on show: daily or weekly.
+    get on() { return this.kind === 'weekly' ? this.weekly : this.daily; },
+    get at() { return this.kind === 'weekly' ? this.weeklyAt : this.dailyAt; },
+    get name() { return this.kind === 'weekly' ? 'Weekly battery report' : 'Daily report'; },
+
+    async setOn(on) {
       this.note = '';
       try {
-        const s = await fetchJSON('api/health/settings', { method: 'PUT', body: JSON.stringify({ daily: on }) });
+        const s = await fetchJSON('api/health/settings',
+                                  { method: 'PUT', body: JSON.stringify({ [this.kind]: on }) });
         this.daily = s.daily;
-        this.note = on ? `Daily report on: made at ${this.dailyAt} each day.` : 'Daily report off.';
+        this.weekly = s.weekly;
+        this.note = on ? `${this.name} on: made ${this.kind === 'weekly' ? 'every ' : 'at '}${this.at}.`
+                       : `${this.name} off.`;
       } catch (e) {
         this.note = `Could not save: ${e.message}`;
       }
     },
 
     get r() { return this.current ? this.current.report : null; },
-    // The badge shows the level, so the headline drops its "Amber: ".
+    // The badge shows the level, so the daily headline drops its "Amber: ".
     get headline() {
       const h = (this.current && this.current.headline || '').replace(/^(Green|Amber|Red): /, '');
+      if (this.kind === 'weekly') return h;
       return h.charAt(0).toUpperCase() + h.slice(1);
     },
     get lv() { return HEALTH_LEVELS[this.current && this.current.level] || HEALTH_LEVELS.green; },
@@ -385,6 +410,10 @@ function healthReport() {
       return `${today ? 'Today' : bridgeTime.dayMon(ms)} ${bridgeTime.time(ms)}`;
     },
     pastLabel(p) { return `${this.stamp(p.ts)} · ${this.levelOf(p.level).label}`; },
+    // A number with its unit, or a dash when the report has none.
+    n(x, unit = '') { return x === null || x === undefined ? '–' : `${x}${unit}`; },
+    weekLabel(w) { return `${bridgeTime.dayMon(Date.parse(w.from + 'T12:00:00'))} to ${bridgeTime.dayMon(Date.parse(w.to + 'T12:00:00'))}`; },
+
     pct(x) {
       if (x === null || x === undefined) return '–';
       return x === 0 ? '0%' : `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;

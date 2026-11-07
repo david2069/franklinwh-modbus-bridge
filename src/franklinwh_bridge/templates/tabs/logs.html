@@ -256,11 +256,20 @@
     </div>
   </div>
 
-  <!-- Health (#296 item 51): the daily bridge-health report, made at 07:00 site time.
-       logs_tab.js healthReport(). -->
+  <!-- Health (#296 item 51): the daily bridge-health report (07:00 site time) and the
+       weekly battery report (Monday 07:00). logs_tab.js healthReport(). -->
   <div x-show="$store.app.logsSection === 'health'" x-data="healthReport()"
        x-effect="$store.app.activeTab === 'logs' && $store.app.logsSection === 'health' && load()"
        data-testid="health-report">
+    <div class="flex gap-1 mb-3" role="tablist" aria-label="Report">
+      <template x-for="k in [['daily', 'Daily'], ['weekly', 'Weekly battery']]" :key="k[0]">
+        <button type="button" role="tab" :aria-selected="kind === k[0]" @click="setKind(k[0])"
+                :data-testid="'health-kind-' + k[0]"
+                class="px-3 py-1 rounded-full text-xs font-semibold transition"
+                :class="kind === k[0] ? 'bg-slate-700 text-cyan-400' : 'text-slate-400 hover:text-slate-200'"
+                x-text="k[1]"></button>
+      </template>
+    </div>
     <div class="card mb-4">
       <div class="flex flex-wrap items-start gap-3">
         <span x-show="current" class="px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide shrink-0"
@@ -270,8 +279,10 @@
           <div class="text-sm font-semibold break-words" style="color:var(--text-primary)" data-testid="health-headline"
                x-text="current ? headline : (loaded ? 'No report yet' : 'Loading…')"></div>
           <div class="text-[11px] text-slate-500 mt-0.5">
-            <span x-show="current" x-text="current && (stamp(current.ts) + ' ' + bridgeTime.label() + ' · last 24 hours against the 7 days before')"></span>
-            <span x-show="loaded && !current" x-text="`The first report is made at ${dailyAt} (site time).`"></span>
+            <span x-show="current" x-text="current && (stamp(current.ts) + ' ' + bridgeTime.label() + ' · '
+                  + (r && r.kind === 'weekly' ? 'week ' + weekLabel(r.week) : 'last 24 hours against the 7 days before'))"></span>
+            <span x-show="loaded && !current" x-text="kind === 'weekly' ? `The first one is made on ${weeklyAt} (site time), for the week before.`
+                                                                       : `The first report is made at ${dailyAt} (site time).`"></span>
           </div>
         </div>
         <select x-show="past.length > 1" x-model="pick" @change="show(pick)" aria-label="Past reports"
@@ -290,21 +301,21 @@
         <button type="button" @click="runNow()" :disabled="busy" class="btn btn-sm btn-secondary"
                 data-testid="health-run">Run now</button>
         <label class="flex items-center gap-2 text-slate-400">
-          <button type="button" role="switch" :aria-checked="daily" @click="setDaily(!daily)"
-                  :aria-label="daily ? 'Turn the daily report off' : 'Turn the daily report on'" data-testid="health-daily"
+          <button type="button" role="switch" :aria-checked="on" @click="setOn(!on)"
+                  :aria-label="(on ? 'Turn off: ' : 'Turn on: ') + name" data-testid="health-daily"
                   class="relative inline-flex h-6 items-center rounded-full transition shrink-0" style="width:44px"
-                  :class="daily ? 'bg-emerald-500' : 'bg-slate-600'">
+                  :class="on ? 'bg-emerald-500' : 'bg-slate-600'">
             <span class="inline-block h-5 w-5 rounded-full bg-white transition"
-                  :style="daily ? 'transform:translateX(21px)' : 'transform:translateX(2px)'"></span>
+                  :style="on ? 'transform:translateX(21px)' : 'transform:translateX(2px)'"></span>
           </button>
-          <span x-text="`Daily report at ${dailyAt}`"></span>
+          <span x-text="kind === 'weekly' ? `${name}, ${at}` : `${name} at ${at}`"></span>
         </label>
         <span class="text-slate-500" x-text="note" data-testid="health-note"></span>
       </div>
       <div x-show="error" class="mt-2 text-xs text-red-400" x-text="error"></div>
     </div>
 
-    <template x-if="r">
+    <template x-if="r && r.kind === 'daily'">
       <div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">
         <!-- Workers -->
         <div class="card" data-testid="health-workers">
@@ -345,7 +356,7 @@
       </div>
     </template>
 
-    <template x-if="r">
+    <template x-if="r && r.kind === 'daily'">
       <div>
         <!-- Gateway link -->
         <div class="card !p-0 overflow-hidden mt-4" data-testid="health-link">
@@ -402,6 +413,60 @@
             </div>
           </template>
         </div>
+      </div>
+    </template>
+
+    <!-- Weekly battery report: one card per gateway. -->
+    <template x-if="r && r.kind === 'weekly'">
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))">
+        <template x-for="g in r.gateways" :key="g.gateway">
+          <div class="card" data-testid="health-weekly-gateway">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2" x-text="g.name"></h3>
+            <div x-show="g.snapshots < 2" class="text-xs text-slate-500 mb-2"
+                 x-text="`${g.snapshots} daily snapshot${g.snapshots === 1 ? '' : 's'} in this week: the energy figures need two. The snapshot is taken just after midnight.`"></div>
+            <table class="w-full text-xs">
+              <tbody>
+                <tr><td class="py-1 text-slate-400">State of health</td>
+                    <td class="py-1 text-right font-mono" data-testid="health-weekly-soh" x-text="n(g.soh.now, '%')"></td></tr>
+                <tr><td class="py-1 text-slate-400 pl-3">a week before · 4 weeks · a year</td>
+                    <td class="py-1 text-right font-mono" x-text="`${n(g.soh.week_ago, '%')} · ${n(g.soh.four_weeks_ago, '%')} · ${n(g.soh.year_ago, '%')}`"></td></tr>
+                <tr><td class="py-1 text-slate-400 pl-3">trend, per month</td>
+                    <td class="py-1 text-right font-mono" x-text="g.soh.per_month === null ? 'needs 4 weeks' : (g.soh.per_month > 0 ? '+' : '') + g.soh.per_month + ' points'"></td></tr>
+                <tr><td class="py-1 text-slate-400">Capacity rated · available now</td>
+                    <td class="py-1 text-right font-mono" x-text="`${n(g.capacity.rated_kwh, ' kWh')} · ${n(g.capacity.available_kwh, ' kWh')}`"></td></tr>
+                <tr><td class="py-1 text-slate-400">Round-trip efficiency</td>
+                    <td class="py-1 text-right font-mono" data-testid="health-weekly-eff"
+                        x-text="g.efficiency ? g.efficiency.pct + '%' : 'no span with matching charge'"></td></tr>
+                <tr x-show="g.efficiency"><td class="py-1 text-slate-400 pl-3" colspan="2"
+                    x-text="g.efficiency && `${g.efficiency.out_kwh} kWh out ÷ ${g.efficiency.in_kwh} kWh in, ${g.efficiency.from} to ${g.efficiency.to} (SoC ${g.efficiency.soc_from}% and ${g.efficiency.soc_to}%)`"></td></tr>
+                <tr><td class="py-1 text-slate-400">Equivalent full cycles, week · lifetime</td>
+                    <td class="py-1 text-right font-mono" x-text="`${n(g.full_cycles.week)} · ${n(g.full_cycles.lifetime)}`"></td></tr>
+                <tr><td class="py-1 text-slate-400">Charge cycles (from SoC)</td>
+                    <td class="py-1 text-right font-mono" x-text="g.cycles.cycles + (g.cycles.mean_depth !== null ? `, ${g.cycles.mean_depth} points deep on average` : '')"></td></tr>
+                <tr><td class="py-1 text-slate-400 pl-3" colspan="2"
+                    x-text="'By depth: ' + Object.entries(g.cycles.bands).map(([k, v]) => `${k}: ${v}`).join(' · ')"></td></tr>
+              </tbody>
+            </table>
+            <template x-if="g.energy">
+              <div class="mt-3 pt-2 border-t border-white/[0.06]">
+                <div class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1"
+                     x-text="`Energy, ${g.energy.from} to ${g.energy.to} (${g.energy.days} days), as the aGate counts it`"></div>
+                <table class="w-full text-xs">
+                  <tbody class="font-mono">
+                    <template x-for="row in [['Battery in', g.energy.battery_in_kwh], ['Battery out', g.energy.battery_out_kwh],
+                                             ['Solar', g.energy.solar_kwh], ['Grid import', g.energy.grid_import_kwh],
+                                             ['Grid export', g.energy.grid_export_kwh], ['Inverter AC out', g.energy.inverter_out_kwh],
+                                             ['Inverter AC in', g.energy.inverter_in_kwh]]" :key="row[0]">
+                      <tr><td class="py-0.5 text-slate-400 font-sans" x-text="row[0]"></td>
+                          <td class="py-0.5 text-right" x-text="n(row[1], ' kWh')"></td></tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div x-show="!r.gateways.length" class="card text-xs text-slate-500">No gateway configured.</div>
       </div>
     </template>
   </div>

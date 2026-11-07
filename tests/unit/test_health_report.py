@@ -38,6 +38,7 @@ async def db(tmp_path, monkeypatch):
     await conn.execute("INSERT OR IGNORE INTO gateways (id, name, host, port, unit_id, enabled, "
                        "created_at) VALUES ('default', 'aGate', '192.0.2.10', 502, 1, 1, 0)")
     await conn.commit()
+    await hr.set_weekly(conn, False)  # the daily tests; the weekly ones switch it on
     yield conn
     await conn.close()
 
@@ -272,7 +273,14 @@ async def test_api(client):
     assert (await client.get(f"/api/health/reports/{run['id']}")).status_code == 200
     assert (await client.get("/api/health/reports/999")).status_code == 404
     assert (await client.put("/api/health/settings", json={"daily": False})).json() == {
-        "daily": False, "daily_at": "07:00"}
+        "daily": False, "daily_at": "07:00", "weekly": False, "weekly_at": "Monday 07:00"}
+    assert (await client.put("/api/health/settings", json={"weekly": True})).json()["weekly"]
+    wk = (await client.post("/api/health/report?kind=weekly")).json()
+    assert wk["report"]["kind"] == "weekly" and wk["level"] == hr.INFO
+    assert (await client.get("/api/health/report?kind=weekly")).json()["id"] == wk["id"]
+    assert [r["kind"] for r in (await client.get("/api/health/reports?kind=weekly")).json()[
+        "reports"]] == ["weekly"]
+    assert (await client.get("/api/health/report?kind=monthly")).status_code == 422
     assert (await client.get("/api/health/snapshots")).json() == {"snapshots": []}
 
 
@@ -282,3 +290,107 @@ async def test_stop_is_clean(db):
     await rep.start()
     await asyncio.sleep(0.05)
     await rep.stop()
+
+
+# ── weekly battery report (phase 2) ──────────────────────────
+
+# The week covered from Tuesday 10 Nov: Monday 2 Nov to Sunday 8 Nov.
+MON_0700 = datetime(2026, 11, 9, 7).timestamp()
+
+
+async def _snap(db, day, soh, soc, charged, discharged, **kw):
+    cols = {"gateway_id": "default", "day": day, "ts": 0, "soh": soh, "wh_rating": 13600,
+            "wh_available": 6000, "soc": soc, "battery_charged_wh": charged,
+            "battery_discharged_wh": discharged, "grid_import_wh": kw.get("imp", 0),
+            "grid_export_wh": kw.get("exp", 0), "solar_wh": kw.get("pv", 0),
+            "inverter_out_wh": None, "inverter_in_wh": None}
+    await db.execute(f"INSERT INTO health_daily ({', '.join(cols)}) VALUES "
+                     f"({', '.join('?' * len(cols))})", tuple(cols.values()))
+
+
+def test_efficiency_needs_matching_ends():
+    rows = [{"day": "2026-11-01", "soc": 50, "battery_charged_wh": 0, "battery_discharged_wh": 0},
+            {"day": "2026-11-03", "soc": 80, "battery_charged_wh": 20000,
+             "battery_discharged_wh": 10000},
+            {"day": "2026-11-05", "soc": 52, "battery_charged_wh": 40000,
+             "battery_discharged_wh": 36000},
+            {"day": "2026-11-06", "soc": 90, "battery_charged_wh": 50000,
+             "battery_discharged_wh": 40000}]
+    e = hr.efficiency(rows)
+    assert (e["pct"], e["days"], e["from"], e["to"]) == (90.0, 4, "2026-11-01", "2026-11-05")
+    assert hr.efficiency(rows[1:2] + rows[3:]) is None  # 80 vs 90: too far apart
+
+
+def test_soc_cycles_by_depth():
+    three_deep = [10, 90] * 3 + [10]
+    c = hr.soc_cycles(three_deep)
+    assert c["cycles"] == 3.0 and c["bands"]["80 and over"] == 3.0 and c["mean_depth"] == 80
+    shallow = [50, 60, 50, 60, 50, 50.4, 50]  # two 10-point cycles; 0.4 is noise
+    c = hr.soc_cycles(shallow)
+    assert c["cycles"] == 2.0 and c["bands"]["under 20"] == 2.0
+    assert hr.soc_cycles([50])["cycles"] == 0.0
+
+
+async def test_weekly_report(db):
+    # 60 days back for the SoH trend, then the week (Sun 1 Nov .. Sun 8 Nov).
+    await _snap(db, "2026-09-09", 95.6, 50, 1_000_000, 900_000)
+    for i, day in enumerate(["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04",
+                             "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08"]):
+        await _snap(db, day, 95.0 if i < 7 else 94.8, 50 + (i % 2) * 30,
+                    2_000_000 + i * 10_000, 1_800_000 + i * 9_000,
+                    imp=i * 5000, exp=i * 8000, pv=i * 20_000)
+    t0 = datetime(2026, 11, 2).timestamp()
+    await db.executemany("INSERT INTO metrics (ts, soc, gateway_id) VALUES (?, ?, 'default')",
+                         [(t0 + k * 3600, 20 if k % 12 == 0 else 90 if k % 12 == 6 else 55)
+                          for k in range(0, 7 * 24)])
+    await db.commit()
+    r = await hr.build_weekly(db, MON_0700)
+    assert r["week"] == {"from": "2026-11-02", "to": "2026-11-08"} and r["level"] == hr.INFO
+    g = r["gateways"][0]
+    assert g["snapshots"] == 8 and g["soh"]["now"] == 94.8 and g["soh"]["week_ago"] == 95.0
+    assert g["soh"]["per_month"] == round((94.8 - 95.6) / 60 * 30, 2)
+    e = g["energy"]
+    assert (e["days"], e["battery_in_kwh"], e["battery_out_kwh"], e["grid_export_kwh"],
+            e["solar_kwh"], e["inverter_out_kwh"]) == (7, 70.0, 63.0, 56.0, 140.0, None)
+    # Ends at SoC 50 and 50 (days 0 and 6): out/in over those 6 days = 54/60.
+    assert g["efficiency"]["pct"] == 90.0 and g["efficiency"]["days"] == 6
+    assert g["full_cycles"] == {"week": round(70000 / 13600, 2),
+                                "lifetime": round(2_070_000 / 13600, 1)}
+    # 14 cycles of 70 points; the first and last are half cycles split at the week's ends.
+    assert g["cycles"]["cycles"] == 14.0 and g["cycles"]["bands"]["50 to 80"] == 13.5
+    assert r["headline"] == "Week of 2 Nov: SoH 94.8%, efficiency 90%, 5.15 full cycles"
+
+
+async def test_weekly_with_too_few_snapshots(db):
+    await _snap(db, "2026-11-08", None, None, None, None)
+    await db.commit()
+    r = await hr.build_weekly(db, MON_0700)
+    g = r["gateways"][0]
+    assert g["energy"] is None and g["efficiency"] is None and g["full_cycles"]["week"] is None
+    assert r["headline"] == "Week of 2 Nov: not enough daily snapshots yet"
+
+
+async def test_weekly_on_monday_once_and_catch_up(db):
+    await hr.set_weekly(db, True)
+    await hr.set_daily(db, False)
+    ha, act = _Ha(), _Act()
+    now = {"t": MON_0700 - 60}
+    rep = hr.HealthReporter(db, gateways_fn=lambda: [], points_fn=lambda gw: {},
+                            ha_registry=ha, actionable=act, now_fn=lambda: now["t"])
+    await rep.tick()
+    assert await hr.list_reports(db, "weekly") == []  # Monday 06:59: not yet
+    now["t"] = MON_0700
+    out = await rep.tick()
+    assert out["report"]["kind"] == "weekly"
+    latest = await hr.latest_report(db, "weekly")
+    assert latest["period"] == "2026-11-02"
+    assert ha.calls[-1][2]["notification_id"] == hr.WEEKLY_NOTIFICATION_ID
+    assert ha.calls[-1][2]["title"].endswith("weekly battery report") and act.sent == []
+    now["t"] = MON_0700 + 86400  # Tuesday: already done
+    await rep.tick()
+    assert len(await hr.list_reports(db, "weekly")) == 1
+    # Down all Monday: Tuesday makes it.
+    await db.execute("DELETE FROM health_reports WHERE period = '2026-11-02'")
+    await db.commit()
+    await rep.tick()
+    assert (await hr.latest_report(db, "weekly"))["period"] == "2026-11-02"

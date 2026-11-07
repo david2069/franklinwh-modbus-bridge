@@ -32,6 +32,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "itsdangerous>=2.1",
     "croniter>=2.0",
+    "rainflow>=3.2,<4",  # charge cycles in the weekly health report (#296 item 51)
 ]
 keywords = ["franklinwh", "modbus", "mqtt", "home-assistant", "sunspec", "energy"]
 classifiers = [

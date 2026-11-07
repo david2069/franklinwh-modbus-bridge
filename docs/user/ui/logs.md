@@ -92,7 +92,7 @@ shared without one.
 ## Health
 
 Every day at 07:00 (the bridge's time) the bridge checks how it has been running and
-writes a report: **green**, **amber** or **red**, with the reason first. It compares the
+writes a report (**Daily**): **green**, **amber** or **red**, with the reason first. It compares the
 last 24 hours with the 7 days before. The report only reads; it never talks to the aGate
 or changes the battery.
 
@@ -124,6 +124,26 @@ when it starts.
 
 **Admins** can press **Run now** to make a report at once (it sends nothing), and switch
 the daily report off and on.
+
+### Weekly battery report
+
+Choose **Weekly battery** at the top of the Health sub-tab. Every Monday at 07:00 the
+bridge reports on the week just ended (Monday to Sunday), for each gateway, from the
+daily snapshots below. It only reads.
+
+| Figure | How it is worked out |
+|---|---|
+| State of health | The aGate's SoH (SunSpec model 713) at the end of the week, a week, 4 weeks and a year before, and its trend per month once there are 4 weeks of readings. |
+| Capacity | Rated (713 `WHRtg`) and available now (713 `WHAvail`). |
+| Round-trip efficiency | Battery DC energy out ÷ in (model 714 lifetime counters), over the longest span in the week whose two ends are within 5 points of charge, so energy left in the battery hardly counts. No figure if there is no such span, or under 1 kWh went in. |
+| Equivalent full cycles | Energy charged ÷ rated capacity, for the week and for the battery's life. |
+| Charge cycles | Counted from the charge level history by rainflow (ASTM E1049-85): how many, how deep on average, and how many under 20, 20 to 50, 50 to 80, and 80 points and over. Half cycles count 0.5. |
+| Energy | The week's battery in and out, solar, grid import and export, and inverter AC out and in, as the aGate's lifetime counters count them. |
+
+The first weekly report needs two daily snapshots in the week; until then it says so.
+It goes to Home Assistant's notifications as "FranklinWH Modbus Bridge: weekly battery
+report", replacing the last one. It is not sent to phones: flags for unusual changes come
+later. Admins can switch it off, and **Run now** makes one for last week at once.
 
 **Daily snapshot.** Just after midnight the bridge also keeps one row per gateway for the
 day just ended: state of health, rated and available capacity, charge level, the aGate's
