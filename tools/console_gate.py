@@ -409,6 +409,11 @@ def run(url: str, user: str, password: str) -> int:
             _goto(page, f"{url}?tab=settings&section={section}", problems)
             page.wait_for_timeout(600)
 
+        # Logs sub-tabs, the Health report (#296 item 51) included.
+        for section in ("app", "writes", "health"):
+            _goto(page, f"{url}?tab=logs&section={section}", problems)
+            page.wait_for_timeout(600)
+
         # Settings → open the service editor twice. The second open is the one
         # that catches teardown bugs. The service card lives in the Energy &
         # Automation section.

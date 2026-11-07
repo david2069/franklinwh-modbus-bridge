@@ -72,6 +72,8 @@ ALL_DAY_HOURS = 20
 LINK_FAIL_SHARE = 0.05
 LINK_MIN_REQUESTS = 100
 TOP_PATTERNS = 15
+#: An example log line is cut to this (the start-up notice is a page long).
+EXAMPLE_MAX = 300
 
 # Snapshot columns ← point keys (the poller's).
 _COUNTERS = {
@@ -227,6 +229,8 @@ async def _log_patterns(db: aiosqlite.Connection, now: float) -> list[dict]:
     for ts, level, name, message in rows:
         level = "ERROR" if level == "CRITICAL" else level
         message = redact(message)
+        if len(message) > EXAMPLE_MAX:
+            message = message[:EXAMPLE_MAX - 1] + "…"
         key = (level, pattern(message))
         g = groups.get(key)
         if g is None:

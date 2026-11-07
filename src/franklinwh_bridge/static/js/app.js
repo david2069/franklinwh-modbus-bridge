@@ -189,8 +189,9 @@ const GUIDE_PAGES = {
 /** SunSpec Explorer sub-tabs (?tab=explorer&section=…). */
 const EXPLORER_SECTIONS = ['models', 'extensions', 'reader'];
 
-/** Logs sub-tabs (?tab=logs&section=…): the app log, and battery-control writes (admins). */
-const LOGS_SECTIONS = ['app', 'writes'];
+/** Logs sub-tabs (?tab=logs&section=…): the app log, battery-control writes (admins),
+ *  and the daily health report (#296 item 51). */
+const LOGS_SECTIONS = ['app', 'writes', 'health'];
 
 const SETTINGS_SECTIONS = [
   { id: 'gateways',       label: 'Site & Gateways' },

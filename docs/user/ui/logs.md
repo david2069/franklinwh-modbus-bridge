@@ -8,14 +8,13 @@ It is on by default.
 
 ## Sub-tabs
 
-Admins see two sub-tabs at the top of the page. Each one has a link of its own:
+The page has sub-tabs at the top. Each one has a link of its own:
 
 | Sub-tab | Link | Shows |
 |---|---|---|
 | **App log** | `?tab=logs&section=app` | The bridge's log, described below. This is the default. |
-| **Battery-control writes** | `?tab=logs&section=writes` | Every Modbus write the bridge sent, and the aGate's reply. |
-
-Other roles see only the app log, with no sub-tabs.
+| **Battery-control writes** | `?tab=logs&section=writes` | Every Modbus write the bridge sent, and the aGate's reply. Admins only. |
+| **Health** | `?tab=logs&section=health` | The daily health report: [Health](#health). |
 
 ## Level chips
 
@@ -89,3 +88,45 @@ It loads each time you open the sub-tab; **Refresh** reloads it.
 **Download CSV** and **Download JSON** save the audit trail, up to the last 100,000 writes.
 Each row carries the gateway's ID (`gateway_id`), not its serial, so the files can be
 shared without one.
+
+## Health
+
+Every day at 07:00 (the bridge's time) the bridge checks how it has been running and
+writes a report: **green**, **amber** or **red**, with the reason first. It compares the
+last 24 hours with the 7 days before. The report only reads; it never talks to the aGate
+or changes the battery.
+
+![Logs page, Health sub-tab](../../images/ui/page-logs-health.png)
+
+| Part | What it shows |
+|---|---|
+| Workers | The bridge's background tasks: any that crashed or stopped, and how many times the bridge started in the 24 hours. |
+| Alerts | Alerts open now, and those raised in the 24 hours with how many times. |
+| Housekeeping | Database size, log rows kept, and the last backup. |
+| Gateway link | Per gateway: Modbus requests, how many failed, reconnects, library retries and the longest run of failed polls. |
+| Warnings and errors | Log warnings and errors grouped by message, with numbers and addresses taken out, so one message repeated every few minutes is one line. Marked **new** (not in the 7 days before), **growing** (more than twice its daily average) or **all day** (in 20 or more of the 24 hours). A password or token in a log line is shown as `<hidden>`. |
+
+The colour:
+
+| Colour | When |
+|---|---|
+| Red | A background task crashed or stopped, or a critical alert is open. |
+| Amber | A warning alert is open; any error in the log; a warning that is new, growing or all day and seen 10 times or more; or a gateway with 5% or more of its requests failing. |
+| Green | None of those. |
+
+Pick an earlier report from the list at the top right. Reports are kept for 400 days.
+
+**Where it is sent.** Each report replaces the last one in Home Assistant's notifications
+("FranklinWH Modbus Bridge: health green"). Amber and red reports also go to the phones in
+[Notifications](settings-home-assistant.md#notifications). Both follow the **Push
+notifications** switch there. If the bridge was not running at 07:00, the report is made
+when it starts.
+
+**Admins** can press **Run now** to make a report at once (it sends nothing), and switch
+the daily report off and on.
+
+**Daily snapshot.** Just after midnight the bridge also keeps one row per gateway for the
+day just ended: state of health, rated and available capacity, charge level, the aGate's
+lifetime energy counters, and the day's alert, alarm, warning and error counts. These rows
+are kept for good, so later reports can show trends over months. The API returns them at
+`GET /api/health/snapshots`.
