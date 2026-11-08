@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **AEMO NEM wholesale price: every fetch failed with HTTP 500** (#477). AEMO retired the
+  old public report API (`ELEC_NEM_SUMMARY` on visualisations.aemo.com.au) around
+  7 Nov 2026. The price now comes from AEMO's public NEMWeb dispatch files (the newest
+  `PUBLIC_DISPATCHIS_*.zip`, its `DISPATCH,PRICE` rows, pricing run only), still with no key.
+  Same regions, conversion, sensors, cache and back-off. Still off by default.
+
 ## [0.2.60] — 2026-11-08
 
 ### Fixed
