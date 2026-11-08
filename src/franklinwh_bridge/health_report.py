@@ -25,6 +25,12 @@ efficiency, equivalent full cycles, the week's energy totals as the aGate counts
 charge cycles by depth (rainflow, from the SoC history). Its level is ``info``: the flags
 for unusual changes come in phase 3. Switch: ``health.weekly``. If the bridge was down on
 Monday at 07:00, it runs on the first pass after that in the same week.
+
+Phase 3: **unusual-change flags** in the daily report (owner, 2026-11-08): yesterday's
+figures from the snapshot against the median of the 28 days before (at least 7 needed),
+per gateway, and the bridge's own counts. Only a flagged drop in SoH or efficiency turns
+the report amber (and so reaches the phones); the other flags are listed but leave the
+colour alone. Rules in :func:`unusual`.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ import contextlib
 import json
 import logging
 import re
+import statistics
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -92,6 +99,34 @@ ALL_DAY_HOURS = 20
 LINK_FAIL_SHARE = 0.05
 LINK_MIN_REQUESTS = 100
 TOP_PATTERNS = 15
+#: Unusual changes: yesterday against the median of up to this many days before it,
+#: with at least ``UNUSUAL_MIN_DAYS`` of them.
+UNUSUAL_DAYS = 28
+UNUSUAL_MIN_DAYS = 7
+#: A daily total is unusual at twice the median or more, or half or less, and at least
+#: its floor away from it (so 0.1 kWh against 0.04 kWh is not news).
+UNUSUAL_FACTOR = 2.0
+#: SoH and efficiency: a drop of this many points below the median. These two grade.
+SOH_DROP = 1.0
+EFFICIENCY_DROP = 5.0
+#: Efficiency for a day is over the 7 days to its end (one day's ends rarely match).
+EFFICIENCY_WINDOW_DAYS = 7
+# (column, label, unit, floor): daily totals from the snapshot; a rise or a fall.
+_UNUSUAL_ENERGY = (
+    ("battery_charged_wh", "battery charged", "kWh", 2000.0),
+    ("battery_discharged_wh", "battery discharged", "kWh", 2000.0),
+    ("solar_wh", "solar", "kWh", 2000.0),
+    ("grid_import_wh", "grid import", "kWh", 2000.0),
+    ("grid_export_wh", "grid export", "kWh", 2000.0),
+)
+# (column, label, floor): counts a day; only a rise is unusual.
+_UNUSUAL_COUNTS = (
+    ("log_warnings", "warnings", 20),
+    ("log_errors", "errors", 5),
+    ("alerts", "alerts raised", 3),
+    ("alarms", "aGate alarms", 3),
+)
+
 #: An example log line is cut to this (the start-up notice is a page long).
 EXAMPLE_MAX = 300
 
@@ -333,8 +368,9 @@ def grade(report: dict) -> tuple[str, list[str]]:
     - **Red:** a worker stalled or crashed; a critical alert open now.
     - **Amber:** a warning alert open now; any error in the log; a warning pattern
       that is new, growing or all day and seen at least ``PATTERN_MIN`` times; a
-      gateway whose failed requests are 5 % or more.
-    - **Green:** none of those.
+      gateway whose failed requests are 5 % or more; a flagged drop in SoH or efficiency
+      (:func:`unusual`).
+    - **Green:** none of those. The other unusual-change flags never change the colour.
     """
     found: list[tuple[str, str]] = []
     w = report["workers"]
@@ -353,6 +389,9 @@ def grade(report: dict) -> tuple[str, list[str]]:
         elif p["flags"] and p["count"] >= PATTERN_MIN:
             found.append((AMBER, f"{p['count']} × warning ({', '.join(p['flags'])}): "
                                  f"{p['example'][:120]}"))
+    for f in report.get("unusual", {}).get("flags", []):
+        if f["grades"]:
+            found.append((AMBER, unusual_text(f)))
     for g in report["link"]:
         share = g.get("failed_share")
         if share is not None and g["requests"] >= LINK_MIN_REQUESTS and share >= LINK_FAIL_SHARE:
@@ -433,12 +472,115 @@ async def build_daily(db: aiosqlite.Connection, now: float,
                    "open": open_now},
         "logs": logs,
         "housekeeping": house,
+        "unusual": await unusual(db, gws, _day(_midnight(datetime.fromtimestamp(now))
+                                             - timedelta(days=1))),
     }
     level, reasons = grade(report)
     report["level"] = level
     report["reasons"] = reasons
     report["headline"] = _headline(level, reasons, report)
     return report
+
+
+# ── unusual changes (phase 3) ─────────────────────────────────
+
+
+def _flag(value: float, med: float, floor: float, both: bool) -> str | None:
+    if value >= med * UNUSUAL_FACTOR and value - med >= floor:
+        return "high"
+    if both and value <= med / UNUSUAL_FACTOR and med - value >= floor:
+        return "low"
+    return None
+
+
+def _daily_totals(rows: list[dict], col: str) -> dict[str, float]:
+    """``{day: that day's total}`` from a counter column: the row against the row of
+    the day before (each row holds the counter at the end of its day)."""
+    out = {}
+    for a, b in zip(rows, rows[1:], strict=False):
+        if _days_between(a["day"], b["day"]) == 1 and None not in (a.get(col), b.get(col)):
+            out[b["day"]] = b[col] - a[col]
+    return out
+
+
+def _window_efficiency(rows: list[dict]) -> dict[str, float]:
+    """``{day: efficiency over the EFFICIENCY_WINDOW_DAYS to the end of that day}``."""
+    out = {}
+    for b in rows:
+        for a in rows:  # oldest first: the longest span that ends on b's day
+            if 1 <= _days_between(a["day"], b["day"]) <= EFFICIENCY_WINDOW_DAYS \
+                    and (e := efficiency([a, b])) is not None:
+                out[b["day"]] = e["pct"]
+                break
+    return out
+
+
+def unusual_text(f: dict) -> str:
+    """One line, e.g. ``Home: SoH 92% (usual 94%)``."""
+    unit = f["unit"]
+    if unit == "kWh":
+        v, m = f"{f['value'] / 1000:.1f} kWh", f"{f['median'] / 1000:.1f} kWh"
+    elif unit == "%":
+        v, m = f"{f['value']:g}%", f"{f['median']:g}%"
+    else:
+        v, m = f"{f['value']:g}", f"{f['median']:g}"
+    word = {"high": "high", "low": "low", "drop": "down"}[f["direction"]]
+    return f"{f['name']}: {f['label']} {word}, {v} (usual {m})"
+
+
+async def unusual(db: aiosqlite.Connection, gateways: list[dict], day: str) -> dict:
+    """Flags for ``day`` (yesterday) against the median of the ``UNUSUAL_DAYS`` before
+    it, from ``health_daily``. A figure with fewer than ``UNUSUAL_MIN_DAYS`` days to
+    compare with is skipped.
+
+    - **SoH** down ``SOH_DROP`` points or more. Grades (amber).
+    - **Efficiency** (over the 7 days to the day's end) down ``EFFICIENCY_DROP`` points or
+      more. Grades (amber).
+    - **Daily energy** (battery charged and discharged, solar, grid import and export):
+      twice the median or more, or half or less, and at least 2 kWh away.
+    - **Counts a day** (warnings, errors, alerts, aGate alarms; per gateway and the
+      bridge's own): twice the median or more, and at least the floor above it.
+    """
+    first = _day(datetime.strptime(day, "%Y-%m-%d") - timedelta(days=UNUSUAL_DAYS + 1
+                                                               + EFFICIENCY_WINDOW_DAYS))
+    flags: list[dict] = []
+    checked = 0
+    for gw, name in [(g["id"], g.get("name") or g["id"]) for g in gateways] + [("", "Bridge")]:
+        async with db.execute(
+            "SELECT * FROM health_daily WHERE gateway_id = ? AND day >= ? AND day <= ? "
+            "ORDER BY day", (gw, first, day)) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+        if not rows or rows[-1]["day"] != day:
+            continue
+
+        series: list[tuple] = []
+        if gw:
+            soh = {r["day"]: r["soh"] for r in rows if r.get("soh") is not None}
+            series.append(("soh", "SoH", "%", soh, "drop", SOH_DROP))
+            series.append(("efficiency", "efficiency", "%", _window_efficiency(rows),
+                           "drop", EFFICIENCY_DROP))
+            for col, label, unit, floor in _UNUSUAL_ENERGY:
+                series.append((col, label, unit, _daily_totals(rows, col), "both", floor))
+        for col, label, floor in _UNUSUAL_COUNTS:
+            counts = {r["day"]: r[col] for r in rows if r.get(col) is not None}
+            series.append((col, label, "", counts, "up", floor))
+        for col, label, unit, values, how, floor in series:
+            prior = [v for d, v in values.items() if 1 <= _days_between(d, day) <= UNUSUAL_DAYS]
+            if day not in values or len(prior) < UNUSUAL_MIN_DAYS:
+                continue
+            checked += 1
+            value, med = float(values[day]), float(statistics.median(prior))
+            if how == "drop":
+                direction = "drop" if med - value >= floor else None
+            else:
+                direction = _flag(value, med, floor, how == "both")
+            if direction:
+                flags.append({"gateway": gw, "name": name, "metric": col, "label": label,
+                              "unit": unit, "value": round(value, 2),
+                              "median": round(med, 2), "direction": direction,
+                              "days": len(prior), "grades": how == "drop"})
+                flags[-1]["text"] = unusual_text(flags[-1])
+    return {"day": day, "checked": checked, "flags": flags}
 
 
 # ── the weekly battery report ─────────────────────────────────
@@ -667,6 +809,12 @@ def notification_text(report: dict) -> tuple[str, str]:
     lines += [f"- {r}" for r in report["reasons"][1:6]]
     if len(report["reasons"]) > 6:
         lines.append(f"- and {len(report['reasons']) - 6} more")
+    other = [f for f in report.get("unusual", {}).get("flags", []) if not f["grades"]]
+    if other:
+        lines.append("Unusual yesterday:")
+        lines += [f"- {unusual_text(f)}" for f in other[:5]]
+        if len(other) > 5:
+            lines.append(f"- and {len(other) - 5} more")
     lines.append("Open the bridge → Logs → Health for the full report.")
     return title, "\n".join(lines)
 

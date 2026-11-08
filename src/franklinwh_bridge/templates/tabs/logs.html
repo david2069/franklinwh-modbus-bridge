@@ -358,6 +358,20 @@
 
     <template x-if="r && r.kind === 'daily'">
       <div>
+        <!-- Unusual changes (phase 3); reports made before it have none. -->
+        <div x-show="r.unusual" class="card mt-4" data-testid="health-unusual">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Unusual changes yesterday</h3>
+          <p class="text-[11px] text-slate-500 mb-2">Yesterday against the median of the 4 weeks before. SoH or efficiency down turns the report amber; the others are for information.</p>
+          <div class="text-xs space-y-1">
+            <div x-show="r.unusual && !r.unusual.checked" class="text-slate-400">Not enough daily snapshots yet: it needs 7 days.</div>
+            <div x-show="r.unusual && r.unusual.checked && !r.unusual.flags.length" class="text-slate-400"
+                 x-text="r.unusual && `None: ${r.unusual.checked} figures checked.`"></div>
+            <template x-for="(f, i) in (r.unusual ? r.unusual.flags : [])" :key="i">
+              <div :class="f.grades ? 'text-amber-400' : 'text-slate-300'" data-testid="health-unusual-flag" x-text="f.text"></div>
+            </template>
+          </div>
+        </div>
+
         <!-- Gateway link -->
         <div class="card !p-0 overflow-hidden mt-4" data-testid="health-link">
           <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 pt-3 pb-2">Gateway link, last 24 h</h3>
