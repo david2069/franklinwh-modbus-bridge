@@ -7,6 +7,20 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.59 — 2026-11-08
+
+### Added
+- **Health check** under **Logs → Health**. It only reads; it never talks to the battery.
+  - **Daily report** at 07:00: green, amber or red, with the reason first. Looks at the
+    bridge's tasks, the link to the aGate, alerts, and warnings and errors in the log.
+    Amber and red reports also go to your phones.
+  - **Weekly battery report** on Mondays at 07:00: state of health and its trend,
+    round-trip efficiency, full cycles, charge cycles by depth, and the week's energy.
+  - **Unusual changes**: yesterday compared with the 4 weeks before. A drop in state of
+    health or efficiency turns the daily report amber; other changes are listed.
+  - The bridge keeps one small snapshot a day for these. The reports need a few days
+    (unusual changes: a week) of snapshots before they show figures.
+
 ## 0.2.58 — 2026-11-07
 
 ### Changed
