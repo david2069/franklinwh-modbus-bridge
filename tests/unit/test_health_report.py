@@ -162,7 +162,9 @@ async def test_resolved_but_unacknowledged_alerts_do_not_grade(db):
                                      gateway_id="default", now=AT_0700 - 7000)
     await alert_store.resolve_condition(db, "GATEWAY_UNREACHABLE", gateway_id="default",
                                         now=AT_0700 - 6000)
-    assert len(await alert_store.list_alerts(db, open_only=True)) == 4  # the Alerts bar's rule
+    await alert_store.raise_event(db, "ADMIN_ACTION", "Gateway emu2 edited",
+                                  gateway_id="default", now=AT_0700 - 5000)
+    assert len(await alert_store.list_alerts(db, open_only=True)) == 5  # the Alerts bar's rule
     r = await hr.build_daily(db, AT_0700)
     assert r["alerts"]["open"] == [] and r["level"] == hr.GREEN
     # Still active: graded as before.

@@ -365,8 +365,9 @@ async def _link(db: aiosqlite.Connection, gw: str, now: float) -> dict:
 def grade(report: dict) -> tuple[str, list[str]]:
     """``(level, reasons)``, worst first.
 
-    - **Red:** a worker stalled or crashed; a critical alert open now. "Open now" means
-      still active: a resolved alert nobody acknowledged doesn't count (#473).
+    - **Red:** a worker stalled or crashed; a critical alert open now. "Open now" means a
+      condition still active: a resolved one nobody acknowledged, or an event, doesn't
+      count (#473).
     - **Amber:** a warning alert open now; any error in the log; a warning pattern
       that is new, growing or all day and seen at least ``PATTERN_MIN`` times; a
       gateway whose failed requests are 5 % or more; a flagged drop in SoH or efficiency
@@ -439,12 +440,14 @@ async def build_daily(db: aiosqlite.Connection, now: float,
                                            "repeats": 0})
         r["alerts"] += 1
         r["repeats"] += int(al["count"] or 1)
-    # Still active only: "open" in the Alerts bar also keeps a resolved alert until it is
-    # acknowledged, and one that cleared overnight must not turn the report red (#473).
+    # Still active only: conditions not yet resolved (#473). "Open" in the Alerts bar also
+    # keeps a resolved condition, and any event, until someone acknowledges it; one that
+    # cleared overnight must not turn the report red. Events are under "raised".
     open_now = [{"id": al["id"], "code": al["code"], "title": al["title"],
                  "severity": al["severity"], "gateway": al["gateway_id"],
                  "opened_ts": al["opened_ts"]}
-                for al in await alert_store.list_alerts(db, open_only=True, limit=1000)
+                for al in await alert_store.list_alerts(db, open_only=True, kind="condition",
+                                                        limit=1000)
                 if al["resolved_ts"] is None]
 
     patterns = await _log_patterns(db, now)
