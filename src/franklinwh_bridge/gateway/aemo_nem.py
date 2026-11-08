@@ -1,10 +1,15 @@
 """AEMO NEM wholesale spot price + optional HA price entities (#89, part A).
 
 Matches the Local Bridge's ``aemo_nem.py`` so automations port between the two
-bridges: same AEMO endpoint (``ELEC_NEM_SUMMARY``, public, no key), same row
-pick (``REGIONID``), same conversion (``PRICE`` is the 5-minute RRP in $/MWh;
-c/kWh = RRP / 10, rounded to 2), same five regions, 240 s cache, 12 s timeout,
-and the same ``tariff.spot_price`` / ``tariff.feed_in_price`` sensor names.
+bridges: same row pick (``REGIONID``), same conversion (the 5-minute RRP in
+$/MWh; c/kWh = RRP / 10, rounded to 2), same five regions, 240 s cache, 12 s
+timeout, and the same ``tariff.spot_price`` / ``tariff.feed_in_price`` sensor
+names.
+
+Source: AEMO's public NEMWeb dispatch reports (no key): the newest
+``PUBLIC_DISPATCHIS_*.zip`` and its ``DISPATCH,PRICE`` rows. AEMO retired the
+old report API (``ELEC_NEM_SUMMARY`` on visualisations.aemo.com.au) around
+7 Nov 2026; it answers HTTP 500 to everything (#477).
 
 How it fits this bridge (not the Local Bridge's structure) — the same shape as
 the Open-Meteo feature (#88, ``solar_forecast.py``):
@@ -34,9 +39,13 @@ from __future__ import annotations
 import asyncio
 import calendar
 import contextlib
+import csv
+import io
 import json
 import logging
+import re
 import time
+import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -48,7 +57,9 @@ from franklinwh_bridge.store.db import get_app_config, set_app_config
 
 logger = logging.getLogger(__name__)
 
-AEMO_URL = "https://visualisations.aemo.com.au/aemo/apps/api/report/ELEC_NEM_SUMMARY"
+#: NEMWeb's list of the latest 5-minute dispatch files (public, no key).
+DISPATCH_URL = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/"
+_DISPATCH_FILE = re.compile(r"PUBLIC_DISPATCHIS_\d{12}_\d+\.zip", re.IGNORECASE)
 #: The five NEM regions (AEMO ``REGIONID``).
 REGIONS: tuple[str, ...] = ("NSW1", "QLD1", "SA1", "TAS1", "VIC1")
 CACHE_S = 240.0  # NEM dispatch is 5-min; ~4 min keeps us never stale-by-much
@@ -88,8 +99,33 @@ def settlement_epoch(settlement: Any) -> int | None:
     return calendar.timegm(dt.timetuple()) - NEM_UTC_OFFSET_S
 
 
+def parse_dispatch(text: str) -> dict:
+    """A NEMWeb DispatchIS CSV's ``DISPATCH,PRICE`` rows as a summary
+    (``{"ELEC_NEM_SUMMARY": [{REGIONID, PRICE, SETTLEMENTDATE}]}``, the old API's
+    shape, which :func:`parse_summary` reads). ``PRICE`` is the ``RRP``; only the
+    pricing run (``INTERVENTION`` 0) counts."""
+    cols: dict[str, int] | None = None
+    rows = []
+    for rec in csv.reader(io.StringIO(text)):
+        if rec[1:3] != ["DISPATCH", "PRICE"]:
+            continue
+        if rec[0] == "I":
+            cols = {name: i for i, name in enumerate(rec)}
+        elif rec[0] == "D" and cols is not None:
+            try:
+                if rec[cols["INTERVENTION"]] != "0":
+                    continue
+                # "2026/11/09 06:50:00" -> "2026-11-09T06:50:00"
+                when = rec[cols["SETTLEMENTDATE"]].replace("/", "-").replace(" ", "T")
+                rows.append({"REGIONID": rec[cols["REGIONID"]], "PRICE": rec[cols["RRP"]],
+                             "SETTLEMENTDATE": when})
+            except (KeyError, IndexError):
+                continue
+    return {"ELEC_NEM_SUMMARY": rows}
+
+
 def parse_summary(data: Any, region: str) -> dict[str, Any] | None:
-    """The ``region`` row of an ``ELEC_NEM_SUMMARY`` response, or None."""
+    """The ``region`` row of a summary (see :func:`parse_dispatch`), or None."""
     rows = (data or {}).get("ELEC_NEM_SUMMARY") if isinstance(data, dict) else None
     for row in rows or []:
         if not isinstance(row, dict) or row.get("REGIONID") != region:
@@ -159,14 +195,21 @@ Fetcher = Callable[[], Awaitable[dict]]
 
 
 async def fetch_summary() -> dict:
-    """One ``ELEC_NEM_SUMMARY`` request (raises — the client handles it)."""
+    """The newest NEMWeb dispatch file as a summary: two requests, the list then
+    the file (raises — the client handles it)."""
     async with httpx.AsyncClient(
-        timeout=TIMEOUT_S,
-        headers={"Accept": "application/json", "User-Agent": "franklinwh-modbus-bridge"},
+        timeout=TIMEOUT_S, headers={"User-Agent": "franklinwh-modbus-bridge"}
     ) as client:
-        r = await client.get(AEMO_URL)
+        r = await client.get(DISPATCH_URL)
         r.raise_for_status()
-        return r.json()
+        names = sorted(set(_DISPATCH_FILE.findall(r.text)))  # time-stamped: last = newest
+        if not names:
+            raise ValueError("NEMWeb lists no dispatch file")
+        r = await client.get(DISPATCH_URL + names[-1])
+        r.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            text = z.read(z.namelist()[0]).decode("utf-8", "replace")
+        return parse_dispatch(text)
 
 
 class NemSpotClient:

@@ -7,6 +7,8 @@ request builder swaps httpx's transport for a MockTransport.
 from __future__ import annotations
 
 import calendar
+import io
+import zipfile
 from datetime import datetime
 
 import httpx
@@ -18,6 +20,7 @@ from franklinwh_bridge.gateway.aemo_nem import (
     NemPricingService,
     NemSpotClient,
     ha_price_c_kwh,
+    parse_dispatch,
     parse_summary,
     resolve_prices,
     settlement_epoch,
@@ -207,12 +210,51 @@ async def test_cached_flags_stale_and_ages_out():
     assert c.cached("NSW1", max_age_s=nem.SENSOR_MAX_AGE_S) is None
 
 
-async def test_real_fetcher_hits_aemo_and_parses(monkeypatch):
+# A NEMWeb DispatchIS CSV, cut to the columns the parser reads (real order and
+# quoting): two regions in the pricing run, NSW1 again in an intervention run.
+DISPATCH_CSV = (
+    'C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/11/09,06:45:07,0000000547475708,,0000000547475708\n'
+    "I,DISPATCH,CASE_SOLUTION,2,SETTLEMENTDATE,RUNNO,INTERVENTION\n"
+    'D,DISPATCH,CASE_SOLUTION,2,"2026/11/09 06:50:00",1,0\n'
+    "I,DISPATCH,PRICE,5,SETTLEMENTDATE,RUNNO,REGIONID,DISPATCHINTERVAL,INTERVENTION,RRP,EEP\n"
+    'D,DISPATCH,PRICE,5,"2026/11/09 06:50:00",1,NSW1,20261109034,0,88.88,0\n'
+    'D,DISPATCH,PRICE,5,"2026/11/09 06:50:00",1,QLD1,20261109034,0,-1.12973,0\n'
+    'D,DISPATCH,PRICE,5,"2026/11/09 06:50:00",1,NSW1,20261109034,1,999.0,0\n'
+    "C,END OF REPORT,9\n"
+)
+OLD = "PUBLIC_DISPATCHIS_202611090645_0000000547475014.zip"
+NEW = "PUBLIC_DISPATCHIS_202611090650_0000000547475708.zip"
+
+
+def _zip(text: str) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(NEW.replace(".zip", ".CSV"), text)
+    return buf.getvalue()
+
+
+def test_parse_dispatch_takes_pricing_run_price_rows():
+    rows = parse_dispatch(DISPATCH_CSV)["ELEC_NEM_SUMMARY"]
+    assert rows == [
+        {"REGIONID": "NSW1", "PRICE": "88.88", "SETTLEMENTDATE": "2026-11-09T06:50:00"},
+        {"REGIONID": "QLD1", "PRICE": "-1.12973", "SETTLEMENTDATE": "2026-11-09T06:50:00"},
+    ]
+    row = parse_summary(parse_dispatch(DISPATCH_CSV), "QLD1")
+    assert row["price_c_kwh"] == -0.11
+    assert row["settlement_ts"] == settlement_epoch("2026-11-09T06:50:00")
+    assert parse_dispatch("")["ELEC_NEM_SUMMARY"] == []
+
+
+async def test_real_fetcher_reads_newest_nemweb_file(monkeypatch):
     seen = []
+    listing = "".join(f'<A HREF="/Reports/CURRENT/DispatchIS_Reports/{n}">{n}</A><br>'
+                      for n in (NEW, OLD))  # not in time order
 
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append(str(req.url))
-        return httpx.Response(200, json=_summary())
+        if str(req.url) == nem.DISPATCH_URL:
+            return httpx.Response(200, text=listing)
+        return httpx.Response(200, content=_zip(DISPATCH_CSV))
 
     real = httpx.AsyncClient
 
@@ -223,8 +265,19 @@ async def test_real_fetcher_hits_aemo_and_parses(monkeypatch):
 
     monkeypatch.setattr(nem.httpx, "AsyncClient", fake)
     c = NemSpotClient()
-    assert (await c.spot_price("NSW1"))["price_c_kwh"] == 12.35
-    assert seen == [nem.AEMO_URL]
+    assert (await c.spot_price("NSW1"))["price_c_kwh"] == 8.89
+    assert seen == [nem.DISPATCH_URL, nem.DISPATCH_URL + NEW]
+
+
+async def test_real_fetcher_empty_listing_is_none(monkeypatch):
+    real = httpx.AsyncClient
+
+    def fake(*a, **kw):
+        kw["transport"] = httpx.MockTransport(lambda r: httpx.Response(200, text="<html/>"))
+        return real(*a, **kw)
+
+    monkeypatch.setattr(nem.httpx, "AsyncClient", fake)
+    assert await NemSpotClient().spot_price("NSW1") is None
 
 
 async def test_real_fetcher_http_error_is_none(monkeypatch):

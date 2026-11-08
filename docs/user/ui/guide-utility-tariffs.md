@@ -216,8 +216,8 @@ spot price for your region. This is **#89 part B** ("dynamic pricing").
 | Network daily supply | $1.10/day (**example**) |
 | Amber membership | $25/month (**example**) |
 
-**Needs:** internet access from the bridge to `visualisations.aemo.com.au` (public, no
-key). Australia only.
+**Needs:** internet access from the bridge to `nemweb.com.au`, AEMO's public market
+data site (no key). Australia only.
 
 ### Step 1 — Wholesale spot price card (optional)
 
@@ -323,7 +323,7 @@ The dynamic plan prices energy at the **raw wholesale** price. Amber's real reta
 
 | Part of an Amber bill | Modelled? | How, or why not |
 |---|---|---|
-| Wholesale energy (spot price) | **Yes** | `gateway/aemo_nem.py` fetches AEMO's `ELEC_NEM_SUMMARY` every 240 s and converts RRP $/MWh to c/kWh (÷ 10). `gateway/dynamic_pricing.py` turns it into the plan's live rate, with **sell = buy = spot**. |
+| Wholesale energy (spot price) | **Yes** | `gateway/aemo_nem.py` fetches AEMO's latest 5-minute dispatch file from NEMWeb every 240 s and converts RRP $/MWh to c/kWh (÷ 10). `gateway/dynamic_pricing.py` turns it into the plan's live rate, with **sell = buy = spot**. |
 | Network (DNSP) usage charges, per kWh | **No** | Nothing adds a per-kWh amount on top of the live price. These are often the largest part of an Amber price, and vary by time of day. |
 | Environmental / market charges, per kWh | **No** | Same: not added. |
 | GST on energy | **No** | The live price is used as-is (`aemo_nem.py` divides RRP by 10; no tax). |
