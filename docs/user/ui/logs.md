@@ -101,7 +101,7 @@ or changes the battery.
 | Part | What it shows |
 |---|---|
 | Workers | The bridge's background tasks: any that crashed or stopped, and how many times the bridge started in the 24 hours. |
-| Alerts | Alerts open now, and those raised in the 24 hours with how many times. |
+| Alerts | Alerts still active now, and those raised in the 24 hours with how many times. An alert that has cleared but nobody acknowledged is not counted as open here (the Alerts bar keeps it until acknowledged). |
 | Housekeeping | Database size, log rows kept, and the last backup. |
 | Gateway link | Per gateway: Modbus requests, how many failed, reconnects, library retries and the longest run of failed polls. |
 | Unusual changes yesterday | Yesterday's figures against the median of the 4 weeks before (see below). |

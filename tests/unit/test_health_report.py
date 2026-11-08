@@ -152,6 +152,27 @@ async def test_red_for_a_stalled_worker_and_a_critical_alert(db):
     assert any(x.startswith("alert open: aGate unreachable (default)") for x in r["reasons"])
 
 
+async def test_resolved_but_unacknowledged_alerts_do_not_grade(db):
+    # #473: 62 stalls that each cleared, never acknowledged, kept the report red.
+    for k in range(3):
+        await alert_store.open_condition(db, "WORKER_STALLED", "stalled",
+                                         now=AT_0700 - 9000 + k * 100)
+        await alert_store.resolve_condition(db, "WORKER_STALLED", now=AT_0700 - 8950 + k * 100)
+    await alert_store.open_condition(db, "GATEWAY_UNREACHABLE", "No reply",
+                                     gateway_id="default", now=AT_0700 - 7000)
+    await alert_store.resolve_condition(db, "GATEWAY_UNREACHABLE", gateway_id="default",
+                                        now=AT_0700 - 6000)
+    assert len(await alert_store.list_alerts(db, open_only=True)) == 4  # the Alerts bar's rule
+    r = await hr.build_daily(db, AT_0700)
+    assert r["alerts"]["open"] == [] and r["level"] == hr.GREEN
+    # Still active: graded as before.
+    await alert_store.open_condition(db, "GATEWAY_UNREACHABLE", "No reply",
+                                     gateway_id="default", now=AT_0700 - 100)
+    r = await hr.build_daily(db, AT_0700)
+    assert [a["code"] for a in r["alerts"]["open"]] == ["GATEWAY_UNREACHABLE"]
+    assert r["level"] == hr.RED
+
+
 async def test_log_patterns_new_growing_all_day(db):
     day0 = AT_0700 - 86400
     rows = (_logs("WARNING", AEMO, day0 + 60, 360)            # every 4 min, all day: new
