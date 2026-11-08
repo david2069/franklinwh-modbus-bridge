@@ -13,6 +13,28 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.59] — 2026-11-08
+
+### Added
+
+- **Scheduled health check** (#296 item 51), read only, under **Logs → Health**:
+  - **Daily snapshot** (migration 68, table `health_daily`): one row per gateway per site
+    day (SoH, rated and available capacity, SoC, the aGate's lifetime energy counters, the
+    day's alert, alarm, warning and error counts), plus one for the bridge. Kept for good.
+    `GET /api/health/snapshots`. (#468)
+  - **Daily report** at 07:00 site time, green, amber or red with the reason first:
+    workers, gateway link, alerts, log warnings and errors grouped by message (new,
+    growing, all day; secrets hidden), housekeeping. One HA notification
+    (`fwh_mb_health_daily`); phones only for amber or red. Switch `health.daily`.
+    API under `/api/health`. (#468, #469)
+  - **Weekly battery report**, Monday 07:00, per gateway: SoH and its trend, capacity,
+    round-trip efficiency, equivalent full cycles, charge cycles by depth (rainflow), the
+    week's energy as the aGate counts it. HA notification `fwh_mb_health_weekly`; not sent
+    to phones. Switch `health.weekly`. New dependency `rainflow` 3.2.0. (#470)
+  - **Unusual-change flags** in the daily report: yesterday against the median of the 28
+    days before (7 needed). A drop in SoH (1 point) or efficiency (5 points) turns the
+    report amber; daily energy and warning/alert counts are listed only. (#471)
+
 ## [0.2.58] — 2026-11-07
 
 ### Changed
