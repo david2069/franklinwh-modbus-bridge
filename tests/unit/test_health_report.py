@@ -394,3 +394,63 @@ async def test_weekly_on_monday_once_and_catch_up(db):
     await db.commit()
     await rep.tick()
     assert (await hr.latest_report(db, "weekly"))["period"] == "2026-11-02"
+
+
+# ── unusual-change flags (phase 3) ───────────────────────────
+
+async def _history(db, days, last=None):
+    """``days`` ordinary days to 2026-11-08 (10 kWh in, 9 out, SoC 50, SoH 95, 20 kWh
+    solar, 10 warnings), then ``last`` (a dict of overrides) for 2026-11-09."""
+    start = datetime(2026, 11, 9).toordinal() - days
+    rows = [{} for _ in range(days)] + ([last] if last is not None else [])
+    tot = {"c": 1_000_000, "d": 900_000, "pv": 0, "imp": 0, "exp": 0}
+    for i, o in enumerate(rows):
+        day = datetime.fromordinal(start + i).strftime("%Y-%m-%d")
+        tot["c"] += o.get("c", 10_000)
+        tot["d"] += o.get("d", 9_000)
+        tot["pv"] += o.get("pv", 20_000)
+        tot["imp"] += 5_000
+        tot["exp"] += 8_000
+        await _snap(db, day, o.get("soh", 95.0), 50, tot["c"], tot["d"],
+                    pv=tot["pv"], imp=tot["imp"], exp=tot["exp"])
+        await db.execute("INSERT INTO health_daily (gateway_id, day, ts, log_warnings, "
+                         "log_errors, alerts, alarms) VALUES ('', ?, 0, ?, 0, 0, 0)",
+                         (day, o.get("warn", 10)))
+    await db.commit()
+
+
+async def test_unusual_quiet_day_has_no_flags(db):
+    await _history(db, 28, {})
+    r = await hr.build_daily(db, AT_0700)
+    u = r["unusual"]
+    assert u["day"] == "2026-11-09" and u["flags"] == []
+    assert u["checked"] == 7 + 4  # SoH, efficiency, 5 energies; the bridge's 4 counts
+    assert r["level"] == hr.GREEN
+
+
+async def test_unusual_flags_and_only_soh_and_efficiency_grade(db):
+    await _history(db, 28, {"soh": 93.5, "d": 3_000, "pv": 2_000, "warn": 50})
+    r = await hr.build_daily(db, AT_0700)
+    flags = {(f["name"], f["metric"]): f for f in r["unusual"]["flags"]}
+    assert set(flags) == {("aGate", "soh"), ("aGate", "efficiency"),
+                          ("aGate", "battery_discharged_wh"), ("aGate", "solar_wh"),
+                          ("Bridge", "log_warnings")}
+    assert flags[("aGate", "soh")]["direction"] == "drop"
+    assert flags[("aGate", "battery_discharged_wh")]["direction"] == "low"
+    assert flags[("Bridge", "log_warnings")]["direction"] == "high"
+    # 7 days to yesterday: 70 kWh in, 6 × 9 + 3 = 57 out.
+    assert flags[("aGate", "efficiency")]["value"] == 81.4
+    assert [f["grades"] for f in r["unusual"]["flags"] if f["metric"] in ("soh", "efficiency")] \
+        == [True, True]
+    assert r["level"] == hr.AMBER
+    assert r["reasons"] == ["aGate: SoH down, 93.5% (usual 95%)",
+                            "aGate: efficiency down, 81.4% (usual 90%)"]
+    _, msg = hr.notification_text(r)
+    assert "Unusual yesterday:\n- aGate: battery discharged low, 3.0 kWh (usual 9.0 kWh)" in msg
+    assert "- Bridge: warnings high, 50 (usual 10)" in msg
+
+
+async def test_unusual_needs_a_week_of_history(db):
+    await _history(db, 5, {"soh": 80.0, "warn": 500})
+    u = (await hr.build_daily(db, AT_0700))["unusual"]
+    assert u == {"day": "2026-11-09", "checked": 0, "flags": []}

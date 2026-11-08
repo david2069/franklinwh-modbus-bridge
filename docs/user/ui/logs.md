@@ -104,6 +104,7 @@ or changes the battery.
 | Alerts | Alerts open now, and those raised in the 24 hours with how many times. |
 | Housekeeping | Database size, log rows kept, and the last backup. |
 | Gateway link | Per gateway: Modbus requests, how many failed, reconnects, library retries and the longest run of failed polls. |
+| Unusual changes yesterday | Yesterday's figures against the median of the 4 weeks before (see below). |
 | Warnings and errors | Log warnings and errors grouped by message, with numbers and addresses taken out, so one message repeated every few minutes is one line. Marked **new** (not in the 7 days before), **growing** (more than twice its daily average) or **all day** (in 20 or more of the 24 hours). A password or token in a log line is shown as `<hidden>`. |
 
 The colour:
@@ -111,8 +112,22 @@ The colour:
 | Colour | When |
 |---|---|
 | Red | A background task crashed or stopped, or a critical alert is open. |
-| Amber | A warning alert is open; any error in the log; a warning that is new, growing or all day and seen 10 times or more; or a gateway with 5% or more of its requests failing. |
+| Amber | A warning alert is open; any error in the log; a warning that is new, growing or all day and seen 10 times or more; a gateway with 5% or more of its requests failing; or an unusual drop in state of health or efficiency. |
 | Green | None of those. |
+
+**Unusual changes.** From the daily snapshots below, the report compares yesterday with
+the median of the 28 days before. A figure needs 7 of those days first; until then the
+report says so.
+
+| Figure | Unusual when |
+|---|---|
+| State of health | 1 point or more below the median. Turns the report amber. |
+| Round-trip efficiency | Over the 7 days to the end of yesterday, 5 points or more below the median. Turns the report amber. |
+| Battery charged and discharged, solar, grid import and export | Yesterday's total is twice the median or more, or half or less, and at least 2 kWh from it. |
+| Warnings, errors, alerts raised, aGate alarms | Twice the median or more, and at least 20 warnings, 5 errors, 3 alerts or 3 alarms above it. Per gateway and for the bridge. |
+
+Only the first two change the colour (and so reach the phones). The others are listed in
+the report and in Home Assistant's notification, because weather and use move them a lot.
 
 Pick an earlier report from the list at the top right. Reports are kept for 400 days.
 
@@ -142,8 +157,8 @@ daily snapshots below. It only reads.
 
 The first weekly report needs two daily snapshots in the week; until then it says so.
 It goes to Home Assistant's notifications as "FranklinWH Modbus Bridge: weekly battery
-report", replacing the last one. It is not sent to phones: flags for unusual changes come
-later. Admins can switch it off, and **Run now** makes one for last week at once.
+report", replacing the last one. It is not sent to phones; the daily report flags
+unusual changes. Admins can switch it off, and **Run now** makes one for last week at once.
 
 **Daily snapshot.** Just after midnight the bridge also keeps one row per gateway for the
 day just ended: state of health, rated and available capacity, charge level, the aGate's
