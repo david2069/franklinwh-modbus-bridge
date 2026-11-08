@@ -454,3 +454,19 @@ async def test_unusual_needs_a_week_of_history(db):
     await _history(db, 5, {"soh": 80.0, "warn": 500})
     u = (await hr.build_daily(db, AT_0700))["unusual"]
     assert u == {"day": "2026-11-09", "checked": 0, "flags": []}
+
+
+async def test_resolved_unacknowledged_alert_does_not_change_grade(db):
+    await alert_store.open_condition(db, "WORKER_STALLED", "Task stopped", gateway_id="default", now=AT_0700 - 3600)
+    await alert_store.resolve_condition(db, "WORKER_STALLED", gateway_id="default", now=AT_0700 - 1800)
+
+    open_alerts = await alert_store.list_alerts(db, open_only=True)
+    assert len(open_alerts) == 1
+    assert open_alerts[0]["resolved_ts"] is not None
+    assert open_alerts[0]["acked_ts"] is None
+
+    r = await hr.build_daily(db, AT_0700)
+    assert len(r["alerts"]["open"]) == 1
+    assert r["alerts"]["open"][0]["resolved_ts"] is not None
+    assert r["level"] == hr.GREEN
+    assert not any("WORKER_STALLED" in reason or "Task stopped" in reason for reason in r["reasons"])

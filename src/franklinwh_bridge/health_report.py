@@ -380,6 +380,8 @@ def grade(report: dict) -> tuple[str, list[str]]:
         found.append((RED, f"worker {name} stopped beating"))
     a = report["alerts"]
     for al in a["open"]:
+        if al.get("resolved_ts") is not None:
+            continue
         sev = RED if al["severity"] == "critical" else AMBER
         where = f" ({al['gateway']})" if al.get("gateway") else ""
         found.append((sev, f"alert open: {al['title']}{where}"))
@@ -440,7 +442,7 @@ async def build_daily(db: aiosqlite.Connection, now: float,
         r["repeats"] += int(al["count"] or 1)
     open_now = [{"id": al["id"], "code": al["code"], "title": al["title"],
                  "severity": al["severity"], "gateway": al["gateway_id"],
-                 "opened_ts": al["opened_ts"]}
+                 "opened_ts": al["opened_ts"], "resolved_ts": al.get("resolved_ts")}
                 for al in await alert_store.list_alerts(db, open_only=True, limit=200)]
 
     patterns = await _log_patterns(db, now)
