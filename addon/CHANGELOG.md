@@ -7,6 +7,13 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.60 — 2026-11-08
+
+### Fixed
+- **Health report**: an alert that has already cleared, or a one-off event, no longer turns
+  the daily report red or amber just because nobody acknowledged it. Only problems still
+  going on count.
+
 ## 0.2.59 — 2026-11-08
 
 ### Added

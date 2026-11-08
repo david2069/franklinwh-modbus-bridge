@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.60] — 2026-11-08
+
+### Fixed
+
+- **Daily health report: false red or amber** (#473). Its "open now" alerts followed the
+  Alerts bar's rule (resolved conditions and events stay open until acknowledged), so a
+  critical alert that cleared overnight kept the report red, and sent it to phones, every
+  day; an unacknowledged event kept it amber. Only conditions still active count now.
+  Events stay listed under "raised in 24 h"; the Alerts bar is unchanged. (#475)
+
 ## [0.2.59] — 2026-11-08
 
 ### Added
