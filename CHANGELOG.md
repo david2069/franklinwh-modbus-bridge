@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.61] — 2026-11-09
+
 ### Fixed
 
 - **AEMO NEM wholesale price: every fetch failed with HTTP 500** (#477). AEMO retired the

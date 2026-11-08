@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.61 — 2026-11-09
+
+### Fixed
+- **Wholesale spot price (AEMO NEM)**: works again. AEMO switched off the price feed the
+  bridge used on 7 November, so every fetch failed and the log warned about it. Prices now
+  come from AEMO's public market data site, NEMWeb, still with no key. The feature stays
+  off unless you choose a region.
+
 ## 0.2.60 — 2026-11-08
 
 ### Fixed
