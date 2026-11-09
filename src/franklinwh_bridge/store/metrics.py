@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 import time
 from datetime import UTC, datetime
 from typing import Protocol
@@ -630,14 +631,20 @@ async def get_storage_stats(db: aiosqlite.Connection) -> dict:
 
         tables.append(info)
 
-    # DB file size
+    # DB file size: the main file plus its -wal, as the health report counts it (#480);
+    # page_count x page_size (main file only) when there's no file, e.g. in memory.
     db_size: int | None = None
     try:
-        async with db.execute("PRAGMA page_count") as cur:
-            page_count = (await cur.fetchone())[0]
-        async with db.execute("PRAGMA page_size") as cur:
-            page_size = (await cur.fetchone())[0]
-        db_size = page_count * page_size
+        async with db.execute("PRAGMA database_list") as cur:
+            path = next((r[2] for r in await cur.fetchall() if r[1] == "main"), "")
+        if path and os.path.exists(path):
+            db_size = sum(os.path.getsize(p) for p in (path, f"{path}-wal") if os.path.exists(p))
+        else:
+            async with db.execute("PRAGMA page_count") as cur:
+                page_count = (await cur.fetchone())[0]
+            async with db.execute("PRAGMA page_size") as cur:
+                page_size = (await cur.fetchone())[0]
+            db_size = page_count * page_size
     except Exception:
         pass
 
@@ -757,6 +764,17 @@ async def archive_old_metrics(
     return archived
 
 
+async def _raw_start(db: aiosqlite.Connection, now: float, gateway_id: str | None = None) -> float:
+    """Where the raw rows start: the oldest raw row's ``ts``, else ``now``. Charts and export
+    read raw from here on and the archive before it. The archive job moves raw rows at the
+    configured age (``metrics_raw_age_days``), once a day, so a fixed 7-day split left gaps
+    (#480). Archive rows are always before the oldest raw row, so nothing is read twice."""
+    gw_filter, gw_p = (" WHERE gateway_id = ?", (gateway_id,)) if gateway_id else ("", ())
+    async with db.execute(f"SELECT MIN(ts) FROM metrics{gw_filter}", gw_p) as cur:  # noqa: S608
+        row = await cur.fetchone()
+    return row[0] if row and row[0] is not None else now
+
+
 async def query_metrics_with_archive(
     db: aiosqlite.Connection,
     range_seconds: int = 1800,
@@ -788,8 +806,8 @@ async def query_metrics_with_archive(
     # For longer ranges, union raw recent + archived older data
     bucket_size = range_seconds / MAX_POINTS
 
-    # Raw recent data (last 7 days)
-    raw_cutoff = now - ARCHIVE_RAW_AGE_S
+    # Raw where it starts, the archive before that
+    raw_cutoff = await _raw_start(db, now, gateway_id)
 
     gw_filter = " AND gateway_id = ?" if gateway_id else ""
     gw_p: tuple = (gateway_id,) if gateway_id else ()
@@ -886,7 +904,7 @@ async def export_metrics(
         async with db.execute(
             "SELECT ts, battery_w, grid_w, solar_w, home_w, soc, ambient_temp_c, cabinet_temp_c, mode_name, self_reserve_pct, tou_reserve_pct, grid_mode, active_reserve_pct "
             "FROM metrics_archive WHERE ts >= ? AND ts < ? ORDER BY ts",
-            (cutoff, now - ARCHIVE_RAW_AGE_S),
+            (cutoff, await _raw_start(db, now)),
         ) as cursor:
             async for row in cursor:
                 rows.append(_export_row(row))
