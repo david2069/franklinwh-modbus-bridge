@@ -7,6 +7,16 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.62 — 2026-11-09
+
+### Fixed
+- **History charts and CSV export**: no more missing days. If you changed how long
+  full-detail data is kept (Settings → Storage), longer charts and exports could skip
+  several days of history. They now join full-detail and older data without a gap.
+- **Archive Now** follows your full-detail setting instead of always using 7 days.
+- **Storage** card: the database size now includes SQLite's write-ahead log (`-wal`) file,
+  so it matches the health report.
+
 ## 0.2.61 — 2026-11-09
 
 ### Fixed

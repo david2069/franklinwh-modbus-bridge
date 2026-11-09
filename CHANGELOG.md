@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.62] — 2026-11-09
+
 ### Fixed
 
 - **History charts and CSV export: gaps around the 'keep raw' age** (#480). The daily job
