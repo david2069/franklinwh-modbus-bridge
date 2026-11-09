@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+
+- **History charts and CSV export: gaps around the 'keep raw' age** (#480). The daily job
+  archives raw metrics at the configured age (`metrics_raw_age_days`), but charts and export
+  split raw from archive at a fixed 7 days. A setting of 3 or 14 days left a hole of days in
+  ranges over 6 h; even at 7 days, up to a day before the next archive run went missing.
+  Both now split where the raw rows actually start. **Archive Now** uses the configured age
+  instead of 7 days (with a longer setting it archived early). The **Storage** card's
+  database size counts the `-wal` file too, like the health report.
+
 ## [0.2.61] — 2026-11-09
 
 ### Fixed

@@ -525,9 +525,10 @@ async def get_storage_info(request: Request):
 
 @router.post("/metrics/archive")
 async def run_archive(request: Request):
-    """Manually trigger metrics archival (downsample old raw data)."""
+    """Manually trigger metrics archival (downsample raw data older than the configured
+    'keep raw' age, as the daily job does)."""
     db: aiosqlite.Connection = request.app.state.db
-    archived = await archive_old_metrics(db)
+    archived = await archive_old_metrics(db, raw_age_s=await get_raw_age_days(db) * 86400)
     return {"archived_rows": archived}
 
 
