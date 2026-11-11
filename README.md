@@ -202,8 +202,9 @@ you are locked out.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ADMIN_USERNAME` | `admin` | First admin, created on first start |
-| `ADMIN_PASSWORD` | *(generated, logged once)* | First admin's password. Empty counts as unset. |
+| `ADMIN_PASSWORD` | *(generated, printed to the console once)* | First admin's password. Empty counts as unset. |
 | `ALLOW_INSECURE_AUTH` | *(off)*; `1` in the shipped compose | Allow login over plain HTTP. Does not bypass login. |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1` | TLS proxies whose `X-Forwarded-Proto: https` is believed (addresses or networks, comma-separated) |
 | `SESSION_COOKIE_SECURE` | *(off)* | Send the login cookie only over HTTPS (set behind TLS) |
 | `SECURITY_SECRET_KEY` | *(generated, `DATA_DIR/.session_secret`)* | Login cookie signing key. Changing it ends every login. |
 

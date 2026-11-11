@@ -38,7 +38,7 @@ Open `http://localhost:8099`.
 
 - The first start creates the user **admin** with a generated password and prints it once:
   `Seeded admin user 'admin' with a GENERATED password: …`. To choose your own, set `ADMIN_PASSWORD` before the **first** start. It is ignored once a user exists.
-- Without `ALLOW_INSECURE_AUTH=1` the sign-in page refuses plain HTTP: *"login requires HTTPS — set ALLOW_INSECURE_AUTH=1 for a LAN-only setup"*. It doesn't bypass the login. Behind TLS, leave it unset and set `SESSION_COOKIE_SECURE=1`.
+- Without `ALLOW_INSECURE_AUTH=1` the sign-in page refuses plain HTTP: *"login requires HTTPS — set ALLOW_INSECURE_AUTH=1 for a LAN-only setup, or TRUSTED_PROXIES to your TLS proxy's address"*. It doesn't bypass the login. Behind TLS, leave it unset and set `SESSION_COOKIE_SECURE=1`.
 - Lost the password? `bridge recovery reset-admin-password --allow-host`, run from the same folder. See [admin recovery](../admin-recovery.md).
 
 Then the [setup wizard](setup-wizard.md) opens.

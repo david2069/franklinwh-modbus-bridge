@@ -6,6 +6,7 @@ so auth is bypassed there. See docs/multi-user-and-pwa-design.md §3.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import time
@@ -71,10 +72,35 @@ def _is_ingress(request: Request) -> bool:
     return peer == SUPERVISOR_INGRESS_IP and bool(request.headers.get("x-ingress-path"))
 
 
+#: Proxies whose ``X-Forwarded-Proto`` is believed (#201): loopback by default
+#: (Caddy or ``tailscale serve`` on the same host); ``TRUSTED_PROXIES`` lists
+#: others, comma-separated addresses or networks.
+_DEFAULT_TRUSTED_PROXIES = "127.0.0.1,::1"
+
+
+def _trusted_proxy(peer: str | None) -> bool:
+    if not peer:
+        return False
+    try:
+        addr = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    raw = os.environ.get("TRUSTED_PROXIES") or _DEFAULT_TRUSTED_PROXIES
+    for item in raw.split(","):
+        try:
+            if addr in ipaddress.ip_network(item.strip(), strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _is_secure(request: Request) -> bool:
     if request.url.scheme == "https":
         return True
-    return request.headers.get("x-forwarded-proto", "").lower() == "https"
+    if request.headers.get("x-forwarded-proto", "").lower() != "https":
+        return False
+    return _trusted_proxy(request.client.host if request.client else None)
 
 
 def _public_user(user: dict) -> dict:
@@ -294,7 +320,9 @@ async def login(request: Request):
         "ALLOW_INSECURE_AUTH"
     ) != "1":
         raise HTTPException(
-            400, "login requires HTTPS — set ALLOW_INSECURE_AUTH=1 for a LAN-only setup"
+            400,
+            "login requires HTTPS — set ALLOW_INSECURE_AUTH=1 for a LAN-only setup, or "
+            "TRUSTED_PROXIES to your TLS proxy's address",
         )
     username, password = await _read_credentials(request)
     db = request.app.state.db

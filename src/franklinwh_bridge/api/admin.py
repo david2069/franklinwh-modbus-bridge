@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from franklinwh_bridge import __version__
-from franklinwh_bridge.api.auth import require_capability
+from franklinwh_bridge.api.auth import require_capability, require_role
 from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.gateway import link_stats
 from franklinwh_bridge.modbus.catalog import capture_catalog, load_catalog
@@ -668,7 +668,7 @@ async def get_stats(request: Request):
     return stats.snapshot.to_dict()
 
 
-@router.get("/logs")
+@router.get("/logs", dependencies=[Depends(require_role("admin"))])
 async def get_logs(
     request: Request,
     limit: int = 2000,
@@ -1157,7 +1157,7 @@ async def create_backup(request: Request, body: BackupCreateRequest | None = Non
     }
 
 
-@router.get("/backup/list")
+@router.get("/backup/list", dependencies=[Depends(require_role("admin"))])
 async def list_backups(request: Request):
     """List available backups, newest first."""
     mgr = _get_backup_manager(request)
@@ -1198,7 +1198,7 @@ async def restore_backup(body: BackupRestoreRequest, request: Request):
     return {"ok": True, "restored_from": body.name}
 
 
-@router.get("/backup/download/{name}")
+@router.get("/backup/download/{name}", dependencies=[Depends(require_role("admin"))])
 async def download_backup(name: str, request: Request):
     """Download a backup archive as a ZIP file."""
     mgr = _get_backup_manager(request)

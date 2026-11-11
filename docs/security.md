@@ -30,7 +30,14 @@ It is created on the first start from `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
   Either set them in `.env` before the first start, or change the password
   straight after you sign in.
 - With `ADMIN_PASSWORD` unset, a random password is generated and printed to the
-  log once: `docker compose logs | grep -i password`.
+  console log once: `docker compose logs | grep -i password`. It is never written
+  to the Logs tab or the bridge's database; a line an older version stored there is
+  deleted at start-up.
+- **Add-on:** the generated password is never shown. Open the bridge from the Home
+  Assistant sidebar (no password needed) and set one in **Settings → Admin → Users**
+  before signing in on port 8099.
+- **The Logs tab and backups are admin-only.** A backup is a full copy of the
+  database, so `user`, `viewer` and `api` accounts can't list or download one.
 
 ## 2. Logging in over HTTP or HTTPS
 
@@ -44,6 +51,12 @@ Plain HTTP on a home LAN means the password and login cookie cross the network
 unencrypted. For access from outside the home, put the bridge behind TLS (for
 example Caddy or `tailscale serve`), remove `ALLOW_INSECURE_AUTH` and set
 `SESSION_COOKIE_SECURE=1`. Don't forward its port to the internet.
+
+The bridge believes a proxy's `X-Forwarded-Proto: https` only when the request
+comes from a trusted proxy: the same host (`127.0.0.1`, `::1`) by default. If
+the TLS proxy runs elsewhere (another container or host), set `TRUSTED_PROXIES`
+to its address or network, comma-separated, e.g. `TRUSTED_PROXIES=192.0.2.5`.
+From anyone else the header is ignored.
 
 ## 3. How a login works and ends
 

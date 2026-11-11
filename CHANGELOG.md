@@ -13,6 +13,21 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Security
+- **Backups and the app log are admin-only** (#459). `GET /api/backup/list`,
+  `/api/backup/download/{name}` and `/api/logs` answered any signed-in role; a backup is
+  a full database copy (password hashes, HA tokens, the MQTT password). Now `user`,
+  `viewer` and `api` get 403.
+- **The generated admin password stays out of the logs table** (#460). It is printed to
+  the console only, never to the Logs tab or the database, and a line older versions
+  stored is deleted at start-up.
+- **Add-on: the generated admin password is no longer printed** (#185). The log says to
+  set one in Settings → Admin → Users from the HA sidebar, instead of the non-existent
+  ADMIN_PASSWORD option.
+- **`X-Forwarded-Proto: https` is believed only from a trusted proxy** (#201): the same
+  host by default, others via the new `TRUSTED_PROXIES`. Any client could send it to
+  sign in over plain HTTP without `ALLOW_INSECURE_AUTH`.
+
 ## [0.2.62] — 2026-11-09
 
 ### Fixed

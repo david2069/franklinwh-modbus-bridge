@@ -269,7 +269,7 @@ Access: admin role.
 | `GET` | [`/api/settings/metrics`](#get-api-settings-metrics) | Get Metrics Settings | any signed-in role |
 | `PUT` | [`/api/settings/metrics`](#put-api-settings-metrics) | Put Metrics Settings | admin role |
 | `GET` | [`/api/stats`](#get-api-stats) | Get Stats | any signed-in role |
-| `GET` | [`/api/logs`](#get-api-logs) | Get Logs | any signed-in role |
+| `GET` | [`/api/logs`](#get-api-logs) | Get Logs | admin role |
 | `POST` | [`/api/sequence/execute`](#post-api-sequence-execute) | Execute Sequence | `control` capability |
 | `GET` | [`/api/sequences`](#get-api-sequences) | List Sequences | any signed-in role |
 | `GET` | [`/api/sequences/{name}`](#get-api-sequences-name) | Get Sequence | any signed-in role |
@@ -283,9 +283,9 @@ Access: admin role.
 | `PUT` | [`/api/pics`](#put-api-pics) | Put Pics | admin role |
 | `GET` | [`/api/battery/limits`](#get-api-battery-limits) | Get Battery Limits | any signed-in role |
 | `POST` | [`/api/backup/create`](#post-api-backup-create) | Create Backup | admin role |
-| `GET` | [`/api/backup/list`](#get-api-backup-list) | List Backups | any signed-in role |
+| `GET` | [`/api/backup/list`](#get-api-backup-list) | List Backups | admin role |
 | `POST` | [`/api/backup/restore`](#post-api-backup-restore) | Restore Backup | admin role |
-| `GET` | [`/api/backup/download/{name}`](#get-api-backup-download-name) | Download Backup | any signed-in role |
+| `GET` | [`/api/backup/download/{name}`](#get-api-backup-download-name) | Download Backup | admin role |
 | `GET` | [`/api/metrics/export`](#get-api-metrics-export) | Export Metrics Endpoint | any signed-in role |
 | `POST` | [`/api/metrics/import`](#post-api-metrics-import) | Import Metrics Endpoint | admin role |
 
@@ -526,7 +526,7 @@ Persisted log history, filterable by time span (start_ts/end_ts) + level/
 gateway/source/search. Returned oldest-first (the UI reverses for display).
 Falls back to the in-memory buffer on a fresh DB (default, no-range view).
 
-Access: any signed-in role.
+Access: admin role.
 
 | Parameter | In | Type | Required |
 |---|---|---|---|
@@ -693,7 +693,7 @@ Request body (`application/json`): **BackupCreateRequest or null**
 
 List available backups, newest first.
 
-Access: any signed-in role.
+Access: admin role.
 
 ### `POST /api/backup/restore` { #post-api-backup-restore }
 
@@ -714,7 +714,7 @@ Request body (`application/json`): **BackupRestoreRequest**
 
 Download a backup archive as a ZIP file.
 
-Access: any signed-in role.
+Access: admin role.
 
 | Parameter | In | Type | Required |
 |---|---|---|---|
