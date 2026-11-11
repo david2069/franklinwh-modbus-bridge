@@ -13,6 +13,19 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **Schedule failures raise alerts** (#296 item 53). `SCHEDULE_FAILED` and
+  `COMMAND_UNCONFIRMED` were in the alert catalogue, but nothing raised them, so a failed
+  schedule reached the owner only through the entry's own notify target. Now:
+  - `COMMAND_UNCONFIRMED`: a force charge or discharge is still not moving the battery
+    after the re-send;
+  - `SCHEDULE_FAILED`: a window ends with no successful dispatch, the setpoint-lost cap is
+    reached, HA actions are skipped because no HA is configured, or an HA entity action
+    fails.
+  Both are critical, so they show in the alert modal and go to Home Assistant. A failed
+  send is still `COMMAND_REFUSED`, raised by the command handler, so it isn't alerted
+  twice. A failed notify isn't alerted either, because it is itself a notification.
+
 ## [0.2.63] — 2026-11-11
 
 ### Security

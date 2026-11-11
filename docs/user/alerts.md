@@ -14,6 +14,8 @@ the next time you open it.
 | aGate unreachable | It hasn't answered for 5 minutes. Clears after 2 minutes back. | critical |
 | Live data missing | No reading has worked for over 2 minutes. Clears after 1 good minute. | critical |
 | Some live data missing | Registers 15500–15509 (solar, home load, mode, reserves) have been missing for 2 minutes while other readings arrive. | warning |
+| Battery command not confirmed | A scheduled force charge or discharge was accepted, but the battery still wasn't moving after a re-send. | critical |
+| Scheduled action failed | A schedule window ended without its battery command ever going through, the aGate kept dropping the setpoint, or one of the entry's Home Assistant actions failed. A failed phone notification is not an alert. | critical |
 | A bridge task stopped | One of the bridge's own background tasks (polling, schedules, the reachability check, log writing, alert handling) stopped running or crashed. | critical |
 
 ## Where you see them
