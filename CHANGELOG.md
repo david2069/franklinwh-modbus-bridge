@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.63] — 2026-11-11
+
 ### Security
 - **Backups and the app log are admin-only** (#459). `GET /api/backup/list`,
   `/api/backup/download/{name}` and `/api/logs` answered any signed-in role; a backup is
