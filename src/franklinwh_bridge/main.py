@@ -83,7 +83,7 @@ from franklinwh_bridge.publish.namespace import (
     ensure_client_id,
     mark_published,
 )
-from franklinwh_bridge.security import seed_admin, session_secret_key
+from franklinwh_bridge.security import scrub_logged_passwords, seed_admin, session_secret_key
 from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import link_stats as link_stats_store
 from franklinwh_bridge.store import modbus_audit, point_history
@@ -141,6 +141,10 @@ class LogBufferHandler(logging.Handler):
         self._persist_level = persist_level
 
     def emit(self, record: logging.LogRecord) -> None:
+        # A secret (the generated admin password) goes to the console only, never
+        # to the Logs tab or the logs table (#460).
+        if getattr(record, "console_only", False):
+            return
         # Extract gateway_id from record extra dict (set by LoggerAdapter)
         # or infer from message pattern "Gateway {id}:"
         gw_id = getattr(record, "gateway_id", "")
@@ -255,6 +259,7 @@ async def lifespan(app: FastAPI):
     # visible in the Logs tab rather than only on the console at boot.
     await log_startup_event(db, "disclaimer", disclaimer.SHORT)
     await seed_admin(db)  # first-run admin (no lockout); logs a generated pw once
+    await scrub_logged_passwords(db)  # what older versions persisted (#460)
     try:  # first-run date for the support bundle — set once, never overwritten
         await ensure_install_date(db)
     except Exception:  # noqa: BLE001 — must never block startup

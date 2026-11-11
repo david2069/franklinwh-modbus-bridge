@@ -14,6 +14,7 @@ from typing import Any
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
+from franklinwh_bridge.config.environment import detect_environment
 from franklinwh_bridge.store.db import (
     count_users,
     create_user,
@@ -94,11 +95,33 @@ async def seed_admin(db: Any) -> None:
     if generated:
         password = generate_password()
     await create_user(db, username, hash_password(password), role="admin", enabled=True)
-    if generated:
+    if generated and detect_environment() == "ha_addon":
+        # The add-on has no ADMIN_PASSWORD option, and the sidebar needs no
+        # password, so the generated one is never shown (#185).
+        logger.warning(
+            "Seeded admin user %r with a generated password. To sign in on port 8099, "
+            "open the bridge from the Home Assistant sidebar and set a password in "
+            "Settings → Admin → Users.",
+            username,
+        )
+    elif generated:
+        # Console only: never in the Logs tab or the logs table (#460).
         logger.warning(
             "Seeded admin user %r with a GENERATED password: %s  (set ADMIN_PASSWORD "
             "to choose your own; change it after first login)",
-            username, password,
+            username, password, extra={"console_only": True},
         )
     else:
         logger.info("Seeded admin user %r from ADMIN_USERNAME/ADMIN_PASSWORD env", username)
+
+
+async def scrub_logged_passwords(db: Any) -> int:
+    """Delete the generated-password lines older versions wrote to the logs table
+    (#460). Returns the number of rows removed."""
+    cur = await db.execute(
+        "DELETE FROM logs WHERE message LIKE 'Seeded admin user % GENERATED password:%'"
+    )
+    await db.commit()
+    if cur.rowcount:
+        logger.info("Removed %d stored log line(s) holding a generated password", cur.rowcount)
+    return cur.rowcount
