@@ -35,6 +35,7 @@ from franklinwh_bridge import workers
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate as eval_conditions
 from franklinwh_bridge.gateway.scheduler_sensors import snapshot as sensor_snapshot
 from franklinwh_bridge.gateway.scheduler_triggers import prev_fire_at
+from franklinwh_bridge.store import alerts as alert_store
 from franklinwh_bridge.store import dispatch_outcomes
 
 logger = logging.getLogger(__name__)
@@ -1130,6 +1131,7 @@ class ScheduleEngine:
                 msg = (f"window ended without a successful dispatch "
                        f"({rec['attempts']} attempt(s); last: {rec['last_reason']})")
                 await self._audit(w["id"], w["action"], tkey, "failed", msg)
+                await self._alert("SCHEDULE_FAILED", w, tkey, msg)
                 if not rec.get("refused"):  # a refusal was notified when it happened
                     await self._notify_owner(
                         w, tkey, f"FAILED: {w.get('name') or w['id']} — {msg}", now)
@@ -1446,10 +1448,9 @@ class ScheduleEngine:
         # would skip notifications on a bridge that has notify wired but no
         # entity-action dispatcher — the two are independent capabilities.
         if self._ha_action_fn is None and self._ha_notify_fn is None:
-            await self._audit(
-                win["id"], "ha_action", tkey, "failed",
-                f"{len(actions)} HA action(s) skipped — no HA configured",
-            )
+            msg = f"{len(actions)} HA action(s) skipped — no HA configured"
+            await self._audit(win["id"], "ha_action", tkey, "failed", msg)
+            await self._alert("SCHEDULE_FAILED", win, tkey, msg)
             return
         for a in actions:
             inst = a.get("instance_id")
@@ -1498,6 +1499,8 @@ class ScheduleEngine:
             await self._audit(
                 win["id"], "ha_action", tkey, "ha_action" if ok else "failed", detail
             )
+            if not ok and not is_notify:
+                await self._alert("SCHEDULE_FAILED", win, tkey, f"HA action failed: {detail}")
 
     async def _fire_exit_ha_actions(self, tkey: tuple, now: datetime | None = None) -> None:
         """Run any exit-tagged HA actions for a just-ended activation, then forget it."""
@@ -1605,6 +1608,7 @@ class ScheduleEngine:
                     own["gave_up"] = True
                     msg = f"setpoint lost {MAX_REASSERTS} times — not re-sending again this window"
                     await self._audit(win["id"], own["action"], tkey, "failed", msg)
+                    await self._alert("SCHEDULE_FAILED", win, tkey, msg)
                     await self._notify_owner(win, tkey, f"FAILED: {name} — {msg}", now)
                 return True
             own["reasserts"] = own.get("reasserts", 0) + 1
@@ -1683,12 +1687,21 @@ class ScheduleEngine:
         msg = (f"battery at {bw:.0f} W (requested {abs(req)} W) even after a re-send — "
                f"not effective")
         await self._audit(win["id"], own["action"], tkey, "not_effective", msg)
+        await self._alert("COMMAND_UNCONFIRMED", win, tkey, msg)
         await self._notify_owner(win, tkey, f"NOT EFFECTIVE: {name} — {msg}", now)
         return False
 
     async def _outcome(self, dispatch_id: str | None, state: str, **kw: Any) -> None:
         if self._db is not None:
             await dispatch_outcomes.update(self._db, dispatch_id, state, **kw)
+
+    async def _alert(self, code: str, win: dict, tkey: tuple, message: str) -> None:
+        """A bridge alert, so the failure reaches the modal and HA even when the
+        entry has no notify target of its own. The alert store never raises."""
+        if self._db is not None:
+            name = win.get("name") or win["id"]
+            await alert_store.raise_event(self._db, code, f"Schedule '{name}': {message}",
+                                          gateway_id=tkey[2])
 
     @staticmethod
     def _soc_limited(pts: dict, discharging: bool) -> bool:
