@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.64] — 2026-11-11
+
 ### Fixed
 - **Schedule failures raise alerts** (#296 item 53). `SCHEDULE_FAILED` and
   `COMMAND_UNCONFIRMED` were in the alert catalogue, but nothing raised them, so a failed
