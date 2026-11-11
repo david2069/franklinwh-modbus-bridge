@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.64 — 2026-11-11
+
+### Fixed
+- **Failed schedules now raise an alert**, in the bridge and in Home Assistant's
+  notifications, even if the schedule has no notification of its own:
+  - **Scheduled action failed:** a window ended without its battery command ever going
+    through, the aGate kept dropping the setpoint, or one of the schedule's Home
+    Assistant actions failed.
+  - **Battery command not confirmed:** a scheduled force charge or discharge was
+    accepted, but the battery still wasn't moving after a re-send.
+
 ## 0.2.63 — 2026-11-11
 
 ### Security
