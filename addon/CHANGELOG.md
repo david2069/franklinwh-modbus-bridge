@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.63 — 2026-11-11
+
+### Security
+- **Backups and the Logs tab are for admins only.** Other accounts (user, viewer, api)
+  could list and download backups, which hold every password and token the bridge
+  stores, and read the app log.
+- **The first admin password is no longer shown in the logs.** On the add-on, open the
+  bridge from the Home Assistant sidebar and set a password in Settings → Admin → Users
+  if you want to sign in on port 8099. A password line an older version stored is
+  deleted when the add-on starts.
+
 ## 0.2.62 — 2026-11-09
 
 ### Fixed
