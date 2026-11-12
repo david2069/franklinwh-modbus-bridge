@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.66] — 2026-11-13
+
 ### Fixed
 - **Deleting a gateway, or switching off Publish to Home Assistant, leaves nothing
   on the broker** (#182). The entities were removed, but the gateway's last values
