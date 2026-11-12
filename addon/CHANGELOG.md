@@ -7,6 +7,21 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.65 — 2026-11-12
+
+### Fixed
+- **Stop stays stopped after a restart.** If you pressed Stop on a schedule (or it ended
+  early) and the add-on restarted while its window was still open, the battery command
+  started again. Now it waits for the next window.
+- **Always schedules follow their conditions.** A force charge or discharge on an
+  *Always evaluate* schedule now stops when its conditions stop holding, and starts again
+  the next time they hold. Before, it kept running, and once it had stopped it never ran
+  again until the add-on restarted.
+- **One-off schedules keep their time.** Opening a one-off schedule (for example an
+  imported one) and saving it lost its date and time, so it never ran. The editor now has
+  **One-off at date and time**, and a schedule that could never run can't be saved as
+  enabled.
+
 ## 0.2.64 — 2026-11-11
 
 ### Fixed

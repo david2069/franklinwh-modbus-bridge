@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.65] — 2026-11-12
+
 ### Fixed
 - **One-off entries keep their time when saved** (#337). The editor had no one-off
   trigger, so saving an API or imported one-off sent an empty `trigger_spec`, and the
