@@ -14,6 +14,12 @@ lands, not backfilled later.
 ## [Unreleased]
 
 ### Fixed
+- **Always entries follow their gate** (#165). A running force ignored the entry
+  conditions, and once a run ended (exit, Stop, time limit) the entry never fired
+  again until the bridge restarted; an HA-only Always entry fired once per bridge run.
+  Now the run ends when the entry conditions turn false (a force is released by the
+  release policy, exit-time HA actions run) and the entry fires again the next time
+  they hold. Disabling and enabling an entry clears its *done* mark.
 - **Stop survives a restart** (#231). Stop, and a run that ended early inside its window
   (exit condition, time limit, release), marked the window done only in memory, so a
   restart inside the same window fired the battery again. The mark is now saved

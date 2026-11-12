@@ -192,25 +192,28 @@ Oct), *Six monthly* (Jan, Jul) and *Annually* (Jan 1st).
 The entry is active all the time; only its entry conditions decide whether it dispatches.
 <!-- @b TRG-27 ;; src: gateway/scheduler.py:189-191 ;; tested: tests/unit/test_scheduler_engine.py::test_always_trigger_gated_by_entry_conditions ;; write: yes ;; b: An always entry is continuously active and dispatches when its entry conditions pass ;; test: — -->
 
-!!! warning "Always runs once, then waits for a restart"
-    The form says an Always entry "releases when [its conditions] stop". The code does not
-    do that:
+The entry conditions act as the window:
 
-    - Once a force command runs, the entry conditions are not checked again. Only an exit
-      condition, a time limit, a target SoC, Stop or a release elsewhere ends it.
-    - When a run ends, the entry is marked *done for this window*. An Always window never
-      closes, so the entry **does not fire again until the bridge restarts**.
-    - An Always **HA-only** entry also fires its HA actions only once per bridge run.
-    - The *done* mark is held per gateway, not per entry. If another entry on the same
-      target dispatches, the mark is cleared and the Always entry can fire again. Disabling
-      and re-enabling the entry does not clear it when it is the only entry on its target.
+- While they hold, the entry runs. When they **stop holding, the run ends**: a force command
+  is released (by the entry's release policy), and an HA-only entry runs its exit-time HA
+  actions.
+- The next time they hold, the entry **fires again**, with its fire-time HA actions.
+- After a run ends some other way (exit condition, time limit, target SoC, Stop, a release
+  elsewhere) the entry is *done* until its entry conditions have failed once. It then fires
+  on the next time they hold.
+- An Always entry without entry conditions runs once; after Stop or an exit it waits until it
+  is disabled and enabled again, or the bridge restarts.
 
-    For "whenever the price is low" rules use a repeating trigger with a gap, for example
-    **Custom cron** `*/30 * * * *` with a 29-minute duration. The [examples](examples.md) do this.
+!!! tip "Two thresholds need a repeating trigger"
+    The entry condition both starts and stops an Always run, so an exit condition can't add a
+    gap between the start and stop thresholds. For "charge below 5 c/kWh, stop above 8 c/kWh"
+    use a repeating trigger with a gap, for example **Custom cron** `*/30 * * * *` with a
+    29-minute duration, as the [examples](examples.md) do. A value that hovers on the threshold
+    starts and stops an Always entry on each change; the hold-for **Duration** under the entry conditions makes it wait.
 
-<!-- @b TRG-28 ;; src: gateway/scheduler.py:845, gateway/scheduler.py:943, gateway/scheduler.py:956-957, gateway/scheduler.py:984-989 ;; untested ;; write: yes ;; b: After a run of an always entry ends (exit, Stop, time limit), the entry never re-fires until restart because its window never closes; an always HA-only entry fires once per bridge run ;; test: unit — always entry with exit condition; tick to dispatch, meet exit, clear exit; assert no second dispatch over many ticks -->
+<!-- @b TRG-28 ;; src: gateway/scheduler.py ;; tested: tests/unit/test_always_gate.py ;; write: yes ;; b: An always entry's run ends when its entry conditions turn false (a force is released); after an exit, Stop or time limit it is done until the gate has been false once, then fires on the next true; an always HA-only entry fires its HA actions on each true (#165) ;; test: — -->
 <!-- @b TRG-29 ;; src: gateway/scheduler.py:428, gateway/scheduler.py:956-957, gateway/scheduler.py:1039 ;; unclear ;; write: yes ;; b: The done-for-this-window mark is one entry id per target and gateway; a dispatch by another entry on the same target clears it, letting an entry that already finished its window fire again in the same window ;; test: unit — entries A (window) and B (higher priority, short trigger) on one gateway; A exits by condition, B fires and ends; assert whether A re-fires in its still-open window -->
-<!-- @b TRG-30 ;; src: templates/tabs/schedule.html:689-692 ;; untested ;; write: no ;; b: The form says an always entry releases when its conditions stop; the engine does not re-check the gate while running ;; test: none — doc/UI mismatch, fix the form text -->
+<!-- @b TRG-30 ;; src: templates/tabs/schedule.html:765-768 ;; tested: tests/unit/test_always_gate.py::test_force_is_released_when_the_gate_turns_false ;; write: no ;; b: The form says an always entry releases when its conditions stop, and the engine does (#165) ;; test: — -->
 
 ## Quick presets
 
