@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **Stop survives a restart** (#231). Stop, and a run that ended early inside its window
+  (exit condition, time limit, release), marked the window done only in memory, so a
+  restart inside the same window fired the battery again. The mark is now saved
+  (`schedule_done`, migration 69) and restored at start-up while that window is still
+  open; a later window fires as normal. Always entries are unchanged.
+
 ## [0.2.64] — 2026-11-11
 
 ### Fixed
