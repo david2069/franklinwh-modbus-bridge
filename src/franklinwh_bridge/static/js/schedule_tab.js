@@ -27,6 +27,7 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TRIGGER_TYPES = [
   { id: 'window',   label: 'Recurring windows',   kind: null },
   { id: 'once',     label: 'One-off date window', kind: null },
+  { id: 'oneoff',   label: 'One-off at date and time', kind: 'oneoff' },
   { id: 'daily',    label: 'Daily at time',       kind: 'daily' },
   { id: 'weekly',   label: 'Weekly at time',      kind: 'weekly' },
   { id: 'interval', label: 'Every N minutes',     kind: 'interval' },
@@ -1419,12 +1420,14 @@ function scheduleTab() {
         id: e.id,
         name: e.name,
         trigger_type,
-        date: (e.when_spec && e.when_spec.date) || todayISO(),
+        date: (e.trigger_kind === 'oneoff' && (s.fire_at || '').slice(0, 10))
+          || (e.when_spec && e.when_spec.date) || todayISO(),
         days: e.trigger_kind === 'weekly'
           ? (s.days_of_week || []).slice()
           : ((e.when_spec && e.when_spec.days) || []).slice(),
         windows: ((e.when_spec && e.when_spec.windows) || [{ start: '14:00', end: '19:00' }]).map(w => ({ ...w })),
-        time_of_day: s.time_of_day || '18:00',
+        time_of_day: (e.trigger_kind === 'oneoff' && (s.fire_at || '').slice(11, 16))
+          || s.time_of_day || '18:00',
         interval_min: s.every_seconds ? Math.round(s.every_seconds / 60) : 60,
         anchor_time: s.anchor_time || '',
         month_day: s.day || 1,
@@ -1478,9 +1481,9 @@ function scheduleTab() {
     get isTrigger() { return !['window', 'once'].includes(this.form?.trigger_type); },
     get showWindows() { return ['window', 'once'].includes(this.form?.trigger_type); },
     get showDays() { return this.form?.trigger_type === 'window' || this.form?.trigger_type === 'weekly'; },
-    get showTimeOfDay() { return ['daily', 'weekly'].includes(this.form?.trigger_type); },
+    get showTimeOfDay() { return ['daily', 'weekly', 'oneoff'].includes(this.form?.trigger_type); },
     get showInterval() { return this.form?.trigger_type === 'interval'; },
-    get showDate() { return this.form?.trigger_type === 'once'; },
+    get showDate() { return ['once', 'oneoff'].includes(this.form?.trigger_type); },
     get showMonthly() { return this.form?.trigger_type === 'monthly'; },
     get showCron() { return this.form?.trigger_type === 'cron'; },
 
@@ -1638,6 +1641,7 @@ function scheduleTab() {
 
     _buildTriggerSpec() {
       const f = this.form;
+      if (f.trigger_type === 'oneoff') return { fire_at: `${f.date}T${f.time_of_day}:00` };
       if (f.trigger_type === 'daily') return { time_of_day: f.time_of_day };
       if (f.trigger_type === 'weekly') return { time_of_day: f.time_of_day, days_of_week: f.days.slice() };
       if (f.trigger_type === 'interval') {
@@ -1684,7 +1688,8 @@ function scheduleTab() {
       this.formResult = null;
       if (!f.name.trim()) { fail('Name is required'); return; }
       if (this.showWindows && !f.windows.length) { fail('Add at least one time window'); return; }
-      if (f.trigger_type === 'once' && !f.date) { fail('Pick a date'); return; }
+      if (['once', 'oneoff'].includes(f.trigger_type) && !f.date) { fail('Pick a date'); return; }
+      if (f.trigger_type === 'oneoff' && !f.time_of_day) { fail('Pick a time'); return; }
 
       // Editing an entry that is firing RIGHT NOW → warn before we alter a live
       // battery command. The engine re-applies on save (re-dispatches if the
