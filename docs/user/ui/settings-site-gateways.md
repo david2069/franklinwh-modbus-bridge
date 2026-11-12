@@ -151,9 +151,10 @@ result shows in the dialog. On the default gateway this section says so instead.
 
 !!! note "What removing a gateway clears in Home Assistant"
     The gateway's device and entities are removed from Home Assistant straight away, as
-    switching off **Publish this gateway to Home Assistant** does. Its last values stay on
-    the MQTT broker as retained messages, which Home Assistant no longer shows. Up to
-    0.2.48 the entities stayed until the bridge restarted (#151).
+    switching off **Publish this gateway to Home Assistant** does. Its last values are
+    cleared from the MQTT broker too, also when it was no longer published. Up to 0.2.65
+    they stayed there as retained messages (#182); up to 0.2.48 the entities stayed until
+    the bridge restarted (#151).
 
 ### Battery power rating
 

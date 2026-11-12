@@ -89,11 +89,12 @@ When a new version is released, HA offers **Update** on the add-on's page. Use *
     See the warning under [Updating](#updating). Take a backup first if you might come back
     (**Settings → Data & Backup → Create Backup**, then download it).
 
-1. In the bridge, **Settings → Home Assistant → Publish to Home Assistant**: switch off each gateway. That removes its device and entities from HA.
-2. **Settings → Apps → FranklinWH Modbus Bridge → Uninstall**.
-3. Optional: remove the repository (**⋮ → Repositories**).
+1. In the bridge, **Settings → Home Assistant → Publish to Home Assistant**: switch off each gateway. That removes its device and entities from HA, and its last values from the MQTT broker.
+2. **Settings → Home Assistant → [Unpublish](ui/settings-home-assistant.md#republish-and-unpublish)**: removes the bridge's own device (Bridge problem, Bridge heartbeat).
+3. **Settings → Apps → FranklinWH Modbus Bridge → Uninstall**.
+4. Optional: remove the repository (**⋮ → Repositories**).
 
-The bridge's retained state topics (`fwh_mb/<gateway>/…`) stay on the broker after this (#182). Remove them with an MQTT client such as MQTT Explorer. See [Fixing, moving and removing entities](home-assistant-entities.md).
+Up to 0.2.65, switching a gateway off left its last values retained on the broker (`fwh_mb/<gateway>/…`, #182). If you uninstalled an older version, remove them with an MQTT client such as MQTT Explorer. See [Fixing, moving and removing entities](home-assistant-entities.md).
 
 ## Optional: direct port 8099
 

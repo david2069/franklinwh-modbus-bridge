@@ -1002,6 +1002,10 @@ async def remove_gateway(gw_id: str, request: Request):
             await sync()
         except Exception as exc:  # the gateway is gone; never fail over the side effect
             logger.warning("MQTT device sync after removing %s failed: %s", gw_id, exc)
+    # And its last values and availability on the broker, published or not (#182).
+    publisher = getattr(request.app.state, "mqtt_publisher", None)
+    if publisher is not None:
+        publisher.clear_gateway_topics(gw_id)
     return {"deleted": True}
 
 

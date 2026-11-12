@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from franklinwh_bridge.modbus.sample import Sample
-from franklinwh_bridge.publish import bridge_device
+from franklinwh_bridge.publish import bridge_device, cleanup
 from franklinwh_bridge.publish.command_handler import CommandHandler
 from franklinwh_bridge.publish.entities import (
     BRIDGE_ENTITIES,
@@ -310,6 +310,8 @@ class MqttPublisher:
         self._discovery_paused = False
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
+        # Running clears of a removed device's retained topics, by short id (#182).
+        self._clearing: dict[str, asyncio.Task] = {}
         self._device_info: DeviceInfo | None = None
         self._entities: list[EntityDef] = list(BRIDGE_ENTITIES)
         self._removed_entities: list[EntityDef] = []
@@ -394,6 +396,10 @@ class MqttPublisher:
                 "Default gateway unpublished from Home Assistant: %d discovery "
                 "topics tombstoned", count,
             )
+            self.clear_device_topics(sid, {
+                *(e.state_topic(sid, self._topic_prefix) for e in self._entities),
+                self._availability_topic(sid),
+            })
         self._device_info = None
         self._command_handler = None
         self._default_suppressed = True
@@ -603,8 +609,45 @@ class MqttPublisher:
                 "Unregistered + tombstoned MQTT device: %s (%d entities)",
                 gateway_id, len(dev.entities),
             )
+            self.clear_device_topics(sid, {
+                *(e.state_topic(sid, self._topic_prefix) for e in dev.entities), avail_topic,
+            })
         else:
             logger.info("Unregistered MQTT device: %s", gateway_id)
+
+    def queue_clear(self, topics: list[str]) -> int:
+        """Queue an empty retained payload for each topic. Returns how many."""
+        n = 0
+        for topic in topics:
+            try:
+                self._queue.put_nowait(MqttMessage(topic=topic, payload="", retain=True))
+            except asyncio.QueueFull:
+                logger.warning("MQTT queue full — %d retained topic(s) not cleared",
+                               len(topics) - n)
+                break
+            n += 1
+        return n
+
+    def clear_device_topics(self, short_id: str, known: set[str] | None = None) -> None:
+        """Clear the retained topics under ``<prefix>/<short_id>/``, in the
+        background (#182): a removed device's last values and availability
+        stayed on the broker. Needs a broker connection; one clear per device
+        at a time."""
+        if not self._state.connected or short_id in self._clearing:
+            return
+        try:
+            task = asyncio.get_running_loop().create_task(
+                cleanup.clear_device_topics(self, short_id, set(known or ())))
+        except RuntimeError:  # no running loop
+            return
+        self._clearing[short_id] = task
+        task.add_done_callback(lambda _t: self._clearing.pop(short_id, None))
+
+    def clear_gateway_topics(self, gateway_id: str) -> None:
+        """Clear a deleted additional gateway's retained topics, also when it
+        was no longer published (its topics may be from an older version)."""
+        if gateway_id and gateway_id != "default":
+            self.clear_device_topics(_slug(gateway_id))
 
     @property
     def gateway_id(self) -> str:
