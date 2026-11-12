@@ -14,6 +14,11 @@ lands, not backfilled later.
 ## [Unreleased]
 
 ### Fixed
+- **One-off entries keep their time when saved** (#337). The editor had no one-off
+  trigger, so saving an API or imported one-off sent an empty `trigger_spec`, and the
+  entry never fired. The editor now has **One-off at date and time**. The API refuses a
+  one-off without `fire_at`, and refuses an enabled entry that would never fire (its
+  time has passed or none is set); it can still be saved disabled.
 - **Always entries follow their gate** (#165). A running force ignored the entry
   conditions, and once a run ended (exit, Stop, time limit) the entry never fired
   again until the bridge restarted; an HA-only Always entry fired once per bridge run.

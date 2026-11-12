@@ -19,14 +19,14 @@ is a trigger plus entry conditions (see [Concepts](concepts.md#three-ways-to-sta
 | Monthly / calendar | `monthly` | Day of month, Fire at, Duration (min), Months | fire time → + duration |
 | Custom cron | `cron` | Cron expression, Duration (min) | each cron match → + duration |
 | Always evaluate (sensor-driven) | `always` | — | always |
-| *(API only)* | `oneoff` | `fire_at` (ISO date-time), `duration_s` | fire time → + duration, once |
+| One-off at date and time | `oneoff` | Date, Fire at, Duration (min) (API: `fire_at`, ISO date-time) | fire time → + duration, once |
 
 Window triggers are *legacy* entries unless they also have conditions; the others are
 *v2*. See [Concepts](concepts.md#legacy-and-v2-entries).
 
 ## Fire-based triggers: the active window
 
-For Daily, Weekly, Every N minutes, Monthly, Cron and the API one-off, the bridge finds the
+For Daily, Weekly, Every N minutes, Monthly, Cron and One-off at date and time, the bridge finds the
 most recent fire time at or before now. The entry is active from that fire time until fire
 time + **Duration (min)**. <!-- @b TRG-01 ;; src: gateway/scheduler.py:180-199, gateway/scheduler_triggers.py:387-411 ;; tested: tests/unit/test_scheduler_engine.py::test_trigger_inactive_after_duration_window ;; write: yes ;; b: A fire-based entry is active during [previous fire, previous fire + duration_s) ;; test: — -->
 
@@ -91,6 +91,25 @@ fire time equal to the current minute counts as now.
 - An overnight window on a date covers only that date: `22:00 → 02:00` on 20 October runs
   00:00–02:00 and 22:00–24:00 **on the 20th**. Use two entries to cross midnight.
   <!-- @b TRG-13 ;; src: gateway/scheduler.py:131-133 ;; untested ;; write: yes ;; b: An overnight window on a one-off date is active only on that date: the after-midnight part on the next date never runs ;; test: unit — date=D, 22:00-02:00; assert inactive at D+1 01:00 and active at D 01:00 -->
+
+## One-off at date and time
+
+| Field | Values | Notes |
+|---|---|---|
+| Date | a calendar date | The bridge's clock, like every trigger. |
+| Fire at | HH:MM | |
+| Duration (min) | minutes | How long it stays active after the fire time. |
+
+- It fires once. After that the list shows no next fire.
+- Unlike the one-off date window, it can run past midnight: 23:00 with 180 minutes runs
+  until 02:00 the next day.
+
+## Saving an entry that would never fire
+
+An **enabled** entry with no next fire that isn't running now is refused at save time:
+"This entry would never fire: its time has passed or none is set." Change the time, or
+save it disabled. A disabled entry with a passed date can still be kept and renamed.
+Always entries are exempt. <!-- @b TRG-36 ;; src: api/schedules_api.py ;; tested: tests/unit/test_oneoff_save.py ;; write: no ;; b: POST and PATCH refuse an enabled entry with no next fire that is not active now; a oneoff without fire_at is refused (#337) ;; test: — -->
 
 ## Daily at time
 
@@ -252,9 +271,9 @@ The **Next fire** column is worked out on the bridge, on the bridge's clock:
   database. A window ignores it for activity, but **Run now** still uses it as the time
   limit (see [Run now](outcomes.md#run-now-and-stop)).
   <!-- @b TRG-34 ;; src: static/js/schedule_tab.js:1453-1467, gateway/scheduler.py:570-571 ;; untested ;; write: yes ;; b: Saving a window entry from the form does not send duration_s, so an old duration stays and is used as Run now's time limit ;; test: browser + unit — change a daily entry with 30 min to a window, save, GET it: duration_s still 1800 -->
-- An API **one-off** (`trigger_kind: oneoff`) has no form type. Opening it in the editor
-  and saving it drops its `fire_at`, and the entry never fires again.
-  <!-- @b TRG-35 ;; src: static/js/schedule_tab.js:1132, static/js/schedule_tab.js:1349-1366 ;; untested ;; write: yes ;; b: Saving an API oneoff entry from the form sends trigger_spec {} and loses fire_at ;; test: browser — create a oneoff via API, open and save in the form, GET it: trigger_spec is {} -->
+- A **one-off at date and time** entry opens with its date and time, and saving keeps
+  them (#337).
+  <!-- @b TRG-35 ;; src: static/js/schedule_tab.js ;; tested: tests/unit/test_oneoff_save.py ;; write: yes ;; b: Saving a oneoff entry from the form sends fire_at from the Date and Fire at fields ;; test: browser — create a oneoff via API, open and save in the form, GET it: fire_at kept -->
 
 ## After an outage or a restart (catch-up)
 

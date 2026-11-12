@@ -166,6 +166,14 @@ def _validate_trigger(kind: str | None, spec: dict | None) -> None:
             raise HTTPException(500, "cron support unavailable (croniter missing)") from exc
         if not croniter.is_valid(expr):
             raise HTTPException(400, f"invalid cron expression: {expr!r}")
+    elif kind == "oneoff":
+        raw = spec.get("fire_at")
+        if not raw:
+            raise HTTPException(400, "oneoff trigger requires trigger_spec.fire_at (date and time)")
+        try:
+            datetime.fromisoformat(str(raw))
+        except ValueError as exc:
+            raise HTTPException(400, f"invalid fire_at: {raw!r}") from exc
     elif kind == "monthly":
         day = spec.get("day", 1)
         try:
@@ -177,6 +185,22 @@ def _validate_trigger(kind: str | None, spec: dict | None) -> None:
         for m in spec.get("months") or []:
             if not (isinstance(m, int) and 1 <= m <= 12):
                 raise HTTPException(400, "monthly trigger months must be 1..12")
+
+
+#: Fields that decide when an entry fires; a PATCH touching one is re-checked.
+_TIMING_FIELDS = {"enabled", "trigger_kind", "trigger_spec", "when_spec", "duration_s"}
+
+
+def _refuse_if_never_fires(entry: dict) -> None:
+    """An enabled entry with no next fire, not running now, would sit there and
+    never run (#337). Say so at save time; a disabled one may be kept."""
+    if not entry.get("enabled") or entry.get("trigger_kind") == "always":
+        return
+    d = _decorate(entry, datetime.now())
+    if d["next_fire"] is None and not d["active_now"]:
+        raise HTTPException(
+            400, "This entry would never fire: its time has passed or none is set. "
+                 "Change the time, or save it disabled.")
 
 
 def _validate_action(action: str, params: dict) -> None:
@@ -310,6 +334,11 @@ async def add_schedule(body: ScheduleCreate, request: Request):
     db: aiosqlite.Connection = request.app.state.db
     _validate_action(body.action, body.params)
     _validate_trigger(body.trigger_kind, body.trigger_spec)
+    _refuse_if_never_fires({
+        "enabled": body.enabled, "trigger_kind": body.trigger_kind,
+        "trigger_spec": body.trigger_spec, "when_spec": body.when_spec.model_dump(),
+        "duration_s": body.duration_s,
+    })
     entry = await create_schedule(
         db,
         name=body.name,
@@ -636,6 +665,10 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
         kind = updates.get("trigger_kind", (existing or {}).get("trigger_kind"))
         spec = updates.get("trigger_spec", (existing or {}).get("trigger_spec"))
         _validate_trigger(kind, spec)
+    if _TIMING_FIELDS & set(updates):
+        existing = await get_schedule(db, schedule_id)
+        if existing is not None:
+            _refuse_if_never_fires({**existing, **updates})
     result = await update_schedule(db, schedule_id, **updates)
     if result is None:
         raise HTTPException(404, f"Schedule '{schedule_id}' not found")

@@ -192,7 +192,7 @@ async def test_switch_trigger_type_clears_stale_when_spec(client):
     when_spec.date/windows — else the entry renders as a broken mixed state
     (daily trigger + leftover one-time date). The editor now sends both fields."""
     created = (await client.post("/api/schedules", json={
-        "name": "was one-time", "action": "force_discharge",
+        "name": "was one-time", "action": "force_discharge", "enabled": False,  # date passed
         "when_spec": {"date": "2026-08-07", "windows": [{"start": "05:00", "end": "06:00"}]},
     })).json()
     sid = created["id"]
