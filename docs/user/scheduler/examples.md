@@ -62,7 +62,7 @@ How it behaves:
 - Without a price (region not set, or the last price is over 30 minutes old) the gate fails and nothing happens.
 
 !!! note "Why not *Always evaluate*?"
-    An Always entry would stop for good after its first exit until the bridge restarts. See [Triggers](triggers.md#always-evaluate).
+    An Always entry stops as soon as its entry condition fails, so it would start and stop around 5 c/kWh and the 8 c/kWh exit would never matter. See [Triggers](triggers.md#always-evaluate).
 
 ## 4. Storm forecast: fill the battery
 

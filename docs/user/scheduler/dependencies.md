@@ -142,7 +142,7 @@ them. The same lines are at `GET /api/scheduler/monitor` (`entry_id` and `since`
 | Weekly trigger with no days | *Next fire* shows — | Tick at least one day. |
 | One-off date has passed | *Once (passed)* | Change the date. |
 | Duration (min) 0 on a force entry | it fires and releases about a minute later | Set a duration. |
-| Always entry already ran once | nothing new in the log after its exit or Stop | Restart the bridge, or use a cron trigger instead (see [Triggers](triggers.md#always-evaluate)). |
+| Always entry already ran | nothing new in the log after its exit or Stop | It fires again once its entry conditions have failed and then hold again. With no entry conditions, disable and enable it (see [Triggers](triggers.md#always-evaluate)). |
 | Wrong clock | the time in the top bar, `time.tz_ok` = 0, *Next fire* at the wrong hour | Confirm or change the timezone. |
 | Gateway not running | no rows at all for that target; the gateway is offline in Settings | Start or fix the gateway. Site/Service targets only include polling gateways. |
 | Service target matches nothing | no rows at all; the entry's service id is a gateway id or `default` | Edit the entry and pick the service in the list. |

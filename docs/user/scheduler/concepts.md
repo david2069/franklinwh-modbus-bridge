@@ -85,7 +85,8 @@ Three words recur:
 ## What the engine remembers
 
 The engine keeps its state in memory: which entry owns each gateway, which windows are
-done, hold-for timers, retry timers. A bridge restart forgets all of it. See
+done, hold-for timers, retry timers. A bridge restart forgets all of it except the *done*
+mark of a window that is still open, which is saved so a stopped window stays stopped. See
 [Restarts and the clock](restarts-and-clock.md).
 
 ## Legacy and v2 entries

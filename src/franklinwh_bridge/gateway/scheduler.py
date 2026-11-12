@@ -528,6 +528,12 @@ class ScheduleEngine:
 
         rows = await get_schedules(self._db)
         self._entries = [r for r in rows if r.get("enabled")]
+        # A disabled (or deleted) entry loses its done mark, so enabling it again
+        # starts afresh instead of waiting out a window it was stopped in.
+        ids = {e["id"] for e in self._entries}
+        for tkey, entry_id in list(self._expired.items()):
+            if entry_id not in ids:
+                await self._clear_done(tkey)
 
     async def reload(self) -> None:
         """Reload + evaluate immediately (call after a CRUD change)."""
@@ -1239,6 +1245,21 @@ class ScheduleEngine:
                     await self._fire_exit_ha_actions(tkey, now)
                     return
 
+        # ── Always entry: its entry conditions are its window (#165) ──
+        # An Always window never closes, so the gate plays that part: when it turns
+        # false the run ends (a force is released) and any done mark from an exit,
+        # Stop or time limit is cleared, so the entry fires again on the next true.
+        gate = win.get("entry_conditions")
+        if win.get("trigger_kind") == "always" and gate is not None:
+            ok, trace = eval_conditions(gate, self._snapshot(tkey[2], now))
+            if not ok:
+                if own and own.get("entry_id") == win["id"]:
+                    await self._end_always_run(tkey, handler, win, own, trace, now)
+                    own = None
+                if self._expired.get(tkey) == win["id"]:
+                    await self._clear_done(tkey)
+                self._ha_fired.pop(tkey, None)  # the next true edge re-fires HA actions
+
         # ── supervise our active dispatch: setpoint still there, battery moving? ──
         if (
             own
@@ -1806,6 +1827,20 @@ class ScheduleEngine:
         self._snap_cache.pop(gw_id, None)
         mode = self._snapshot(gw_id, now).get("mode.name")
         return str(mode) if mode else None
+
+    async def _end_always_run(
+        self, tkey: tuple, handler: Any, win: dict, own: dict, trace: list[dict], now: datetime
+    ) -> None:
+        """An Always entry's gate turned false: end its run as a window exit would."""
+        self._owned.pop(tkey, None)
+        reason = _condition_reason("entry conditions no longer met", trace)
+        if own["action"] in _SUSTAINED and own.get("mode") != "hold" and handler.state.active:
+            note = await self._release_with_policy(handler, win, own, tkey[2], now)
+            await self._audit(win["id"], "release", tkey, "ok",
+                              f"{reason} — released" + (f"; {note}" if note else ""))
+        else:
+            await self._audit(win["id"], own["action"], tkey, "ok", f"{reason} — run ended")
+        await self._fire_exit_ha_actions(tkey, now)
 
     async def _release_with_policy(
         self, handler: Any, win: dict, own: dict, gw_id: str, now: datetime
