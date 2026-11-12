@@ -7,6 +7,15 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.66 — 2026-11-13
+
+### Fixed
+- **Deleting a gateway, or switching off Publish to Home Assistant, leaves nothing on
+  the MQTT broker.** Its entities were removed from Home Assistant, but its last values
+  stayed stored on the broker. They are now cleared too, including values an older
+  version left. To uninstall without leaving anything behind: switch off Publish for
+  each gateway, then **Settings → Home Assistant → Unpublish**, then uninstall.
+
 ## 0.2.65 — 2026-11-12
 
 ### Fixed
