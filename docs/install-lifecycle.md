@@ -149,9 +149,9 @@ In-life events, each with a required outcome:
 | L9 | Same as L4/L5 if the data moves; same as L2 if it doesn't. Never run both at once (one Modbus client per aGate). | doc only (PR #130 combination 8) | covered by L2/L4/L5 |
 | E1 | Device appears when the serial is known; entities available. | holds (reconcile, 0.2.5) | — |
 | E2 | Demo is opt-in (wizard **and** API); labelled "(mock)"; entities have values. | wizard: off by default; **`POST /api/gateways` defaults publish_to_ha=True**; 19/65 entities unknown | M10, M11 |
-| E3 | Off → verified removal of config, state and availability; on → same unique_ids, so HA re-links entity_ids. | off: config tombstoned (QoS 0); state left; extra gateways get `offline` instead of an empty payload | M1, M5 |
+| E3 | Off → verified removal of config, state and availability; on → same unique_ids, so HA re-links entity_ids. | off: config tombstoned (QoS 0); from 0.2.66 everything retained under `<prefix>/<short_id>/` (state, availability) is cleared too (#182); unverified | M1, M5 |
 | E4 | Disable or stop → **unavailable** (offline), not removed. Same for `default`. | default: nothing; stop: nothing (stays `online`) | M2 |
-| E5 | Verified removal before the row is deleted (BR-23), dry run shown. | from 0.2.49: config tombstoned and availability `offline` just **after** the row is deleted, as E3 (QoS 0); state left; unverified; no dry run | M5 |
+| E5 | Verified removal before the row is deleted (BR-23), dry run shown. | from 0.2.49: config tombstoned just **after** the row is deleted, as E3 (QoS 0); from 0.2.66 its state and availability are cleared too, published or not (#182); unverified; no dry run | M5 |
 | E6 | Verified removal of the old namespace (configs, state, availability; promoted points; v0.1.0 form), then publish under the new one; HA ends with one device per gateway. | QoS 0, unverified, enumerated topics only, state and availability left (#136) | M1, M3 |
 | E7 | Ask: purge from the old broker (if reachable) or leave; then publish to the new one. | old broker left as is | M4 scoped to a broker |
 | E8 | Disabled → offline; enabled → online. | holds | — |

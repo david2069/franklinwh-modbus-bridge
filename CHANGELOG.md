@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **Deleting a gateway, or switching off Publish to Home Assistant, leaves nothing
+  on the broker** (#182). The entities were removed, but the gateway's last values
+  stayed retained under `fwh_mb/<gateway>/…` (availability at `offline`). Now
+  everything retained under that gateway's topics is cleared too, including topics
+  an older version left. Uninstalling still needs the gateways deleted or unpublished
+  first; a "Remove from Home Assistant…" action before uninstalling is planned.
+
 ## [0.2.65] — 2026-11-12
 
 ### Fixed

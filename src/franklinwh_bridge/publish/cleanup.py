@@ -133,6 +133,46 @@ async def sweep_broker(publisher: Any) -> int:
     return len(stale)
 
 
+async def clear_device_topics(publisher: Any, short_id: str, known: set[str]) -> int:
+    """Clear everything retained under ``<prefix>/<short_id>/`` (#182).
+
+    For a gateway that was deleted or stopped publishing to HA: its tombstones
+    remove the entities, but its last values and availability stayed retained
+    on the broker. Collects what the broker holds there (including topics older
+    versions wrote), adds ``known`` (topics whose first publish may still be
+    queued), and queues an empty retained payload for each through the
+    publisher, so they go out after anything already queued for the device.
+    Returns the number queued.
+    """
+    base = f"{publisher.topic_prefix}/{short_id}/"
+    retained: set[str] = set()
+    try:
+        async with aiomqtt.Client(
+            hostname=publisher._host,
+            port=publisher._port,
+            username=publisher._username,
+            password=publisher._password,
+            identifier=f"{publisher._client_id}_clear_{short_id}",
+        ) as client:
+            await client.subscribe(f"{base}#")
+
+            async def collect() -> None:
+                async for msg in client.messages:
+                    if msg.retain and msg.payload:
+                        retained.add(str(msg.topic))
+
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(collect(), timeout=_COLLECT_S)
+    except Exception as exc:
+        logger.warning("Reading retained topics under %s failed: %s", base, exc)
+    # Command topics (…/set) are never retained by us; leave them alone.
+    topics = sorted(t for t in retained | known if t.startswith(base) and not t.endswith("/set"))
+    queued = publisher.queue_clear(topics)
+    if queued:
+        logger.info("Cleared %d retained topic(s) under %s", queued, base)
+    return queued
+
+
 def old_identifiers(prefix: str, devices: list[tuple[str, str]]) -> set[str]:
     """Pre-0.2.4 identifiers for (gateway_id, serial) pairs."""
     from franklinwh_bridge.publish.mqtt_publisher import _slug

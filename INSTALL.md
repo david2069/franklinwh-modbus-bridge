@@ -199,7 +199,8 @@ Backup**) before a major upgrade if the data matters to you.
 ## Uninstalling
 
 Switch off **Publish to Home Assistant** for each gateway first (**Settings →
-Home Assistant**), so its HA device and entities are removed. Then:
+Home Assistant**), so its HA device and entities, and its last values on the broker,
+are removed. Then **Unpublish** (same page) to remove the bridge's own device. Then:
 
 - **Add-on:** Uninstall. This deletes the bridge's data, even if you ask HA to
   keep it (#153).
@@ -207,8 +208,8 @@ Home Assistant**), so its HA device and entities are removed. Then:
   delete the folder and, if you like, the images.
 - **Python:** stop it and delete the folder (`./data` goes with it).
 
-Retained state topics (`fwh_mb/<gateway>/…`) stay on the broker (#182); remove them
-with an MQTT client.
+Up to 0.2.65, a gateway's last values (`fwh_mb/<gateway>/…`) stayed retained on the
+broker (#182); after uninstalling an older version, remove them with an MQTT client.
 
 ---
 
