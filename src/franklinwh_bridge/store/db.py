@@ -46,9 +46,20 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 68
+CURRENT_SCHEMA_VERSION = 69
 
 MIGRATIONS: dict[int, str] = {
+    69: """
+    -- Schedule occurrences already finished (#231): Stop, an exit condition, a time
+    -- limit or a release inside an open window. One row per target; occurrence is
+    -- the start of the window or fire it applies to, so a restart inside that window
+    -- does not fire it again and a later window is not blocked.
+    CREATE TABLE IF NOT EXISTS schedule_done (
+        tkey       TEXT PRIMARY KEY,
+        entry_id   TEXT NOT NULL,
+        occurrence TEXT NOT NULL
+    );
+    """,
     68: """
     -- Scheduled health check (#296 item 51). health_daily: one row per gateway per
     -- site day, kept for good (the 30-day purges don't touch it), read at the end

@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import json
 import logging
 import re
 from collections import deque
@@ -221,6 +222,30 @@ def entry_active(entry: dict, now: datetime) -> bool:
     if entry.get("trigger_kind"):
         return trigger_active_at(entry, now)
     return entry_active_at(entry.get("when_spec", {}), now)
+
+
+def occurrence_start(entry: dict, now: datetime) -> str | None:
+    """Start of the entry's window or fire open at ``now``, as an ISO string: the
+    identity of this occurrence, so a *done* mark saved in it can be told apart
+    from a later one. None when nothing is open, and for ``always``, which has no
+    occurrence to end (its mark stays in memory only)."""
+    kind = entry.get("trigger_kind")
+    if kind:
+        if kind == "always" or not trigger_active_at(entry, now):
+            return None
+        spec = dict(entry.get("trigger_spec") or {})
+        spec["kind"] = kind
+        prev = prev_fire_at(spec, now)
+        return prev.isoformat() if prev else None
+    when = entry.get("when_spec", {})
+    if not entry_active_at(when, now):
+        return None
+    t = now.hour * 60 + now.minute
+    for s, e in parse_when(when)[1]:
+        if _window_contains(s, e, t):
+            day = now.date() - timedelta(days=1) if (s > e and t < e) else now.date()
+            return (datetime(day.year, day.month, day.day) + timedelta(minutes=s)).isoformat()
+    return None
 
 
 def _missed_fire_time(entry: dict, since: datetime, now: datetime) -> datetime | None:
@@ -695,7 +720,7 @@ class ScheduleEngine:
                                          requester=f"schedule:{schedule_id}")
                     released.append(gw_id)
                 self._owned.pop(tkey, None)
-                self._expired[tkey] = schedule_id  # don't re-fire until next window
+                await self._mark_done(tkey, schedule_id, now_dt)  # not until next window
                 await self._fire_exit_ha_actions(tkey, now_dt)
                 await self._audit(
                     schedule_id, own.get("action"), tkey, "stopped",
@@ -724,7 +749,8 @@ class ScheduleEngine:
                 ttype = entry.get("target_type", "gateway")
                 tid = entry.get("target_id")
                 for gw_id, _h in self._resolver(ttype, tid):
-                    self._expired.setdefault((ttype, tid, gw_id), schedule_id)
+                    if (ttype, tid, gw_id) not in self._expired:
+                        await self._mark_done((ttype, tid, gw_id), schedule_id, now_dt)
             if released:
                 return {"status": "stopped", "released": released}
             return {"status": "not_active" if entry is not None else "not_found", "released": []}
@@ -748,6 +774,7 @@ class ScheduleEngine:
 
     async def start(self) -> None:
         await self.load()
+        await self._restore_done(self._now())
         self._task = asyncio.create_task(self._loop())
         # A tick that dispatches waits on the Modbus lock and the read-back, so
         # it is given at least a minute (4 × 15 s) before it counts as stalled.
@@ -853,7 +880,7 @@ class ScheduleEngine:
                 # gateway is gone — drop our records (nothing to release)
                 self._owned.pop(tkey, None)
                 self._deferred.discard(tkey)
-                self._expired.pop(tkey, None)
+                await self._clear_done(tkey)
                 self._gated.discard(tkey)
                 self._ha_fired.pop(tkey, None)
                 self._exit_entry.pop(tkey, None)
@@ -1135,7 +1162,7 @@ class ScheduleEngine:
                 if not rec.get("refused"):  # a refusal was notified when it happened
                     await self._notify_owner(
                         w, tkey, f"FAILED: {w.get('name') or w['id']} — {msg}", now)
-            self._expired.pop(tkey, None)  # window over — next entry may re-fire
+            await self._clear_done(tkey)  # window over — next entry may re-fire
             self._gated.discard(tkey)  # gate resets; re-entry re-audits if gated
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
             self._dwelling.discard(tkey)
@@ -1200,7 +1227,7 @@ class ScheduleEngine:
                 if met:
                     note = await self._release_with_policy(handler, win, own, tkey[2], now)
                     self._owned.pop(tkey, None)
-                    self._expired[tkey] = win["id"]
+                    await self._mark_done(tkey, win["id"], now)
                     reason = _condition_reason("exit conditions met", trace)
                     await self._audit(
                         win["id"],
@@ -1235,7 +1262,7 @@ class ScheduleEngine:
             and own.get("mode") != "hold"
             and not handler.state.active
         ):
-            self._expired[tkey] = win["id"]
+            await self._mark_done(tkey, win["id"], now)
             self._owned.pop(tkey, None)
             await self._audit(
                 win["id"],
@@ -1331,7 +1358,7 @@ class ScheduleEngine:
             self._dwell_since.pop(tkey, None)  # dwell satisfied → fire
             self._dwelling.discard(tkey)
 
-        self._expired.pop(tkey, None)  # fresh dispatch supersedes any old mark
+        await self._clear_done(tkey)  # fresh dispatch supersedes any old mark
         await self._dispatch(
             handler, action, params, label=win.get("name", action), requester=win["id"]
         )
@@ -1860,6 +1887,58 @@ class ScheduleEngine:
             "dispatch_since_min": None,
             "dispatch_expires_min": None,
         }
+
+    # ---- done marks (#231) ----
+
+    async def _mark_done(self, tkey: tuple, entry_id: str, now: datetime) -> None:
+        """Mark ``entry_id``'s current occurrence on ``tkey`` finished, and save it
+        so a restart inside the same window doesn't fire it again."""
+        self._expired[tkey] = entry_id
+        entry = next((e for e in self._entries if e.get("id") == entry_id), None)
+        occ = occurrence_start(entry, now) if entry is not None else None
+        if self._db is None or occ is None:
+            return
+        try:
+            await self._db.execute(
+                "INSERT OR REPLACE INTO schedule_done (tkey, entry_id, occurrence) "
+                "VALUES (?, ?, ?)", (json.dumps(list(tkey)), entry_id, occ))
+            await self._db.commit()
+        except Exception as exc:
+            logger.warning("Could not save the schedule done mark: %s", exc)
+
+    async def _clear_done(self, tkey: tuple) -> None:
+        if self._expired.pop(tkey, None) is None or self._db is None:
+            return
+        try:
+            await self._db.execute("DELETE FROM schedule_done WHERE tkey = ?",
+                                   (json.dumps(list(tkey)),))
+            await self._db.commit()
+        except Exception as exc:
+            logger.warning("Could not clear the schedule done mark: %s", exc)
+
+    async def _restore_done(self, now: datetime) -> None:
+        """At start-up, bring back the done marks whose occurrence is still open;
+        drop the rest (their window ended while the bridge was down)."""
+        if self._db is None:
+            return
+        try:
+            async with self._db.execute(
+                "SELECT tkey, entry_id, occurrence FROM schedule_done") as cur:
+                rows = list(await cur.fetchall())
+            stale = []
+            for tkey_s, entry_id, occ in rows:
+                entry = next((e for e in self._entries if e.get("id") == entry_id), None)
+                if entry is not None and occurrence_start(entry, now) == occ:
+                    self._expired[tuple(json.loads(tkey_s))] = entry_id
+                    logger.info("Schedule '%s' already finished this window; "
+                                "not firing it again", entry.get("name") or entry_id)
+                else:
+                    stale.append((tkey_s,))
+            if stale:
+                await self._db.executemany("DELETE FROM schedule_done WHERE tkey = ?", stale)
+                await self._db.commit()
+        except Exception as exc:
+            logger.warning("Could not restore schedule done marks: %s", exc)
 
     async def _audit(
         self,
