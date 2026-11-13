@@ -1,5 +1,6 @@
 """Phone notifications (#296 item 48): devices, the Push notifications switch, the
-Notifications check and Recent notifications. The work is in ``actionable.py``.
+Notifications check, Auto-notify triggers and Recent notifications. The work is in
+``actionable.py`` and ``notify_triggers.py``.
 
 Reads need a signed-in user; changes and sends need admin.
 """
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from franklinwh_bridge.actionable import Actionable
 from franklinwh_bridge.api.auth import require_auth, require_role
+from franklinwh_bridge.notify_triggers import Triggers
 from franklinwh_bridge.store.db import (
     create_notify_device,
     delete_notify_device,
@@ -53,6 +55,15 @@ class SettingsUpdate(BaseModel):
     push: bool
 
 
+class TriggersUpdate(BaseModel):
+    master: bool | None = None
+    triggers: dict[str, dict] | None = None
+
+
+class TriggerTest(BaseModel):
+    device_ids: list[str] | None = None
+
+
 class BroadcastBody(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     title: str | None = Field(default=None, max_length=120)
@@ -67,6 +78,13 @@ def _act(request: Request) -> Actionable:
     if act is None:
         raise HTTPException(503, "Notifications are not running")
     return act
+
+
+def _triggers(request: Request) -> Triggers:
+    trg = getattr(request.app.state, "notify_triggers", None)
+    if trg is None:
+        raise HTTPException(503, "Notifications are not running")
+    return trg
 
 
 def _service(name: str) -> str:
@@ -193,6 +211,40 @@ async def broadcast(body: BroadcastBody, request: Request):
     if not await act.targets():
         raise HTTPException(409, "No devices are on")
     return _sent(await act.broadcast(body.message, body.title))
+
+
+# ── Auto-notify triggers ─────────────────────────────────────
+
+
+@router.get("/triggers", dependencies=[Depends(require_auth)])
+async def get_triggers(request: Request):
+    """The triggers (labels, on/off, thresholds, Send to) and per-trigger counts."""
+    trg = _triggers(request)
+    return {"config": trg.cfg, "stats": await trg.stats()}
+
+
+@router.put("/triggers", dependencies=[Depends(_ADMIN)])
+async def put_triggers(body: TriggersUpdate, request: Request):
+    """Change some triggers: ``{"triggers": {key: {enabled?, threshold?, target?}}}``.
+    A bad value refuses the whole save."""
+    try:
+        return {"config": await _triggers(request).save(body.model_dump(exclude_unset=True))}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/triggers/test", dependencies=[Depends(_ADMIN)])
+async def test_triggers(body: TriggerTest, request: Request):
+    """Send test: one trigger notification to every enabled device, or to those chosen."""
+    act = _act(request)
+    if act.notifier is None:
+        raise HTTPException(503, "Notifications are not running")
+    if not act.enabled:
+        raise HTTPException(409, "Push notifications are off")
+    targets = await act.targets(body.device_ids) if body.device_ids else await act.targets()
+    if not targets:
+        raise HTTPException(409, "No devices are on")
+    return _sent(await act.notifier.notify("trigger_test", targets))
 
 
 # ── switch, check, log ───────────────────────────────────────

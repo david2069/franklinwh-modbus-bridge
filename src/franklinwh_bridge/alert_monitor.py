@@ -28,7 +28,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -125,8 +125,13 @@ class AlertMonitor:
     def __init__(self, db: aiosqlite.Connection, registry: GatewayRegistry,
                  interval_s: float = INTERVAL_S,
                  worker_registry: workers.WorkerRegistry | None = None,
-                 publisher: Callable[[], Any] | None = None) -> None:
+                 publisher: Callable[[], Any] | None = None,
+                 on_reachability: Callable[[str, bool], Awaitable[Any]] | None = None) -> None:
         self._db = db
+        #: Told when GATEWAY_UNREACHABLE opens (False) or resolves (True): the aGate
+        #: offline / online notification. Run in the background, never awaited here.
+        self._on_reachability = on_reachability
+        self._tasks: set[asyncio.Task] = set()
         #: Returns the MQTT publisher (or None): it is replaced on reconfigure.
         self._publisher = publisher or (lambda: None)
         self._last_heartbeat = 0.0
@@ -203,6 +208,8 @@ class AlertMonitor:
                     await self._open_condition(code, _message(code, inst), gw_id, now)
                 elif change == "resolve":
                     await self._resolve(code, gw_id, now)
+                if change and code == "GATEWAY_UNREACHABLE":
+                    self._tell_reachability(gw_id, change == "resolve")
         # A gateway that was stopped, disabled or removed has no fault to report.
         for gw_id, code in list(self._open):
             if code in THRESHOLDS and gw_id not in running:
@@ -210,6 +217,17 @@ class AlertMonitor:
                 await self._resolve(code, gw_id, now)
         await self._check_workers(now)
         await self._publish_bridge_sensors(now)
+
+    def _tell_reachability(self, gw_id: str, ok: bool) -> None:
+        if self._on_reachability is None:
+            return
+        try:
+            task = asyncio.ensure_future(self._on_reachability(gw_id, ok))
+        except Exception as exc:
+            logger.warning("aGate %s notification not sent: %s", "online" if ok else "offline", exc)
+            return
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _publish_bridge_sensors(self, now: float) -> None:
         """The bridge device's "Bridge problem" (on change) and heartbeat (60 s)."""

@@ -420,6 +420,13 @@ def restore_mode_note(prior: str | None, current: str | None) -> str:
 # ── the engine ────────────────────────────────────────────────
 
 
+#: Audit results that are a Scheduler trigger notification. Aborted: stopped,
+#: deferred or ended early (the Direct Connect bridge's "Run aborted").
+_OUTCOME_EVENTS = {"missed": "schedule_missed", "stopped": "schedule_aborted",
+                   "released": "schedule_aborted", "deferred": "schedule_aborted",
+                   "exit_condition_met": "schedule_aborted", "expired": "schedule_aborted"}
+
+
 class ScheduleEngine:
     """Evaluates schedule entries and drives command handlers."""
 
@@ -461,6 +468,9 @@ class ScheduleEngine:
         # engine runs condition-free (legacy SCH1 behaviour, all sensors None).
         self._points_fn = points_fn
         self._entries: list[dict] = []
+        #: The Scheduler trigger notifications: set by main.py (notify_triggers).
+        self.on_outcome: Callable[[str, str, str, str], Awaitable[Any]] | None = None
+        self._outcome_tasks: set[asyncio.Task] = set()
         self._task: asyncio.Task | None = None
         # serialise tick() so reload()'s immediate eval can't race the periodic
         # loop tick (both would dispatch before ownership is recorded — observed
@@ -1750,6 +1760,9 @@ class ScheduleEngine:
             name = win.get("name") or win["id"]
             await alert_store.raise_event(self._db, code, f"Schedule '{name}': {message}",
                                           gateway_id=tkey[2])
+        if code == "SCHEDULE_FAILED":
+            self._tell_outcome("schedule_failed", win["id"], tkey, message,
+                               name=win.get("name"))
 
     @staticmethod
     def _soc_limited(pts: dict, discharging: bool) -> bool:
@@ -1983,12 +1996,35 @@ class ScheduleEngine:
         result: str,
         detail: str,
     ) -> None:
+        event = _OUTCOME_EVENTS.get(result)
+        if event is not None:
+            self._tell_outcome(event, schedule_id, target, detail)
         if self._on_audit is None:
             return
         try:
             await self._on_audit(schedule_id, action, self._target_label(target), result, detail)
         except Exception as exc:
             logger.debug("Schedule audit failed: %s", exc)
+
+    def _tell_outcome(self, event: str, schedule_id: str | None, target: Any,
+                      detail: str, name: str | None = None) -> None:
+        """The Scheduler trigger notifications (run failed, missed, aborted), in the
+        background: ``on_outcome(event, schedule name, gateway id, detail)``."""
+        if self.on_outcome is None:
+            return
+        entry = next((e for e in self._entries if e.get("id") == schedule_id), None)
+        name = name or (entry or {}).get("name") or schedule_id or ""
+        if isinstance(target, (tuple, list)) and len(target) == 3:
+            gw_id = target[2]
+        else:
+            gw_id = str(target).rsplit(":", 1)[-1]
+        try:
+            task = asyncio.ensure_future(self.on_outcome(event, name, gw_id, detail))
+        except Exception as exc:
+            logger.warning("Schedule notification not sent: %s", exc)
+            return
+        self._outcome_tasks.add(task)
+        task.add_done_callback(self._outcome_tasks.discard)
 
     def _target_label(self, target: Any) -> str:
         """Readable target for the audit column. A ``(ttype, tid, gw_id)`` tuple

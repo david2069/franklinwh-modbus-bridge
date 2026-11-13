@@ -11,7 +11,9 @@ from environment configuration.
 
 from __future__ import annotations
 
+import functools
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import aiosqlite
@@ -40,6 +42,9 @@ class GatewayRegistry:
         self._global_bus = global_bus
         self._stats = stats
         self._instances: dict[str, GatewayInstance] = {}
+        #: The battery dispatch notification, called with (gateway_id, event, values);
+        #: given to each gateway's command handler when it starts.
+        self.on_dispatch: Callable[[str, str, dict], Awaitable[Any]] | None = None
 
     @property
     def instances(self) -> dict[str, GatewayInstance]:
@@ -109,6 +114,9 @@ class GatewayRegistry:
         )
         self._instances[gateway_id] = instance
         await instance.start()
+        handler = getattr(instance, "command_handler", None)
+        if handler is not None and self.on_dispatch is not None:
+            handler.on_dispatch = functools.partial(self.on_dispatch, gateway_id)
         return instance
 
     async def stop_gateway(self, gateway_id: str) -> None:

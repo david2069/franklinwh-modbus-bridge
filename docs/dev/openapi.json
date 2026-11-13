@@ -6668,6 +6668,104 @@
         }
       }
     },
+    "/api/notify/triggers": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Get Triggers",
+        "description": "The triggers (labels, on/off, thresholds, Send to) and per-trigger counts.",
+        "operationId": "get_triggers_api_notify_triggers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Put Triggers",
+        "description": "Change some triggers: ``{\"triggers\": {key: {enabled?, threshold?, target?}}}``.\nA bad value refuses the whole save.",
+        "operationId": "put_triggers_api_notify_triggers_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggersUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/triggers/test": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Triggers",
+        "description": "Send test: one trigger notification to every enabled device, or to those chosen.",
+        "operationId": "test_triggers_api_notify_triggers_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerTest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notify/settings": {
       "get": {
         "tags": [
@@ -13293,6 +13391,58 @@
         "additionalProperties": false,
         "type": "object",
         "title": "TimezoneConfirm"
+      },
+      "TriggerTest": {
+        "properties": {
+          "device_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Ids"
+          }
+        },
+        "type": "object",
+        "title": "TriggerTest"
+      },
+      "TriggersUpdate": {
+        "properties": {
+          "master": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master"
+          },
+          "triggers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggers"
+          }
+        },
+        "type": "object",
+        "title": "TriggersUpdate"
       },
       "UseHaUpdate": {
         "properties": {

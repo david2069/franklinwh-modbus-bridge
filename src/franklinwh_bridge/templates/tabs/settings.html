@@ -742,7 +742,8 @@
   </div>
 
   <!-- Notifications (#296 item 48, phase 1): the Push notifications switch with Status
-       notices under it, the Notifications check, Companion Devices, Recent notifications.
+       notices under it, the Notifications check, Auto-notify triggers, Companion Devices,
+       Recent notifications.
        notify_card.js. -->
   <div x-show="$store.app.settingsSection === 'home-assistant'" class="card mb-4"
        x-data="notifyCard()" data-testid="notifications-card">
@@ -805,6 +806,70 @@
           </div>
         </template>
       </div>
+    </div>
+
+    <!-- Auto-notify triggers: the Direct Connect bridge's rows, defaults, Send to and wording
+         (owner, 2026-11-13). Each row: label (threshold), count, Send to, switch. A failed save
+         shows under the rows, not as a toast. -->
+    <div class="mt-4 pt-4 border-t border-white/10 space-y-1.5" data-testid="notify-triggers">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <span class="card-label !mb-0">Auto-notify triggers
+          <a :href="docsUrl('user/ui/settings-home-assistant/#auto-notify-triggers')" target="_blank" rel="noopener"
+             class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
+             title="Opens the user guide at this topic">Guide</a></span>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" @click="openTriggerTest()"
+                  x-show="$store.app.isAdmin" data-testid="trigger-send-test">Send test</button>
+          <button type="button" class="btn btn-secondary btn-sm" @click="loadTriggers()"
+                  data-testid="trigger-refresh">Refresh</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-500">Fire automatically on these events, delivered to the enabled devices below.</p>
+      <template x-for="[key, t] in Object.entries(trg.triggers || {})" :key="key">
+        <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap" data-testid="trigger-row" :data-key="key">
+          <p x-show="triggerGroupStart(key)" class="w-full card-label !mb-0 pt-2" data-testid="trigger-group"
+             x-text="triggerGroupStart(key)"></p>
+          <span class="text-xs flex flex-wrap items-center gap-x-1.5 gap-y-0.5" style="color:var(--text-secondary)">
+            <span x-text="t.label"></span>
+            <template x-if="'threshold' in t">
+              <span class="inline-flex items-center gap-1"><input type="number" min="0" max="100"
+                    class="form-control !py-0.5 !text-xs w-16" :value="t.threshold" data-testid="trigger-threshold"
+                    :disabled="!$store.app.isAdmin" @change="setThreshold(key, $event.target.value)"><span class="text-slate-500">%</span></span>
+            </template>
+            <span x-show="triggerStat(key)" class="text-[10px] text-slate-500" data-testid="trigger-stat"
+                  x-text="triggerStat(key)"></span>
+          </span>
+          <div class="flex items-center gap-2 ml-auto">
+            <select class="form-control !py-1 !text-xs w-36" data-testid="trigger-target" title="Send to"
+                    :disabled="!$store.app.isAdmin"
+                    @change="setTriggerTarget(key, $event.target.value)">
+              <option value="all" :selected="triggerTargetValue(key, t) === 'all'">All devices</option>
+              <option value="device" :selected="triggerTargetValue(key, t) === 'device'">Chosen devices</option>
+            </select>
+            <button type="button" role="switch" :aria-checked="t.enabled" :aria-label="t.label"
+                    @click="toggleTrigger(key)" :disabled="!$store.app.isAdmin" data-testid="trigger-toggle"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
+                    :class="t.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+              <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                    :class="t.enabled ? 'translate-x-4' : 'translate-x-1'"></span>
+            </button>
+          </div>
+          <div x-show="triggerTargetValue(key, t) === 'device'" data-testid="trigger-target-devices"
+               class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+            <template x-for="d in devices" :key="d.id">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-secondary)">
+                <input type="checkbox" :checked="triggerTargetIds(t).includes(d.id)"
+                       :disabled="!$store.app.isAdmin || (triggerTargetIds(t).includes(d.id) && triggerTargetIds(t).length === 1)"
+                       @change="toggleTriggerDevice(key, t, d.id, $event.target.checked)">
+                <span x-text="d.alias"></span>
+                <span x-show="!d.enabled" class="text-[10px] text-slate-500">(off)</span>
+              </label>
+            </template>
+            <span x-show="!triggerTargetIds(t).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+          </div>
+        </div>
+      </template>
+      <p x-show="trgErr" x-cloak class="text-xs text-red-400" data-testid="triggers-save-error" x-text="trgErr"></p>
     </div>
 
     <!-- Companion Devices: as the Direct Connect bridge's (owner, 2026-11-07: "the same as DC
@@ -964,6 +1029,42 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Send test (Auto-notify triggers): to every enabled device or those chosen. The result
+         stays in the dialog. -->
+    <div x-show="tt" x-cloak @keydown.escape.window="tt = null" @click.self="tt = null"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" data-testid="trigger-test-dialog">
+      <template x-if="tt">
+        <div class="w-full max-w-md rounded-lg border border-slate-600/50 bg-slate-800 shadow-xl p-4"
+             role="dialog" aria-modal="true" aria-labelledby="notify-tt-title">
+          <div class="flex items-center justify-between mb-3">
+            <span id="notify-tt-title" class="text-xs uppercase text-amber-400 font-semibold">Send a test trigger notification</span>
+            <button @click="tt = null" class="text-slate-500 hover:text-slate-300 text-lg leading-none" aria-label="Close">&times;</button>
+          </div>
+          <p x-show="!devices.length" class="text-xs text-slate-400 mb-2">No companion devices yet: add one under Companion Devices.</p>
+          <div x-show="devices.length" class="space-y-1 mb-2">
+            <label class="flex items-center gap-2 text-xs text-slate-300">
+              <input type="radio" value="all" x-model="tt.to"> All enabled devices</label>
+            <label class="flex items-center gap-2 text-xs text-slate-300">
+              <input type="radio" value="device" x-model="tt.to"> Chosen devices</label>
+            <div x-show="tt.to === 'device'" class="pl-5 space-y-0.5">
+              <template x-for="d in devices" :key="d.id">
+                <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
+                  <input type="checkbox" :value="d.id" x-model="tt.ids"> <span x-text="d.alias"></span></label>
+              </template>
+            </div>
+          </div>
+          <div x-show="tt.msg" class="text-xs mb-2" data-testid="trigger-test-result"
+               :class="{ok:'text-emerald-400', warn:'text-amber-400', danger:'text-red-400'}[(tt.msg||{}).kind]"
+               x-text="(tt.msg||{}).text"></div>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn btn-secondary !py-1 !text-xs" @click="tt = null">Close</button>
+            <button type="button" class="btn btn-primary !py-1 !text-xs" @click="sendTriggerTest()"
+                    :disabled="tt.sending || !devices.length" data-testid="trigger-test-send">Send</button>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- Broadcast dialog -->

@@ -77,6 +77,7 @@ from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
 from franklinwh_bridge.gateway.solar_forecast import SolarForecastService
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
+from franklinwh_bridge.notify_triggers import Triggers
 from franklinwh_bridge.publish.mqtt_publisher import MqttPublisher
 from franklinwh_bridge.publish.namespace import (
     choose_initial_namespace,
@@ -122,6 +123,10 @@ LOG_RETENTION_DAYS = 30  # persisted logs older than this are purged
 #: "Gateway <id>: …": the id is one token straight before the colon, so
 #: "Gateway demo started (MOCK): …" names no gateway rather than "demo started (MOCK)".
 _GATEWAY_PREFIX_RE = re.compile(r"Gateway ([A-Za-z0-9_.-]+):")
+
+#: How long after startup the "bridge started" phone notice goes out: once the start-up
+#: writes are done (it writes through the notify library's own db connection).
+_BRIDGE_UP_DELAY_S = 30
 
 
 class LogBufferHandler(logging.Handler):
@@ -656,6 +661,24 @@ async def lifespan(app: FastAPI):
     # Phone notifications with buttons (#296 item 48).
     actionable = Actionable(db, config.db_path)
     app.state.actionable = actionable
+    # Auto-notify triggers (owner, 2026-11-13), through the same Notifier.
+    notify_triggers = Triggers(db, actionable)
+    await notify_triggers.load()
+    app.state.notify_triggers = notify_triggers
+
+    def _gw_name(gw_id: str) -> str:
+        inst = registry.get(gw_id)
+        return (getattr(getattr(inst, "config", None), "name", None) or gw_id) if inst else gw_id
+
+    async def _notify_on_sample(sample: Sample) -> None:
+        # Off-grid and SoC transitions; a notification never breaks the bus.
+        with contextlib.suppress(Exception):
+            await notify_triggers.on_points(sample.gateway_id, _gw_name(sample.gateway_id),
+                                            sample.points)
+
+    sample_bus.subscribe(_notify_on_sample)
+    registry.on_dispatch = lambda gw_id, event, values: notify_triggers.fire(
+        event, gateway=_gw_name(gw_id), **values)
     # Scheduled health check (#296 item 51): daily snapshot and report. Read-only.
     health_reporter = health_report.HealthReporter(
         db, gateways_fn=lambda: registry.list_all(), points_fn=lambda gw: _schedule_points(gw),
@@ -759,6 +782,8 @@ async def lifespan(app: FastAPI):
         gw_label_fn=_gw_label,
     )
     app.state.schedule_engine = schedule_engine
+    schedule_engine.on_outcome = lambda event, name, gw_id, detail: notify_triggers.fire(
+        event, gateway=_gw_name(gw_id), schedule=name, detail=detail.rstrip("."))
 
     async def _on_recover(gw_id: str, outage_id: str, start_ts: float, end_ts: float) -> None:
         """On outage recovery, run schedule catch-up and link the missed +
@@ -774,7 +799,9 @@ async def lifespan(app: FastAPI):
     app.state.health_checker = health_checker
     # Opens and resolves alert conditions; watches the workers (#324 §11).
     alert_monitor = AlertMonitor(
-        db, registry, publisher=lambda: getattr(app.state, "mqtt_publisher", None))
+        db, registry, publisher=lambda: getattr(app.state, "mqtt_publisher", None),
+        on_reachability=lambda gw_id, ok: notify_triggers.fire(
+            "aGate_online" if ok else "aGate_offline", gateway=_gw_name(gw_id)))
     app.state.alert_monitor = alert_monitor
     # Tells HA about critical alerts; dismisses on acknowledgement (#324 §6).
     alert_delivery = AlertDelivery(db, ha_registry)
@@ -1092,6 +1119,19 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Status notice (started) failed: %s", exc)
 
+        # The same to the phones, once the bridge has settled: its ledger write uses the
+        # notify library's own connection, which must not race the startup writes. In the
+        # background, so a slow Home Assistant never holds up the start.
+        app.state.bridge_up_sending = False
+        up_at = time.time()
+
+        async def _bridge_up_later() -> None:
+            await asyncio.sleep(_BRIDGE_UP_DELAY_S)
+            app.state.bridge_up_sending = True
+            await notify_triggers.bridge_up(__version__, now=up_at)
+
+        app.state.bridge_up_task = asyncio.create_task(_bridge_up_later())
+
     asyncio.create_task(_start_gateways())
     mqtt_device_reconcile = asyncio.create_task(_reconcile_mqtt_devices())
 
@@ -1186,6 +1226,17 @@ async def lifespan(app: FastAPI):
     title, message = status_notices.stopping_text()
     await status_notices.send(db, ha_registry, status_notices.BRIDGE_NOTIFICATION_ID,
                               title, message, time.time())
+    # The same to the phones, and the clean-stop record the next start reads (bounded).
+    # A start notice not yet due is dropped. One already sending is waited for, not
+    # cancelled: its ledger write runs on a worker thread that a cancel can't stop, and the
+    # db must not close under it.
+    if (up := getattr(app.state, "bridge_up_task", None)) is not None and not up.done():
+        if not getattr(app.state, "bridge_up_sending", False):
+            up.cancel()
+        with contextlib.suppress(Exception, asyncio.CancelledError):
+            await asyncio.wait_for(asyncio.shield(up), timeout=5)
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(notify_triggers.bridge_down(__version__), timeout=10)
 
     # 1. Stop the schedule engine (so it can't re-dispatch during teardown),
     #    then the health checker.
