@@ -74,6 +74,12 @@ async def test_gateway_list_and_crud(client):
     # per-gateway points endpoint resolves (200) instead of 404 "not running".
     resp = await client.get("/api/gateways/gw2/points")
     assert resp.status_code == 200
+    # Nothing answers at its address, so the link is down (#497). It isn't
+    # polling yet, so the "not running" banner covers it, not the stale marks.
+    assert resp.json()["link_up"] is False and resp.json()["stale"] is False
+    listed = (await client.get("/api/gateways")).json()["gateways"]
+    gw2 = next(g for g in listed if g["id"] == "gw2")
+    assert gw2["polling"] is False and gw2["link_up"] is False and gw2["stale"] is False
 
     # Update
     resp = await client.patch("/api/gateways/gw2", json={

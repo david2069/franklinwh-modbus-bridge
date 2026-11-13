@@ -37,6 +37,7 @@ These appear above the cards only when they apply.
 |---|---|---|
 | **Connect your aGate** | No gateway has an address and nothing is polling (a new install). | **Set up →** starts the setup wizard (admins only). |
 | **You're exploring with a demo gateway** | You chose the demo in the setup wizard and have no real aGate. | **Connect a real aGate** reopens the wizard. |
+| **aGate unreachable: *name*** (red) | The gateway is polling, but its Modbus link is down: the bridge keeps retrying an aGate it can't reach, or its last good read is older than 3 poll intervals (at least 30 s). Says when the last reading was. | Check the network and the aGate. Until it's back, the Power Flow, AC Power, SoC, Solar, Battery and Operating Mode cards keep the last readings, greyed, with **Last reading HH:MM (N min ago)**. Battery and grid states say *Unknown (offline)*. It clears by itself at the next good read. |
 | **Gateway not running: *name*** | An enabled gateway is not polling. Says *Device unreachable* or *Gateway stopped*. | **Fix →** opens Settings → Site & Gateways. |
 | **Install an MQTT broker to see entities in Home Assistant** | Add-on install with no broker yet. | Install the Mosquitto broker app. The bridge connects by itself; no restart needed. |
 

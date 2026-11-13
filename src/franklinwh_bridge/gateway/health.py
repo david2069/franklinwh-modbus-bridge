@@ -96,7 +96,7 @@ class HealthChecker:
             tcp_ok = await self._tcp_probe(host, port, gw_id)
             if not tcp_ok:
                 inst.status.health = "unreachable"
-            elif inst.status.connected and inst.status.polling:
+            elif inst.status.polling and inst.link()["link_up"]:
                 inst.status.health = "connected"
             else:
                 inst.status.health = "tcp_only"
@@ -125,7 +125,7 @@ class HealthChecker:
         tcp_ok = await self._tcp_probe(inst.config.host, inst.config.port, gateway_id)
         if not tcp_ok:
             inst.status.health = "unreachable"
-        elif inst.status.connected and inst.status.polling:
+        elif inst.status.polling and inst.link()["link_up"]:
             inst.status.health = "connected"
         else:
             inst.status.health = "tcp_only"

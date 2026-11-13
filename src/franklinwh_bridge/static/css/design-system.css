@@ -219,6 +219,11 @@ body {
     inset 0 1px 0 rgba(255,255,255,0.08),
     0 4px 16px rgba(0,0,0,0.4);
 }
+/* aGate unreachable (#497): the last good figures stay, greyed, under a note
+   saying when they were read. The note itself stays readable. */
+.card.is-stale > :not(.stale-note), .is-stale[data-stale] { opacity: .5; filter: grayscale(1); }
+.stale-note { font-size: .7rem; font-weight: 600; color: #f87171; margin-bottom: .5rem; }
+
 .card-label {
   font-size: .7rem;
   font-weight: 600;

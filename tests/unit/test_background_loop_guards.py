@@ -19,6 +19,7 @@ def _inst(host: str) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(enabled=True, mock=False, host=host, port=502),
         status=SimpleNamespace(health="unknown", connected=True, polling=True),
+        link=lambda: {"link_up": True},
     )
 
 

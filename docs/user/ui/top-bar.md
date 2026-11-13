@@ -10,8 +10,8 @@ From left to right:
 |---|---|
 | **◀ / ▶** | Collapses or expands the sidebar. |
 | **Page title** | The page you are on. |
-| **Gateway selector** | Which gateway the page shows. Only appears when there is more than one gateway. |
-| **Grid / Solar / Load / Battery** | An icon and the live value for each. |
+| **Gateway selector** | Which gateway the page shows. Only appears when there is more than one gateway. Its dot is red and its status says *Offline* while that aGate is unreachable. |
+| **Grid / Solar / Load / Battery** | An icon and the live value for each. Greyed, with no direction marks, while the aGate is unreachable: they are then the last good readings. |
 | **Connected / Disconnected** | Whether the browser's last data request to the bridge succeeded. |
 | **Quality badge** | Only appears when the data is `stale` or bad. Hidden while it is fine. |
 | **Clock** | Time of the last poll, in the **bridge's** timezone. |
