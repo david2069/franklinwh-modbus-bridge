@@ -825,7 +825,7 @@
         </div>
       </div>
       <p class="text-xs text-slate-500">Fire automatically on these events, delivered to the enabled devices below.</p>
-      <template x-for="[key, t] in Object.entries(trg.triggers || {})" :key="key">
+      <template x-for="[key, t] in Object.entries(trg || {})" :key="key">
         <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap" data-testid="trigger-row" :data-key="key">
           <p x-show="triggerGroupStart(key)" class="w-full card-label !mb-0 pt-2" data-testid="trigger-group"
              x-text="triggerGroupStart(key)"></p>
