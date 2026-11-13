@@ -63,7 +63,7 @@
        red is kept for critical. Grid not connected is amber. The hover text
        says what each one is. Icons drawn for this project. -->
   <div class="items-center gap-3 text-xs font-semibold tabular-nums"
-       :class="[$store.app.phoneNav ? 'flex order-last' : 'flex', {'is-stale': $store.app.isLastGood}]"
+       :class="($store.app.phoneNav ? 'flex order-last' : 'flex') + ($store.app.isLastGood ? ' is-stale' : '')"
        :data-stale="$store.app.isLastGood">
     <!-- Grid (#296 item 49): kW without a sign at a fixed width, so the text never moves,
          and a mark for the direction: ↑ green exporting, ↓ orange importing, – amber idle,
