@@ -2,7 +2,7 @@
  * Settings → Home Assistant → Notifications (#296 item 48, phase 1).
  *
  * The Push notifications switch, Status notices under it, the Notifications check,
- * Companion Devices (add, discover, test, test with buttons, broadcast) and Recent
+ * Auto-notify triggers (api/notify/triggers, as the Direct Connect bridge's), Companion Devices (add, discover, test, test with buttons, broadcast) and Recent
  * notifications. Data from api/notify/*; the switch is the critical-alert channel's
  * setting, Status notices its own (api/alerts/settings).
  *
@@ -37,6 +37,13 @@ function notifyCard() {
     bcTitle: 'FranklinWH',
     bcMessage: '',
     bcResult: null,
+    // Auto-notify triggers: config.triggers, per-trigger stats, a failed save's message,
+    // "Chosen devices" picked before any device is ticked, and the Send test dialog.
+    trg: {},
+    trgStats: {},
+    trgErr: '',
+    trgPick: {},
+    tt: null,
 
     init() { this.loadAll(); },
 
@@ -56,7 +63,79 @@ function notifyCard() {
         this.error = 'Could not load notifications: ' + e.message;
       }
       this.loadChecks();
+      this.loadTriggers();
       this.loadLog();
+    },
+
+    async loadTriggers() {
+      try {
+        const d = await fetchJSON('api/notify/triggers');
+        this.trg = d.config.triggers;
+        this.trgStats = d.stats || {};
+      } catch (_) { /* leave the last known */ }
+    },
+
+    async saveTriggers(patch) {
+      try {
+        this.trg = (await fetchJSON('api/notify/triggers', {
+          method: 'PUT', body: JSON.stringify({ triggers: patch }) })).config.triggers;
+        this.trgErr = '';
+      } catch (e) { this.trgErr = 'Save failed: ' + e.message; }
+    },
+
+    toggleTrigger(key) { this.saveTriggers({ [key]: { enabled: !this.trg[key].enabled } }); },
+
+    setThreshold(key, val) {
+      const n = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
+      this.saveTriggers({ [key]: { threshold: n } });
+    },
+
+    // The group heading (Scheduler) above the first row of its group.
+    triggerGroupStart(key) {
+      const all = Object.entries(this.trg || {});
+      const i = all.findIndex(([k]) => k === key);
+      const g = (all[i] || [])[1]?.group;
+      return g && (i === 0 || all[i - 1][1].group !== g) ? g : '';
+    },
+
+    triggerStat(key) {
+      const s = this.trgStats[key];
+      return s && s.count ? `${s.count}× · last ${this.fmtTime(s.last_ts)}` : '';
+    },
+
+    triggerTargetValue(key, t) {
+      return (t.target && t.target.type === 'device') || this.trgPick[key] ? 'device' : 'all';
+    },
+
+    triggerTargetIds(t) { return (t.target && t.target.type === 'device' && t.target.ids) || []; },
+
+    // Chosen devices saves when the first device is ticked; All devices saves at once.
+    setTriggerTarget(key, value) {
+      this.trgPick[key] = value === 'device';
+      if (value === 'all') this.saveTriggers({ [key]: { target: { type: 'all' } } });
+    },
+
+    // The last device ticked stays ticked (choose All devices instead).
+    toggleTriggerDevice(key, t, id, on) {
+      const ids = this.triggerTargetIds(t).filter(x => x !== id);
+      if (on) ids.push(id);
+      if (ids.length) this.saveTriggers({ [key]: { target: { type: 'device', ids } } });
+    },
+
+    openTriggerTest() { this.tt = { to: 'all', ids: [], sending: false, msg: null }; },
+
+    async sendTriggerTest() {
+      const t = this.tt; t.msg = null;
+      if (t.to === 'device' && !t.ids.length) { t.msg = { kind: 'warn', text: 'Choose at least one device' }; return; }
+      t.sending = true;
+      try {
+        const r = await fetchJSON('api/notify/triggers/test', { method: 'POST',
+          body: JSON.stringify(t.to === 'all' ? {} : { device_ids: t.ids }) });
+        t.msg = r.delivered ? { kind: 'ok', text: `Test sent to ${r.delivered} of ${r.total} device(s)` }
+                            : { kind: 'warn', text: `Not delivered to any of ${r.total} device(s): ${r.summary}` };
+        this.loadLog();
+      } catch (e) { t.msg = { kind: 'danger', text: 'Test failed: ' + e.message }; }
+      finally { t.sending = false; }
     },
 
     async loadChecks() {

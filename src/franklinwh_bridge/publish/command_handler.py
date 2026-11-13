@@ -35,7 +35,7 @@ import inspect
 import logging
 import re
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
@@ -170,6 +170,29 @@ def _setpoint_text(hw: dict | None) -> str:
     return ", ".join(parts)
 
 
+#: Why a dispatch ended, in the dispatch-ended notification.
+_RELEASE_TEXT = {"watchdog_expired": "time limit reached", "target_soc_reached":
+                 "target SoC reached", "shutdown": "bridge stopping"}
+
+
+def _requester_text(requester: str | None) -> str:
+    """Who started a dispatch, in words: a schedule, a user, or Home Assistant."""
+    r = requester or ""
+    if r.startswith("schedule:"):
+        return "a schedule"
+    if r.startswith("user:"):
+        return f"{r.removeprefix('user:')} in the bridge"
+    if r == "mqtt":
+        return "Home Assistant"
+    return r or "this bridge"
+
+
+def _dur_text(seconds: float) -> str:
+    m, s = divmod(max(0, round(seconds)), 60)
+    h, m = divmod(m, 60)
+    return f"{h} h {m} min" if h else (f"{m} min" if m else f"{s} s")
+
+
 @dataclass
 class CommandState:
     active: bool = False
@@ -231,6 +254,10 @@ class CommandHandler:
         # may reach that aGate.
         self.refused: str | None = None
         self._on_state_changed = on_state_changed
+        #: The battery dispatch started / ended notification: set by main.py,
+        #: called with (event, values), run in the background.
+        self.on_dispatch: Callable[[str, dict], Awaitable[Any]] | None = None
+        self._dispatch_tasks: set[asyncio.Task] = set()
         self._points_getter = points_getter
         self._state = CommandState()
         self._watchdog_task: asyncio.Task | None = None
@@ -368,6 +395,17 @@ class CommandHandler:
             )
         except Exception as exc:
             logger.warning("Failed to persist control state: %s", exc)
+
+    def _tell_dispatch(self, event: str, values: dict) -> None:
+        if self.on_dispatch is None:
+            return
+        try:
+            task = asyncio.ensure_future(self.on_dispatch(event, values))
+        except Exception as exc:
+            logger.warning("Dispatch notification not sent: %s", exc)
+            return
+        self._dispatch_tasks.add(task)
+        task.add_done_callback(self._dispatch_tasks.discard)
 
     async def _log_event(
         self, event: str, action: str = "", power_w: int = 0, detail: str = "",
@@ -708,6 +746,10 @@ class CommandHandler:
             "command_sent", action=display_action, power_w=abs(report_w),
             detail=f"{msg} [{', '.join(limits)}]", hw_state=hw, by=self._requester,
         )
+        if not prev_active or prev_action != display_action:
+            self._tell_dispatch("dispatch_start", {
+                "source": _requester_text(self._requester),
+                "metrics": f"{display_action} {power_label}"})
 
         if self._on_state_changed:
             await self._on_state_changed()
@@ -754,6 +796,9 @@ class CommandHandler:
                 await self._log_event(
                     "external_dispatch_started", power_w=int(abs(pts.get("battery_power_w") or 0)),
                     detail=f"{setpoint} — not sent by this bridge", hw_state=hw, by="external")
+                self._tell_dispatch("dispatch_start", {
+                    "source": "external: another tool, the app or the cloud",
+                    "metrics": f"{setpoint}, battery {pts.get('battery_power_w')} W"})
             return
         if int(ena) == 0 and self._external is not None:
             dur = ts - self._external["since"]
@@ -761,6 +806,7 @@ class CommandHandler:
                         self._gateway_id, dur)
             await self._log_event(
                 "external_dispatch_ended", detail=f"after {dur:.0f}s", hw_state=hw, by="external")
+            self._tell_dispatch("dispatch_end", {"detail": f"external, after {_dur_text(dur)}"})
             self._external = None
             return
         changed, sent = None, ""
@@ -898,6 +944,10 @@ class CommandHandler:
             by=(f"bridge:{reason}" if reason in ("watchdog_expired", "target_soc_reached",
                                                  "shutdown") else self._requester),
         )
+        if was_active:
+            self._tell_dispatch("dispatch_end", {"detail": "; ".join(
+                x for x in (prev_action, _RELEASE_TEXT.get(reason, reason.lower()),
+                            self._state.last_result) if x)})
 
         if self._on_state_changed:
             await self._on_state_changed()

@@ -86,6 +86,40 @@ up**, with the fix. **Check again** runs it again.
 | Phones (mobile_app_*) | At least one enabled phone is set up. Only phones show buttons. |
 | Last Test with buttons | The last **Test with buttons** was answered on the phone. |
 
+### Auto-notify triggers
+
+Notifications that send themselves when something happens, to the
+[companion devices](#companion-devices) below. They are the Direct Connect bridge's
+triggers, with the same rows, defaults and wording, so both bridges notify alike. Each one
+is also a line in the [app log](logs.md), sent or not.
+
+| Trigger | Default | Sends when |
+|---|---|---|
+| aGate offline / online | On | A gateway hasn't answered for 5 minutes (the *aGate unreachable* alert opens), and again when it has answered for 2 minutes. |
+| Off-grid started / ended | On | A gateway goes off-grid, and when it is back on-grid. The off-grid message gives the SoC, the energy stored, the home load and solar, and **about how long the battery lasts at current usage** (energy stored ÷ (home load − solar) at that moment), the same as the Direct Connect bridge. When solar covers the whole home it says *solar is covering the home*. |
+| Battery dispatch (VPP / force) started / ended | On | A force charge, discharge or standby starts (from a schedule, the bridge, Home Assistant, or another tool), and when it ends, with why. A change of power on a running dispatch is not a new start. |
+| Battery SoC drops below *n* % | Off (20 %) | The SoC goes below the number. Once per crossing. |
+| Battery SoC reaches *n* % | Off (100 %) | The SoC reaches the number. Once per crossing. |
+| Bridge started / restarted / stopped | On | The bridge starts (sent about 30 s after the start; *restarted* after a clean stop, with how long it was down and the version it was updated from), and when it stops. |
+| **Scheduler:** Run failed | On | A schedule's run fails (the *Schedule failed* alert). |
+| Run missed | On | A run's whole window passed while the bridge or the gateway was down. |
+| Run aborted (stopped, deferred or ended early) | Off | A run is stopped, released, deferred because the gateway is under manual control, ends on an exit condition, or its dispatch ends before the window does. |
+| No reply to an actionable notification | On | Kept for parity: schedules don't send questions with buttons yet ([#114](https://github.com/david2069/franklinwh-modbus-bridge/issues/114)), so it doesn't fire. |
+
+Each row shows how many it has sent in the last 30 days and when it last did.
+
+- **Send to:** *All devices* (every enabled device), or *Chosen devices* and tick them. A
+  device switched off stays off for its triggers too.
+- **The switch** turns the trigger on or off. Push notifications off stops them all.
+- **Send test** sends a test to every enabled device, or to the ones you choose. The
+  result stays in the dialog.
+- **Refresh** reloads the counts.
+
+The FranklinWH app estimates how long the battery lasts from your past usage; the bridge
+uses the load and solar at the moment the gateway went off-grid, so the figure moves with
+what is running then. Example: *Gateway went OFF-GRID [Home] — running on battery: SoC 91%,
+stored 12.4 kWh, home 2.0 kW — about 6 h 11 min left at current usage.*
+
 ### Companion devices
 
 A device is one of Home Assistant's `notify.*` services, with a name you choose. A phone
@@ -124,8 +158,8 @@ Removing a Home Assistant instance removes its devices too.
 
 ### Recent notifications
 
-The last 20 notifications sent and taps received, newest first, with how each went.
-Notifications from alerts, triggers and schedules come in later releases.
+The last 20 notifications sent and taps received, newest first, with how each went,
+including the [Auto-notify triggers](#auto-notify-triggers).
 
 ## MQTT Broker
 

@@ -45,7 +45,7 @@ from franklinwh_ha_notify import (
     send,
 )
 
-from franklinwh_bridge import alert_delivery
+from franklinwh_bridge import alert_delivery, notify_triggers
 from franklinwh_bridge.alert_delivery import NOTIFICATION_TITLE
 from franklinwh_bridge.config.supervisor import (
     SUPERVISOR_CORE_URL,
@@ -80,6 +80,7 @@ _TEMPLATES.register(
     Event(EVENT_BROADCAST, "{title}", "{message}", ("title", "message")),
     Event(EVENT_HEALTH, "{title}", "{message}", ("title", "message")),
 )
+_TEMPLATES.register(*notify_triggers.EVENTS)
 
 _DUPLICATE = re.compile(r"^(.*)_(\d+)$")
 KINDS = ("phone", "tablet", "tv", "speaker", "other")
