@@ -71,7 +71,7 @@ EVENTS = (
           "aGate is UNREACHABLE [{gateway}] — check network / WiFi / power."),
     Event("aGate_online", "FranklinWH aGate", "aGate is reachable again [{gateway}]."),
     Event("off_grid", "FranklinWH off-grid",
-          "Gateway went OFF-GRID [{gateway}] — running on battery. {figures}", ("figures",)),
+          "Gateway went OFF-GRID [{gateway}] — running on battery: {metrics}.", ("metrics",)),
     Event("on_grid", "FranklinWH off-grid", "Gateway is back ON-GRID [{gateway}]."),
     Event("soc_low", "FranklinWH battery",
           "Battery SoC dropped below {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
@@ -99,9 +99,6 @@ EVENTS = (
     Event("trigger_test", "FranklinWH — test",
           "This is a test notification from the trigger engine."),
 )
-
-#: Below this home load (W) there is no meaningful "lasts about" figure.
-MIN_LOAD_W = 50
 
 
 # ── config ───────────────────────────────────────────────────
@@ -202,20 +199,31 @@ def duration(seconds: float) -> str:
     return f"{m} min" if m else f"{s} s"
 
 
-def off_grid_figures(points: dict) -> str:
-    """The battery figures for an off-grid notification: SoC, energy left, the home load
-    and about how long the battery lasts at that load. Only what was read is shown."""
-    soc, wh, load = points.get("soc"), points.get("wh_available"), points.get("home_load_ext")
-    parts = []
-    if isinstance(soc, (int, float)):
-        left = f", {wh / 1000:.1f} kWh left" if isinstance(wh, (int, float)) else ""
-        parts.append(f"Battery {round(soc)}%{left}")
-    if isinstance(load, (int, float)):
-        parts.append(f"home using {load / 1000:.1f} kW")
-    text = "; ".join(parts)
-    if isinstance(wh, (int, float)) and isinstance(load, (int, float)) and load >= MIN_LOAD_W:
-        text += f": lasts about {duration(wh / load * 3600)} at current usage"
-    return f"{text[:1].upper()}{text[1:]}." if text else ""
+def _kw(w: float) -> str:
+    return f"{w / 1000:.1f} kW"
+
+
+def off_grid_metrics(points: dict) -> str:
+    """The Direct Connect bridge's off-grid figures (owner, 2026-11-13: match its wording):
+    SoC, stored kWh, home load and solar now, and how long the battery lasts at the CURRENT
+    usage. Net draw = home − solar (no generator reading here). Stored kWh is the aGate's
+    own energy available, so no capacity setting is needed. Nothing tells a requested
+    off-grid from an outage, so it always runs to empty."""
+    soc, wh = points.get("soc"), points.get("wh_available")
+    load, solar = points.get("home_load_ext"), points.get("total_solar") or 0
+    have = isinstance(soc, (int, float))
+    parts = [f"SoC {round(soc)}%" if have else None,
+             f"stored {wh / 1000:.1f} kWh" if isinstance(wh, (int, float)) else None,
+             f"home {_kw(load)}" if isinstance(load, (int, float)) else None,
+             f"solar {_kw(solar)}" if isinstance(solar, (int, float)) and solar > 0 else None]
+    now = ", ".join(p for p in parts if p)
+    if not have or not isinstance(load, (int, float)) or not isinstance(wh, (int, float)):
+        return now or "no live readings"
+    draw = load - solar
+    if draw <= 0:
+        return f"{now} — solar is covering the home"
+    mins = round(wh / draw * 60)
+    return f"{now} — about {mins // 60} h {mins % 60} min left at current usage"
 
 
 def evaluate(prev: dict | None, cur: dict, cfg: dict) -> list[tuple[str, dict]]:
@@ -226,7 +234,7 @@ def evaluate(prev: dict | None, cur: dict, cfg: dict) -> list[tuple[str, dict]]:
     out: list[tuple[str, dict]] = []
     was, now = is_off_grid(prev), is_off_grid(cur)
     if enabled(cfg, "off_grid") and was is not None and now is not None and was != now:
-        out.append(("off_grid", {"figures": off_grid_figures(cur)}) if now else ("on_grid", {}))
+        out.append(("off_grid", {"metrics": off_grid_metrics(cur)}) if now else ("on_grid", {}))
     ps, cs = prev.get("soc"), cur.get("soc")
     if isinstance(ps, (int, float)) and isinstance(cs, (int, float)):
         if enabled(cfg, "soc_low"):
@@ -320,7 +328,8 @@ class Triggers:
         value keep the previous one, so a partial read is not a transition."""
         cur = {**self._prev.get(gateway_id, {}),
                **{k: points[k] for k in ("connection_state", "soc", "wh_available",
-                                         "home_load_ext") if points.get(k) is not None}}
+                                         "home_load_ext", "total_solar")
+                  if points.get(k) is not None}}
         prev = self._prev.get(gateway_id)
         self._prev[gateway_id] = cur
         for event, values in evaluate(prev, cur, self.cfg):

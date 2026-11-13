@@ -33,16 +33,25 @@ def test_rows_and_defaults_match_the_direct_connect_bridge():
 
 def test_off_grid_says_how_long_the_battery_lasts_at_current_usage():
     out = nt.evaluate(ON, OFF, nt.merged(None))
-    assert out == [("off_grid", {"figures": "Battery 40%, 6.8 kWh left; home using 1.2 kW: "
-                                            "lasts about 5 h 40 min at current usage."})]
+    assert out == [("off_grid", {"metrics": "SoC 40%, stored 6.8 kWh, home 1.2 kW — "
+                                             "about 5 h 40 min left at current usage"})]
     _, msg = _TEMPLATES.render("off_grid", gateway="Shed", **out[0][1])
-    assert msg.startswith("Gateway went OFF-GRID [Shed] — running on battery. Battery 40%")
+    assert msg == ("Gateway went OFF-GRID [Shed] — running on battery: SoC 40%, stored 6.8 kWh, "
+                   "home 1.2 kW — about 5 h 40 min left at current usage.")
 
 
-def test_off_grid_without_load_gives_no_estimate():
-    assert nt.off_grid_figures({**OFF, "home_load_ext": 10}) == \
-        "Battery 40%, 6.8 kWh left; home using 0.0 kW."
-    assert nt.off_grid_figures({"connection_state": "Disconnected"}) == ""
+def test_off_grid_estimate_uses_net_draw_like_the_direct_connect_bridge():
+    # Solar is taken off the home load: 6.8 kWh at 1.2 − 0.4 kW = 8 h 30 min.
+    assert nt.off_grid_metrics({**OFF, "total_solar": 400}) == (
+        "SoC 40%, stored 6.8 kWh, home 1.2 kW, solar 0.4 kW — about 8 h 30 min left at "
+        "current usage")
+    assert nt.off_grid_metrics({**OFF, "total_solar": 1500}) == (
+        "SoC 40%, stored 6.8 kWh, home 1.2 kW, solar 1.5 kW — solar is covering the home")
+
+
+def test_off_grid_shows_only_what_was_read():
+    assert nt.off_grid_metrics({**OFF, "wh_available": None}) == "SoC 40%, home 1.2 kW"
+    assert nt.off_grid_metrics({"connection_state": "Disconnected"}) == "no live readings"
 
 
 def test_back_on_grid():

@@ -40,8 +40,8 @@ async def test_off_grid_goes_to_every_enabled_device_with_its_figures(client, tr
     await trg.on_points("gw1", "Shed", {"connection_state": "Disconnected"})
     body = json.loads(pixel.calls.last.request.content)
     assert body["title"] == "FranklinWH off-grid"
-    assert body["message"] == ("Gateway went OFF-GRID [Shed] — running on battery. Battery 40%, "
-                               "6.8 kWh left; home using 1.2 kW: lasts about 5 h 40 min at "
+    assert body["message"] == ("Gateway went OFF-GRID [Shed] — running on battery: SoC 40%, "
+                               "stored 6.8 kWh, home 1.2 kW — about 5 h 40 min left at "
                                "current usage.")
     stats = (await client.get("/api/notify/triggers")).json()["stats"]
     assert stats["off_grid"]["count"] == 1
@@ -85,7 +85,7 @@ async def test_push_switch_off_sends_nothing(client, trg):  # noqa: F811
     pixel = respx.post(PIXEL).mock(return_value=httpx.Response(200, json=[]))
     await _add_phone(client)
     await client.put("/api/notify/settings", json={"push": False})
-    assert await trg.fire("off_grid", gateway="Shed", figures="") == 0
+    assert await trg.fire("off_grid", gateway="Shed", metrics="") == 0
     assert not pixel.called
     assert (await client.post("/api/notify/triggers/test", json={})).status_code == 409
 

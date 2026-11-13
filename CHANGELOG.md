@@ -18,8 +18,9 @@ lands, not backfilled later.
   Connect bridge's (same rows, defaults, Send to and wording): aGate offline / online,
   off-grid started / ended, battery dispatch started / ended, SoC below / reaching a
   threshold, bridge started / restarted / stopped, and the Scheduler group (run failed,
-  missed, aborted, no reply). Off-grid gives the SoC, energy left, home load and about
-  how long the battery lasts at current usage. Each row has its count, Send to (all or
+  missed, aborted, no reply). Off-grid gives the SoC, energy stored, home load, solar
+  and about how long the battery lasts at current usage (net of solar), worded as the
+  Direct Connect bridge words it. Each row has its count, Send to (all or
   chosen devices) and a switch; Send test checks delivery.
 
 ## [0.2.66] — 2026-11-13

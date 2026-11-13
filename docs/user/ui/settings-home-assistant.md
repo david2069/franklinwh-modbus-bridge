@@ -96,7 +96,7 @@ is also a line in the [app log](logs.md), sent or not.
 | Trigger | Default | Sends when |
 |---|---|---|
 | aGate offline / online | On | A gateway hasn't answered for 5 minutes (the *aGate unreachable* alert opens), and again when it has answered for 2 minutes. |
-| Off-grid started / ended | On | A gateway goes off-grid, and when it is back on-grid. The off-grid message gives the battery's SoC, the energy left, the home load, and **about how long the battery lasts at current usage** (energy left ÷ the home load at that moment). |
+| Off-grid started / ended | On | A gateway goes off-grid, and when it is back on-grid. The off-grid message gives the SoC, the energy stored, the home load and solar, and **about how long the battery lasts at current usage** (energy stored ÷ (home load − solar) at that moment), the same as the Direct Connect bridge. When solar covers the whole home it says *solar is covering the home*. |
 | Battery dispatch (VPP / force) started / ended | On | A force charge, discharge or standby starts (from a schedule, the bridge, Home Assistant, or another tool), and when it ends, with why. A change of power on a running dispatch is not a new start. |
 | Battery SoC drops below *n* % | Off (20 %) | The SoC goes below the number. Once per crossing. |
 | Battery SoC reaches *n* % | Off (100 %) | The SoC reaches the number. Once per crossing. |
@@ -116,8 +116,9 @@ Each row shows how many it has sent in the last 30 days and when it last did.
 - **Refresh** reloads the counts.
 
 The FranklinWH app estimates how long the battery lasts from your past usage; the bridge
-uses the load at the moment the gateway went off-grid, so the figure moves with what is
-running then.
+uses the load and solar at the moment the gateway went off-grid, so the figure moves with
+what is running then. Example: *Gateway went OFF-GRID [Home] — running on battery: SoC 91%,
+stored 12.4 kWh, home 2.0 kW — about 6 h 11 min left at current usage.*
 
 ### Companion devices
 
