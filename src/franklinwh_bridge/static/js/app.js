@@ -201,6 +201,16 @@ const SETTINGS_SECTIONS = [
   { id: 'admin',          label: 'Admin' },
 ];
 
+// A gateway's health as the UI shows it: polling but with its link down (the
+// bridge retrying an unreachable aGate) reads as unreachable (#497). A live
+// link answers for itself until the next 60 s TCP probe catches up.
+function gwHealth(gw) {
+  if (!gw) return undefined;
+  if (gw.stale) return 'unreachable';
+  if (gw.polling && gw.link_up && gw.health === 'unreachable') return 'connected';
+  return gw.health;
+}
+
 // Availability dot colour for a gateway's health state.
 function gwDotClass(health) {
   return health === 'connected' ? 'bg-emerald-400'
@@ -220,6 +230,7 @@ function gwLabel(gw) {
 // Short status label for a gateway row in the selector dropdown.
 function gwStatusText(gw) {
   if (!gw) return '';
+  if (gw.polling && gw.stale) return 'Offline';
   if (gw.polling) return 'Polling';
   if (gw.connected) return 'Connected';
   if (gw.health === 'unreachable') return 'Offline';
@@ -808,6 +819,10 @@ document.addEventListener('alpine:init', () => {
     // Data cache
     points: {},
     quality: null,
+    // The active gateway's link is down, or its last good read is old: the
+    // points are the last good ones, kept on screen and marked (#497).
+    pointsStale: false,
+    lastGoodTs: null,
     bridgeStats: null,
     batteryLabel: '',
 
@@ -1035,7 +1050,7 @@ document.addEventListener('alpine:init', () => {
 
     get activeGatewayHealth() {
       const gw = this.gatewayList.find(g => g.id === this.activeGateway);
-      return gw ? gw.health : 'connected';
+      return gw ? gwHealth(gw) : 'connected';
     },
 
     async refresh() {
@@ -1060,13 +1075,17 @@ document.addEventListener('alpine:init', () => {
         this.points = data.points || {};
         this.quality = data.quality ?? null;
         this.lastPollTs = data.ts ?? null;
+        this.pointsStale = data.stale === true;
+        this.lastGoodTs = data.last_good_ts ?? null;
         this.connected = true;
       } else if (row && row.health === 'unconfigured') {
         // Not set up: there is nothing to poll, and the bridge answered. As
         // before #395, when api/points answered for it: "No gateway yet".
         this.points = {};
+        this.pointsStale = false;
         this.connected = true;
       } else {
+        this.pointsStale = false;  // stopped or no answer: the other banners say so
         this.connected = false;
       }
 
@@ -1222,6 +1241,14 @@ document.addEventListener('alpine:init', () => {
     // Convenience getters for templates
     // Keys must match what GET /api/points actually returns
     get batteryPowerW() { return this.points.battery_power_w ?? null; },
+    // aGate unreachable (#497): the figures are the last good read, greyed, with
+    // when it was read, as the Direct Connect bridge shows it (its #615).
+    get isLastGood() { return this.pointsStale; },
+    get lastGoodText() {
+      if (!this.isLastGood) return '';
+      if (this.lastGoodTs == null) return 'No reading yet';
+      return `Last reading ${fmt.clock(this.lastGoodTs)} (${fmt.ago(this.lastGoodTs)})`;
+    },
     get gridPowerW() { return this.points.grid_power_w ?? null; },
     get solarPowerW() { return this.points.total_solar ?? null; },
     get homePowerW() { return this.points.home_load_ext ?? null; },
@@ -1239,12 +1266,14 @@ document.addEventListener('alpine:init', () => {
     // grid not connected (islanded), else 'export' / 'import' / 'idle'. Idle is what
     // shows as 0.00 kW (under 5 W either way), so the mark never disagrees with the number.
     get gridDir() {
+      if (this.isLastGood) return null;
       if (this.points.connection_state != null && this.points.connection_state !== 'Connected') return 'down';
       const w = this.gridPowerW;
       if (w == null) return null;
       return w <= -5 ? 'export' : w >= 5 ? 'import' : 'idle';
     },
     get batteryDir() {
+      if (this.isLastGood) return null;
       const st = this.points.battery_state;
       if (st == null) return null;
       return st === 'Charging' ? 'charge' : st === 'Discharging' ? 'discharge' : 'idle';

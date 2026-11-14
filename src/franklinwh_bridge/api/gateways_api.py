@@ -764,6 +764,7 @@ async def list_gateways(request: Request):
                     ),
                     "last_error": inst.status.last_error,
                     "serial_refused": inst.status.serial_refused,
+                    **inst.link(),
                 })
             else:
                 entry.update({
@@ -1295,8 +1296,9 @@ async def get_gateway_points(gw_id: str, request: Request):
         raise HTTPException(404, f"Gateway '{gw_id}' not running")
 
     last = inst.sample_bus.last_sample
+    link = inst.link()
     if last is None:
-        return {"gateway_id": gw_id, "points": {}, "ts": None}
+        return {"gateway_id": gw_id, "points": {}, "ts": None, **link}
 
     points = dict(last.points)
     if inst.command_handler:
@@ -1306,6 +1308,7 @@ async def get_gateway_points(gw_id: str, request: Request):
         "points": points,
         "ts": last.ts,
         "quality": last.quality,
+        **link,
     }
 
 

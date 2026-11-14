@@ -120,6 +120,23 @@
     </p>
   </template>
 
+  <!-- aGate unreachable (#497): the bridge keeps retrying, so the gateway still
+       polls, but its link is down and the figures below are the last good read. -->
+  <template x-if="$store.app.isLastGood">
+    <div class="mb-4 rounded-xl border px-4 py-3 flex items-start gap-3 bg-red-950/60 border-red-500/40"
+         role="alert" data-testid="link-down-banner">
+      <svg class="w-5 h-5 mt-0.5 shrink-0 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+      </svg>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-red-300" x-text="'aGate unreachable: ' + $store.app.activeGatewayName"></p>
+        <p class="text-xs mt-0.5 text-red-400/80"
+           x-text="$store.app.lastGoodText + '. The bridge keeps retrying; the figures below are from then. Check the network and the aGate.'"></p>
+      </div>
+    </div>
+  </template>
+
   <!-- Gateway Health Alert Banner — shown when any enabled gateway is not polling -->
   <template x-if="$store.app.gatewayList.some(g => g.enabled && !g.polling && g.health !== 'unconfigured')">
     <div class="mb-4 rounded-xl border px-4 py-3 flex items-start gap-3"
@@ -259,9 +276,10 @@
     </div>
 
     <!-- Power Flow Summary -->
-    <div class="card" x-show="cardVisible.powerFlow"
+    <div class="card" :class="{'is-stale': $store.app.isLastGood}" x-show="cardVisible.powerFlow"
          draggable="true" :style="`order:${cardOrder.indexOf('powerFlow')}`"
          @dragstart="dragStart('powerFlow')" @dragover.prevent="dragOver($event,'powerFlow')" @dragend="dragEnd()">
+           <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText" data-testid="stale-note"></div>
       <div class="card-label mb-3">Power Flow Summary</div>
       <div class="space-y-2">
         <div class="flex justify-between items-center">
@@ -269,13 +287,13 @@
           <span class="text-sm font-bold font-mono" :style="'color:' + powerColour($store.app.solarPowerW, 'solar')"
                 x-text="fmt.w($store.app.solarPowerW) + 'W'"></span>
           <span class="text-xs text-slate-500 w-28 text-right"
-                x-text="$store.app.solarPowerW > 0 ? 'Generating' : 'Idle'"></span>
+                x-text="$store.app.isLastGood ? '—' : ($store.app.solarPowerW > 0 ? 'Generating' : 'Idle')"></span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Home <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('home_load_ext')"></span></span>
           <span class="text-sm font-bold font-mono"
                 x-text="fmt.w($store.app.homePowerW) + 'W'"></span>
-          <span class="text-xs text-slate-500 w-28 text-right">Consuming</span>
+          <span class="text-xs text-slate-500 w-28 text-right" x-text="$store.app.isLastGood ? '—' : 'Consuming'"></span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Battery <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('battery_power_w')"></span></span>
@@ -283,7 +301,7 @@
                 x-text="fmt.w($store.app.batteryPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
                 :class="$store.app.batteryPowerW > 0 ? 'text-orange-400' : ($store.app.batteryPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
-                x-text="$store.app.batteryPowerW > 0 ? 'Discharging' : ($store.app.batteryPowerW < 0 ? 'Charging' : 'Standby')"></span>
+                x-text="$store.app.isLastGood ? 'Unknown (offline)' : ($store.app.batteryPowerW > 0 ? 'Discharging' : ($store.app.batteryPowerW < 0 ? 'Charging' : 'Standby'))"></span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm text-slate-400" :class="$store.app.showSources ? 'w-32' : 'w-20'">Grid <span x-show="$store.app.showSources" class="source-tag" x-text="$store.app.src('grid_power_w')"></span></span>
@@ -291,15 +309,16 @@
                 x-text="fmt.w($store.app.gridPowerW) + 'W'"></span>
           <span class="text-xs w-28 text-right"
                 :class="$store.app.gridPowerW > 0 ? 'text-orange-400' : ($store.app.gridPowerW < 0 ? 'text-emerald-400' : 'text-slate-500')"
-                x-text="$store.app.gridPowerW > 0 ? 'Importing' : ($store.app.gridPowerW < 0 ? 'Exporting' : 'Neutral')"></span>
+                x-text="$store.app.isLastGood ? 'Unknown (offline)' : ($store.app.gridPowerW > 0 ? 'Importing' : ($store.app.gridPowerW < 0 ? 'Exporting' : 'Neutral'))"></span>
         </div>
       </div>
     </div>
 
     <!-- AC Power (with expandable per-phase detail for split/three-phase) -->
-    <div class="card" x-show="cardVisible.acPower" x-data="{ phaseExpanded: false }"
+    <div class="card" :class="{'is-stale': $store.app.isLastGood}" x-show="cardVisible.acPower" x-data="{ phaseExpanded: false }"
          draggable="true" :style="`order:${cardOrder.indexOf('acPower')}`"
          @dragstart="dragStart('acPower')" @dragover.prevent="dragOver($event,'acPower')" @dragend="dragEnd()">
+           <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText" data-testid="stale-note"></div>
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0">AC Power <span class="normal-case font-normal text-slate-600" x-text="'(' + ($store.app.points.ac_type || '--') + ')'"></span></div>
         <!-- Phase expand button — only for split/three-phase -->
@@ -428,9 +447,10 @@
     </div>
 
     <!-- Battery State of Charge -->
-    <div class="card" x-show="cardVisible.batterySoc"
+    <div class="card" :class="{'is-stale': $store.app.isLastGood}" x-show="cardVisible.batterySoc"
          draggable="true" :style="`order:${cardOrder.indexOf('batterySoc')}`"
          @dragstart="dragStart('batterySoc')" @dragover.prevent="dragOver($event,'batterySoc')" @dragend="dragEnd()">
+           <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText" data-testid="stale-note"></div>
       <div class="card-label mb-3" x-text="$store.app.batteryLabel ? $store.app.batteryLabel + ' — State of Charge' : 'Battery State of Charge'"></div>
       <div class="flex items-center gap-5">
         <div class="soc-ring">
@@ -463,9 +483,10 @@
     </div>
 
     <!-- Solar AC Inputs -->
-    <div class="card" x-show="cardVisible.solarInputs"
+    <div class="card" :class="{'is-stale': $store.app.isLastGood}" x-show="cardVisible.solarInputs"
          draggable="true" :style="`order:${cardOrder.indexOf('solarInputs')}`"
          @dragstart="dragStart('solarInputs')" @dragover.prevent="dragOver($event,'solarInputs')" @dragend="dragEnd()">
+           <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText" data-testid="stale-note"></div>
       <div class="card-label mb-3">Solar AC Inputs</div>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between font-semibold">
@@ -639,9 +660,10 @@
       </template>
     </div>
     <!-- Battery -->
-    <div class="card" x-show="cardVisible.battery"
+    <div class="card" :class="{'is-stale': $store.app.isLastGood}" x-show="cardVisible.battery"
          draggable="true" :style="`order:${cardOrder.indexOf('battery')}`"
          @dragstart="dragStart('battery')" @dragover.prevent="dragOver($event,'battery')" @dragend="dragEnd()">
+           <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText" data-testid="stale-note"></div>
       <div class="flex items-center justify-between mb-3">
         <div class="card-label !mb-0" x-text="$store.app.batteryLabel || 'Battery'"></div>
         <div x-data="metricsChart('dc')">
@@ -904,9 +926,10 @@
     </div>
 
     <!-- Operating Mode & Reserve -->
-    <div class="card" x-show="cardVisible.operatingMode" x-data="controlsTab()"
+    <div class="card" :class="{'is-stale': $store.app.isLastGood}" x-show="cardVisible.operatingMode" x-data="controlsTab()"
          draggable="true" :style="`order:${cardOrder.indexOf('operatingMode')}`"
          @dragstart="dragStart('operatingMode')" @dragover.prevent="dragOver($event,'operatingMode')" @dragend="dragEnd()">
+           <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText" data-testid="stale-note"></div>
       <div class="card-label mb-3">Operating Mode & Reserve</div>
 
       <!-- Operating Mode -->

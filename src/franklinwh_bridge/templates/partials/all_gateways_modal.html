@@ -53,7 +53,7 @@
                     <td class="pr-3 text-slate-300" x-text="gw.model || '—'"></td>
                     <td class="pr-3">
                       <span class="inline-flex items-center gap-1.5" :title="gw.serial_refused || gw.health">
-                        <span class="w-1.5 h-1.5 rounded-full" :class="gwDotClass(gw.health)"></span>
+                        <span class="w-1.5 h-1.5 rounded-full" :class="gwDotClass(gwHealth(gw))"></span>
                         <span class="text-slate-300" x-text="gw.serial_refused ? 'Refused' : gwStatusText(gw)"></span>
                       </span>
                     </td>

@@ -39,6 +39,11 @@ from franklinwh_bridge.store.db import (
 
 logger = logging.getLogger(__name__)
 
+# The last sample counts as stale after this many poll intervals with no good
+# read, and never sooner than STALE_MIN_S (#497).
+STALE_POLLS = 3
+STALE_MIN_S = 30.0
+
 
 def disable_connect_writes(controller: Any) -> None:
     """Stop the library writing to the aGate when it connects (#239).
@@ -263,6 +268,29 @@ class GatewayInstance:
     @property
     def is_running(self) -> bool:
         return self.status.polling and self.poller is not None
+
+    def link(self, now: float | None = None) -> dict[str, Any]:
+        """The Modbus link as the dashboard shows it (#497).
+
+        The poller keeps retrying an unreachable aGate, so ``polling`` stays
+        true; ``link_up`` is the poller's own connection. The last sample is
+        ``stale`` while the link is down, or when the last good read is older
+        than STALE_POLLS poll intervals (at least STALE_MIN_S).
+        """
+        state = self.poller.state if self.poller is not None else None
+        if state is None:
+            return {"link_up": False, "last_good_ts": None, "stale": False}
+        if self.config.mock:  # no socket: the mock poller is always "connected"
+            up, last_good = True, state.last_poll_ts
+        else:
+            up, last_good = bool(state.connected), state.last_good_ts
+        limit = max(STALE_POLLS * float(self.config.poll_interval or 0), STALE_MIN_S)
+        old = last_good is not None and (now or time.time()) - last_good > limit
+        return {
+            "link_up": up,
+            "last_good_ts": last_good,
+            "stale": self.is_running and (not up or old),
+        }
 
     async def start(self) -> None:
         """Create controller, connect, discover device, start poller."""
@@ -711,4 +739,5 @@ class GatewayInstance:
             ),
             "last_error": self.status.last_error,
             "serial_refused": self.status.serial_refused,
+            **self.link(),
         }

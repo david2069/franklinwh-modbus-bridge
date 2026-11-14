@@ -49,7 +49,7 @@
         <button @click="$store.app.setGateway(gw.id); open = false"
                 class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-700/60 transition"
                 :class="$store.app.activeGateway === gw.id ? 'text-cyan-400' : 'text-slate-300'">
-          <span class="w-1.5 h-1.5 rounded-full" :class="gwDotClass(gw.health)"></span>
+          <span class="w-1.5 h-1.5 rounded-full" :class="gwDotClass(gwHealth(gw))"></span>
           <span class="flex-1 text-left" x-text="gwLabel(gw)"></span>
           <span class="text-[10px] text-slate-500" x-text="gwStatusText(gw)"></span>
         </button>
@@ -63,7 +63,8 @@
        red is kept for critical. Grid not connected is amber. The hover text
        says what each one is. Icons drawn for this project. -->
   <div class="items-center gap-3 text-xs font-semibold tabular-nums"
-       :class="$store.app.phoneNav ? 'flex order-last' : 'flex'">
+       :class="($store.app.phoneNav ? 'flex order-last' : 'flex') + ($store.app.isLastGood ? ' is-stale' : '')"
+       :data-stale="$store.app.isLastGood">
     <!-- Grid (#296 item 49): kW without a sign at a fixed width, so the text never moves,
          and a mark for the direction: ↑ green exporting, ↓ orange importing, – amber idle,
          ✕ red when the grid is not connected (islanded). -->

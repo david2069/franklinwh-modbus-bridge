@@ -23,6 +23,17 @@ lands, not backfilled later.
   Direct Connect bridge words it. Each row has its count, Send to (all or
   chosen devices) and a switch; Send test checks delivery.
 
+### Fixed
+- **The dashboard shows when the aGate is unreachable** (#497). The bridge keeps
+  retrying a lost link, so the gateway still counted as polling. The "Device
+  unreachable" banner never appeared, and the figures looked live. Now a red
+  **aGate unreachable** banner says when the last reading was. The live cards and
+  the top bar keep the last readings, greyed. Battery and grid states say
+  *Unknown (offline)*, and the gateway shows *Offline* with a red dot. The health
+  check now follows the poller's own connection.
+- `GET /api/gateways` and `GET /api/gateways/{id}/points` report `link_up`, `stale`
+  and `last_good_ts`.
+
 ## [0.2.66] — 2026-11-13
 
 ### Fixed
