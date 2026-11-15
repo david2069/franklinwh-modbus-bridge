@@ -203,6 +203,15 @@ async def test_test_sends_with_the_switch_off_but_broadcast_does_not(client):
     assert [(e["event"], e["direction"]) for e in log] == [("broadcast", "SENT"), ("test", "SENT")]
 
 
+async def test_a_send_with_no_device_is_recorded_as_skipped(client):
+    """franklinwh-ha-notify 0.1.4: no target is SKIPPED, not ERROR, as Recent
+    notifications describes it."""
+    res = await client.act.broadcast("hello")
+    assert res.delivered == 0
+    log = (await client.get("/api/notify/log")).json()["entries"]
+    assert [(e["event"], e["direction"]) for e in log] == [("broadcast", "SKIPPED")]
+
+
 @respx.mock
 async def test_test_with_buttons_round_trip_and_check(client):
     route = respx.post(f"{HA}/api/services/notify/mobile_app_pixel").mock(
