@@ -212,6 +212,39 @@ async def test_a_send_with_no_device_is_recorded_as_skipped(client):
     assert [(e["event"], e["direction"]) for e in log] == [("broadcast", "SKIPPED")]
 
 
+
+@respx.mock
+async def test_a_schedule_notify_row_is_recorded_and_follows_the_switch(client):
+    """#499 step 2: a schedule's notify row goes through the library: logged, and not
+    sent while Push notifications are off."""
+    route = respx.post(f"{HA}/api/services/notify/mobile_app_pixel").mock(
+        return_value=httpx.Response(200, json=[]))
+    await _add_phone(client)
+    res = await client.act.notify_service("ha_home", "notify.mobile_app_pixel", "Hi", "Charging")
+    assert res == {"ok": True} and route.call_count == 1
+    assert json.loads(route.calls[-1].request.content) == {"title": "Hi", "message": "Charging"}
+
+    await client.put("/api/notify/settings", json={"push": False})
+    res = await client.act.notify_service("ha_home", "mobile_app_pixel", "Hi", "Charging")
+    assert res == {"ok": False, "skipped": "Push notifications are off"}
+    assert route.call_count == 1
+    log = (await client.get("/api/notify/log")).json()["entries"]
+    assert [(e["event"], e["direction"]) for e in log] == [
+        ("schedule_notify", "SKIPPED"), ("schedule_notify", "SENT")]
+
+
+async def test_a_schedule_notify_row_to_an_unknown_instance_says_why(client):
+    res = await client.act.notify_service("ha_gone", "mobile_app_pixel", "Hi", "Charging")
+    assert res == {"ok": False, "error": "HA instance 'ha_gone' not found or switched off"}
+
+
+@respx.mock
+async def test_a_schedule_notify_row_reports_the_delivery_error(client):
+    respx.post(f"{HA}/api/services/notify/persistent_notification").mock(
+        return_value=httpx.Response(500, text="boom"))
+    res = await client.act.notify_service("ha_home", "persistent_notification", "Hi", "x")
+    assert res["ok"] is False and res["error"]
+
 @respx.mock
 async def test_test_with_buttons_round_trip_and_check(client):
     route = respx.post(f"{HA}/api/services/notify/mobile_app_pixel").mock(

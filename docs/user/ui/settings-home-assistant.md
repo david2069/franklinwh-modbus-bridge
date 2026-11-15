@@ -50,6 +50,7 @@ The one switch for all of it, **on** by default.
 | | On | Off |
 |---|---|---|
 | Phones and other devices below | Receive notifications | Get nothing. **Test** on a device's row still sends, to check it. |
+| A schedule's notify actions | Sent | Not sent; the schedule's Activity Log row says *skipped* |
 | Home Assistant's notification panel | Gets critical alerts and, if switched on, status notices | Gets nothing. Critical alerts reach only the bridge's own window. |
 
 It is the same setting the bridge has always used for critical alerts to Home Assistant,
@@ -159,7 +160,7 @@ Removing a Home Assistant instance removes its devices too.
 ### Recent notifications
 
 The last 20 notifications sent and taps received, newest first, with how each went,
-including the [Auto-notify triggers](#auto-notify-triggers).
+including the [Auto-notify triggers](#auto-notify-triggers) and schedules' notify actions.
 
 ## MQTT Broker
 

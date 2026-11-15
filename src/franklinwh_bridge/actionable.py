@@ -66,6 +66,8 @@ EVENT_TEST_BUTTONS = "test_buttons"
 EVENT_BROADCAST = "broadcast"
 #: The daily health report, amber or red (#296 item 51).
 EVENT_HEALTH = "health"
+#: A schedule's notify row, and its failure and recovery messages (#499 step 2).
+EVENT_SCHEDULE = "schedule_notify"
 #: How long Test with buttons waits for a tap.
 TEST_BUTTONS_TTL_S = 120
 #: app_config key: the last Test with buttons, JSON, kept across restarts.
@@ -79,6 +81,7 @@ _TEMPLATES.register(
           "Test with buttons from Settings → Notifications. Tap Yes or No."),
     Event(EVENT_BROADCAST, "{title}", "{message}", ("title", "message")),
     Event(EVENT_HEALTH, "{title}", "{message}", ("title", "message")),
+    Event(EVENT_SCHEDULE, "{title}", "{message}", ("title", "message")),
 )
 _TEMPLATES.register(*notify_triggers.EVENTS)
 
@@ -321,6 +324,34 @@ class Actionable:
             return SendResult()
         return await self.notifier.notify(EVENT_HEALTH, await self.targets(),
                                           title=title, message=message)
+
+    async def notify_service(self, instance_id: str, service: str, title: str,
+                             message: str) -> dict:
+        """A schedule's notify row: one ``notify.*`` service on one instance, through the
+        library, so it is recorded and follows the switch. A saved device gives its alias;
+        a service that isn't saved still sends. ``{"ok"}``, plus ``"error"`` or
+        ``"skipped"`` saying why it wasn't sent. Never raises."""
+        if self.notifier is None:
+            return {"ok": False, "error": "notifications are not running"}
+        svc = service.removeprefix("notify.")
+        if instance_id not in self.notifier.instances:
+            return {"ok": False, "error": f"HA instance {instance_id!r} not found or switched off"}
+        if not self._enabled:
+            await self.notifier.ledger.arecord("SKIPPED", EVENT_SCHEDULE, title=title,
+                                               message=message, status="notifications are off")
+            return {"ok": False, "skipped": "Push notifications are off"}
+        alias = next((d["alias"] for d in await get_notify_devices(self._db)
+                      if d["instance_id"] == instance_id
+                      and d["service"].removeprefix("notify.") == svc), svc)
+        try:
+            res = await self.notifier.notify(EVENT_SCHEDULE, [Target(instance_id, svc, alias)],
+                                             title=title, message=message)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc) or type(exc).__name__}
+        if res.delivered:
+            return {"ok": True}
+        return {"ok": False, "error": "; ".join(d.error for d in res.deliveries if d.error)
+                or res.summary}
 
     # ── status ────────────────────────────────────────────────
     def listener_status(self) -> dict[str, dict]:

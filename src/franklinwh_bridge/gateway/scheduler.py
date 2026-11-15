@@ -1552,6 +1552,10 @@ class ScheduleEngine:
                 detail = f"[{phase}] notify.{svc}: {sent_msg[:60]}"
             else:
                 detail = f"[{phase}] {eid} → {svc}" + (f" {data}" if data else "")
+            if res.get("skipped"):  # Push notifications off: not sent, by choice
+                await self._audit(win["id"], "ha_action", tkey, "skipped",
+                                  f"{detail} — {res['skipped']}")
+                continue
             if not ok:
                 detail += f" — {res.get('error')}"
             await self._audit(
@@ -1794,6 +1798,10 @@ class ScheduleEngine:
             except Exception as exc:
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
             detail = f"[alert] notify.{svc}: {message[:60]}"
+            if res.get("skipped"):
+                await self._audit(win["id"], "ha_action", tkey, "skipped",
+                                  f"{detail} — {res['skipped']}")
+                continue
             if not res.get("ok"):
                 detail += f" — {res.get('error')}"
             await self._audit(win["id"], "ha_action", tkey,
