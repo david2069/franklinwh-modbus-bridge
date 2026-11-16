@@ -201,7 +201,7 @@ there. **+ entity** appears once at least one controllable entity is exposed on 
 | Notify target | a `notify.*` service of an HA instance | listed separately: it is a service, not an entity |
 | Title, Message (Notify) | text, up to 200 / 1000 characters | Message is required |
 | When | **on fire**, **on exit**, **entry & exit** | |
-| Guard (**+ guard**) | sensor, operator, value | the action runs only if this condition is true at that moment |
+| Guard (**+ guard**) | sensor, operator, Value or Lookup (and a second value for between) | the action runs only if this condition is true at that moment |
 
 <!-- @b HAA-01 ;; src: api/schedules_api.py:72-105 ;; untested ;; write: no ;; b: The API rejects an entity action without entity_id and a notify action without message; title and message are limited to 200 and 1000 characters ;; test: unit (API) — POST each invalid shape and assert 422 -->
 <!-- @b HAA-02 ;; src: static/js/schedule_tab.js:1423-1445 ;; untested ;; write: no ;; b: The form silently drops incomplete HA action rows on save ;; test: browser — add an entity row without an entity; save; GET ha_actions is empty -->
@@ -227,7 +227,12 @@ there. **+ entity** appears once at least one controllable entity is exposed on 
 ### Guards
 
 A guard is one condition, checked against the target gateway's snapshot at the moment the
-action is due. False: the action is skipped and logged *gated*.
+action is due. False: the action is skipped and logged *gated*, with the guard, for example
+*skipped — guard battery.soc_pct between 20 and 80 not met*.
+
+The guard row works like a condition row: a sensor picker you can filter, the same
+operators, **Value** or **Lookup** (compare with another sensor), and a second value for
+**between**. See [Conditions](conditions.md#operators).
 <!-- @b HAA-08 ;; src: gateway/scheduler.py:1122-1126, gateway/scheduler.py:1168-1175 ;; tested: tests/unit/test_scheduler.py::test_ha_action_guard_gates_the_action ;; write: no ;; b: An HA action guard is one condition evaluated at run time; false skips the action with a gated audit row ;; test: — -->
 
 ### Placeholders in notifications

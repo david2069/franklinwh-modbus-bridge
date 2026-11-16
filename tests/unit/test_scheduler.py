@@ -761,3 +761,49 @@ async def test_store_delete(db):
     assert await delete_schedule(db, row["id"]) is True
     assert await get_schedule(db, row["id"]) is None
     assert await delete_schedule(db, row["id"]) is False
+
+
+async def test_a_guard_takes_between_and_lookup_like_a_condition():
+    """Group 2 (as DC): the guard is a full condition leaf. "between" uses value2, a
+    Lookup compares with another sensor, and the Activity Log says which."""
+    calls, audits = [], []
+
+    async def ha(inst, eid, svc, data):
+        calls.append(eid)
+        return {"ok": True}
+
+    def _run(guard, soc):
+        acts = [{"instance_id": "ha1", "entity_id": "switch.boost", "service": "turn_on",
+                 "when": "fire", "guard": guard}]
+        eng = ScheduleEngine(
+            db=None,
+            resolver=lambda tt, tid: [("default", FakeHandler())],
+            points_fn=lambda gw: {"soc": soc, "self_reserve_pct": 90},
+            ha_action_fn=ha,
+        )
+
+        async def _audit(sid, action, target, result, detail, *a, **k):
+            audits.append((result, detail))
+
+        eng._audit = _audit
+        eng._entries = [_entry(action="none", params={}, ha_actions=acts, when_spec=_ALLDAY)]
+        return eng.tick(datetime(2026, 6, 15, 10, 0, 0))
+
+    between = {"sensor": "battery.soc_pct", "op": "between", "value": 20, "value2": 80}
+    await _run(between, 50)
+    assert calls == ["switch.boost"]
+    calls.clear()
+    await _run(between, 85)
+    assert calls == []
+    gated = "[fire] switch.boost skipped — guard battery.soc_pct between 20 and 80 not met"
+    assert ("gated", gated) in audits
+
+    lookup = {"sensor": "battery.soc_pct", "op": ">=", "value_kind": "sensor",
+              "value_sensor": "battery.reserve_self_pct"}
+    await _run(lookup, 95)
+    assert calls == ["switch.boost"]
+    calls.clear()
+    await _run(lookup, 50)
+    assert calls == []
+    gated = "[fire] switch.boost skipped — guard battery.soc_pct>=battery.reserve_self_pct not met"
+    assert ("gated", gated) in audits

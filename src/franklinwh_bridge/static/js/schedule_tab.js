@@ -311,7 +311,7 @@ function scheduleTab() {
     removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
     addGuard(a) {
       const s = this.sensors[0] ? this.sensors[0].id : 'battery.soc_pct';
-      a.guard = { sensor: s, op: '==', value: '' };
+      a.guard = { sensor: s, op: '==', value: '', value2: '', value_kind: 'value', value_sensor: '' };
     },
     removeGuard(a) { a.guard = null; },
 
@@ -1454,7 +1454,8 @@ function scheduleTab() {
         enabled: e.enabled,
         entry_hold_s: e.entry_hold_s || 0,
         ha_actions: (e.ha_actions || []).map((a) => ({
-          ...a, data: { ...(a.data || {}) }, guard: a.guard ? { ...a.guard } : null,
+          ...a, data: { ...(a.data || {}) },
+          guard: a.guard ? { value2: '', value_kind: 'value', value_sensor: '', ...a.guard } : null,
         })),
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
@@ -1623,19 +1624,7 @@ function scheduleTab() {
           if (c.conditions) {
             if (c.conditions.length) conds.push(build(c));  // skip empty groups
           } else {
-            const row = { sensor: c.sensor, op: c.op };
-            // A list or pattern RHS is text by definition, and a Lookup (one
-            // live value) can't be a list — so these ops always send the raw
-            // string rather than a coerced number or a sensor reference.
-            if (TEXT_RHS_OPERATORS.includes(c.op)) {
-              row.value = c.value == null ? '' : String(c.value);
-            } else if (c.value_kind === 'sensor') {
-              row.value_kind = 'sensor';
-              row.value_sensor = c.value_sensor || '';
-            } else {
-              row.value = this._coerceVal(c.value);
-              if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
-            }
+            const row = this._leafOut(c);
             if (withCid && c._cid != null) row.cid = c._cid;  // UI-only, for highlight
             conds.push(row);
           }
@@ -1644,6 +1633,24 @@ function scheduleTab() {
       };
       const built = build(tree);
       return built.conditions.length ? built : null;
+    },
+
+    // One condition leaf as the API takes it; a guard is the same leaf (as DC).
+    _leafOut(c) {
+      const row = { sensor: c.sensor, op: c.op };
+      // A list or pattern RHS is text by definition, and a Lookup (one
+      // live value) can't be a list — so these ops always send the raw
+      // string rather than a coerced number or a sensor reference.
+      if (TEXT_RHS_OPERATORS.includes(c.op)) {
+        row.value = c.value == null ? '' : String(c.value);
+      } else if (c.value_kind === 'sensor') {
+        row.value_kind = 'sensor';
+        row.value_sensor = c.value_sensor || '';
+      } else {
+        row.value = this._coerceVal(c.value);
+        if (c.op === 'between') row.value2 = this._coerceVal(c.value2);
+      }
+      return row;
     },
 
     _buildTriggerSpec() {
@@ -1743,7 +1750,7 @@ function scheduleTab() {
               o.message = a.message || '';
             }
             if (a.guard && a.guard.sensor) {
-              o.guard = { sensor: a.guard.sensor, op: a.guard.op, value: this._coerceVal(a.guard.value) };
+              o.guard = this._leafOut(a.guard);
             }
             return o;
           }),
