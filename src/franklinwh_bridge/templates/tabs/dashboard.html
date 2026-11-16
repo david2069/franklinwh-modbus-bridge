@@ -523,8 +523,15 @@
           <span x-show="data && data.stale" x-cloak class="chip warn" style="font-size:.6rem"
                 title="The last fetch failed; showing the previous forecast">stale</span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="text-[10px] sf-faint">Open-Meteo</span>
+          <!-- The lines over the chart, as Energipays: Actual (today's measured solar) and Temp. -->
+          <button type="button" class="sf-toggle" :aria-pressed="showActual ? 'true' : 'false'" x-show="configured"
+                  @click="toggleLine('actual')" data-testid="sf-toggle-actual" title="Today's measured solar, per hour">
+            <span class="sf-key-actual"></span>Actual</button>
+          <button type="button" class="sf-toggle" :aria-pressed="showTemp ? 'true' : 'false'" x-show="configured"
+                  @click="toggleLine('temp')" data-testid="sf-toggle-temp" title="Forecast temperature, today and tomorrow">
+            <span class="sf-key-temp"></span>Temp</button>
           <button type="button" @click="load(true)" class="btn btn-sm btn-secondary" :disabled="loading"
                   x-text="loading ? '…' : 'Refresh'"></button>
         </div>
@@ -563,6 +570,9 @@
               <div class="text-xs sf-muted" x-show="sensors['solar_forecast.remaining_kwh'] != null">
                 Remaining <span class="sf-strong" x-text="num(sensors['solar_forecast.remaining_kwh'], 1)"></span> kWh
               </div>
+              <!-- Won't fill (owner, 2026-11-17): the forecast solar left today is less than the
+                   room left in the battery to 100%. -->
+              <div class="text-xs mt-1 sf-short" x-show="fillNote" x-text="'⚠ ' + fillNote" data-testid="sf-wont-fill"></div>
               <div class="mt-2 pt-2 sf-rule" x-show="today && actualKwh != null">
                 <div class="flex items-baseline justify-between gap-2 text-[11px]">
                   <span class="sf-sec">Actual so far</span>
@@ -609,9 +619,20 @@
             </div>
           </div>
 
-          <!-- Hourly kW bars, current hour emphasised, NOW line; battery band underneath -->
-          <div x-show="bars.length">
-            <div class="relative" style="height:90px">
+          <!-- One chart over 48 h (as Energipays): hourly kW bars (today amber, tomorrow blue),
+               current hour emphasised, NOW line; today's measured solar (Actual) and the forecast
+               temperature (Temp, right axis) as lines over them; battery band underneath. -->
+          <div x-show="bars.length" data-testid="sf-chart">
+            <div class="relative" style="height:110px">
+              <span class="sf-axis" style="left:0;top:0" x-text="num(kwMax, 1)"></span>
+              <span class="sf-axis" style="left:0;top:50%;transform:translateY(-50%)" x-text="num(kwMax / 2, 1)"></span>
+              <span class="sf-axis" style="left:0;bottom:0">kW</span>
+              <template x-if="showTemp && tempRange">
+                <span>
+                  <span class="sf-axis temp" style="right:0;top:0" x-text="tempRange.hi + '°'"></span>
+                  <span class="sf-axis temp" style="right:0;bottom:0" x-text="tempRange.lo + '°'"></span>
+                </span>
+              </template>
               <div class="absolute inset-0 flex flex-col justify-between pointer-events-none" aria-hidden="true">
                 <div class="sf-grid" style="opacity:.8"></div>
                 <div class="sf-grid" style="opacity:.45"></div>
@@ -627,6 +648,10 @@
                   </div>
                 </template>
               </div>
+              <svg class="sf-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <path x-show="showTemp && tempPath" class="sf-line-temp" :d="tempPath || 'M0 0'" data-testid="sf-line-temp"></path>
+                <path x-show="showActual && hasActual" class="sf-line-actual" :d="actualPath || 'M0 0'" data-testid="sf-line-actual"></path>
+              </svg>
             </div>
             <!-- What the battery did each hour today, aligned under the bars -->
             <div class="flex gap-px mt-0.5" style="height:5px" x-show="bandShown">
@@ -642,6 +667,13 @@
             </div>
             <div class="flex justify-between text-[10px] sf-faint mt-1">
               <span>← Today</span><span class="sf-now-ink">now</span><span>Tomorrow →</span>
+            </div>
+            <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-0.5 text-[9px] sf-faint mt-1" data-testid="sf-legend">
+              <span class="inline-flex items-center gap-1"><span class="sf-swatch today"></span>Today</span>
+              <span class="inline-flex items-center gap-1"><span class="sf-swatch tomorrow"></span>Tomorrow</span>
+              <span class="inline-flex items-center gap-1"><span class="sf-swatch nowmark"></span>Now</span>
+              <span class="inline-flex items-center gap-1" x-show="showActual"><span class="sf-key-actual"></span>Actual PV<span x-show="!hasActual"> (no readings yet)</span></span>
+              <span class="inline-flex items-center gap-1" x-show="showTemp && tempRange"><span class="sf-key-temp"></span>Temp</span>
             </div>
             <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-0.5 text-[9px] sf-faint mt-1" x-show="bandShown">
               <span class="inline-flex items-center gap-1"><span class="sf-swatch charge"></span>battery charging</span>

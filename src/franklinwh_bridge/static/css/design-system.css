@@ -775,6 +775,8 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   --sf-discharge:    #f59e0b; /* amber-500 */
   --sf-ahead:        #34d399;
   --sf-behind:       #f59e0b;
+  --sf-actual:       #f97316; /* orange-500: measured solar line (Energipays) */
+  --sf-temp:         #38bdf8; /* sky-400: temperature line, dashed */
 }
 [data-theme="light"] {
   --sf-today-ink:    #b45309; /* amber-700 */
@@ -784,6 +786,8 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   --sf-discharge:    #d97706; /* amber-600 */
   --sf-ahead:        #047857; /* emerald-700 */
   --sf-behind:       #b45309; /* amber-700 */
+  --sf-actual:       #c2410c; /* orange-700 */
+  --sf-temp:         #0369a1; /* sky-700 */
 }
 .sf-panel {
   border-radius: var(--radius-md);
@@ -828,6 +832,20 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .sf-swatch.charge    { background: var(--sf-charge); }
 .sf-swatch.discharge { background: var(--sf-discharge); }
 .sf-swatch.idle      { background: var(--surface-2); }
+.sf-swatch.today     { background: var(--sf-today); }
+.sf-swatch.tomorrow  { background: var(--sf-tomorrow); }
+.sf-swatch.nowmark   { background: var(--sf-now); width: 2px; }
+/* The Actual and Temp lines over the bars (owner, 2026-11-17: as Energipays). */
+.sf-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.sf-line-actual { fill: none; stroke: var(--sf-actual); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.sf-line-temp   { fill: none; stroke: var(--sf-temp); stroke-width: 1.5; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.sf-key-actual  { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--sf-actual); }
+.sf-key-temp    { display: inline-block; width: 14px; height: 0; border-top: 2px dashed var(--sf-temp); }
+.sf-axis        { position: absolute; font-size: 8px; line-height: 1; color: var(--text-faint, #64748b); pointer-events: none; }
+.sf-axis.temp   { color: var(--sf-temp); }
+.sf-toggle      { font-size: .65rem; padding: .1rem .5rem; border-radius: 9999px; border: 1px solid var(--border); display: inline-flex; align-items: center; gap: .3rem; }
+.sf-toggle[aria-pressed="false"] { opacity: .45; }
+.sf-short       { color: var(--sf-behind); }
 
 /* Schedule condition rows: the grip that widens the sensor column, and the
    corner that resizes a sensor drop list. Big enough for a finger. */

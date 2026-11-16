@@ -23,11 +23,13 @@ import contextlib
 import json
 import logging
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 from franklinwh_ha_notify import Event
 
+from franklinwh_bridge.gateway import solar_forecast
 from franklinwh_bridge.store.db import get_app_config, get_notify_devices, set_app_config
 
 if TYPE_CHECKING:
@@ -36,6 +38,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CONFIG_KEY = "notify.triggers"
+#: "Solar won't fill the battery today" is checked from this hour (site time).
+SOLAR_SHORT_FROM_HOUR = 10
 #: app_config: the last clean stop ({ts, version}), read once by the next start.
 STOP_KEY = "notify.bridge_last_stop"
 
@@ -47,6 +51,8 @@ DEFAULT_TRIGGERS: dict[str, dict] = {
     "dispatch": {"enabled": True, "label": "Battery dispatch (VPP / force) started / ended"},
     "soc_low": {"enabled": False, "label": "Battery SoC drops below", "threshold": 20},
     "soc_full": {"enabled": False, "label": "Battery SoC reaches", "threshold": 100},
+    # Ours (owner, 2026-11-17), not in the Direct Connect bridge: once a day from 10:00.
+    "solar_short": {"enabled": False, "label": "Solar won't fill the battery today"},
     "bridge": {"enabled": True, "label": "Bridge started / restarted / stopped"},
     "schedule_failed": {"enabled": True, "label": "Run failed", "group": "Scheduler"},
     "schedule_missed": {"enabled": True, "label": "Run missed", "group": "Scheduler"},
@@ -82,6 +88,9 @@ EVENTS = (
           "Battery SoC dropped below {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
     Event("soc_full", "FranklinWH battery",
           "Battery SoC reached {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
+    Event("solar_short", "FranklinWH solar",
+          "Solar left today ({solar_left} kWh) won't fill the battery [{gateway}]: "
+          "{to_full} kWh to 100%.", ("solar_left", "to_full")),
     Event("dispatch_start", "FranklinWH — battery dispatch started",
           "{gateway}: Battery dispatch STARTED ({source}; {metrics}).", ("source", "metrics")),
     Event("dispatch_end", "FranklinWH — battery dispatch ended",
@@ -288,6 +297,8 @@ class Triggers:
         self._db = db
         self._act = actionable
         self._prev: dict[str, dict] = {}
+        #: gateway id -> the site date "solar won't fill" was last sent (once a day)
+        self._solar_sent: dict[str, str] = {}
         self.cfg = merged(None)
 
     async def load(self) -> dict:
@@ -356,6 +367,25 @@ class Triggers:
         self._prev[gateway_id] = cur
         for event, values in evaluate(prev, cur, self.cfg):
             await self.fire(event, gateway=name, **values)
+
+    async def on_solar(self, gateway_id: str, name: str, solar_left_kwh: float | None,
+                       to_full_kwh: float | None, now: datetime | None = None) -> bool:
+        """Solar won't fill the battery today: once a day per gateway, from 10:00 site
+        time (earlier the forecast and SoC move too much), when the forecast solar left
+        today is less than the room to 100%. True when sent."""
+        if not enabled(self.cfg, "solar_short"):
+            return False
+        now = now or datetime.now()
+        day = now.date().isoformat()
+        if now.hour < SOLAR_SHORT_FROM_HOUR or self._solar_sent.get(gateway_id) == day:
+            return False
+        st = solar_forecast.fill_status(solar_left_kwh, to_full_kwh)
+        if not st["wont_fill"]:
+            return False
+        self._solar_sent[gateway_id] = day
+        await self.fire("solar_short", gateway=name, solar_left=f"{solar_left_kwh:.1f}",
+                        to_full=f"{to_full_kwh:.1f}")
+        return True
 
     def forget(self, gateway_id: str) -> None:
         self._prev.pop(gateway_id, None)

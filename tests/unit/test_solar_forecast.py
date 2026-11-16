@@ -478,3 +478,36 @@ async def test_condition_sensors_reach_api_sensors(client):
     cat = {s["id"]: s for s in r.json()["sensors"]}
     assert "solar_forecast.tomorrow_kwh" in cat
     assert cat["weather.condition"]["value"] == "Overcast"
+
+
+# ── Energipays-style card (owner, 2026-11-17): actual per hour, won't fill ─────
+
+
+def test_fill_status_says_when_the_solar_left_wont_fill_the_battery():
+    from franklinwh_bridge.gateway.solar_forecast import fill_status
+
+    assert fill_status(3.1, 6.4) == {"solar_left_kwh": 3.1, "to_full_kwh": 6.4, "wont_fill": True}
+    assert fill_status(8.0, 6.4)["wont_fill"] is False
+    assert fill_status(0.0, 0.05)["wont_fill"] is False        # (nearly) full already
+    assert fill_status(None, 6.4)["wont_fill"] is None         # no forecast
+    assert fill_status(3.0, None)["wont_fill"] is None         # no battery reading
+
+
+def test_actual_by_hour_averages_the_measured_solar_of_each_started_hour():
+    from franklinwh_bridge.gateway.solar_forecast import actual_by_hour
+
+    hours = [{"time": "2026-10-15T09:00", "ts": 1000}, {"time": "2026-10-15T10:00", "ts": 4600},
+             {"time": "2026-10-15T11:00", "ts": 8200}]
+    rows = [{"ts": 1000, "solar_w": 1000}, {"ts": 2800, "solar_w": 3000},
+            {"ts": 4700, "solar_w": None}, {"ts": 9000, "solar_w": 5000}]
+    assert actual_by_hour(rows, hours, now_ts=5000) == [
+        {"time": "2026-10-15T09:00", "kw": 2.0},
+        {"time": "2026-10-15T10:00", "kw": None},   # started, no readings yet
+    ]                                               # 11:00 hasn't started
+
+
+async def test_route_forecast_carries_actual_per_hour_and_fill(client):
+    await client.put("/api/solar/settings", json={"pv_latitude": 12.34, "pv_longitude": 56.78})
+    body = (await client.get("/api/solar/forecast?gateway=default")).json()
+    assert isinstance(body["actual_hourly"], list)
+    assert set(body["fill"]) == {"solar_left_kwh", "to_full_kwh", "wont_fill"}
