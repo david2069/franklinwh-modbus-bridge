@@ -34,6 +34,12 @@ lands, not backfilled later.
 - `GET /api/gateways` and `GET /api/gateways/{id}/points` report `link_up`, `stale`
   and `last_good_ts`.
 
+### Changed
+- **franklinwh-ha-notify 0.1.4** (was 0.1.3; refs #499), as the Direct Connect bridge
+  uses. A send with no device to go to is now logged as *Skipped* in Recent
+  notifications, not *Error*. The library also brings the Direct Connect bridge's fixes
+  for questions with buttons.
+
 ## [0.2.66] — 2026-11-13
 
 ### Fixed
