@@ -205,6 +205,24 @@ async def test_buttons_result(request_id: str, request: Request):
     return row
 
 
+@router.post("/test-alert", dependencies=[Depends(_ADMIN)])
+async def test_alert(request: Request):
+    """Test critical alert (as DC #464): HA's notification and the Critical alerts phones
+    with Acknowledge; poll the request id for the tap. Records no alert."""
+    reg = getattr(request.app.state, "ha_registry", None)
+    ha = reg.primary() if reg is not None else None
+    ids = await _triggers(request).ask_device_ids("alert")
+    return await _act(request).test_alert(ha, ids)
+
+
+@router.get("/test-alert/{request_id}", dependencies=[Depends(require_auth)])
+async def test_alert_result(request_id: str, request: Request):
+    row = _act(request).test_alert_result(request_id)
+    if row is None:
+        raise HTTPException(404, "No such test since the bridge started")
+    return row
+
+
 @router.post("/broadcast", dependencies=[Depends(_ADMIN)])
 async def broadcast(body: BroadcastBody, request: Request):
     act = _act(request)

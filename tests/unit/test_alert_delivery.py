@@ -251,3 +251,47 @@ async def test_ask_alert_goes_to_phones_only_and_follows_the_switch(db, tmp_path
     assert kw["meta"] == {"alert_id": 7} and kw["ttl_s"] == 3600
     act._enabled = False
     assert await act.ask_alert(alert, None) == (None, "Push notifications are off")
+
+
+# ── #499 step 6: Test critical alert (as DC #464) ──────────────────────────────
+
+
+async def test_test_critical_alert_reports_each_step_and_the_tap(db, tmp_path):
+    from franklinwh_ha_notify import Target
+
+    from franklinwh_bridge.actionable import EVENT_TEST_ALERT, TEST_ALERT_ID, Actionable
+
+    asked = []
+
+    class FakeNotifier:
+        async def ask(self, event, targets, buttons, **kw):
+            asked.append((event, [t.service for t in targets], [b.title for b in buttons]))
+            return SimpleNamespace(id="t1")
+
+    act = Actionable(db, tmp_path / "unused.db")
+    act.notifier = FakeNotifier()
+    act._enabled = True
+
+    async def targets(ids=None):
+        return [Target("ha1", "mobile_app_pixel", "Pixel"), Target("ha1", "tv", "TV")]
+
+    act.targets = targets
+    ha = FakeHa()
+    out = await act.test_alert(ha, None)
+    states = [out["steps"][k]["state"] for k in ("ha", "devices", "ack")]
+    assert states == ["pass", "pass", "waiting"]
+    assert out["request_id"] == "t1" and out["ttl_s"] == 300
+    assert ha.calls[0][0] == "persistent_notification.create"
+    assert ha.calls[0][1]["notification_id"] == TEST_ALERT_ID
+    assert asked == [(EVENT_TEST_ALERT, ["mobile_app_pixel"], ["Acknowledge"])]
+    assert act.test_alert_result("t1") == {"answered": False, "expired": False}
+    await act._on_test_alert_tap(SimpleNamespace(id="t1"), SimpleNamespace(verb="ACK"))
+    assert act.test_alert_result("t1")["answered"] is True
+    assert ha.calls[-1] == ("persistent_notification.dismiss", {"notification_id": TEST_ALERT_ID})
+    assert await alert_store.list_alerts(db) == []          # no alert recorded
+
+    act._enabled = False
+    off = await act.test_alert(None, None)
+    assert off["steps"]["ha"]["state"] == "unset"
+    assert off["steps"]["devices"]["text"] == "Push notifications are off"
+    assert off["steps"]["ack"]["state"] == "skipped" and off["request_id"] is None
