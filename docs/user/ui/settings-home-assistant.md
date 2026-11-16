@@ -121,6 +121,13 @@ Each row shows how many it has sent in the last 30 days and when it last did.
 (`notify.mobile_app_*`) are listed, as only they show buttons. See
 [Alerts](../alerts.md#where-you-see-them).
 
+**Test critical alert** (admins) checks the whole path, as the Direct Connect bridge's does:
+it puts a test notice in Home Assistant's notifications, sends a test alert with
+**Acknowledge** to the Critical alerts phones, and waits up to 5 minutes for the tap. The
+dialog shows each step: *Home Assistant notification*, *Phones* (who it went to, or why
+not: no Home Assistant, Push notifications off, no phone with the Companion app) and
+*Acknowledge tapped*. A tap takes the test notice down. No alert is recorded.
+
 The FranklinWH app estimates how long the battery lasts from your past usage; the bridge
 uses the load and solar at the moment the gateway went off-grid, so the figure moves with
 what is running then. Example: *Gateway went OFF-GRID [Home] — running on battery: SoC 91%,

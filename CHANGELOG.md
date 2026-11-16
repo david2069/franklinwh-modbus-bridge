@@ -61,6 +61,10 @@ lands, not backfilled later.
   **Acknowledge** acknowledges the alert in the bridge for everyone (recorded as
   `source:ha`) and the HA notification is taken down. The HA notification now says the
   phone can acknowledge it too.
+- **Test critical alert** in Settings → Home Assistant → Notifications (refs #499 step 6),
+  as the Direct Connect bridge has: a test notice in HA, a test alert with Acknowledge to
+  the Critical alerts phones, then the tap, each step shown in the dialog. No alert is
+  recorded.
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

@@ -74,6 +74,12 @@ EVENT_SCHEDULE_ASK = "schedule_ask"
 EVENT_ALERT = "alert"
 ACK = "ACK"
 ALERT_TTL_S = 3600
+#: Test critical alert (as DC #464): HA's notification and the phones, then the tap.
+EVENT_TEST_ALERT = "test_alert"
+TEST_ALERT_TTL_S = 300
+TEST_ALERT_ID = "fwh_mb_alert_test"
+TEST_ALERT_TEXT = ("Test critical alert from Settings → Home Assistant → Notifications. "
+                   "Nothing is wrong. Tap Acknowledge to finish the test.")
 #: How long Test with buttons waits for a tap.
 TEST_BUTTONS_TTL_S = 120
 #: app_config key: the last Test with buttons, JSON, kept across restarts.
@@ -90,6 +96,7 @@ _TEMPLATES.register(
     Event(EVENT_SCHEDULE, "{title}", "{message}", ("title", "message")),
     Event(EVENT_SCHEDULE_ASK, "{title}", "{question}", ("title", "question")),
     Event(EVENT_ALERT, "{title}", "{message}", ("title", "message")),
+    Event(EVENT_TEST_ALERT, "{title}", "{message}", ("title", "message")),
 )
 _TEMPLATES.register(*notify_triggers.EVENTS)
 
@@ -147,6 +154,9 @@ class Actionable:
         self._instance_rows: dict[str, dict] = {}
         #: Test with buttons, by request id: {device_id, alias, sent_at, result, answered_at}.
         self.tests: dict[str, dict] = {}
+        #: Test critical alert: request id -> {answered_at, expires_at}; and the HA it used.
+        self.alert_tests: dict[str, dict] = {}
+        self._test_ha: Any = None
         self._tasks: set[asyncio.Task] = set()
         #: start and stop never overlap: a stop during start would close the database
         #: connection under the worker thread still loading requests.
@@ -174,6 +184,7 @@ class Actionable:
                                      Ledger(self._conn, create=False), _TEMPLATES,
                                      enabled=lambda: self._enabled, requests=requests)
             self.notifier.on(EVENT_ALERT, self._on_alert_tap)
+            self.notifier.on(EVENT_TEST_ALERT, self._on_test_alert_tap)
             self.notifier.listen()
             logger.info("Notifications: listening for button taps on %d Home Assistant "
                         "instance(s)", len(self.notifier.instances))
@@ -394,6 +405,68 @@ class Actionable:
             logger.info("Alert %s acknowledged from a phone", alert_id)
             return "acknowledged"
         return "already acknowledged, or gone"
+
+    async def test_alert(self, ha: Any, device_ids: list[str] | None) -> dict:
+        """Test critical alert (as DC #464): HA's notification, then the phones of
+        Critical alerts with Acknowledge. ``{steps: {ha, devices, ack}, request_id,
+        ttl_s}``; each step ``{state: pass|fail|unset|skipped|waiting, text}``. No alert
+        is recorded."""
+        title = f"{NOTIFICATION_TITLE}: test alert"
+        steps: dict[str, dict] = {}
+        if ha is None:
+            steps["ha"] = {"state": "unset", "text": "No Home Assistant configured"}
+        else:
+            res = await ha.call_action("persistent_notification", "create", {
+                "notification_id": TEST_ALERT_ID, "title": title, "message": TEST_ALERT_TEXT})
+            steps["ha"] = ({"state": "pass", "text": f"In {ha.name}'s notifications"}
+                           if res.get("ok") else
+                           {"state": "fail", "text": res.get("error") or "not created"})
+        self._test_ha = ha
+        req = None
+        if self.notifier is None:
+            steps["devices"] = {"state": "unset", "text": "Notifications are not running"}
+        elif not self._enabled:
+            steps["devices"] = {"state": "unset", "text": "Push notifications are off"}
+        else:
+            targets = [t for t in await self.targets(device_ids) if t.buttons]
+            if not targets:
+                steps["devices"] = {"state": "unset",
+                                    "text": "No phone that shows buttons (Companion app)"}
+            else:
+                req = await self.notifier.ask(
+                    EVENT_TEST_ALERT, targets, [Button(ACK, "Acknowledge")],
+                    ttl_s=TEST_ALERT_TTL_S, meta={"test": True}, title=title,
+                    message=TEST_ALERT_TEXT)
+                steps["devices"] = (
+                    {"state": "pass", "text": "Sent to " + ", ".join(t.label for t in targets)}
+                    if req is not None else
+                    {"state": "fail",
+                     "text": "No phone could be reached: see Recent notifications"})
+        if req is None:
+            steps["ack"] = {"state": "skipped", "text": "Nothing to tap"}
+            return {"steps": steps, "request_id": None, "ttl_s": TEST_ALERT_TTL_S}
+        steps["ack"] = {"state": "waiting", "text": "Tap Acknowledge on the phone"}
+        self.alert_tests[req.id] = {"answered_at": None,
+                                    "expires_at": time.time() + TEST_ALERT_TTL_S}
+        return {"steps": steps, "request_id": req.id, "ttl_s": TEST_ALERT_TTL_S}
+
+    def test_alert_result(self, request_id: str) -> dict | None:
+        row = self.alert_tests.get(request_id)
+        if row is None:
+            return None
+        return {"answered": row["answered_at"] is not None,
+                "expired": row["answered_at"] is None and time.time() > row["expires_at"]}
+
+    async def _on_test_alert_tap(self, req: Any, answer: Any) -> str:
+        """Acknowledge on the test alert: the test passed; take HA's test notice down."""
+        row = self.alert_tests.get(req.id)
+        if row is not None:
+            row["answered_at"] = time.time()
+        if self._test_ha is not None:
+            await self._test_ha.call_action("persistent_notification", "dismiss",
+                                            {"notification_id": TEST_ALERT_ID})
+        logger.info("Test critical alert: Acknowledge tapped")
+        return "test acknowledged"
 
     def open_request(self, run: str) -> Any:
         """The question already sent for ``run`` (before a restart), or None."""

@@ -44,6 +44,7 @@ function notifyCard() {
     trgErr: '',
     trgPick: {},
     asks: {},          // notifications with buttons: who each goes to (as DC)
+    ta: { open: false, running: false, steps: null },  // Test critical alert dialog
     askPick: {},
     tt: null,
 
@@ -104,6 +105,39 @@ function notifyCard() {
       const ids = this.triggerTargetIds(a).filter(x => x !== id);
       if (on) ids.push(id);
       if (ids.length) this.saveAsks({ [key]: { target: { type: 'device', ids } } });
+    },
+
+    // ── Test critical alert (as DC #464): HA, the phones, then the tap ──
+    openTestAlert() { this.ta = { open: true, running: false, steps: null }; },
+    taLabel(k) { return { ha: 'Home Assistant notification', devices: 'Phones', ack: 'Acknowledge tapped' }[k] || k; },
+    async runTestAlert() {
+      this.ta = { open: true, running: true, steps: null };
+      let r;
+      try { r = await fetchJSON('api/notify/test-alert', { method: 'POST' }); }
+      catch (e) {
+        this.ta = { open: true, running: false, steps: { ha: { state: 'fail', text: e.message } } };
+        return;
+      }
+      this.ta.steps = r.steps;
+      if (!r.request_id) { this.ta.running = false; this.loadLog(); return; }
+      const until = Date.now() + (r.ttl_s + 5) * 1000;
+      while (Date.now() < until && this.ta.open) {
+        await new Promise(res => setTimeout(res, 2000));
+        let s;
+        try { s = await fetchJSON(`api/notify/test-alert/${r.request_id}`, { background: true }); }
+        catch (_) { continue; }
+        if (s.answered) {
+          this.ta.steps = { ...this.ta.steps, ack: { state: 'pass', text: 'The round trip works; the test notice is taken down' } };
+          break;
+        }
+        if (s.expired) break;
+      }
+      if (this.ta.steps.ack.state === 'waiting') {
+        this.ta.steps = { ...this.ta.steps, ack: { state: 'fail', text: 'No tap within 5 min. Check the Button taps line in the Notifications check.' } };
+      }
+      this.ta.running = false;
+      this.loadChecks();
+      this.loadLog();
     },
 
     toggleTrigger(key) { this.saveTriggers({ [key]: { enabled: !this.trg[key].enabled } }); },
