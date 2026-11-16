@@ -30,6 +30,11 @@ lands, not backfilled later.
   second value for **between**. Before, it was a plain list with one value, so a
   *between* guard had no upper bound and a Lookup wasn't possible. The Activity Log
   now writes a skipped guard in full (*battery.soc_pct between 20 and 80*).
+- **{x} Insert a value** next to a notification's title and message, as the Direct
+  Connect bridge has: search the sensors, see each one's value now, and the pick goes in
+  at the cursor as `%id%`. Placeholders now also fill in Home Assistant entities
+  (`%ha:<instance>:sensor.x%`) and longer ids (`%energy.grid_import.today_kwh%`); before,
+  these were sent as typed.
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

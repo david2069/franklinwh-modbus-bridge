@@ -77,6 +77,9 @@ function todayISO() {
 
 function emptyTree() { return { match: 'ALL', conditions: [] }; }
 
+// The field a {x} button belongs to (the insert-value dialog writes into it).
+let varTarget = null;
+
 function scheduleTab() {
   return {
     schedules: [],
@@ -92,6 +95,7 @@ function scheduleTab() {
     condList: (() => { try { return JSON.parse(localStorage.getItem('fwh-cond-list-size')) || null; } catch (_) { return null; } })(),
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
+    varPick: { open: false, q: '', live: {}, liveOk: false, liveMsg: '' },  // {x} dialog
     docsUrl(path) { return DOCS_URL + path; },  // the Guide links in the editor
 
     // Sensors grouped by their `group` label for the condition-picker,
@@ -232,6 +236,68 @@ function scheduleTab() {
         if (items.length) out.push({ label: g.label, items });
       }
       return out;
+    },
+
+    // ── Insert a value ({x}, as DC #462) ──────────────────────
+    /** Remember where the caret was when a field loses focus, so {x} inserts there. */
+    noteCaret(el) { el._varCaret = [el.selectionStart, el.selectionEnd]; },
+    openVarPicker(btn) {
+      varTarget = btn.closest('[data-var-field]').querySelector('[data-var-target]');
+      this.varPick.q = '';
+      this.varPick.open = true;
+      this.loadVarLive();
+      // On a phone the keyboard would cover the list; focus the search on wider screens.
+      if (window.matchMedia('(min-width: 640px)').matches) {
+        this.$nextTick(() => this.$refs.varQ && this.$refs.varQ.focus());
+      }
+    },
+    closeVarPicker() {
+      this.varPick.open = false;
+      this.varPick.q = '';
+      const el = varTarget;
+      if (el) this.$nextTick(() => el.focus());
+    },
+    /** Insert %id% at the remembered caret (the end if the field was never focused), tell
+     *  x-model, then put the caret after it. */
+    insertVar(id) {
+      const el = varTarget;
+      this.varPick.open = false;
+      this.varPick.q = '';
+      if (!el) return;
+      const tok = '%' + id + '%';
+      const v = el.value || '';
+      const [s, e] = el._varCaret || [v.length, v.length];
+      el.value = v.slice(0, s) + tok + v.slice(e);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      const pos = s + tok.length;
+      el._varCaret = [pos, pos];
+      this.$nextTick(() => { el.focus(); el.setSelectionRange(pos, pos); });
+    },
+    /** Live values for the rows, from the editor's own Test endpoint: one leaf per sensor,
+     *  read back from the trace, for the entry's gateway. */
+    async loadVarLive() {
+      this.varPick.liveMsg = '';
+      const gw = this.form?.target_type === 'gateway' ? (this.form.target_id || 'default') : 'default';
+      const conditions = this.sensors.map((x) => ({ sensor: x.id, op: '==', value: null }));
+      const res = await fetchJSON(`api/scheduler/evaluate?gateway=${encodeURIComponent(gw)}`, {
+        method: 'POST', body: JSON.stringify({ match: 'ANY', conditions }),
+      });
+      if (!res || res.error) {
+        this.varPick.liveOk = false;
+        this.varPick.liveMsg = `Live values unavailable: ${res?.error || 'no answer'}`;
+        return;
+      }
+      const live = {};
+      for (const row of res.per_condition || []) live[row.sensor] = row.live_value;
+      this.varPick.live = live;
+      this.varPick.liveOk = true;
+    },
+    varLive(id) {
+      if (!this.varPick.liveOk) return '';
+      const v = this.varPick.live[id];
+      if (v === null || v === undefined) return 'no value';
+      if (typeof v === 'number' && !Number.isInteger(v)) return String(+v.toFixed(3));
+      return String(v);
     },
 
     // ── HA actions (one-shot) ──────────────────────────────────

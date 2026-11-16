@@ -1134,15 +1134,26 @@
                 <!-- Title + message. %sensor.id% placeholders use the SAME ids
                      as conditions, so anything you can gate on you can quote. -->
                 <div x-show="a.kind === 'notify'" class="space-y-1 pl-1">
-                  <input type="text" x-model="a.title" maxlength="200" placeholder="Title (optional)"
-                         class="form-control !py-1 !text-xs w-full">
-                  <textarea x-model="a.message" maxlength="1000" rows="2"
-                            x-effect="a.kind === 'notify' && $nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"
-                            placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
-                            class="form-control !py-1 !text-xs w-full resize-y"></textarea>
+                  <!-- {x} opens the insert-value dialog (as DC #462); it inserts at the caret. -->
+                  <div class="flex items-center gap-1" data-var-field>
+                    <input type="text" x-model="a.title" maxlength="200" placeholder="Title (optional)"
+                           class="form-control !py-1 !text-xs w-full min-w-0" data-var-target @blur="noteCaret($el)">
+                    <button type="button" class="btn btn-sm btn-secondary !py-0.5 !px-1.5 !text-xs font-mono shrink-0"
+                          title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                          @click="openVarPicker($el)">{x}</button>
+                  </div>
+                  <div class="flex items-start gap-1" data-var-field>
+                    <textarea x-model="a.message" maxlength="1000" rows="2"
+                              x-effect="a.kind === 'notify' && $nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"
+                              placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                              class="form-control !py-1 !text-xs w-full min-w-0 resize-y" data-var-target @blur="noteCaret($el)"></textarea>
+                    <button type="button" class="btn btn-sm btn-secondary !py-0.5 !px-1.5 !text-xs font-mono shrink-0"
+                          title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                          @click="openVarPicker($el)">{x}</button>
+                  </div>
                   <div class="text-[10px] text-slate-600">
-                    Insert live values with <span class="font-mono">%sensor.id%</span> — the same ids
-                    the conditions above use. An unreadable value renders as
+                    Insert live values with <span class="font-mono">%sensor.id%</span> (or the
+                    <span class="font-mono">{x}</span> button) — the same ids the conditions above use. An unreadable value renders as
                     <span class="font-mono">?</span> rather than blocking the message.
                   </div>
                 </div>
@@ -1579,6 +1590,44 @@
                   :disabled="importing || !importReport || !(importReport && importReport.importable)"
                   x-text="importing ? 'Importing…' : (importReport ? `Import ${importReport.importable}` : 'Import')"></button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Insert a value (as DC #462): one dialog for every {x} button. Rows are the condition
+       picker's own sensors, with the live value now. Full screen on a phone. -->
+  <div x-show="varPick.open" x-cloak data-testid="var-picker" role="dialog" aria-modal="true" aria-label="Insert a value"
+       @click.self="closeVarPicker()" @keydown.escape="closeVarPicker()"
+       class="fixed inset-0 z-[9999] flex items-stretch sm:items-center justify-center sm:p-4 bg-black/60">
+    <div class="w-full h-full sm:h-auto sm:max-w-md sm:max-h-[80dvh] flex flex-col overflow-hidden sm:rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl">
+      <div class="px-4 pt-3 pb-2 shrink-0 border-b border-white/10 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <h4 class="text-base font-semibold">Insert a value</h4>
+          <button type="button" class="text-slate-500 hover:text-slate-300" title="Close" aria-label="Close" @click="closeVarPicker()">✕</button>
+        </div>
+        <input x-ref="varQ" type="text" x-model="varPick.q" placeholder="Search values…" aria-label="Search values"
+               class="form-control !py-1 !text-xs w-full" data-testid="var-picker-q">
+        <p x-show="varPick.liveMsg" class="text-[11px] text-slate-500" x-text="varPick.liveMsg"></p>
+      </div>
+      <!-- pb-20 on a phone: the bottom tab bar sits over the foot of the sheet -->
+      <div class="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-20 sm:pb-1" style="min-height:0">
+        <template x-for="g in filterGroups(varPick.q)" :key="g.label">
+          <div>
+            <div class="px-4 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
+            <template x-for="s in g.items" :key="s.id">
+              <button type="button" data-testid="var-row" @click="insertVar(s.id)"
+                      class="w-full text-left px-4 py-2 hover:bg-cyan-500/10 flex items-start gap-3">
+                <span class="flex-1 min-w-0">
+                  <span class="block text-sm truncate text-slate-200" x-text="s.label"></span>
+                  <span class="block font-mono text-[11px] truncate text-slate-500" x-text="'%' + s.id + '%'"></span>
+                </span>
+                <span x-show="varLive(s.id) !== ''" class="text-xs shrink-0 text-right truncate text-slate-400"
+                      style="max-width:40%" x-text="varLive(s.id)"></span>
+              </button>
+            </template>
+          </div>
+        </template>
+        <div x-show="!filterGroups(varPick.q).length" class="px-4 py-2 text-xs text-slate-500">No match.</div>
       </div>
     </div>
   </div>
