@@ -8,16 +8,13 @@ future consumer drive scheduling through these routes. Mutations reload the live
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
-from franklinwh_bridge.gateway.scheduler import (
-    action_to_commands,
-    next_fire,
-)
+from franklinwh_bridge.gateway.scheduler import action_to_commands
 from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog
 from franklinwh_bridge.store.db import (
     create_schedule,
@@ -105,6 +102,21 @@ class HaActionItem(BaseModel):
         return self
 
 
+_DATE = r"^\d{4}-\d{2}-\d{2}$"
+_DATE_OR_EMPTY = r"^(\d{4}-\d{2}-\d{2})?$"
+
+
+def _validate_dates(start: str | None, end: str | None) -> None:
+    for label, v in (("start_date", start), ("end_date", end)):
+        if v:
+            try:
+                date.fromisoformat(v)
+            except ValueError as exc:
+                raise HTTPException(400, f"{label} is not a date: {v!r}") from exc
+    if start and end and end < start:
+        raise HTTPException(400, "end_date is before start_date")
+
+
 class ScheduleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     # Optional so a pure fire-based (trigger) entry needn't send a window spec.
@@ -127,6 +139,9 @@ class ScheduleCreate(BaseModel):
     missed_policy: str = Field(default="late_fire_remaining", pattern=_MISSED_POLICY)
     entry_hold_s: int = Field(default=0, ge=0, le=86400)
     ha_actions: list[HaActionItem] = Field(default_factory=list)
+    # Optional date range for a recurring entry (as DC's Advanced…), inclusive.
+    start_date: str | None = Field(default=None, pattern=_DATE)
+    end_date: str | None = Field(default=None, pattern=_DATE)
 
 
 class ScheduleUpdate(BaseModel):
@@ -149,6 +164,9 @@ class ScheduleUpdate(BaseModel):
     missed_policy: str | None = Field(default=None, pattern=_MISSED_POLICY)
     entry_hold_s: int | None = Field(default=None, ge=0, le=86400)
     ha_actions: list[HaActionItem] | None = None
+    # "" clears a date (PATCH can't tell null from absent).
+    start_date: str | None = Field(default=None, pattern=_DATE_OR_EMPTY)
+    end_date: str | None = Field(default=None, pattern=_DATE_OR_EMPTY)
 
 
 def _validate_trigger(kind: str | None, spec: dict | None) -> None:
@@ -188,7 +206,8 @@ def _validate_trigger(kind: str | None, spec: dict | None) -> None:
 
 
 #: Fields that decide when an entry fires; a PATCH touching one is re-checked.
-_TIMING_FIELDS = {"enabled", "trigger_kind", "trigger_spec", "when_spec", "duration_s"}
+_TIMING_FIELDS = {"enabled", "trigger_kind", "trigger_spec", "when_spec", "duration_s",
+                  "start_date", "end_date"}
 
 
 def _refuse_if_never_fires(entry: dict) -> None:
@@ -250,7 +269,7 @@ async def _reload_engine(request: Request) -> None:
 _SIMPLE_FIELDS = (
     "name", "action", "enabled", "priority", "duration_s", "release", "conflict",
     "release_policy", "missed_policy", "trigger_kind", "entry_hold_s",
-    "target_type", "target_id",
+    "target_type", "target_id", "start_date", "end_date",
 )
 _NAMED_FIELDS = (
     "params", "when_spec", "trigger_spec", "entry_conditions", "exit_conditions",
@@ -305,16 +324,10 @@ def _decorate(entry: dict, now: datetime, run_now: set[str] | None = None) -> di
     Trigger (v2) entries are previewed via the fire-based helpers; legacy
     window entries via the when_spec helpers.
     """
-    from franklinwh_bridge.gateway.scheduler import entry_active
-    from franklinwh_bridge.gateway.scheduler_triggers import next_fire_at
+    from franklinwh_bridge.gateway.scheduler import entry_active, entry_next_fire
 
     entry = dict(entry)
-    if entry.get("trigger_kind"):
-        spec = dict(entry.get("trigger_spec") or {})
-        spec["kind"] = entry["trigger_kind"]
-        nf = next_fire_at(spec, now)
-    else:
-        nf = next_fire(entry.get("when_spec", {}), now)
+    nf = entry_next_fire(entry, now)  # inside the entry's date range, if it has one
     entry["active_now"] = entry.get("enabled", False) and entry_active(entry, now)
     # A Run now still running, outside the entry's window: Stop ends it too.
     entry["run_now"] = entry.get("id") in (run_now or set())
@@ -342,10 +355,12 @@ async def add_schedule(body: ScheduleCreate, request: Request):
     db: aiosqlite.Connection = request.app.state.db
     _validate_action(body.action, body.params)
     _validate_trigger(body.trigger_kind, body.trigger_spec)
+    _validate_dates(body.start_date, body.end_date)
     _refuse_if_never_fires({
         "enabled": body.enabled, "trigger_kind": body.trigger_kind,
         "trigger_spec": body.trigger_spec, "when_spec": body.when_spec.model_dump(),
         "duration_s": body.duration_s,
+        "start_date": body.start_date, "end_date": body.end_date,
     })
     entry = await create_schedule(
         db,
@@ -368,6 +383,8 @@ async def add_schedule(body: ScheduleCreate, request: Request):
         entry_hold_s=body.entry_hold_s,
         ha_actions=[a.model_dump() for a in body.ha_actions],
         missed_policy=body.missed_policy,
+        start_date=body.start_date,
+        end_date=body.end_date,
     )
     await _audit_crud(
         request, db, schedule_id=entry["id"], name=entry["name"],
@@ -390,6 +407,7 @@ _PORTABLE_FIELDS = (
     "release", "conflict", "priority", "trigger_kind", "trigger_spec",
     "when_spec", "entry_conditions", "exit_conditions", "duration_s",
     "release_policy", "missed_policy", "entry_hold_s", "ha_actions",
+    "start_date", "end_date",
 )
 
 
@@ -433,6 +451,10 @@ async def _validate_import_entry(request: Request, entry: dict) -> dict:
         errors.append(str(exc.detail))
     try:
         _validate_trigger(entry.get("trigger_kind"), entry.get("trigger_spec"))
+    except HTTPException as exc:
+        errors.append(str(exc.detail))
+    try:
+        _validate_dates(entry.get("start_date"), entry.get("end_date"))
     except HTTPException as exc:
         errors.append(str(exc.detail))
 
@@ -531,6 +553,7 @@ async def import_schedules(bundle: ImportBundle, request: Request, dry_run: bool
             entry_hold_s=int(e.get("entry_hold_s") or 0),
             ha_actions=e.get("ha_actions") or [],
             missed_policy=e.get("missed_policy", "late_fire_remaining"),
+            start_date=e.get("start_date") or None, end_date=e.get("end_date") or None,
         )
         await _audit_crud(
             request, db, schedule_id=entry["id"], name=entry["name"],
@@ -673,10 +696,15 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
         kind = updates.get("trigger_kind", (existing or {}).get("trigger_kind"))
         spec = updates.get("trigger_spec", (existing or {}).get("trigger_spec"))
         _validate_trigger(kind, spec)
+    for k in ("start_date", "end_date"):
+        if updates.get(k) == "":
+            updates[k] = None  # "" clears it
     if _TIMING_FIELDS & set(updates):
         existing = await get_schedule(db, schedule_id)
         if existing is not None:
-            _refuse_if_never_fires({**existing, **updates})
+            merged = {**existing, **updates}
+            _validate_dates(merged.get("start_date"), merged.get("end_date"))
+            _refuse_if_never_fires(merged)
     result = await update_schedule(db, schedule_id, **updates)
     if result is None:
         raise HTTPException(404, f"Schedule '{schedule_id}' not found")

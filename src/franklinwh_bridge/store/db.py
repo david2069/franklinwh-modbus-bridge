@@ -46,9 +46,15 @@ def gateway_is_unconfigured(row: dict[str, Any] | None) -> bool:
 #: because it is also what backup manifests are stamped with and what restore
 #: compares against — a value that silently follows the code would let a backup
 #: claim whatever schema happened to be loaded when it was written.
-CURRENT_SCHEMA_VERSION = 69
+CURRENT_SCHEMA_VERSION = 70
 
 MIGRATIONS: dict[int, str] = {
+    70: """
+    -- Schedule date range (as DC's Advanced…): a recurring entry runs only from
+    -- start_date to end_date (YYYY-MM-DD, inclusive). NULL = open-ended. The two
+    -- columns are added by MIGRATION_COLUMNS[70] (safe to re-apply).
+    SELECT 1;
+    """,
     69: """
     -- Schedule occurrences already finished (#231): Stop, an exit condition, a time
     -- limit or a release inside an open window. One row per target; occurrence is
@@ -1344,6 +1350,7 @@ MIGRATION_COLUMNS: dict[int, list[tuple[str, str, str]]] = {
     63: [("gateways", "is_default", "INTEGER NOT NULL DEFAULT 0")],
     65: [("gateways", "home_load_source", "TEXT NOT NULL DEFAULT 'standard'")],
     67: [("notify_devices", "kind", "TEXT NOT NULL DEFAULT 'other'")],
+    70: [("schedules", "start_date", "TEXT"), ("schedules", "end_date", "TEXT")],
 }
 
 
@@ -1939,6 +1946,8 @@ _SCHEDULE_FIELDS = (
     "missed_policy",
     "entry_hold_s",
     "ha_actions",
+    "start_date",
+    "end_date",
 )
 # Columns stored as JSON text but always surfaced as dicts (default {} when absent).
 _SCHEDULE_JSON_FIELDS = ("when_spec", "params", "trigger_spec")
@@ -2032,6 +2041,8 @@ async def create_schedule(
     missed_policy: str = "late_fire_remaining",
     entry_hold_s: int = 0,
     ha_actions: list | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
     """Create a schedule entry. Returns the created (decoded) row."""
     import uuid
@@ -2043,8 +2054,9 @@ async def create_schedule(
         "(id, name, enabled, when_spec, action, params, target_type, target_id, "
         " release, conflict, priority, created_at, updated_at, "
         " trigger_kind, trigger_spec, entry_conditions, exit_conditions, "
-        " duration_s, release_policy, missed_policy, entry_hold_s, ha_actions) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " duration_s, release_policy, missed_policy, entry_hold_s, ha_actions,"
+        " start_date, end_date) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             schedule_id,
             name,
@@ -2068,6 +2080,8 @@ async def create_schedule(
             missed_policy,
             int(entry_hold_s or 0),
             json.dumps(ha_actions or []),
+            start_date or None,
+            end_date or None,
         ),
     )
     await db.commit()

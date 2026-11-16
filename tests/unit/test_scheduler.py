@@ -807,3 +807,33 @@ async def test_a_guard_takes_between_and_lookup_like_a_condition():
     assert calls == []
     gated = "[fire] switch.boost skipped — guard battery.soc_pct>=battery.reserve_self_pct not met"
     assert ("gated", gated) in audits
+
+
+def test_date_range_bounds_activity_and_next_fire():
+    """Group 5 (as DC's Advanced…): Start date / End date, inclusive. An overnight
+    window that starts on the End date runs to its end."""
+    from franklinwh_bridge.gateway.scheduler import (
+        _missed_fire_time,
+        entry_active,
+        entry_next_fire,
+    )
+
+    e = {"when_spec": {"windows": [{"start": "22:00", "end": "06:00"}]},
+         "start_date": "2026-12-01", "end_date": "2026-12-10"}
+    assert not entry_active(e, datetime(2026, 11, 30, 23, 0))
+    assert entry_active(e, datetime(2026, 12, 1, 23, 0))
+    assert entry_active(e, datetime(2026, 12, 11, 2, 0))       # started on the 10th
+    assert not entry_active(e, datetime(2026, 12, 11, 23, 0))
+    assert entry_next_fire(e, datetime(2026, 11, 16, 12, 0)) == datetime(2026, 12, 1, 22, 0)
+    assert entry_next_fire(e, datetime(2026, 12, 10, 23, 30)) is None
+    # catch-up never late-fires a missed window outside the range
+    since, now = datetime(2026, 11, 30, 21, 0), datetime(2026, 11, 30, 23, 30)
+    assert _missed_fire_time(e, since, now) is None
+
+    t = {"trigger_kind": "daily", "trigger_spec": {"time_of_day": "18:00"}, "duration_s": 3600,
+         "start_date": "2026-12-01"}
+    assert not entry_active(t, datetime(2026, 11, 20, 18, 30))
+    assert entry_active(t, datetime(2026, 12, 1, 18, 30))
+    assert entry_next_fire(t, datetime(2026, 11, 16, 12, 0)) == datetime(2026, 12, 1, 18, 0)
+    no_range = {"trigger_kind": "daily", "trigger_spec": {"time_of_day": "18:00"}}
+    assert entry_next_fire(no_range, datetime(2026, 11, 16, 12, 0)) == datetime(2026, 11, 16, 18, 0)

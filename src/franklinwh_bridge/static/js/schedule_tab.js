@@ -95,6 +95,7 @@ function scheduleTab() {
     condList: (() => { try { return JSON.parse(localStorage.getItem('fwh-cond-list-size')) || null; } catch (_) { return null; } })(),
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
+    advDates: false,      // the editor's Advanced… date range is open
     varPick: { open: false, q: '', live: {}, liveOk: false, liveMsg: '' },  // {x} dialog
     docsUrl(path) { return DOCS_URL + path; },  // the Guide links in the editor
 
@@ -1364,6 +1365,8 @@ function scheduleTab() {
         priority: 0,
         enabled: true,
         entry_hold_s: 0,
+        start_date: '',    // Advanced…: run only between these dates ('' = open)
+        end_date: '',
         ha_actions: [],
         entry_conditions: emptyTree(),
         exit_conditions: emptyTree(),
@@ -1388,6 +1391,7 @@ function scheduleTab() {
     newEntry() {
       this.form = this._blankForm();
       this.formResult = null;
+      this.advDates = false;
       this.formOpen = true;
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
@@ -1477,6 +1481,7 @@ function scheduleTab() {
       this._clearTrace();
       this.form = this._blankForm({ ...common, ...over });
       this.formResult = null;
+      this.advDates = false;
       this.formOpen = true;
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
@@ -1525,6 +1530,8 @@ function scheduleTab() {
         priority: e.priority,
         enabled: e.enabled,
         entry_hold_s: e.entry_hold_s || 0,
+        start_date: e.start_date || '',
+        end_date: e.end_date || '',
         ha_actions: (e.ha_actions || []).map((a) => ({
           ...a, data: { ...(a.data || {}) },
           guard: a.guard ? { value2: '', value_kind: 'value', value_sensor: '', ...a.guard } : null,
@@ -1533,6 +1540,7 @@ function scheduleTab() {
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
       });
       this.formResult = null;
+      this.advDates = false;
       this.formOpen = true;
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
@@ -1555,6 +1563,7 @@ function scheduleTab() {
     // ── which sections are visible for the chosen trigger type ──
     // All guard on `this.form?.` so they never throw during the modal's
     // open/close teardown tick (form is null while the modal is closed).
+    get showDateRange() { return !['once', 'oneoff', 'always'].includes(this.form?.trigger_type); },
     get isTrigger() { return !['window', 'once'].includes(this.form?.trigger_type); },
     get showWindows() { return ['window', 'once'].includes(this.form?.trigger_type); },
     get showDays() { return this.form?.trigger_type === 'window' || this.form?.trigger_type === 'weekly'; },
@@ -1805,6 +1814,9 @@ function scheduleTab() {
         priority: Number(f.priority) || 0,
         enabled: f.enabled,
         entry_hold_s: Number(f.entry_hold_s) || 0,
+        // Only a repeating trigger has a date range; null clears it.
+        start_date: (this.showDateRange && f.start_date) || null,
+        end_date: (this.showDateRange && f.end_date) || null,
         ha_actions: (f.ha_actions || [])
           // A notify action has no entity — filtering on entity_id would drop
           // every notification silently on save.
@@ -1947,6 +1959,8 @@ function scheduleTab() {
         release_policy: e.release_policy || 'release',
         missed_policy: e.missed_policy || 'late_fire_remaining',
         entry_hold_s: e.entry_hold_s || 0,
+        start_date: e.start_date || null,
+        end_date: e.end_date || null,
         ha_actions: (e.ha_actions || []).map((a) => ({ ...a, data: { ...(a.data || {}) } })),
         entry_conditions: e.entry_conditions || null,
         exit_conditions: e.exit_conditions || null,
