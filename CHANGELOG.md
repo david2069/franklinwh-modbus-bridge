@@ -25,6 +25,11 @@ lands, not backfilled later.
 - **Target SoC (%, optional)** in the schedule editor for Force Charge and Force
   Discharge, as the Direct Connect bridge has. It was API-only, and saving in the form
   removed it. The API now refuses a value outside 0–100.
+- **A guard works like a condition row**, as the Direct Connect bridge's: a sensor
+  picker you can filter, **Value** or **Lookup** (compare with another sensor), and a
+  second value for **between**. Before, it was a plain list with one value, so a
+  *between* guard had no upper bound and a Lookup wasn't possible. The Activity Log
+  now writes a skipped guard in full (*battery.soc_pct between 20 and 80*).
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

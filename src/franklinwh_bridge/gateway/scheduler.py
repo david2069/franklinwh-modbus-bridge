@@ -427,6 +427,17 @@ _OUTCOME_EVENTS = {"missed": "schedule_missed", "stopped": "schedule_aborted",
                    "exit_condition_met": "schedule_aborted", "expired": "schedule_aborted"}
 
 
+def _guard_text(g: dict) -> str:
+    """A guard leaf for the Activity Log: ``soc>50``, ``soc between 20 and 80``, or a
+    Lookup's sensor id (``soc>const.min_discharge_soc``)."""
+    lhs, op = g.get("sensor"), g.get("op")
+    if (g.get("value_kind") or "value") == "sensor":
+        return f"{lhs}{op}{g.get('value_sensor')}"
+    if op == "between":
+        return f"{lhs} between {g.get('value')} and {g.get('value2')}"
+    return f"{lhs}{op}{g.get('value')}"
+
+
 class ScheduleEngine:
     """Evaluates schedule entries and drives command handlers."""
 
@@ -1528,8 +1539,7 @@ class ScheduleEngine:
             if guard and not self._guard_ok(guard, tkey[2], now):
                 await self._audit(
                     win["id"], "ha_action", tkey, "gated",
-                    f"[{phase}] {eid or svc} skipped — guard "
-                    f"{guard.get('sensor')}{guard.get('op')}{guard.get('value')} not met",
+                    f"[{phase}] {eid or svc} skipped — guard {_guard_text(guard)} not met",
                 )
                 continue
             sent_msg = a.get("message") or ""  # audit what was sent, not the template
