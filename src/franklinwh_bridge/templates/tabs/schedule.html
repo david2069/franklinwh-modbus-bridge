@@ -1053,13 +1053,13 @@
 
           <!-- ── HA Actions (one-shot, run when this fires) ── -->
           <div class="rounded border border-white/[0.06] p-3 space-y-2">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2">
               <label class="card-label !mb-0">Home Assistant actions <span class="text-slate-500 normal-case">(optional)</span> <a :href="docsUrl('user/scheduler/actions/#home-assistant-actions')" target="_blank" rel="noopener"
                  class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
                  title="Opens the user guide at this topic">Guide</a></label>
-              <div class="flex items-center gap-2">
-                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addHaAction('notify')" data-testid="ha-add-notify">+ notify</button>
-                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addHaAction('entity')" x-show="haControllable.length" data-testid="ha-add-entity">+ entity</button>
+              <div class="flex items-center gap-2 shrink-0">
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('notify')" data-testid="ha-add-notify">+ notify</button>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('entity')" x-show="haControllable.length" data-testid="ha-add-entity">+ entity</button>
               </div>
             </div>
             <template x-if="!haControllable.length">
