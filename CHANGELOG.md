@@ -35,6 +35,11 @@ lands, not backfilled later.
   at the cursor as `%id%`. Placeholders now also fill in Home Assistant entities
   (`%ha:<instance>:sensor.x%`) and longer ids (`%energy.grid_import.today_kwh%`); before,
   these were sent as typed.
+- **Sensors that aren't set up are greyed** in the schedule editor's pickers and in
+  Insert a value, with what to set and where, as the Direct Connect bridge does: weather
+  and solar forecast without a location, tariff and cost sensors without a tariff, spot
+  and feed-in prices without a price source. A saved condition that uses one says *this
+  condition can't be met*. `GET /api/sensors` gives each sensor's `inactive` reason.
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

@@ -216,6 +216,12 @@ function scheduleTab() {
         return hit ? hit.label : id;
       });
     },
+    /** A saved row whose sensor (or Lookup sensor) isn't set up can't be met (as DC). */
+    condInactive(c) {
+      const why = (id) => (this.sensors.find((x) => x.id === id) || {}).inactive;
+      const w = why(c.sensor) || (c.value_kind === 'sensor' && why(c.value_sensor));
+      return w ? `${w} — this condition can't be met` : '';
+    },
     sensorTitle(id) {
       if (!id) return '';
       const label = this.sensorLabel(id);

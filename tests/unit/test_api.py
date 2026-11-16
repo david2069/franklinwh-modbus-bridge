@@ -223,3 +223,42 @@ async def test_scheduler_evaluate_fails_closed_on_missing_sensor(client):
     data = resp.json()
     # no live poll data in a hardware-less test → soc is None → fails closed
     assert data["result"] is False
+
+
+async def test_sensors_not_set_up_say_why(client):
+    """Group 4 (as DC): a sensor whose setting is missing carries the reason, so the
+    pickers grey it; setting the location clears it for weather and forecast."""
+    sensors = (await client.get("/api/sensors?gateway=default")).json()["sensors"]
+    by_id = {s["id"]: s for s in sensors}
+    assert by_id["battery.soc_pct"]["inactive"] is None
+    assert by_id["time.hour"]["inactive"] is None
+    assert "Location & Solar" in by_id["weather.temp_c"]["inactive"]
+    assert "Location & Solar" in by_id["solar_forecast.today_kwh"]["inactive"]
+    # the seeded "Service 1" has no tariff yet
+    assert by_id["tariff.buy_rate"]["inactive"].startswith("not set up: tariff")
+    assert by_id["demand.peak_kw"]["inactive"].startswith("not set up: tariff")
+    assert by_id["service.export_allowed"]["inactive"] is None
+    assert by_id["tariff.spot_price"]["inactive"].startswith("not set up: price source")
+
+    r = await client.put("/api/solar/settings", json={"pv_latitude": -33.9, "pv_longitude": 151.2})
+    assert r.status_code == 200, r.text
+    sensors = (await client.get("/api/sensors?gateway=default")).json()["sensors"]
+    by_id = {s["id"]: s for s in sensors}
+    assert by_id["weather.temp_c"]["inactive"] is None
+    assert by_id["solar_forecast.today_kwh"]["inactive"] is None
+
+
+def test_feature_states_follow_services_and_price_source():
+    from franklinwh_bridge.gateway.scheduler_sensors import feature_states, sensor_inactive
+
+    none = feature_states(location_set=True, services=[{"pricing_api": "none", "pricing": None}])
+    assert set(none) == {"tariff", "price"}
+    priced = feature_states(location_set=True, services=[{"pricing_api": "direct"}])
+    assert priced == {}
+    static = feature_states(location_set=True,
+                            services=[{"pricing_api": "none", "pricing": {"default_rate": 0.3}}])
+    assert set(static) == {"price"}
+    assert sensor_inactive("tariff.buy_rate", static) is None
+    assert sensor_inactive("tariff.feed_in_price", static).startswith("not set up: price source")
+    assert sensor_inactive("energy.import_cost", none).startswith("not set up: tariff")
+    assert sensor_inactive("energy.solar.today_kwh", none) is None

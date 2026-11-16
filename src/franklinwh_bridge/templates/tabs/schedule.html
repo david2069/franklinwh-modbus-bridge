@@ -874,7 +874,7 @@
                         <div>
                           <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                           <template x-for="s in g.items" :key="s.id">
-                            <button type="button" @click="c.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="c.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                            <button type="button" @click="c.sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="c.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                           </template>
                         </div>
                       </template>
@@ -916,7 +916,7 @@
                           <div>
                             <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                             <template x-for="s in g.items" :key="s.id">
-                              <button type="button" @click="c.value_sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="c.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                              <button type="button" @click="c.value_sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="c.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                             </template>
                           </div>
                         </template>
@@ -927,6 +927,7 @@
                   </template>
                   <span x-show="condTested(c)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLiveText(c)"></span>
                   <span x-show="condTested(c)" class="text-[10px] font-medium" :class="condVerdictClass(c)" x-text="condVerdict(c)"></span>
+                  <span x-show="condInactive(c)" class="basis-full text-[10px] text-amber-400" data-testid="cond-inactive" x-text="condInactive(c)"></span>
                   <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeCond('entry_conditions', i)">✕</button>
                 </div>
                 <!-- nested group -->
@@ -967,7 +968,7 @@
                             <div>
                               <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                               <template x-for="s in g.items" :key="s.id">
-                                <button type="button" @click="cc.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="cc.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                                <button type="button" @click="cc.sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="cc.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                               </template>
                             </div>
                           </template>
@@ -1009,7 +1010,7 @@
                               <div>
                                 <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                                 <template x-for="s in g.items" :key="s.id">
-                                  <button type="button" @click="cc.value_sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="cc.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                                  <button type="button" @click="cc.value_sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="cc.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                                 </template>
                               </div>
                             </template>
@@ -1020,6 +1021,7 @@
                       </template>
                       <span x-show="condTested(cc)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLiveText(cc)"></span>
                       <span x-show="condTested(cc)" class="text-[10px] font-medium" :class="condVerdictClass(cc)" x-text="condVerdict(cc)"></span>
+                      <span x-show="condInactive(cc)" class="basis-full text-[10px] text-amber-400" data-testid="cond-inactive" x-text="condInactive(cc)"></span>
                       <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
                     </div>
                   </template>
@@ -1177,7 +1179,7 @@
                           <div>
                             <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                             <template x-for="s in g.items" :key="s.id">
-                              <button type="button" @click="a.guard.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="a.guard.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                              <button type="button" @click="a.guard.sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="a.guard.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                             </template>
                           </div>
                         </template>
@@ -1214,7 +1216,7 @@
                           <div>
                             <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                             <template x-for="s in g.items" :key="s.id">
-                              <button type="button" @click="a.guard.value_sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="a.guard.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                              <button type="button" @click="a.guard.value_sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="a.guard.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                             </template>
                           </div>
                         </template>
@@ -1270,7 +1272,7 @@
                         <div>
                           <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                           <template x-for="s in g.items" :key="s.id">
-                            <button type="button" @click="c.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="c.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                            <button type="button" @click="c.sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="c.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                           </template>
                         </div>
                       </template>
@@ -1312,7 +1314,7 @@
                           <div>
                             <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                             <template x-for="s in g.items" :key="s.id">
-                              <button type="button" @click="c.value_sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="c.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                              <button type="button" @click="c.value_sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="c.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                             </template>
                           </div>
                         </template>
@@ -1323,6 +1325,7 @@
                   </template>
                   <span x-show="condTested(c)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLiveText(c)"></span>
                   <span x-show="condTested(c)" class="text-[10px] font-medium" :class="condVerdictClass(c)" x-text="condVerdict(c)"></span>
+                  <span x-show="condInactive(c)" class="basis-full text-[10px] text-amber-400" data-testid="cond-inactive" x-text="condInactive(c)"></span>
                   <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeCond('exit_conditions', i)">✕</button>
                 </div>
                 <!-- nested group -->
@@ -1363,7 +1366,7 @@
                             <div>
                               <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                               <template x-for="s in g.items" :key="s.id">
-                                <button type="button" @click="cc.sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="cc.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                                <button type="button" @click="cc.sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="cc.sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                               </template>
                             </div>
                           </template>
@@ -1405,7 +1408,7 @@
                               <div>
                                 <div class="px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
                                 <template x-for="s in g.items" :key="s.id">
-                                  <button type="button" @click="cc.value_sensor=s.id; open=false; q=''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors" :class="cc.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'" x-text="s.label"></button>
+                                  <button type="button" @click="cc.value_sensor=s.id; open=false; q=''" :disabled="!!s.inactive" :title="s.inactive || ''" class="w-full text-left px-2 py-1 text-xs hover:bg-cyan-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="cc.value_sensor===s.id ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-300'"><span x-text="s.label"></span><span x-show="s.inactive" class="block text-[10px] text-slate-500" x-text="'(' + s.inactive + ')'"></span></button>
                                 </template>
                               </div>
                             </template>
@@ -1416,6 +1419,7 @@
                       </template>
                       <span x-show="condTested(cc)" class="text-[10px] font-mono text-slate-400" x-text="'live: ' + condLiveText(cc)"></span>
                       <span x-show="condTested(cc)" class="text-[10px] font-medium" :class="condVerdictClass(cc)" x-text="condVerdict(cc)"></span>
+                      <span x-show="condInactive(cc)" class="basis-full text-[10px] text-amber-400" data-testid="cond-inactive" x-text="condInactive(cc)"></span>
                       <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeFromGroup(c, j)">✕</button>
                     </div>
                   </template>
@@ -1616,9 +1620,11 @@
             <div class="px-4 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500" x-text="g.label"></div>
             <template x-for="s in g.items" :key="s.id">
               <button type="button" data-testid="var-row" @click="insertVar(s.id)"
-                      class="w-full text-left px-4 py-2 hover:bg-cyan-500/10 flex items-start gap-3">
+                      :disabled="!!s.inactive" :title="s.inactive || ''"
+                      class="w-full text-left px-4 py-2 hover:bg-cyan-500/10 flex items-start gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
                 <span class="flex-1 min-w-0">
                   <span class="block text-sm truncate text-slate-200" x-text="s.label"></span>
+                  <span x-show="s.inactive" class="block text-[11px] text-slate-500" x-text="'(' + s.inactive + ')'"></span>
                   <span class="block font-mono text-[11px] truncate text-slate-500" x-text="'%' + s.id + '%'"></span>
                 </span>
                 <span x-show="varLive(s.id) !== ''" class="text-xs shrink-0 text-right truncate text-slate-400"
