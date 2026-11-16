@@ -139,6 +139,8 @@ DEPS: dict[str, tuple[str, str, str]] = {
     # clock
     "time.tz_ok": ("Startup timezone check", "None until the first check", "at startup"),
     "time.": ("Bridge clock", "Never missing", TICK),
+    "ask.answer": ("An actionable notification answered on this gateway",
+                   "None until a question is answered", "when the answer arrives"),
 }
 
 # Period energy totals override the lifetime "energy." default above.

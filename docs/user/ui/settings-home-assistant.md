@@ -105,7 +105,7 @@ is also a line in the [app log](logs.md), sent or not.
 | **Scheduler:** Run failed | On | A schedule's run fails (the *Schedule failed* alert). |
 | Run missed | On | A run's whole window passed while the bridge or the gateway was down. |
 | Run aborted (stopped, deferred or ended early) | Off | A run is stopped, released, deferred because the gateway is under manual control, ends on an exit condition, or its dispatch ends before the window does. |
-| No reply to an actionable notification | On | Kept for parity: schedules don't send questions with buttons yet ([#114](https://github.com/david2069/franklinwh-modbus-bridge/issues/114)), so it doesn't fire. |
+| No reply to an actionable notification | On | A schedule's question with buttons got no reply in its wait; says whether the run was skipped or continued. |
 
 Each row shows how many it has sent in the last 30 days and when it last did.
 

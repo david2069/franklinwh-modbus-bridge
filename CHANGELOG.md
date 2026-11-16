@@ -49,6 +49,12 @@ lands, not backfilled later.
   JSON data; `%sensor.id%` (or {x}) works in the entity and the data. **+ entity** now
   shows whenever a Home Assistant is connected. The API takes `domain` on an entity action
   (then `entity_id` is optional).
+- **Actionable notification** on a schedule's notify row (refs #499), as the Direct
+  Connect bridge has: a question with buttons, and the run waits for the answer. Yes runs
+  the battery action and the other HA actions, No skips them; own buttons (2–4, one may
+  take a typed reply), a wait, *If no reply* (skip or continue), Send to all or chosen
+  phones. The answer is the `ask.answer` sensor and `%ask.answer%`; no reply sends the
+  *No reply* auto-notification. A run is asked once, also across a restart.
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

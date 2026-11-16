@@ -27,6 +27,7 @@ import inspect
 import json
 import logging
 import re
+import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
@@ -473,6 +474,37 @@ def _guard_text(g: dict) -> str:
     return f"{lhs}{op}{g.get('value')}"
 
 
+# ── Actionable notifications (as DC #576) ─────────────────────────────────────
+#: Where decided runs are kept across a restart (app_config, JSON), and how many.
+ASK_RUNS_KEY = "schedule_ask_runs"
+ASK_RUNS_KEEP = 50
+#: The default buttons: Yes runs the action, No skips this run.
+_DEFAULT_CHOICES = ({"label": "Yes", "then": "run"}, {"label": "No", "then": "skip"})
+
+
+def ask_row(entry: dict) -> dict | None:
+    """The entry's actionable notification row (one per schedule, on entry), or None."""
+    return next((a for a in (entry.get("ha_actions") or [])
+                 if a.get("kind") == "notify" and a.get("actionable")), None)
+
+
+def ask_choices(ask: dict) -> list[dict]:
+    """The row's buttons: its own, or Yes (run) / No (skip)."""
+    return [dict(c) for c in (ask.get("choices") or _DEFAULT_CHOICES)]
+
+
+async def _load_ask_runs(db: Any) -> dict[str, dict]:
+    if db is None:
+        return {}
+    from franklinwh_bridge.store.db import get_app_config
+    try:
+        raw = await get_app_config(db, ASK_RUNS_KEY, "")
+        return json.loads(raw) if raw else {}
+    except Exception as exc:
+        logger.debug("Schedule: decided questions not loaded: %s", exc)
+        return {}
+
+
 class ScheduleEngine:
     """Evaluates schedule entries and drives command handlers."""
 
@@ -489,8 +521,17 @@ class ScheduleEngine:
         ha_action_fn: Callable[[str, str, str, dict], Awaitable[dict]] | None = None,
         ha_notify_fn: Callable[[str, str, str, str], Awaitable[dict]] | None = None,
         gw_label_fn: Callable[[str], str] | None = None,
+        asker: Any | None = None,
     ) -> None:
         self._db = db
+        # Actionable notifications (as DC #576): the Actionable wrapper (ask_schedule,
+        # open_request, wait). None → an actionable row follows its "if no reply".
+        self._asker = asker
+        # tkey -> the open or decided question of the run there: {run, decision
+        # ("run"/"skip"/None), answer, task}. _ask_runs: decided runs, kept across a
+        # restart so a run is never asked twice.
+        self._asks: dict[tuple, dict] = {}
+        self._ask_runs: dict[str, dict] = {}
         self._resolver = resolver
         # Optional gw_id -> human label ("Default Gateway", "FHP 2 (mock)") for
         # readable audit targets. None → the raw gateway id is shown.
@@ -501,7 +542,7 @@ class ScheduleEngine:
         self._ha_action_fn = ha_action_fn
         # One-way notifications: (instance_id, service, title, message) -> {ok}.
         # Separate from ha_action_fn because notify.* is a service call with no
-        # entity. Nothing comes back — actionable/two-way is a later feature.
+        # entity. A question with buttons goes through ``asker`` instead.
         self._ha_notify_fn = ha_notify_fn
         self._now = now_fn or datetime.now
         self._tick_s = tick_s
@@ -584,6 +625,8 @@ class ScheduleEngine:
 
         rows = await get_schedules(self._db)
         self._entries = [r for r in rows if r.get("enabled")]
+        if not self._ask_runs:
+            self._ask_runs = await _load_ask_runs(self._db)
         # A disabled (or deleted) entry loses its done mark, so enabling it again
         # starts afresh instead of waiting out a window it was stopped in.
         ids = {e["id"] for e in self._entries}
@@ -1229,6 +1272,7 @@ class ScheduleEngine:
             self._dwell_since.pop(tkey, None)  # dwell timer resets on window exit
             self._dwelling.discard(tkey)
             self._ha_fired.pop(tkey, None)  # re-entry re-fires one-shot HA actions
+            self._drop_ask(tkey)  # a question still open is discarded with its run
             await self._fire_exit_ha_actions(tkey, now)  # exit-tagged HA actions on window close
             if own and own["action"] in _SUSTAINED:
                 if own["release"] == "hold" and own.get("mode") != "hold":
@@ -1315,6 +1359,7 @@ class ScheduleEngine:
                 if self._expired.get(tkey) == win["id"]:
                     await self._clear_done(tkey)
                 self._ha_fired.pop(tkey, None)  # the next true edge re-fires HA actions
+                self._drop_ask(tkey)  # and asks again
 
         # ── supervise our active dispatch: setpoint still there, battery moving? ──
         if (
@@ -1435,6 +1480,19 @@ class ScheduleEngine:
             self._dwell_since.pop(tkey, None)  # dwell satisfied → fire
             self._dwelling.discard(tkey)
 
+        # ── an actionable question (as DC #576): asked once per run; the run waits
+        #    for the answer. A retry reuses the decision. Skip ends the run here, so
+        #    neither its on-entry nor its exit HA actions run.
+        ask = ask_row(win)
+        if ask is not None:
+            verdict = await self._ask_gate(win, ask, tkey, now)
+            if verdict == "wait":
+                return
+            if verdict == "skip":
+                self._ha_fired[tkey] = win["id"]
+                await self._mark_done(tkey, win["id"], now)
+                return
+
         await self._clear_done(tkey)  # fresh dispatch supersedes any old mark
         await self._dispatch(
             handler, action, params, label=win.get("name", action), requester=win["id"]
@@ -1463,6 +1521,105 @@ class ScheduleEngine:
                 win, tkey,
                 f"Recovered: {win.get('name') or win['id']} dispatched after "
                 f"{recovered['attempts']} failed attempt(s)", now)
+
+    # ── actionable question ─────────────────────────────────
+    async def _ask_gate(self, win: dict, ask: dict, tkey: tuple, now: datetime) -> str:
+        """"run", "skip" or "wait" for this run of ``win`` on ``tkey``: asks once,
+        then waits for the answer in the background (never inside the tick)."""
+        run = f"{tkey[2]}:{win['id']}@{occurrence_start(win, now) or 'always'}"
+        if self._asker is not None and not getattr(self._asker, "ready", True):
+            return "wait"  # notifications still starting (just after a restart)
+        st = self._asks.get(tkey)
+        if st is None or st["run"] != run:
+            self._drop_ask(tkey)
+            done = self._ask_runs.get(run)
+            st = {"run": run, "decision": None, "answer": None, "task": None}
+            if done is not None:  # decided before a restart: never ask twice
+                st.update(decision=done["decision"], answer=done.get("answer"))
+            else:
+                st["task"] = asyncio.create_task(self._ask_run(win, ask, tkey, run, now))
+            self._asks[tkey] = st
+        return st["decision"] or "wait"
+
+    async def _ask_run(self, win: dict, ask: dict, tkey: tuple, run: str,
+                       now: datetime) -> None:
+        """Send the question (or find the one sent before a restart), wait for the
+        tap, decide. No reply, or nobody reachable, follows "if no reply"."""
+        st = self._asks.get(tkey)
+        wait_s = max(1, int(ask.get("timeout_min") or 5)) * 60
+        choices = ask_choices(ask)
+        question = self._render(ask.get("message") or "", tkey, now)
+        title = self._render(ask.get("title") or "", tkey, now) or (win.get("name") or "")
+        answer, why = None, ""
+        try:
+            req = self._asker.open_request(run) if self._asker is not None else None
+            if req is None and self._asker is not None:
+                req, why = await self._asker.ask_schedule(
+                    title=title, question=f"{question} (reply within {wait_s // 60} min)",
+                    choices=choices, ttl_s=wait_s, gateway=tkey[2],
+                    send_to=ask.get("send_to") or {"type": "all"}, run=run)
+            elif self._asker is None:
+                why = "notifications are not running"
+            if req is not None:
+                await self._audit(win["id"], win["action"], tkey, "waiting",
+                                  f"asked: {question} — waiting up to {wait_s // 60} min")
+                ans = await self._asker.wait(req, wait_s)
+                if not ans.timed_out:
+                    verb = str(ans.verb)
+                    i = int(verb[1:]) if verb[:1] == "C" and verb[1:].isdigit() else -1
+                    c = choices[i] if 0 <= i < len(choices) else None
+                    if c is not None:
+                        answer = (ans.reply or c["label"]) if c.get("reply") else c["label"]
+                        decision = c.get("then", "run")
+                else:
+                    why = "no reply"
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # a broken ask must not hang the run
+            why = str(exc) or type(exc).__name__
+        if answer is None:
+            decision = "run" if (ask.get("if_no_reply") or "skip") == "continue" else "skip"
+            then = "continuing" if decision == "run" else "skipped this run"
+            detail = f"{why or 'no answer'} — {then}"
+            if why == "no reply":
+                self._tell_outcome("schedule_no_reply", win["id"], tkey,
+                                   f"no reply within {wait_s // 60} min — "
+                                   + ("continued" if decision == "run" else "skipped this run"))
+        else:
+            then = "continuing" if decision == "run" else "skipped this run"
+            detail = f"answered {answer} — {then}"
+        if st is not None and self._asks.get(tkey) is st:
+            st.update(decision=decision, answer=answer, task=None)
+        self._ask_runs[run] = {"decision": decision, "answer": answer, "at": time.time()}
+        await self._save_ask_runs()
+        await self._audit(win["id"], win["action"], tkey,
+                          "ok" if decision == "run" else "skipped", detail)
+
+    def _drop_ask(self, tkey: tuple) -> None:
+        """Forget the question of a run that ended; an open one is cancelled (its
+        phone notification simply expires)."""
+        st = self._asks.pop(tkey, None)
+        if st and st.get("task") is not None and not st["task"].done():
+            st["task"].cancel()
+
+    def _ask_answer(self, gw_id: str) -> str | None:
+        """``ask.answer`` for a gateway: the answer of its latest decided question."""
+        for tkey, st in self._asks.items():
+            if tkey[2] == gw_id and st.get("answer") is not None:
+                return st["answer"]
+        return None
+
+    async def _save_ask_runs(self) -> None:
+        if self._db is None:
+            return
+        from franklinwh_bridge.store.db import set_app_config
+        newest = sorted(self._ask_runs.items(), key=lambda kv: kv[1].get("at", 0))
+        keep = dict(newest[-ASK_RUNS_KEEP:])
+        self._ask_runs = keep
+        try:
+            await set_app_config(self._db, ASK_RUNS_KEY, json.dumps(keep))
+        except Exception as exc:
+            logger.debug("Schedule: decided questions not saved: %s", exc)
 
     def _own_record(
         self, win: dict, action: str, params: dict, handler: Any, res: Any,
@@ -1546,7 +1703,7 @@ class ScheduleEngine:
         # has to keep in step.
         actions = [
             a for a in (win.get("ha_actions") or [])
-            if (a.get("when") or "fire") in (phase, "both")
+            if (a.get("when") or "fire") in (phase, "both") and not a.get("actionable")
         ]
         if not actions:
             return
@@ -1941,6 +2098,7 @@ class ScheduleEngine:
                 pts = {}
         pts = {**pts, **self._dispatch_points(gw_id, now)}
         snap = sensor_snapshot(pts, now)
+        snap["ask.answer"] = self._ask_answer(gw_id)  # %ask.answer%, guards, exit conditions
         self._snap_cache[gw_id] = snap
         return snap
 

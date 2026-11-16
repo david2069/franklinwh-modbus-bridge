@@ -245,6 +245,30 @@ operators, **Value** or **Lookup** (compare with another sensor), and a second v
 **between**. See [Conditions](conditions.md#operators).
 <!-- @b HAA-08 ;; src: gateway/scheduler.py:1122-1126, gateway/scheduler.py:1168-1175 ;; tested: tests/unit/test_scheduler.py::test_ha_action_guard_gates_the_action ;; write: no ;; b: An HA action guard is one condition evaluated at run time; false skips the action with a gated audit row ;; test: — -->
 
+### Actionable notification
+
+Tick **Actionable notification** on a notify row to send a question with buttons, as the
+Direct Connect bridge does. The run waits for the answer before it does anything:
+
+- **Yes** (or your own button set to *runs the action*) runs the battery action and the
+  other on-entry HA actions; **No** (or *skips this run*) skips them, and the exit actions
+  too. The Activity Log says *asked*, then *answered Yes — continuing* or *answered No —
+  skipped this run*.
+- **Use my own buttons**: 2 to 4 buttons, each runs the action or skips this run; one may
+  take a typed reply.
+- **Wait for a reply (minutes)**, then **If no reply**: *Skip this run* (default) or
+  *Continue*. No reply also sends the *No reply* auto-notification (Settings → Home
+  Assistant → Auto-notify triggers, Scheduler group). The wait can't be longer than the
+  run (its duration or shortest window).
+- **Send to**: all enabled phones, or chosen phones. Only the Companion app shows buttons,
+  so only `notify.mobile_app_*` devices are asked. With Push notifications off, or no such
+  phone, nothing is sent and *If no reply* applies at once.
+- The answer (the button's label, or the reply's text) is the **Ask: answer** sensor
+  (`ask.answer`) in exit conditions and guards, and `%ask.answer%` in later messages.
+- One per schedule, asked on entry, no guard. A run is asked once: a question already
+  answered, or still open, survives a restart (a tap made while the bridge is down is
+  lost, so *If no reply* then decides).
+
 ### Placeholders in notifications
 
 Title and message can quote live values with `%sensor.id%`, using the same ids as

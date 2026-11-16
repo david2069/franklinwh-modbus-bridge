@@ -928,6 +928,10 @@ SENSORS: list[SensorDef] = [
         "bool",
         lambda _p, _n: (lambda ok: None if ok is None else int(ok))(_clock.tz_ok()),
     ),
+    # The answer to a schedule's question with buttons (as DC #576): the button's
+    # label, or the text of a reply. The engine fills it in for the gateway's
+    # latest decided question; the points never carry it.
+    SensorDef("ask.answer", "Ask: answer", None, "enum", lambda _p, _n: None),
     # NOTE: no price.* sensor yet — a price source isn't wired. Re-add a
     # ``price.export_c_per_kwh`` SensorDef (mapped to a real point) when the
     # pricing integration lands, rather than shipping a stub that's always None
@@ -1005,6 +1009,7 @@ _GROUP_LABELS = {
     "weather": "Weather",
     "solar_forecast": "Solar Forecast",
     "time": "Time",
+    "ask": "Ask",
 }
 
 
