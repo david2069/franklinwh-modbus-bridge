@@ -238,7 +238,8 @@ operators, **Value** or **Lookup** (compare with another sensor), and a second v
 ### Placeholders in notifications
 
 Title and message can quote live values with `%sensor.id%`, using the same ids as
-conditions:
+conditions. The **{x}** button next to each field opens **Insert a value**: search, pick a
+row, and its `%id%` goes in where the cursor was. Each row shows the value now.
 
 ```text
 SoC is %battery.soc_pct%%, mode %mode.name%, reserve %battery.reserve_pct%%
@@ -246,12 +247,12 @@ SoC is %battery.soc_pct%%, mode %mode.name%, reserve %battery.reserve_pct%%
 
 - Numbers print without a trailing `.0` (63.0 → 63).
 - An unknown sensor or a sensor without a value prints `?`; the notification is still sent.
-- Only two-part ids work (`group.name`). Ids with two dots, such as
-  `energy.grid_import.today_kwh`, and `ha:` ids are left as typed.
+- Every id in the picker works: two-part (`battery.soc_pct`), longer
+  (`energy.grid_import.today_kwh`) and Home Assistant entities (`ha:<instance>:sensor.x`).
 - Placeholders work in notifications only, not in an entity action's data.
 
 <!-- @b HAA-09 ;; src: gateway/scheduler.py:1095-1120 ;; tested: tests/unit/test_scheduler_engine.py::test_notification_substitutes_live_sensor_values ;; write: no ;; b: %group.name% placeholders in notify title/message are filled from the snapshot; floats print with %g; unknown or empty prints ? ;; test: — -->
-<!-- @b HAA-10 ;; src: gateway/scheduler.py:1120 ;; untested ;; write: no ;; b: Three-part ids and ha: ids are not substituted by the placeholder regex ;; test: unit — _render('%energy.grid_import.today_kwh%') is unchanged -->
+<!-- @b HAA-10 ;; src: gateway/scheduler.py:1120 ;; untested ;; write: no ;; b: Three-part ids and ha: ids are substituted like two-part ids ;; test: tests/unit/test_scheduler_engine.py::test_notification_substitutes_a_home_assistant_value -->
 
 ### Failure alerts
 

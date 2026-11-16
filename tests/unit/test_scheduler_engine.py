@@ -831,6 +831,25 @@ async def test_notification_audit_records_rendered_message():
     assert notes == ["[fire] notify.phone: SoC is 63%, mode Self-Consumption"]
 
 
+async def test_notification_substitutes_a_home_assistant_value():
+    """The {x} dialog lists every sensor: HA entities (ha:<instance>:<entity>) and
+    three-part ids render like two-part ones."""
+    h = FakeHandler()
+    sent = []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "x",
+        "when": "fire",
+        "message": "Outside %ha:ha_1a2b3c4d:sensor.outdoor_temp% C, %battery.soc_pct%%, "
+                   "%energy.grid_import.today_kwh% kWh",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 50, "ha:ha_1a2b3c4d:sensor.outdoor_temp": 18.5},
+                         sent=sent)
+    await eng.tick(MON)
+
+    # three-part id: known to the catalog, no value in these points, so "?"
+    assert sent and sent[0]["message"] == "Outside 18.5 C, 50%, ? kWh"
+
+
 async def test_notification_unknown_placeholder_degrades():
     """An unreadable sensor renders '?' rather than killing the notification —
     a message with a gap still beats no message."""

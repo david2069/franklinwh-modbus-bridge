@@ -1488,7 +1488,9 @@ class ScheduleEngine:
                 return f"{v:g}"      # 63.0 -> "63", 2.75 -> "2.75"
             return str(v)
 
-        return re.sub(r"%([a-z][a-z0-9_]*\.[a-z0-9_]+)%", _sub, text)
+        # Any id the {x} dialog lists: two or more parts (%energy.grid_import.today_kwh%),
+        # and an HA entity with its instance (%ha:<instance>:sensor.x%).
+        return re.sub(r"%((?:ha:[a-z0-9_]+:)?[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)%", _sub, text)
 
     def _guard_ok(self, guard: dict, gw_id: str, now: datetime | None) -> bool:
         """Evaluate an HA action's optional guard leaf against the snapshot."""
