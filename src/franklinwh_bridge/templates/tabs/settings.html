@@ -869,6 +869,34 @@
           </div>
         </div>
       </template>
+      <!-- Notifications with buttons: who each goes to (as DC's "asks"). Only the
+           Companion app shows buttons, so only those devices are listed. -->
+      <p class="w-full card-label !mb-0 pt-3">Notifications with buttons: who they go to</p>
+      <template x-for="[key, a] in Object.entries(asks || {})" :key="key">
+        <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap" data-testid="ask-row" :data-key="key">
+          <span class="text-xs" style="color:var(--text-secondary)" x-text="a.label"></span>
+          <select class="form-control !py-1 !text-xs w-36 ml-auto" data-testid="ask-target" title="Send to"
+                  :disabled="!$store.app.isAdmin" @change="setAskTarget(key, $event.target.value)">
+            <option value="all" :selected="askTargetValue(key, a) === 'all'">All phones</option>
+            <option value="device" :selected="askTargetValue(key, a) === 'device'">Chosen phones</option>
+          </select>
+          <div x-show="askTargetValue(key, a) === 'device'" data-testid="ask-target-devices"
+               class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+            <template x-for="d in devices.filter((x) => x.buttons)" :key="d.id">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-secondary)">
+                <input type="checkbox" :checked="triggerTargetIds(a).includes(d.id)"
+                       :disabled="!$store.app.isAdmin || (triggerTargetIds(a).includes(d.id) && triggerTargetIds(a).length === 1)"
+                       @change="toggleAskDevice(key, a, d.id, $event.target.checked)">
+                <span x-text="d.alias"></span>
+                <span x-show="!d.enabled" class="text-[10px] text-slate-500">(off)</span>
+              </label>
+            </template>
+            <span x-show="!devices.some((x) => x.buttons)" class="text-[10px] text-slate-500">No phone with the Companion app yet</span>
+          </div>
+        </div>
+      </template>
+      <p class="text-[10px] text-slate-500">A critical alert also goes to these phones with <b>Acknowledge</b>:
+        tapping it acknowledges the alert in the bridge for everyone.</p>
       <p x-show="trgErr" x-cloak class="text-xs text-red-400" data-testid="triggers-save-error" x-text="trgErr"></p>
     </div>
 

@@ -807,6 +807,14 @@ async def lifespan(app: FastAPI):
     # Tells HA about critical alerts; dismisses on acknowledgement (#324 §6).
     alert_delivery = AlertDelivery(db, ha_registry)
 
+    async def _alert_to_phones(alert: dict) -> str:
+        # A critical alert with Acknowledge, to the alert's Send to (#499 step 3).
+        _req, why = await actionable.ask_alert(
+            alert, await notify_triggers.ask_device_ids("alert"))
+        return why
+
+    alert_delivery.ask_phones = _alert_to_phones
+
     # ── Start All Gateways ────────────────────────────────────
 
     async def wire_default_gateway() -> None:

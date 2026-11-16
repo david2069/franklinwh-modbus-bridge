@@ -58,6 +58,8 @@ class SettingsUpdate(BaseModel):
 class TriggersUpdate(BaseModel):
     master: bool | None = None
     triggers: dict[str, dict] | None = None
+    # Who each notification with buttons goes to: {"alert": {"target": {...}}}.
+    asks: dict[str, dict] | None = None
 
 
 class TriggerTest(BaseModel):
@@ -225,7 +227,8 @@ async def get_triggers(request: Request):
 
 @router.put("/triggers", dependencies=[Depends(_ADMIN)])
 async def put_triggers(body: TriggersUpdate, request: Request):
-    """Change some triggers: ``{"triggers": {key: {enabled?, threshold?, target?}}}``.
+    """Change some triggers: ``{"triggers": {key: {enabled?, threshold?, target?}}}``,
+    and who a notification with buttons goes to: ``{"asks": {key: {target}}}``.
     A bad value refuses the whole save."""
     try:
         return {"config": await _triggers(request).save(body.model_dump(exclude_unset=True))}

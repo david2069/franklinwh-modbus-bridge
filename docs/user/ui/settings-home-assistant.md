@@ -116,6 +116,11 @@ Each row shows how many it has sent in the last 30 days and when it last did.
   result stays in the dialog.
 - **Refresh** reloads the counts.
 
+**Notifications with buttons: who they go to.** Under the triggers: **Critical alerts
+(Acknowledge)** goes to *All phones* or *Chosen phones*. Only devices with the Companion app
+(`notify.mobile_app_*`) are listed, as only they show buttons. See
+[Alerts](../alerts.md#where-you-see-them).
+
 The FranklinWH app estimates how long the battery lasts from your past usage; the bridge
 uses the load and solar at the moment the gateway went off-grid, so the figure moves with
 what is running then. Example: *Gateway went OFF-GRID [Home] — running on battery: SoC 91%,

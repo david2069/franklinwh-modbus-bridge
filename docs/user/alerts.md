@@ -26,8 +26,13 @@ the next time you open it.
   acknowledge it in the bridge.
   HA notifications are on by default and can be switched off. Then critical alerts reach
   only the bridge.
-- **Your phone.** With the Home Assistant Companion app, see
-  [Phone, notifications and remote access](phone-and-remote-access.md).
+- **Your phone, with Acknowledge.** A critical alert also goes to the phones in
+  **Settings → Home Assistant → Notifications → Notifications with buttons** (all phones, or
+  the ones you choose), once, when it is raised, with an **Acknowledge** button. Tapping it
+  acknowledges the alert in the bridge for everyone, and the HA notification is removed.
+  Only the Companion app shows the button, so only `notify.mobile_app_*` devices get it;
+  Push notifications off sends nothing. The button stays usable for an hour. To set up a
+  phone, see [Phone, notifications and remote access](phone-and-remote-access.md).
 
 ## The bridge's own device in Home Assistant
 

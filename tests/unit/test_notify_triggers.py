@@ -112,3 +112,20 @@ def test_every_event_renders_with_its_variables():
     for e in nt.EVENTS:
         title, msg = _TEMPLATES.render(e.key, gateway="Shed", **{v: "x" for v in e.variables})
         assert "{" not in title + msg, e.key
+
+
+def test_asks_send_to_is_kept_checked_and_defaults_to_all():
+    from franklinwh_bridge.notify_triggers import apply, merged, stored
+
+    cfg = merged(None)
+    assert cfg["asks"]["alert"]["target"] == {"type": "all"}
+    cfg = apply(cfg, {"asks": {"alert": {"target": {"type": "device", "ids": ["d1"]}}}})
+    again = merged(stored(cfg))
+    assert again["asks"]["alert"]["target"] == {"type": "device", "ids": ["d1"]}
+    for bad in ({"nope": {"target": {"type": "all"}}},
+                {"alert": {"target": {"type": "device", "ids": []}}}):
+        try:
+            apply(cfg, {"asks": bad})
+        except ValueError:
+            continue
+        raise AssertionError(bad)

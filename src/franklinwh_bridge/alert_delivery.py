@@ -65,7 +65,8 @@ def notification_text(alert: dict[str, Any]) -> tuple[str, str]:
     count = f" ×{alert['count']}" if (alert.get("count") or 1) > 1 else ""
     message = (f"**{alert['title']}**{where}{count}, {site_time(alert['opened_ts'])}\n\n"
                f"{alert['message']}\n\n"
-               "Open the bridge to see what to do and to acknowledge it.")
+               "Open the bridge to see what to do and to acknowledge it, or tap Acknowledge "
+               "on your phone. Dismissing it here does not acknowledge it.")
     return f"{NOTIFICATION_TITLE}: {alert['title']}", message
 
 
@@ -93,6 +94,9 @@ class AlertDelivery:
         #: alert id -> next dismiss attempt ts, after a failed dismiss
         self._dismiss_due: dict[int, float] = {}
         self._task: asyncio.Task | None = None
+        #: Set by main.py: the alert to the phones with Acknowledge (#499 step 3).
+        #: ``async (alert) -> str`` (why not, or ""). None: HA notification only.
+        self.ask_phones: Any = None
 
     async def start(self) -> None:
         if self._task and not self._task.done():
@@ -153,6 +157,14 @@ class AlertDelivery:
                     error="acknowledged before delivery", now=now)
                 self._backoff.pop(a["id"], None)
                 continue
+            if a["attempts"] == 0 and self.ask_phones is not None:
+                # The phones once, on the first try, whatever HA does (as DC).
+                try:
+                    why = await self.ask_phones(a)
+                    if why:
+                        logger.info("Alert %d not sent to phones: %s", a["id"], why)
+                except Exception as exc:  # the HA notification still goes out
+                    logger.warning("Alert %d not sent to phones: %s", a["id"], exc)
             if inst is None:
                 res = {"ok": False, "error": "no Home Assistant configured"}
             else:
