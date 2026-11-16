@@ -329,8 +329,8 @@ How to read the tables:
 |---|---|---|---|---|---|---|
 | Battery SOC (%) | `battery.soc_pct` | % | number | Gateway polling | None | every poll (default 10 s) |
 | Reserve SOC — current mode (%) | `battery.reserve_pct` | % | number | Gateway polling (15508 / 15509) | None | every poll (default 10 s) |
-| Reserve SOC — Self-Consumption, while active (%) | `battery.reserve_self_pct` | % | number | Self-Consumption must be the active mode | None in any other mode | every poll (default 10 s) |
-| Reserve SOC — TOU, while active (%) | `battery.reserve_tou_pct` | % | number | TOU must be the active mode | None in any other mode | every poll (default 10 s) |
+| Reserve SOC — Self-Consumption (%) | `battery.reserve_self_pct` | % | number | Self-Consumption must be the active mode | None in any other mode | every poll (default 10 s) |
+| Reserve SOC — TOU (%) | `battery.reserve_tou_pct` | % | number | TOU must be the active mode | None in any other mode | every poll (default 10 s) |
 | Battery Power (W, signed) | `battery.power_w` | W | number | Gateway polling. + = discharging, − = charging | None | every poll (default 10 s) |
 | Battery State (Charging / Discharging / Standby) | `battery.status` | — | enum | Gateway polling | None | every poll (default 10 s) |
 | Battery Capacity (kWh) | `battery.capacity_kwh` | kWh | number | Battery nameplate 713.WHRtg | None | every poll (default 10 s) |
@@ -529,6 +529,12 @@ How to read the tables:
 | Month (1..12) | `time.month` | — | number | Bridge clock | Never missing | every tick (15 s) |
 | Bridge clock offset from UTC (hours) — wrong value shifts every schedule | `time.utc_offset_h` | h | number | Bridge clock | Never missing | every tick (15 s) |
 | Clock matches the timezone recorded at install (0 = schedules are mistimed) | `time.tz_ok` | — | bool | Startup timezone check | None until the first check | at startup |
+
+### Ask
+
+| Picker label | Sensor id | Unit | Type | Needs | Without it | Refreshes |
+|---|---|---|---|---|---|---|
+| Ask: answer | `ask.answer` | — | enum | An actionable notification answered on this gateway | None until a question is answered | when the answer arrives |
 
 <!-- sensors:end -->
 

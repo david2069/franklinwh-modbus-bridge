@@ -78,9 +78,9 @@ class HaActionItem(BaseModel):
     """
 
     kind: str = Field(default="entity", pattern=r"^(entity|notify)$")
-    instance_id: str = Field(..., min_length=1)
+    instance_id: str = ""        # required, except on an actionable row (send_to picks)
     entity_id: str = ""          # required for kind=entity (unless raw); unused for notify
-    service: str = Field(..., min_length=1)
+    service: str = ""            # required, except on an actionable row
     # Raw service call (as DC's Advanced): the HA domain, e.g. "switch". Set, it
     # makes entity_id optional and the call goes to domain.service as written.
     domain: str = Field(default="", max_length=64, pattern=r"^([a-z0-9_]+)?$")
@@ -93,16 +93,88 @@ class HaActionItem(BaseModel):
     # snapshot when the notification fires.
     title: str = Field(default="", max_length=200)
     message: str = Field(default="", max_length=1000)
+    # Actionable notification (as DC #576), notify rows only: a question with
+    # buttons that the run waits for. choices [] = Yes (run) / No (skip).
+    actionable: bool = False
+    timeout_min: int = Field(default=5, ge=1, le=1440)
+    if_no_reply: str = Field(default="skip", pattern=r"^(skip|continue)$")
+    choices: list[dict] = Field(default_factory=list)
+    send_to: dict = Field(default_factory=lambda: {"type": "all"})
 
     @model_validator(mode="after")
     def _entity_needs_an_entity(self) -> HaActionItem:
         """An entity action without an entity_id would be silently skipped by the
         engine — reject it here where the user can still see why."""
+        if self.actionable:
+            _check_ask(self)
+            return self
+        if not self.instance_id or not self.service:
+            raise ValueError("instance_id and service are required")
         if self.kind == "entity" and not (self.entity_id or self.domain):
             raise ValueError("entity_id is required for an entity action")
         if self.kind == "notify" and not self.message:
             raise ValueError("message is required for a notification")
         return self
+
+
+ASK_MAX_CHOICES = 4
+
+
+def _check_ask(a: HaActionItem) -> None:
+    """An actionable row's own rules (as DC's _ask_errors)."""
+    if a.kind != "notify":
+        raise ValueError("only a notification can be actionable")
+    if not a.message.strip():
+        raise ValueError("an actionable notification needs a question")
+    if a.when != "fire":
+        raise ValueError("an actionable notification asks on entry only")
+    if a.guard:
+        raise ValueError("an actionable notification has no guard: the entry conditions decide")
+    if a.choices:
+        if not 2 <= len(a.choices) <= ASK_MAX_CHOICES:
+            raise ValueError(f"own buttons: 2 to {ASK_MAX_CHOICES}")
+        seen: set[str] = set()
+        for c in a.choices:
+            label = str(c.get("label") or "").strip()
+            if not label or label.casefold() in seen:
+                raise ValueError("each button needs its own label")
+            seen.add(label.casefold())
+            if c.get("then", "run") not in ("run", "skip"):
+                raise ValueError("a button either runs or skips")
+        if sum(1 for c in a.choices if c.get("reply")) > 1:
+            raise ValueError("at most one button takes a typed reply")
+    kind = (a.send_to or {}).get("type", "all")
+    if kind not in ("all", "device") or (kind == "device" and not a.send_to.get("ids")):
+        raise ValueError("send_to is all phones, or chosen devices with their ids")
+
+
+def _check_ask_rows(ha_actions: list, window_s: int | None) -> None:
+    """One actionable row per schedule, and its wait must fit the run."""
+    asks = [a for a in ha_actions if (a.get("actionable") if isinstance(a, dict) else a.actionable)]
+    if len(asks) > 1:
+        raise HTTPException(400, "only one actionable notification per schedule")
+    if asks and window_s:
+        a = asks[0]
+        mins = int((a.get("timeout_min") if isinstance(a, dict) else a.timeout_min) or 5)
+        if mins * 60 > window_s:
+            raise HTTPException(400, f"the wait for a reply ({mins} min) is longer than the run "
+                                     f"({window_s // 60} min)")
+
+
+def _run_seconds(entry: dict) -> int | None:
+    """How long one run lasts, where it is known: the duration of a fire-based entry,
+    else the shortest window."""
+    if entry.get("trigger_kind") and entry["trigger_kind"] != "always":
+        return int(entry.get("duration_s") or 0) or None
+    lengths = []
+    for w in ((entry.get("when_spec") or {}).get("windows") or []):
+        try:
+            s = int(w["start"][:2]) * 60 + int(w["start"][3:5])
+            e = int(w["end"][:2]) * 60 + int(w["end"][3:5])
+        except (KeyError, ValueError, TypeError):
+            continue
+        lengths.append(((e - s) % 1440 or 1440) * 60)
+    return min(lengths) if lengths else None
 
 
 _DATE = r"^\d{4}-\d{2}-\d{2}$"
@@ -359,6 +431,9 @@ async def add_schedule(body: ScheduleCreate, request: Request):
     _validate_action(body.action, body.params)
     _validate_trigger(body.trigger_kind, body.trigger_spec)
     _validate_dates(body.start_date, body.end_date)
+    _check_ask_rows(body.ha_actions, _run_seconds({
+        "trigger_kind": body.trigger_kind, "duration_s": body.duration_s,
+        "when_spec": body.when_spec.model_dump()}))
     _refuse_if_never_fires({
         "enabled": body.enabled, "trigger_kind": body.trigger_kind,
         "trigger_spec": body.trigger_spec, "when_spec": body.when_spec.model_dump(),
@@ -458,6 +533,7 @@ async def _validate_import_entry(request: Request, entry: dict) -> dict:
         errors.append(str(exc.detail))
     try:
         _validate_dates(entry.get("start_date"), entry.get("end_date"))
+        _check_ask_rows(entry.get("ha_actions") or [], _run_seconds(entry))
     except HTTPException as exc:
         errors.append(str(exc.detail))
 
@@ -702,6 +778,10 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
     for k in ("start_date", "end_date"):
         if updates.get(k) == "":
             updates[k] = None  # "" clears it
+    if {"ha_actions", "duration_s", "trigger_kind", "when_spec"} & set(updates):
+        existing = await get_schedule(db, schedule_id) or {}
+        merged = {**existing, **updates}
+        _check_ask_rows(merged.get("ha_actions") or [], _run_seconds(merged))
     if _TIMING_FIELDS & set(updates):
         existing = await get_schedule(db, schedule_id)
         if existing is not None:

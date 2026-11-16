@@ -1092,7 +1092,7 @@
               <div class="rounded border border-white/[0.04] p-1.5 space-y-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
                 <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-400"
-                      x-text="(a.kind || 'entity') === 'notify' ? 'Notify' : 'Entity'"></span>
+                      x-text="a.actionable ? 'Actionable' : ((a.kind || 'entity') === 'notify' ? 'Notify' : 'Entity')"></span>
                 <select x-show="(a.kind || 'entity') === 'entity' && !a.raw"
                         :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs"
                         :title="haEntityMeta(a)?.title || ''">
@@ -1112,8 +1112,8 @@
                     </optgroup>
                   </template>
                 </select>
-                <select x-model="a.when" class="form-control !py-1 !text-xs w-auto min-w-[6rem]"
-                        title="Run when the window opens, when it ends, or both">
+                <select x-model="a.when" class="form-control !py-1 !text-xs w-auto min-w-[6rem]" :disabled="!!a.actionable"
+                        title="Run when the window opens, when it ends, or both (a question asks on entry)">
                   <option value="fire">on fire</option>
                   <option value="exit">on exit</option>
                   <option value="both">entry &amp; exit</option>
@@ -1138,7 +1138,7 @@
                 <template x-if="haControlKind(a) === 'run'"><span class="text-[11px] text-slate-500 px-1">run</span></template>
                 <!-- Notify target: a notify.* SERVICE, not an entity — it never
                      appears in the entity picker, so it has its own list. -->
-                <select x-show="a.kind === 'notify'"
+                <select x-show="a.kind === 'notify' && !a.actionable"
                         :value="a.instance_id + '::' + a.service"
                         @change="onNotifyPick(a, $event.target.value)"
                         class="form-control !py-1 !text-xs">
@@ -1150,7 +1150,7 @@
                             x-text="t.label"></option>
                   </template>
                 </select>
-                <button type="button" x-show="!a.guard" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
+                <button type="button" x-show="!a.guard && !a.actionable" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
                 <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeHaAction(ai)">✕</button>
                 </div>
                 <!-- Raw service (as DC's Advanced): domain.service as written, entity
@@ -1206,7 +1206,7 @@
                   <div class="flex items-start gap-1" data-var-field>
                     <textarea x-model="a.message" maxlength="1000" rows="2"
                               x-effect="a.kind === 'notify' && $nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"
-                              placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                              :placeholder="a.actionable ? 'Question — e.g. Charge now? Battery %battery.soc_pct%%' : 'Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%'"
                               class="form-control !py-1 !text-xs w-full min-w-0 resize-y" data-var-target @blur="noteCaret($el)"></textarea>
                     <button type="button" class="btn btn-sm btn-secondary !py-0.5 !px-1.5 !text-xs font-mono shrink-0"
                           title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
@@ -1218,6 +1218,70 @@
                     <span class="font-mono">?</span> rather than blocking the message.
                   </div>
                 </div>
+                <!-- Actionable notification (as DC #576): a question with buttons; the run
+                     waits for the answer. One per schedule, on entry, no guard. -->
+                <label x-show="a.kind === 'notify'" class="flex items-start gap-2 text-[11px] text-slate-400 pl-1">
+                  <input type="checkbox" class="mt-0.5" :checked="!!a.actionable" :disabled="!a.actionable && askTaken()"
+                         @change="setActionable(a, $event.target.checked)" data-testid="ask-toggle">
+                  <span><b class="text-slate-300">Actionable notification</b>: buttons on the phone, and the action waits for the answer
+                    <span x-show="!a.actionable && askTaken()" class="text-slate-600"> (this schedule already asks)</span></span>
+                </label>
+                <template x-if="a.kind === 'notify' && a.actionable">
+                  <div class="pl-1 space-y-2 text-[11px] text-slate-400" data-testid="ask-block">
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                      <span class="text-slate-300">Buttons</span>
+                      <button type="button" x-show="!a.choices.length" class="btn btn-sm btn-secondary !py-0.5 !text-xs"
+                              @click="ownButtons(a)" data-testid="ask-own-buttons">Use my own buttons</button>
+                      <button type="button" x-show="a.choices.length" class="btn btn-sm btn-secondary !py-0.5 !text-xs"
+                              @click="a.choices = []">Use Yes / No</button>
+                    </div>
+                    <div x-show="!a.choices.length">Yes runs the action, No skips this run.</div>
+                    <template x-for="(c, ci) in a.choices" :key="ci">
+                      <div class="flex items-center gap-1.5 flex-wrap" data-testid="ask-choice">
+                        <input x-model="c.label" maxlength="30" placeholder="Label" class="form-control !py-1 !text-xs w-28">
+                        <select x-model="c.then" class="form-control !py-1 !text-xs w-auto">
+                          <option value="run">runs the action</option>
+                          <option value="skip">skips this run</option>
+                        </select>
+                        <label class="flex items-center gap-1"><input type="checkbox" x-model="c.reply"
+                               :disabled="!c.reply && a.choices.some((x) => x.reply)"> text reply</label>
+                        <button type="button" x-show="a.choices.length > 2" title="Remove this button" aria-label="Remove this button"
+                                class="text-slate-500 hover:text-red-400 text-sm px-1" @click="a.choices.splice(ci, 1)">✕</button>
+                      </div>
+                    </template>
+                    <button type="button" x-show="a.choices.length && a.choices.length < 4" class="text-cyan-400 hover:text-cyan-300"
+                            @click="a.choices.push({ label: '', then: 'run', reply: false })">+ Button</button>
+                    <div>The answer (the button's label, or the text of a reply) is the <span class="font-mono">Ask: answer</span>
+                      sensor in exit conditions and guards, and <span class="font-mono">%ask.answer%</span> in messages.</div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="card-label">Wait for a reply (minutes)</label>
+                        <input type="number" min="1" max="1440" x-model.number="a.timeout_min" class="form-control !py-1 !text-xs w-full" data-testid="ask-wait">
+                      </div>
+                      <div>
+                        <label class="card-label">If no reply</label>
+                        <select x-model="a.if_no_reply" class="form-control !py-1 !text-xs w-full" data-testid="ask-no-reply">
+                          <option value="skip">Skip this run</option>
+                          <option value="continue">Continue</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                      <span>Send to</span>
+                      <label class="flex items-center gap-1"><input type="radio" value="all" :checked="a.send_to.type === 'all'"
+                             @change="a.send_to = { type: 'all' }"> All enabled phones</label>
+                      <label class="flex items-center gap-1"><input type="radio" value="device" :checked="a.send_to.type === 'device'"
+                             @change="a.send_to = { type: 'device', ids: [] }" data-testid="ask-chosen"> Chosen phones</label>
+                    </div>
+                    <div x-show="a.send_to.type === 'device'" class="flex flex-wrap gap-x-3 gap-y-1">
+                      <template x-for="d in notifyDevices.filter((x) => x.buttons)" :key="d.id">
+                        <label class="flex items-center gap-1"><input type="checkbox" :value="d.id" x-model="a.send_to.ids"> <span x-text="d.alias"></span></label>
+                      </template>
+                    </div>
+                    <div data-testid="ask-who"><span x-text="askWho(a)"></span> Only Companion apps show the buttons, so only they are asked.</div>
+                    <div x-show="askOthers(a)" x-text="askOthers(a)"></div>
+                  </div>
+                </template>
                 <!-- Guard: the same row as a condition (as DC): filterable sensor picker,
                      Value / Lookup, and a second value for "between". -->
                 <template x-if="a.guard">

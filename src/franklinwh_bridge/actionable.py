@@ -68,6 +68,8 @@ EVENT_BROADCAST = "broadcast"
 EVENT_HEALTH = "health"
 #: A schedule's notify row, and its failure and recovery messages (#499 step 2).
 EVENT_SCHEDULE = "schedule_notify"
+#: A schedule's question with buttons (as DC #576): the run waits for the answer.
+EVENT_SCHEDULE_ASK = "schedule_ask"
 #: How long Test with buttons waits for a tap.
 TEST_BUTTONS_TTL_S = 120
 #: app_config key: the last Test with buttons, JSON, kept across restarts.
@@ -82,6 +84,7 @@ _TEMPLATES.register(
     Event(EVENT_BROADCAST, "{title}", "{message}", ("title", "message")),
     Event(EVENT_HEALTH, "{title}", "{message}", ("title", "message")),
     Event(EVENT_SCHEDULE, "{title}", "{message}", ("title", "message")),
+    Event(EVENT_SCHEDULE_ASK, "{title}", "{question}", ("title", "question")),
 )
 _TEMPLATES.register(*notify_triggers.EVENTS)
 
@@ -324,6 +327,46 @@ class Actionable:
             return SendResult()
         return await self.notifier.notify(EVENT_HEALTH, await self.targets(),
                                           title=title, message=message)
+
+    # ── a schedule's question with buttons (as DC #576) ───────
+    @property
+    def ready(self) -> bool:
+        """Started: the scheduler waits for this before asking, so a run after a
+        restart isn't decided by "if no reply" just because nothing was up yet."""
+        return self.notifier is not None
+
+    async def ask_schedule(self, *, title: str, question: str, choices: list[dict],
+                           ttl_s: float, gateway: str, send_to: dict,
+                           run: str) -> tuple[Any, str]:
+        """Send a schedule's question to its phones (all enabled, or the chosen
+        devices), as buttons ``C0``… in ``choices`` order. ``(request, "")``, or
+        ``(None, why not)``. Follows the switch; only Companion apps show buttons."""
+        if self.notifier is None:
+            return None, "notifications are not running"
+        if not self._enabled:
+            await self.notifier.ledger.arecord("SKIPPED", EVENT_SCHEDULE_ASK, title=title,
+                                               message=question, status="notifications are off")
+            return None, "Push notifications are off"
+        ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
+        targets = [t for t in await self.targets(ids) if t.buttons]
+        if not targets:
+            return None, "no phone that shows buttons"
+        buttons = [Button(f"C{i}", c["label"], bool(c.get("reply")))
+                   for i, c in enumerate(choices)]
+        req = await self.notifier.ask(EVENT_SCHEDULE_ASK, targets, buttons, ttl_s=ttl_s,
+                                      gateway=gateway, meta={"run": run},
+                                      title=title, question=question)
+        return (req, "") if req is not None else (None, "no phone could be reached")
+
+    def open_request(self, run: str) -> Any:
+        """The question already sent for ``run`` (before a restart), or None."""
+        if self.notifier is None:
+            return None
+        return next((r for r in self.notifier.pending(EVENT_SCHEDULE_ASK)
+                     if (r.meta or {}).get("run") == run), None)
+
+    async def wait(self, req: Any, timeout_s: float) -> Any:
+        return await self.notifier.wait(req, timeout_s)
 
     async def notify_service(self, instance_id: str, service: str, title: str,
                              message: str) -> dict:

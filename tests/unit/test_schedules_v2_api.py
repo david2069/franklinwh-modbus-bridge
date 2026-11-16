@@ -398,3 +398,32 @@ async def test_a_raw_service_action_needs_a_domain_or_an_entity(client):
     bare = {"kind": "entity", "instance_id": "ha1", "service": "evening"}
     r = await client.post("/api/schedules", json={**base, "ha_actions": [bare]})
     assert r.status_code == 422
+
+
+async def test_an_actionable_row_is_checked_as_dc_checks_it(client):
+    base = {"name": "Ask", "action": "force_charge", "params": {"power_w": 1000},
+            "trigger_kind": "daily", "trigger_spec": {"time_of_day": "18:00"},
+            "duration_s": 3600, "enabled": False}
+    ask = {"kind": "notify", "actionable": True, "message": "Charge now?", "when": "fire"}
+    r = await client.post("/api/schedules", json={**base, "ha_actions": [ask]})
+    assert r.status_code == 201, r.text
+    row = r.json()["ha_actions"][0]
+    assert (row["timeout_min"], row["if_no_reply"], row["send_to"]) == (5, "skip", {"type": "all"})
+
+    bad = [
+        ({**ask, "message": ""}, 422),
+        ({**ask, "when": "exit"}, 422),
+        ({**ask, "choices": [{"label": "Only"}]}, 422),
+        ({**ask, "choices": [{"label": "A"}, {"label": "a"}]}, 422),
+        ({**ask, "choices": [{"label": "A", "reply": True}, {"label": "B", "reply": True}]}, 422),
+        ({**ask, "send_to": {"type": "device", "ids": []}}, 422),
+        ({**ask, "kind": "entity"}, 422),
+    ]
+    for row, code in bad:
+        r = await client.post("/api/schedules", json={**base, "ha_actions": [row]})
+        assert r.status_code == code, (row, r.text)
+    two = await client.post("/api/schedules", json={**base, "ha_actions": [ask, ask]})
+    assert two.status_code == 400 and "only one" in two.text
+    long = await client.post("/api/schedules", json={**base, "duration_s": 120,
+                                                       "ha_actions": [ask]})
+    assert long.status_code == 400 and "longer than the run" in long.text

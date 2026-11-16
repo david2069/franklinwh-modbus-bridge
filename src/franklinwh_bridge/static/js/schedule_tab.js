@@ -96,6 +96,7 @@ function scheduleTab() {
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
     haInstances: [],      // {id, name} of each enabled HA, for a raw service call
+    notifyDevices: [],    // saved phones etc. (Settings → Home Assistant), for a question's Send to
     advDates: false,      // the editor's Advanced… date range is open
     varPick: { open: false, q: '', live: {}, liveOk: false, liveMsg: '' },  // {x} dialog
     docsUrl(path) { return DOCS_URL + path; },  // the Guide links in the editor
@@ -312,6 +313,8 @@ function scheduleTab() {
     async loadNotifyTargets() {
       const d = await fetchJSON('api/ha/notify-targets');
       this.notifyTargets = (d && d.targets) || [];
+      const dv = await fetchJSON('api/notify/devices');
+      this.notifyDevices = (dv && dv.devices) || [];
       const h = await fetchJSON('api/ha/instances');
       this.haInstances = (Array.isArray(h) ? h : (h?.instances || []))
         .filter((x) => x.enabled !== false && x.enabled !== 0)
@@ -325,6 +328,37 @@ function scheduleTab() {
       if (!a.instance_id && this.haInstances.length === 1) a.instance_id = this.haInstances[0].id;
     },
     fromRaw(a) { a.raw = false; a.domain = ''; a._dataText = ''; },
+
+    // ── Actionable notification (as DC #576) ──────────────────
+    askTaken() { return (this.form?.ha_actions || []).some((a) => a.actionable); },
+    setActionable(a, on) {
+      a.actionable = on;
+      if (!on) return;
+      a.when = 'fire';
+      a.guard = null;
+      a.timeout_min = a.timeout_min || 5;
+      a.if_no_reply = a.if_no_reply || 'skip';
+      a.choices = a.choices || [];
+      a.send_to = a.send_to || { type: 'all' };
+    },
+    ownButtons(a) {
+      a.choices = [{ label: 'Yes', then: 'run', reply: false }, { label: 'No', then: 'skip', reply: false }];
+    },
+    /** Who gets the question: phones that show buttons, all enabled or the chosen. */
+    askWho(a) {
+      const st = a.send_to || { type: 'all' };
+      const names = this.notifyDevices
+        .filter((d) => d.buttons && d.instance_enabled
+          && (st.type === 'device' ? (st.ids || []).includes(d.id) : d.enabled))
+        .map((d) => d.alias);
+      return names.length ? `Asks: ${names.join(', ')}.` : 'Asks nobody yet: no phone with the Companion app is chosen.';
+    },
+    /** The other notifications of this schedule are skipped too when the answer skips. */
+    askOthers(a) {
+      const others = (this.form?.ha_actions || []).filter((x) => x !== a);
+      if (!others.length) return '';
+      return `The other actions here (${others.length}) run once the answer runs it, and are skipped when it skips this run.`;
+    },
 
     /** Notify targets are "<instance>::<service>" — the service is a notify
      *  target name, NOT an entity, so entity_id stays empty. */
@@ -1550,6 +1584,9 @@ function scheduleTab() {
           ...a, data: { ...(a.data || {}) },
           guard: a.guard ? { value2: '', value_kind: 'value', value_sensor: '', ...a.guard } : null,
           raw: !!a.domain,
+          // an actionable row's own lists, copied so editing doesn't touch the list view
+          choices: (a.choices || []).map((c) => ({ ...c })),
+          send_to: a.send_to ? { ...a.send_to, ids: [...(a.send_to.ids || [])] } : { type: 'all' },
           _dataText: a.domain && a.data && Object.keys(a.data).length ? JSON.stringify(a.data) : '',
         })),
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
@@ -1846,7 +1883,7 @@ function scheduleTab() {
           // A notify action has no entity — filtering on entity_id would drop
           // every notification silently on save.
           .filter((a) => (a.kind === 'notify'
-            ? a.instance_id && a.service && a.message
+            ? (a.actionable ? a.message : a.instance_id && a.service && a.message)
             : a.instance_id && a.service && (a.raw ? a.domain : a.entity_id)))
           .map((a) => {
             const o = {
@@ -1857,6 +1894,15 @@ function scheduleTab() {
             if (a.kind === 'notify') {
               o.title = a.title || '';
               o.message = a.message || '';
+            }
+            if (a.kind === 'notify' && a.actionable) {
+              o.actionable = true;
+              o.when = 'fire';
+              o.timeout_min = Number(a.timeout_min) || 5;
+              o.if_no_reply = a.if_no_reply || 'skip';
+              o.choices = (a.choices || []).map((c) => ({ label: (c.label || '').trim(), then: c.then || 'run', reply: !!c.reply }));
+              o.send_to = a.send_to && a.send_to.type === 'device'
+                ? { type: 'device', ids: [...(a.send_to.ids || [])] } : { type: 'all' };
             }
             if (a.kind !== 'notify' && a.raw) {
               o.domain = a.domain;
