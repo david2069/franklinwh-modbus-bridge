@@ -217,20 +217,23 @@ class HaInstance:
         return []
 
     async def call_service(
-        self, entity_id: str, service: str, data: dict | None = None
+        self, entity_id: str, service: str, data: dict | None = None, domain: str = ""
     ) -> dict:
         """Call an HA service on ``entity_id`` via REST
         (``POST /api/services/{domain}/{service}``). ``service`` is a bare name
         in the entity's domain (e.g. ``turn_on``, ``select_option``); ``data``
         carries extra fields (``{"option": ...}`` / ``{"value": ...}``).
 
+        A raw service call (as DC's Advanced) names its own ``domain``; its
+        ``entity_id`` is then optional.
+
         Returns ``{"ok": bool, "error": str|None}`` — never raises, so one bad
         action can't abort a schedule's dispatch."""
-        domain = _domain(entity_id)
+        domain = domain or _domain(entity_id)
         if not domain or not service:
             return {"ok": False, "error": f"bad entity/service: {entity_id!r}/{service!r}"}
         url = f"{self.base_url}/api/services/{domain}/{service}"
-        payload = {"entity_id": entity_id, **(data or {})}
+        payload = {**({"entity_id": entity_id} if entity_id else {}), **(data or {})}
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(url, headers=self._headers(), json=payload)
@@ -517,14 +520,15 @@ class HaRegistry:
         return exposed
 
     async def call_service(
-        self, instance_id: str, entity_id: str, service: str, data: dict | None = None
+        self, instance_id: str, entity_id: str, service: str, data: dict | None = None,
+        domain: str = "",
     ) -> dict:
         """Route an automation action to the right HA instance. Returns
         ``{"ok": bool, "error": str|None}`` (never raises)."""
         inst = self._instances.get(instance_id)
         if inst is None:
             return {"ok": False, "error": f"HA instance {instance_id!r} not found"}
-        return await inst.call_service(entity_id, service, data)
+        return await inst.call_service(entity_id, service, data, domain=domain)
 
     async def notify(
         self, instance_id: str, service: str, title: str, message: str

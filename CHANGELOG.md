@@ -44,6 +44,11 @@ lands, not backfilled later.
   **Start date** and **End date** (inclusive, optional). Outside them the entry doesn't
   run or catch up, and *Next fire* follows them. Database migration 70 adds the two
   columns; the API takes `start_date` / `end_date` (`""` or `null` clears one).
+- **Advanced (raw service)…** in a schedule's entity action, as the Direct Connect bridge
+  has: call any Home Assistant service by domain and service, with an optional entity and
+  JSON data; `%sensor.id%` (or {x}) works in the entity and the data. **+ entity** now
+  shows whenever a Home Assistant is connected. The API takes `domain` on an entity action
+  (then `entity_id` is optional).
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

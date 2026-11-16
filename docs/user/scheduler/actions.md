@@ -182,9 +182,9 @@ The **Run now** button does nothing for these entries: the API answers `unknown_
 ![HA Actions with no Home Assistant connected](../../images/scheduler/ha-actions-empty.png)
 
 HA actions are one-shot calls that run alongside the battery action. **+ notify** is always
-there. **+ entity** appears once at least one controllable entity is exposed on the
-**Home Assistant** tab; otherwise the block says *"No controllable HA entities exposed, so
-+ entity is hidden."*
+there. **+ entity** appears once a Home Assistant is connected. Without an exposed
+controllable entity (on the **Home Assistant** tab) the guided picker is empty, but
+**Advanced (raw service)…** still works.
 
 1. Press **+ notify** or **+ entity**. The row is labelled *Notify* or *Entity*.
 2. Pick the entity and service, or the notify target, title and message. Entities are
@@ -205,6 +205,16 @@ there. **+ entity** appears once at least one controllable entity is exposed on 
 
 <!-- @b HAA-01 ;; src: api/schedules_api.py:72-105 ;; untested ;; write: no ;; b: The API rejects an entity action without entity_id and a notify action without message; title and message are limited to 200 and 1000 characters ;; test: unit (API) — POST each invalid shape and assert 422 -->
 <!-- @b HAA-02 ;; src: static/js/schedule_tab.js:1423-1445 ;; untested ;; write: no ;; b: The form silently drops incomplete HA action rows on save ;; test: browser — add an entity row without an entity; save; GET ha_actions is empty -->
+
+### Advanced (raw service)
+
+**Advanced (raw service)…** in an entity row calls any Home Assistant service as written,
+as the Direct Connect bridge does: pick the Home Assistant, type the **domain** and
+**service** (for example `script` and `turn_on`), an optional **entity_id**, and optional
+**data** as a JSON object (`{"brightness": 180}`). `%sensor.id%` placeholders (or **{x}**)
+work in the entity_id and in the data's text values, for example
+`{"value": "%battery.soc_pct%"}`. **← Back to guided picker** returns to the lists. The
+Activity Log shows the call as *domain.service entity data*.
 
 ### When they run
 

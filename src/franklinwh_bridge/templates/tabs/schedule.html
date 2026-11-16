@@ -1081,11 +1081,11 @@
                  title="Opens the user guide at this topic">Guide</a></label>
               <div class="flex items-center gap-2 shrink-0">
                 <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('notify')" data-testid="ha-add-notify">+ notify</button>
-                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('entity')" x-show="haControllable.length" data-testid="ha-add-entity">+ entity</button>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('entity')" x-show="haControllable.length || haInstances.length" data-testid="ha-add-entity">+ entity</button>
               </div>
             </div>
             <template x-if="!haControllable.length">
-              <div class="text-[11px] text-slate-500">No controllable HA entities exposed, so <b>+ entity</b> is hidden. Expose switches / selects / lights on the
+              <div class="text-[11px] text-slate-500">No controllable HA entities exposed: an entity row can still call a service with <b>Advanced (raw service)…</b>. Expose switches / selects / lights on the
                 <button type="button" class="text-cyan-400 hover:underline" @click="$store.app.setTab('ha_entities')">Home Assistant</button> tab.</div>
             </template>
             <template x-for="(a, ai) in form.ha_actions" :key="ai">
@@ -1093,7 +1093,7 @@
                 <div class="flex items-center gap-1.5 flex-wrap">
                 <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-400"
                       x-text="(a.kind || 'entity') === 'notify' ? 'Notify' : 'Entity'"></span>
-                <select x-show="(a.kind || 'entity') === 'entity'"
+                <select x-show="(a.kind || 'entity') === 'entity' && !a.raw"
                         :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs"
                         :title="haEntityMeta(a)?.title || ''">
                   <option value="::">— entity —</option>
@@ -1152,6 +1152,45 @@
                 </select>
                 <button type="button" x-show="!a.guard" @click="addGuard(a)" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-1" title="Only run this action if a condition is true">+ guard</button>
                 <button type="button" title="Remove this row" aria-label="Remove this row" class="text-slate-500 hover:text-red-400 text-sm px-1" @click="removeHaAction(ai)">✕</button>
+                </div>
+                <!-- Raw service (as DC's Advanced): domain.service as written, entity
+                     optional, data as JSON; %sensor.id% works in the entity and the data. -->
+                <div x-show="(a.kind || 'entity') === 'entity'" class="pl-1 space-y-1">
+                  <button x-show="!a.raw" type="button" class="text-[11px] text-cyan-400 hover:text-cyan-300"
+                          @click="toRaw(a)" data-testid="ha-raw-open">Advanced (raw service)…</button>
+                  <template x-if="a.raw">
+                    <div class="space-y-1" data-testid="ha-raw">
+                      <div class="flex gap-1.5 flex-wrap">
+                        <select x-model="a.instance_id" class="form-control !py-1 !text-xs w-auto max-w-full" title="Home Assistant">
+                          <option value="">— Home Assistant —</option>
+                          <template x-for="h in haInstances" :key="h.id">
+                            <option :value="h.id" :selected="h.id === a.instance_id" x-text="h.name"></option>
+                          </template>
+                        </select>
+                        <input x-model.trim="a.domain" placeholder="domain — e.g. switch" data-testid="ha-raw-domain"
+                               class="form-control !py-1 !text-xs flex-1 min-w-[7rem] font-mono">
+                        <input x-model.trim="a.service" placeholder="service — e.g. turn_on" data-testid="ha-raw-service"
+                               class="form-control !py-1 !text-xs flex-1 min-w-[7rem] font-mono">
+                      </div>
+                      <div class="flex items-center gap-1" data-var-field>
+                        <input x-model="a.entity_id" placeholder="entity_id — e.g. switch.garage (optional; %sensor.id% ok)"
+                               class="form-control !py-1 !text-xs w-full min-w-0 font-mono" data-var-target
+                               @blur="noteCaret($el)" data-testid="ha-raw-entity">
+                        <button type="button" class="btn btn-sm btn-secondary !py-0.5 !px-1.5 !text-xs font-mono shrink-0"
+                              title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                              @click="openVarPicker($el)">{x}</button>
+                      </div>
+                      <div class="flex items-center gap-1" data-var-field>
+                        <input x-model="a._dataText" placeholder='data JSON — e.g. {"brightness": 180} (optional)'
+                               class="form-control !py-1 !text-xs w-full min-w-0 font-mono" data-var-target
+                               @blur="noteCaret($el)" data-testid="ha-raw-data">
+                        <button type="button" class="btn btn-sm btn-secondary !py-0.5 !px-1.5 !text-xs font-mono shrink-0"
+                              title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                              @click="openVarPicker($el)">{x}</button>
+                      </div>
+                      <button type="button" class="text-[11px] text-cyan-400 hover:text-cyan-300" @click="fromRaw(a)">← Back to guided picker</button>
+                    </div>
+                  </template>
                 </div>
                 <!-- Title + message. %sensor.id% placeholders use the SAME ids
                      as conditions, so anything you can gate on you can quote. -->

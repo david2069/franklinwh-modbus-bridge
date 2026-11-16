@@ -79,8 +79,11 @@ class HaActionItem(BaseModel):
 
     kind: str = Field(default="entity", pattern=r"^(entity|notify)$")
     instance_id: str = Field(..., min_length=1)
-    entity_id: str = ""          # required for kind=entity; unused for notify
+    entity_id: str = ""          # required for kind=entity (unless raw); unused for notify
     service: str = Field(..., min_length=1)
+    # Raw service call (as DC's Advanced): the HA domain, e.g. "switch". Set, it
+    # makes entity_id optional and the call goes to domain.service as written.
+    domain: str = Field(default="", max_length=64, pattern=r"^([a-z0-9_]+)?$")
     data: dict = Field(default_factory=dict)
     # "both" = run on activation AND on window end (added 2026-09-15).
     when: str = Field(default="fire", pattern=r"^(fire|exit|both)$")
@@ -95,7 +98,7 @@ class HaActionItem(BaseModel):
     def _entity_needs_an_entity(self) -> HaActionItem:
         """An entity action without an entity_id would be silently skipped by the
         engine — reject it here where the user can still see why."""
-        if self.kind == "entity" and not self.entity_id:
+        if self.kind == "entity" and not (self.entity_id or self.domain):
             raise ValueError("entity_id is required for an entity action")
         if self.kind == "notify" and not self.message:
             raise ValueError("message is required for a notification")
