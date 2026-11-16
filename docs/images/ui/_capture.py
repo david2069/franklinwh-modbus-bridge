@@ -647,7 +647,7 @@ def reset_service1(page: Page) -> None:
 
 def sensor_check(page: Page, url: str, name: str, leaves: list) -> None:
     """Open an unsaved schedule entry, put sensors in its entry conditions,
-    press Test Verification and capture the live values. Never saved."""
+    press Test and capture the live values. Never saved."""
     goto(page, url, "schedule", wait=1500)
     js = ("d.form = d._blankForm(); d.form.name = 'docs (not saved)';"
           " d.form.entry_conditions = {match: 'ALL', conditions: "
@@ -657,7 +657,7 @@ def sensor_check(page: Page, url: str, name: str, leaves: list) -> None:
     page.wait_for_timeout(700)
     sec = page.locator(f"{SCHED} div.rounded.border:has(> div > label:has-text('Entry conditions'))")  # noqa: E501
     sec = sec.first
-    sec.get_by_role("button", name="Test Verification").click()
+    sec.get_by_role("button", name="Test", exact=True).click()
     page.wait_for_timeout(1500)
     sec.scroll_into_view_if_needed()
     sec.screenshot(path=str(OUT / f"{name}.png"))

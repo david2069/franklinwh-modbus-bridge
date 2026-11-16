@@ -185,7 +185,7 @@ test bridge's gateways were not changed.)
     Energy Costs, even though its rates are in use.
 
 **Sensors** — open **Schedule → + Add Entry**, add the sensors as entry conditions and press
-**Test Verification** to see their live values:
+**Test** to see their live values:
 
 ![Tariff sensors for the flat plan](../../images/ui/guide-agl-sensors.png)
 

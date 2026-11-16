@@ -23,7 +23,7 @@ FranklinWH app's Time-of-Use: see [Battery dispatch: best practice](../battery-d
 |---|---|
 | [Concepts](concepts.md) | The model (trigger → conditions → action → target → exit → outcome), the tick, by time / by event / by sensor. **Start here.** |
 | [Triggers](triggers.md) | Every trigger type, Next fire, catch-up after an outage or restart. |
-| [Conditions](conditions.md) | Operators, Value vs Lookup, groups and items (ALL/ANY), scope, hold-for, Test Verification, every sensor. |
+| [Conditions](conditions.md) | Operators, Value vs Lookup, groups and items (ALL/ANY), scope, Hold, Test, every sensor. |
 | [Actions](actions.md) | Battery actions and sizing, reserve and mode, HA-only entries, Home Assistant actions and notifications. |
 | [Targets](targets.md) | Gateway, Service and Site; fan-out; entries with no target id. |
 | [Exit and release](exit-and-conflicts.md) | How a run ends, exit conditions, release policy, hold. |
@@ -59,10 +59,10 @@ This walkthrough charges the battery to 90 % on weekday afternoons, but only if 
    full *trusted* battery rating (see [Actions](actions.md#power-and-sizing)).
 5. **Entry conditions:** press **+ row**. Pick **Battery SOC (%)**, operator `<`, value `80`.
 6. **Exit conditions:** press **+ row**. Pick **Battery SOC (%)**, operator `>=`, value `90`.
-7. Press **Test Verification** under each block to see whether the conditions hold right now.
+7. Press **Test** under each block to see whether the conditions hold right now.
    Each row turns green (passes), red (fails) or amber (no value).
 8. **Target:** **Gateway**, and pick your gateway.
-9. Leave **On exit / release** at *release → native*, **If already controlled** at
+9. Leave **On exit / release** at *release → native*, **If busy** at
    *defer (skip)* and **Priority** at 0.
 10. Turn **Enabled** off while you try it, then press **Create Entry**.
 

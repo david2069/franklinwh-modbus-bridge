@@ -96,7 +96,7 @@ gateway has that id, the entry does nothing.
 - A Site target is saved with no target id.
 - Picking a **mock** gateway shows a warning: its commands change simulated data only.
   <!-- @b TGT-13 ;; src: templates/tabs/schedule.html:1244-1245 ;; untested ;; write: no ;; b: The form warns when the selected gateway is a mock ;; test: browser — pick a mock gateway; the amber warning shows -->
-- **Test Verification** for a Site or Service target checks the gateway `default` only.
+- **Test** for a Site or Service target checks the gateway `default` only.
 - **Import** points an entry whose gateway does not exist on this bridge at `default`.
   <!-- @b TGT-14 ;; src: api/schedules_api.py:467-470 ;; tested: tests/unit/test_schedules_v2_api.py::test_import_creates_disabled_with_gateway_fallback ;; write: no ;; b: Import re-targets an unknown gateway id to default and creates the entry disabled ;; test: — -->
 

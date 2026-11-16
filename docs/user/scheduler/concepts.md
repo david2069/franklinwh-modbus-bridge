@@ -25,7 +25,7 @@ flowchart LR
 | Part | Question it answers | Fields in the form | Page |
 |---|---|---|---|
 | **Trigger** | When is the entry active? | Trigger Type, its time fields, Duration (min) | [Triggers](triggers.md) |
-| **Conditions** | May it act now? | Entry conditions, Duration (HH:MM:SS) hold-for | [Conditions](conditions.md) |
+| **Conditions** | May it act now? | Entry conditions, Hold (HH:MM:SS) hold-for | [Conditions](conditions.md) |
 | **Action** | What does it send? | Action, Power / Reserve % / Mode, HA Actions | [Actions](actions.md) |
 | **Target** | Which gateway or gateways? | Target, Gateway / Service | [Targets](targets.md) |
 | **Exit** | When does a run end, and what then? | Exit conditions, On exit / release | [Exit and release](exit-and-conflicts.md) |
@@ -103,7 +103,7 @@ release**; a plain window entry with no conditions always does a plain release.
 |---|---|
 | **Entry** | One schedule row. Also called a schedule or an automation. |
 | **Gate** | The entry conditions. |
-| **Hold-for (dwell)** | **Duration (HH:MM:SS)** under the entry conditions: how long the gate must stay true before the entry fires. |
+| **Hold-for (dwell)** | **Hold (HH:MM:SS)** under the entry conditions: how long the gate must stay true before the entry fires. |
 | **Exit conditions** | Checked while a force command from this entry runs; the first time they are true the run ends. |
 | **Owner** | The entry that sent the command a gateway is running. |
 | **Manual control** | A force command the scheduler did not send on this target (Controls tab, Home Assistant, MQTT, API, Run now, or another target's entry). |

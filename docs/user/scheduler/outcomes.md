@@ -167,7 +167,7 @@ The scheduler then follows a Run now force command like a scheduled run, until i
 - if the entry's own window opens while it runs, the window takes it over and ends it at
   window exit.
 
-A Run now still ignores **If already controlled** and replaces a manual command, and it runs
+A Run now still ignores **If busy** and replaces a manual command, and it runs
 no HA actions.
   <!-- @b OUT-22 ;; src: gateway/scheduler.py:585-600 ;; untested ;; write: yes ;; b: Run now does not check the conflict policy and supersedes a manual command ;; test: unit — manual Force Charge active; execute() a force_discharge entry with conflict defer; assert it is sent -->
 Other entries on that gateway treat it as manual control.

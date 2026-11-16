@@ -88,7 +88,7 @@ shading, clipping or an export limit. Treat it as a guide.
 
 The same data becomes condition sensors in the [Scheduler](../scheduler/index.md). To see
 their live values, open **Schedule → + Add Entry**, add rows under **Entry conditions**
-with these sensors, and press **Test Verification**. Each row shows `live:` and its value.
+with these sensors, and press **Test**. Each row shows `live:` and its value.
 (Cancel the entry afterwards if you were only looking.)
 
 ![Weather and solar forecast sensors with live values](../../images/ui/guide-weather-sensors.png)

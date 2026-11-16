@@ -10,8 +10,8 @@
 
 // Action → display + timeline colour. Mirrors the command vocabulary.
 const SCHEDULE_ACTIONS = [
-  { id: 'force_charge',    label: 'Force Charge',    colour: '#10b981', sustained: true,  params: ['power'] },
-  { id: 'force_discharge', label: 'Force Discharge', colour: '#f59e0b', sustained: true,  params: ['power'] },
+  { id: 'force_charge',    label: 'Force Charge',    colour: '#10b981', sustained: true,  params: ['power', 'target_soc'] },
+  { id: 'force_discharge', label: 'Force Discharge', colour: '#f59e0b', sustained: true,  params: ['power', 'target_soc'] },
   { id: 'force_standby',   label: 'Force Standby',   colour: '#64748b', sustained: true,  params: [] },
   { id: 'release',         label: 'Release',         colour: '#475569', sustained: true,  params: [] },
   { id: 'reserve_self',    label: 'Self Reserve %',  colour: '#3b82f6', sustained: false, params: ['pct'] },
@@ -92,6 +92,7 @@ function scheduleTab() {
     condList: (() => { try { return JSON.parse(localStorage.getItem('fwh-cond-list-size')) || null; } catch (_) { return null; } })(),
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
+    docsUrl(path) { return DOCS_URL + path; },  // the Guide links in the editor
 
     // Sensors grouped by their `group` label for the condition-picker,
     // preserving first-seen order (native metrics first, then HA · <instance>).
@@ -303,8 +304,9 @@ function scheduleTab() {
       return 'turn_on';  // switch/input_boolean/light
     },
 
-    addHaAction() {
-      this.form.ha_actions.push({ kind: 'entity', title: '', message: '', instance_id: '', entity_id: '', service: 'turn_on', data: {}, when: 'fire' });
+    addHaAction(kind = 'entity') {
+      this.form.ha_actions.push({ kind, title: '', message: '', instance_id: '', entity_id: '',
+        service: kind === 'notify' ? '' : 'turn_on', data: {}, when: 'fire' });
     },
     removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
     addGuard(a) {
@@ -1278,6 +1280,7 @@ function scheduleTab() {
         power_w: 1000,     // watts; empty = the gateway's full (trusted) rating
         power_unit: 'W',   // 'W' or '%' (% restored 2026-10-19: sent as WSetPct)
         power_pct: '',
+        target_soc: '',    // force charge / discharge: stop at this SoC; empty = none
         pct: 20,
         mode: 'TOU',
         target_type: 'gateway',
@@ -1438,6 +1441,7 @@ function scheduleTab() {
         power_w: p.power_w ?? '',
         power_unit: p.power_pct ? '%' : 'W',
         power_pct: p.power_pct ?? '',
+        target_soc: p.target_soc ?? '',
         pct: p.pct ?? 20,
         mode: p.mode ?? 'TOU',
         target_type: e.target_type,
@@ -1592,6 +1596,9 @@ function scheduleTab() {
         } else if (f.power_w !== '' && f.power_w != null) {
           p.power_w = Number(f.power_w);  // empty = the gateway's full rating at dispatch
         }
+      }
+      if (meta.params.includes('target_soc') && f.target_soc !== '' && f.target_soc != null) {
+        p.target_soc = Number(f.target_soc);
       }
       if (meta.params.includes('pct')) p.pct = Number(f.pct);
       if (meta.params.includes('mode')) p.mode = f.mode;

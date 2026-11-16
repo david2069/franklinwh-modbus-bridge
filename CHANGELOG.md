@@ -22,8 +22,17 @@ lands, not backfilled later.
   and about how long the battery lasts at current usage (net of solar), worded as the
   Direct Connect bridge words it. Each row has its count, Send to (all or
   chosen devices) and a switch; Send test checks delivery.
+- **Target SoC (%, optional)** in the schedule editor for Force Charge and Force
+  Discharge, as the Direct Connect bridge has. It was API-only, and saving in the form
+  removed it. The API now refuses a value outside 0–100.
+- **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
+  conditions and Home Assistant actions open the user guide at that topic.
 
 ### Fixed
+- **A schedule can have a notification without an exposed entity.** HA actions now
+  have **+ notify** and **+ entity**, as the Direct Connect bridge does. The old
+  **+ add action** was hidden until a controllable entity was exposed, even for a
+  notification.
 - **The dashboard shows when the aGate is unreachable** (#497). The bridge keeps
   retrying a lost link, so the gateway still counted as polling. The "Device
   unreachable" banner never appeared, and the figures looked live. Now a red
@@ -35,6 +44,12 @@ lands, not backfilled later.
   and `last_good_ts`.
 
 ### Changed
+- **Schedule editor wording and layout as the Direct Connect bridge's:** **Priority**
+  and **If busy** (was *If already controlled*) sit next to the action, shown only
+  where they act: Priority for a battery action, If busy for a force or release.
+  *Duration (HH:MM:SS)* under the entry conditions is now **Hold (HH:MM:SS)**, and
+  *Test Verification* is **Test**. The HA actions block is *Home Assistant actions*,
+  each row labelled *Notify* or *Entity*.
 - **A schedule's notifications go through the same sender as the rest** (refs #499).
   Notify actions, and the failure and recovery messages sent to a schedule's notify
   targets, are now listed in Recent notifications and follow the **Push notifications**

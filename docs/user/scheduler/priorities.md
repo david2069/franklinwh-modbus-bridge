@@ -8,7 +8,10 @@ happens when you, Home Assistant or another tool are already driving the battery
 | Setting | Values | Default |
 |---|---|---|
 | **Priority** | 0–1000; higher wins | 0 |
-| **If already controlled** | defer (skip), override, wait | defer |
+| **If busy** | defer (skip), override, wait | defer |
+
+Both sit next to the action. **Priority** shows for any battery action; **If busy** only for
+Force Charge, Force Discharge, Force Standby and Release, the actions it acts on.
 
 <!-- @b PRI-01 ;; src: api/schedules_api.py:118-119 ;; untested ;; write: no ;; b: priority is 0-1000 (default 0) and conflict is defer, override or wait (default defer); other values are rejected ;; test: unit (API) — priority 1001 and conflict 'x' return 422 -->
 
@@ -62,7 +65,7 @@ That covers the Controls tab, the top-bar buttons, the Home Assistant / MQTT com
 entities, the REST API, **Run now**, a **late fire**, and entries on **other targets**.
 <!-- @b PRI-07 ;; src: gateway/scheduler.py:959-963 ;; tested: tests/unit/test_scheduler.py::test_conflict_defer_leaves_manual_alone ;; write: yes ;; b: Foreign control is a handler-active command that this target key does not own (or whose action differs from the owner's) ;; test: — -->
 
-![If already controlled](../../images/scheduler/conflict-policy.png)
+![If busy](../../images/scheduler/conflict-policy.png)
 
 | Option (UI) | API `conflict` | Behaviour |
 |---|---|---|

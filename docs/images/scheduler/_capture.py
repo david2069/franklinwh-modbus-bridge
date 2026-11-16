@@ -385,11 +385,11 @@ def shots_form(page: Page, base_url: str) -> None:
     entry.locator("select[x-model='form.entry_conditions.match']").select_option("ALL")
     shot(entry, "condition-nested-group")
 
-    entry.get_by_role("button", name="Test Verification").click()
+    entry.get_by_role("button", name="Test", exact=True).click()
     page.wait_for_timeout(1200)
     shot(entry, "condition-test-verification")
 
-    shot(m.locator("div.rounded.border:has(> label:has-text('Duration'))").first, "dwell")
+    shot(m.locator("div.rounded.border:has(> label:has-text('Hold'))").first, "dwell")
     shot(section(page, "HA Actions"), "ha-actions-empty")
 
     ex = section(page, "Exit conditions")
@@ -406,7 +406,7 @@ def shots_form(page: Page, base_url: str) -> None:
     collapse_select(tgt)
     pol = field_select(page, "On exit / release").locator("xpath=../..")
     for label, name in (("On exit / release", "release-policy"),
-                        ("If already controlled", "conflict-policy")):
+                        ("If busy", "conflict-policy")):
         s = field_select(page, label)
         expand_select(s)
         shot(pol, name)

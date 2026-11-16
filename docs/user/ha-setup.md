@@ -102,12 +102,11 @@ changes nothing in Home Assistant.
 | other text, such as an option of a select | that text |
 | `unavailable` or `unknown` | nothing: the condition is false, so the schedule doesn't act |
 
-!!! note "Expose at least one controllable entity before adding notifications"
-    In 0.2.9 the **+ add action** link in a schedule's *HA Actions* only appears when at
-    least one **controllable** entity is exposed (a switch, light, select, number, button,
-    scene, script, or an `input_boolean` / `input_select` / `input_number` helper), even
-    if you only want a **Notify** action. If you have none to expose, create a helper in
-    Home Assistant (Settings → Devices & services → Helpers → **Toggle**) and expose it.
+!!! note "Notifications need no exposed entity"
+    **+ notify** is always there. **+ entity** appears once at least one **controllable**
+    entity is exposed (a switch, light, select, number, button, scene, script, or an
+    `input_boolean` / `input_select` / `input_number` helper). Before this release, the
+    single **+ add action** link needed such an entity even for a notification.
     The away-mode toggle in step 6 does both jobs.
 
 ## Step 4: Add a notification device
@@ -143,8 +142,8 @@ Other targets that work:
 Notifications are **actions on a schedule entry**. There is no separate "notifications"
 setting: an entry notifies only if it has a Notify action.
 
-Open **Schedule**, create or edit an entry, and under **HA Actions** click
-**+ add action**:
+Open **Schedule**, create or edit an entry, and under **Home Assistant actions** click
+**+ notify**:
 
 | Field | What to choose |
 |---|---|
@@ -221,13 +220,13 @@ To test sooner, set the interval to 1 minute, then put it back.
 |---|---|
 | Test Connection: *401* or *auth_invalid* | Wrong or deleted token. Create a new one. |
 | Test Connection: connection refused or timeout | The URL isn't reachable **from the bridge**. In Docker use the host's LAN address, not `localhost`. |
-| No **+ add action** link | No controllable entity is exposed (see the note in step 3). |
+| No **+ entity** button | No controllable entity is exposed (see the note in step 3). **+ notify** is always there. |
 | Notify target list empty | The instance is offline, or Home Assistant has no notify services. Reload the Schedule page. |
 | Activity Log: *failed* with *400 Bad Request* | The target is `send_message`. Pick a named service. |
 | Activity Log: *failed* with *404* | The phone was removed or renamed in Home Assistant. Pick the target again. |
 | Activity Log: *ha action*, but nothing on the phone | Home Assistant accepted it; check the Companion app's notification permission on the phone. |
 | Activity Log: *skipped — no notify target on this entry* | A failure alert for an entry without a Notify action. Add one. |
-| The condition never passes | The entity is `unavailable`, or you compared `on` with `true`: compare with `1`. Use **Test Verification** in the entry form. |
+| The condition never passes | The entity is `unavailable`, or you compared `on` with `true`: compare with `1`. Use **Test** in the entry form. |
 
 Related: [Home Assistant page](ui/home-assistant-page.md),
 [Scheduler → Conditions](scheduler/conditions.md),
