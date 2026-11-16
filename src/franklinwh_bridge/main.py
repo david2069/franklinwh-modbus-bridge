@@ -75,6 +75,7 @@ from franklinwh_bridge.gateway.ha import HaRegistry
 from franklinwh_bridge.gateway.health import HealthChecker
 from franklinwh_bridge.gateway.registry import GatewayRegistry
 from franklinwh_bridge.gateway.scheduler import ScheduleEngine
+from franklinwh_bridge.gateway.scheduler_sensors import battery_to_full_kwh
 from franklinwh_bridge.gateway.solar_forecast import SolarForecastService
 from franklinwh_bridge.modbus.sample import Sample, SampleBus
 from franklinwh_bridge.notify_triggers import Triggers
@@ -675,6 +676,10 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(Exception):
             await notify_triggers.on_points(sample.gateway_id, _gw_name(sample.gateway_id),
                                             sample.points)
+        with contextlib.suppress(Exception):  # solar won't fill the battery today (owner)
+            await notify_triggers.on_solar(sample.gateway_id, _gw_name(sample.gateway_id),
+                                           solar_forecast.solar_left_kwh(),
+                                           battery_to_full_kwh(sample.points))
 
     sample_bus.subscribe(_notify_on_sample)
     registry.on_dispatch = lambda gw_id, event, values: notify_triggers.fire(

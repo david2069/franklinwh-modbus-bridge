@@ -20,9 +20,10 @@ def cfg(**changes) -> dict:
 
 def test_rows_and_defaults_match_the_direct_connect_bridge():
     c = nt.merged(None)
+    # DC's rows, plus one of ours the owner asked for (2026-11-17), off by default.
     assert list(c["triggers"]) == [
-        "aGate_offline", "off_grid", "dispatch", "soc_low", "soc_full", "bridge",
-        "schedule_failed", "schedule_missed", "schedule_aborted", "schedule_no_reply"]
+        "aGate_offline", "off_grid", "dispatch", "soc_low", "soc_full", "solar_short",
+        "bridge", "schedule_failed", "schedule_missed", "schedule_aborted", "schedule_no_reply"]
     on = {k for k, t in c["triggers"].items() if t["enabled"]}
     assert on == {"aGate_offline", "off_grid", "dispatch", "bridge", "schedule_failed",
                   "schedule_missed", "schedule_no_reply"}
@@ -129,3 +130,30 @@ def test_asks_send_to_is_kept_checked_and_defaults_to_all():
         except ValueError:
             continue
         raise AssertionError(bad)
+
+
+async def test_solar_wont_fill_is_sent_once_a_day_from_ten(tmp_path):
+    from datetime import datetime
+
+    from franklinwh_bridge.notify_triggers import Triggers
+    from franklinwh_bridge.store.db import init_db
+
+    db = await init_db(tmp_path / "t.db")
+    sent = []
+    trg = Triggers(db, None)
+
+    async def fire(event, **kw):
+        sent.append((event, kw))
+        return 1
+
+    trg.fire = fire
+    day = datetime(2026, 11, 17, 11, 0)
+    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day) is False      # off by default
+    trg.cfg["triggers"]["solar_short"]["enabled"] = True
+    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day.replace(hour=9)) is False  # before 10
+    assert await trg.on_solar("gw", "Home", 8.0, 6.4, day) is False      # it will fill
+    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day) is True
+    assert sent == [("solar_short", {"gateway": "Home", "solar_left": "3.1", "to_full": "6.4"})]
+    assert await trg.on_solar("gw", "Home", 2.0, 6.4, day.replace(hour=14)) is False  # once a day
+    assert await trg.on_solar("gw", "Home", 2.0, 6.4, datetime(2026, 11, 18, 10, 30)) is True
+    await db.close()

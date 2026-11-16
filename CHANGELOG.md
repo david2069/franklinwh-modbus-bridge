@@ -65,6 +65,14 @@ lands, not backfilled later.
   as the Direct Connect bridge has: a test notice in HA, a test alert with Acknowledge to
   the Critical alerts phones, then the tap, each step shown in the dialog. No alert is
   recorded.
+- **Solar Forecast card as the Energipays bridge's** (owner, 2026-11-17): one chart over
+  today and tomorrow with **Actual** (today's measured solar, per hour) and **Temp** (the
+  forecast temperature, dashed, °C axis on the right) lines, each with a header toggle, a kW
+  scale and a legend. The Today box says when the solar left today won't fill the battery
+  to 100 %. `GET /api/solar/forecast` adds `actual_hourly` and `fill`.
+- **Auto-notify trigger "Solar won't fill the battery today"** (off by default): from 10:00,
+  once a day per gateway, when the forecast solar left today is less than the room left
+  in the battery to 100 %.
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

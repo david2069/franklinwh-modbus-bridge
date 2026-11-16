@@ -225,6 +225,11 @@ def _stored_kwh(p: Points, _n: datetime) -> float | None:
     return round(cap * soc / 100.0, 2)
 
 
+def battery_to_full_kwh(p: Points) -> float | None:
+    """Room left in the battery to 100% (kWh), from polled points; None if unknown."""
+    return _remaining_kwh(p, datetime.now())
+
+
 def _remaining_kwh(p: Points, _n: datetime) -> float | None:
     """Headroom to full = plate capacity − current stored energy."""
     cap = _capacity_kwh(p, _n)

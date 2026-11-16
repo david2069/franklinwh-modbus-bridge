@@ -10,6 +10,7 @@ supply its own home location instead (``get_config``).
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -17,12 +18,16 @@ from pydantic import BaseModel, Field
 
 from franklinwh_bridge.api.auth import require_role
 from franklinwh_bridge.api.gateway_ref import named_gateway
+from franklinwh_bridge.gateway.scheduler_sensors import battery_to_full_kwh
 from franklinwh_bridge.gateway.solar_forecast import (
     NOT_CONFIGURED_REASON,
     SolarForecastService,
+    actual_by_hour,
     actual_vs_forecast,
+    fill_status,
     sensors,
 )
+from franklinwh_bridge.store.metrics import query_metrics_daterange
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,13 @@ class SolarSettingsResponse(BaseModel):
     azimuth_help: str = AZIMUTH_HELP
     #: HA instances that can supply a location (empty = no "use HA" option).
     ha_instances: list[dict[str, str]] = Field(default_factory=list)
+
+
+def _points(request: Request, gateway: str) -> dict:
+    """The gateway's latest polled points (no Modbus call), or {}."""
+    registry = getattr(request.app.state, "registry", None)
+    inst = registry.get(gateway) if registry is not None else None
+    return inst.latest_points() if inst else {}
 
 
 def _service(request: Request) -> SolarForecastService:
@@ -98,6 +110,22 @@ async def solar_forecast(request: Request, force: bool = False, gateway: str | N
             actual, sens["solar_forecast.today_kwh"], sens["solar_forecast.remaining_kwh"]
         )
     )
+    # Energipays-style card (owner, 2026-11-17): today's measured solar per hour, and
+    # whether the solar left today fills the battery to 100%.
+    now = time.time()
+    today = (fc.get("days") or [{}])[0].get("date")
+    hours = [h for h in fc.get("hourly") or [] if str(h.get("time", "")).startswith(today or "~")]
+    actual_hourly: list[dict] = []
+    if hours:
+        try:
+            rows = await query_metrics_daterange(request.app.state.db, hours[0]["ts"], now,
+                                                 bucket_seconds=300, gateway_id=gateway)
+            actual_hourly = actual_by_hour(rows, hours, now)
+        except Exception as exc:  # the card still shows the forecast
+            logger.debug("Actual solar per hour unavailable for %s: %s", gateway, exc)
+    pts = _points(request, gateway)
+    fill = fill_status(sens["solar_forecast.remaining_kwh"],
+                       battery_to_full_kwh(pts) if pts else None)
     return {
         "configured": True,
         **fc,
@@ -109,6 +137,8 @@ async def solar_forecast(request: Request, force: bool = False, gateway: str | N
             "lon": s.pv_longitude,
         },
         "actual_today_kwh": actual,
+        "actual_hourly": actual_hourly,
+        "fill": fill,
         "sensors": sens,
     }
 

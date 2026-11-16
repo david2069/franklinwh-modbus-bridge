@@ -366,6 +366,11 @@ class SolarForecastService:
         hit = self._cache.get(self.settings.cache_key())
         return hit[1] if hit else None
 
+    def solar_left_kwh(self, now_ts: float | None = None) -> float | None:
+        """Forecast solar still to come today (the remaining_kwh sensor); cache only."""
+        return sensors(self.cached(), now_ts).get("solar_forecast.remaining_kwh") \
+            if self.cached() else None
+
     def as_points(self, now_ts: float | None = None) -> dict[str, Any]:
         """Sensor values as point keys for the (sync) scheduler points merge.
         Cache only — never a network call. All None when off or not fetched."""
@@ -383,3 +388,30 @@ class SolarForecastService:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), CACHE_S)
             self._wake.clear()
+
+
+def fill_status(solar_left_kwh: float | None, to_full_kwh: float | None) -> dict[str, Any]:
+    """Will the forecast solar left today fill the battery to 100%? (owner, 2026-11-17)
+    ``{solar_left_kwh, to_full_kwh, wont_fill}``; ``wont_fill`` is None when either is
+    unknown, and False when the battery is (nearly) full already. Home load, charge
+    losses and the charge rate are not counted: the forecast is the most solar there is."""
+    if solar_left_kwh is None or to_full_kwh is None:
+        wont = None
+    else:
+        wont = to_full_kwh > 0.1 and solar_left_kwh < to_full_kwh
+    return {"solar_left_kwh": solar_left_kwh, "to_full_kwh": to_full_kwh, "wont_fill": wont}
+
+
+def actual_by_hour(rows: list[dict], hours: list[dict], now_ts: float) -> list[dict]:
+    """Today's measured solar per forecast hour (average kW), from metrics rows
+    ``{ts, solar_w}``: one ``{time, kw}`` for each of today's hours that has started."""
+    out = []
+    for h in hours:
+        start = h["ts"]
+        if start > now_ts:
+            break
+        vals = [r["solar_w"] for r in rows
+                if r.get("solar_w") is not None and start <= r["ts"] < start + 3600]
+        out.append({"time": h["time"], "kw": round(sum(vals) / len(vals) / 1000.0, 2)
+                    if vals else None})
+    return out

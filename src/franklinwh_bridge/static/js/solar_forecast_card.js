@@ -22,6 +22,10 @@ function solarForecastCard() {
     nowMs: Date.now(),
     solarSplit: null,     // today's {home, battery, grid} kWh, reconstructed
     batteryHours: [],     // today's [{start, end, charge_kwh, discharge_kwh, state}]
+    // The Actual and Temp lines over the bars (owner, 2026-11-17: as Energipays);
+    // each toggle remembered in this browser.
+    showActual: (() => { try { return localStorage.getItem('fwh-sf-actual') !== '0'; } catch (_) { return true; } })(),
+    showTemp: (() => { try { return localStorage.getItem('fwh-sf-temp') !== '0'; } catch (_) { return true; } })(),
 
     init() {
       this.load();
@@ -105,11 +109,70 @@ function solarForecastCard() {
       return (d && d.peak_ts != null) ? bridgeTime.time(d.peak_ts * 1000) : '–';
     },
 
-    /** Hourly bars: height as % of the peak, tagged today / now. */
+    toggleLine(which) {
+      const key = which === 'actual' ? 'showActual' : 'showTemp';
+      this[key] = !this[key];
+      try { localStorage.setItem(which === 'actual' ? 'fwh-sf-actual' : 'fwh-sf-temp', this[key] ? '1' : '0'); } catch (_) { /* private mode */ }
+    },
+
+    /** Today's measured solar per hour (avg kW), keyed by the forecast hour. */
+    get _actualByTime() {
+      const out = {};
+      for (const a of (this.data && this.data.actual_hourly) || []) if (a.kw != null) out[a.time] = a.kw;
+      return out;
+    },
+    /** The kW scale: the forecast peak, or the measured peak if higher. */
+    get kwMax() {
+      const h = (this.data && this.data.hourly) || [];
+      const act = Object.values(this._actualByTime);
+      return Math.max(0.05, ...h.map((x) => x.kw || 0), ...act);
+    },
+    /** SVG path ("M x y L …") through one value per bar (null breaks the line);
+     *  x at the bar's centre on 0–100, y on 0–100 from the top. */
+    _path(vals, lo, hi) {
+      const n = vals.length;
+      let d = '';
+      let pen = false;
+      vals.forEach((v, i) => {
+        if (v == null) { pen = false; return; }
+        const x = ((i + 0.5) / n) * 100;
+        const y = 100 - ((v - lo) / (hi - lo || 1)) * 100;
+        d += `${pen ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)} `;
+        pen = true;
+      });
+      return d.trim();
+    },
+    get actualPath() {
+      const by = this._actualByTime;
+      const h = (this.data && this.data.hourly) || [];
+      return this._path(h.map((x) => (by[x.time] != null ? by[x.time] : null)), 0, this.kwMax);
+    },
+    get hasActual() { return Object.keys(this._actualByTime).length > 0; },
+    /** Temperature range, padded a degree, for the right axis. */
+    get tempRange() {
+      const t = ((this.data && this.data.hourly) || []).map((x) => x.temp_c).filter((v) => v != null);
+      if (!t.length) return null;
+      return { lo: Math.floor(Math.min(...t)) - 1, hi: Math.ceil(Math.max(...t)) + 1 };
+    },
+    get tempPath() {
+      const r = this.tempRange;
+      if (!r) return '';
+      return this._path(((this.data && this.data.hourly) || []).map((x) => x.temp_c), r.lo, r.hi);
+    },
+    /** "Solar left today won't fill the battery" (owner, 2026-11-17). */
+    get fill() { return (this.data && this.data.fill) || {}; },
+    get fillNote() {
+      const f = this.fill;
+      if (f.wont_fill !== true) return '';
+      return `Solar left today ${this.num(f.solar_left_kwh, 1)} kWh won't fill the battery: `
+        + `${this.num(f.to_full_kwh, 1)} kWh to 100%`;
+    },
+
+    /** Hourly bars: height as % of the kW scale, tagged today / now. */
     get bars() {
       const h = (this.data && this.data.hourly) || [];
       if (!h.length) return [];
-      const max = Math.max(0.05, ...h.map((x) => x.kw || 0));
+      const max = this.kwMax;
       const todayDate = this._siteDate(this.nowMs);
       const now = this.nowMs;
       return h.map((x) => {

@@ -163,11 +163,11 @@ Once configured:
 | Part | Meaning |
 |---|---|
 | Title chip | Current temperature and weather condition. A **stale** chip means the last fetch failed and the previous forecast is shown. |
-| **Today** box | Forecast kWh for the day, the peak kW and when, and the kWh still to come. |
+| **Today** box | Forecast kWh for the day, the peak kW and when, and the kWh still to come. When that is less than the room left in the battery to 100 %, an amber line says so: *Solar left today 3.1 kWh won't fill the battery: 6.4 kWh to 100 %* (forecast only: home load and charge losses are not counted). |
 | Actual so far | Solar measured today in kWh, as a bar against the day's forecast. "vs forecast to now" compares it with what was forecast up to this hour. |
 | →home / →batt / →grid | Where today's solar went, in kWh. Reconstructed from power samples (an estimate, not a meter). Then the current SoC. |
 | **Tomorrow** box | Forecast kWh, peak kW and time. |
-| Bars | Hourly forecast in kW from today to tomorrow. The current hour is outlined, with a red **now** line. Ticks at 00, 06, 12 and 18. |
+| Chart | One chart over today and tomorrow, as the Energipays bridge shows it: hourly forecast bars in kW (today amber, tomorrow blue), the current hour outlined with a red **now** line, ticks at 00, 06, 12 and 18, and a kW scale on the left. **Actual** (orange line) is today's measured solar, averaged per hour. **Temp** (dashed line, °C scale on the right) is the forecast temperature for both days. The **Actual** and **Temp** buttons in the header show or hide each line; this browser remembers the choice. A legend sits under the chart. |
 | Battery band | Under today's bars: what the battery did each hour (charging, discharging, idle), estimated from the sampled battery power. |
 | Footer | The bridge timezone, when the forecast was fetched, and the array size, tilt and azimuth used. |
 
