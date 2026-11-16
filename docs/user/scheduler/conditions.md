@@ -32,6 +32,12 @@ browser remembers the size.
   Home Assistant entity `unavailable`), every operator returns false, including `!=` and
   `not in`. A rule never acts on missing data.
   <!-- @b CND-01 ;; src: gateway/scheduler_conditions.py:227-230 ;; tested: tests/unit/test_scheduler_conditions.py::test_none_live_value_fails_closed_all_ops ;; write: yes ;; b: A sensor with no value makes every operator false, including != and not_in ;; test: — -->
+- **A sensor whose setting is missing is greyed in the pickers**, with what to set and
+  where. These need: weather and solar forecast, a location (Settings → Site & Gateways →
+  Location & Solar); tariff, demand, bonus, fixed-charge and cost sensors, a utility
+  service with a tariff or a price source; wholesale spot and dynamic feed-in prices, a
+  price source (both in Settings → Energy & Automation → Electricity Utility Service(s)).
+  A saved row that uses one says *this condition can't be met*.
 - **An unknown sensor or operator is false too.** The bridge does not check sensor ids or
   operators when you save through the API; such a row just never passes. Import warns
   about unknown sensors.

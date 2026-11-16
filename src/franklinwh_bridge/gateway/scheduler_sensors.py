@@ -1012,6 +1012,55 @@ def _group_for(sensor_id: str) -> str:
     return _GROUP_LABELS.get(sensor_id.split(".", 1)[0], "Other")
 
 
+# ── What a sensor needs set up (as DC's feature states) ─────────────────────
+# A sensor whose setting is missing can never have a value, so the pickers grey it
+# with the reason instead of letting a condition that can't be met be built.
+_SETUP = {
+    "location": "location — set it in Settings → Site & Gateways → Location & Solar",
+    "tariff": "tariff — give a utility service its Billing / Tariff in Settings → "
+              "Energy & Automation → Electricity Utility Service(s)",
+    "price": "price source — set one on a utility service in Settings → "
+             "Energy & Automation → Electricity Utility Service(s)",
+}
+_TARIFF_ENERGY = {
+    "energy.period_import_kwh", "energy.import_cost", "energy.export_credit",
+    "energy.unpriced_import_kwh", "energy.unpriced_export_kwh",
+}
+
+
+def sensor_feature(sid: str) -> str:
+    """The setting a sensor needs: ``location``, ``tariff``, ``price``, or ``gateway``
+    (the gateway's own readings, a service's own fields, the clock and constants:
+    always available — every install has a service)."""
+    if sid in ("tariff.spot_price", "tariff.feed_in_price"):
+        return "price"
+    head = sid.split(".", 1)[0]
+    if head in ("weather", "solar_forecast"):
+        return "location"
+    if head in ("tariff", "demand", "bonus", "fixed") or sid in _TARIFF_ENERGY:
+        return "tariff"
+    return "gateway"
+
+
+def feature_states(*, location_set: bool, services: list[dict]) -> dict[str, str]:
+    """Why each feature that isn't set up can't give values, keyed by feature; a
+    feature that is set up is absent (its sensors may still have no reading now)."""
+    out: dict[str, str] = {}
+    if not location_set:
+        out["location"] = "not set up: " + _SETUP["location"]
+    priced = [s for s in services if (s.get("pricing_api") or "none") != "none"]
+    if not priced and not any(s.get("pricing") for s in services):
+        out["tariff"] = "not set up: " + _SETUP["tariff"]
+    if not priced:
+        out["price"] = "not set up: " + _SETUP["price"]
+    return out
+
+
+def sensor_inactive(sid: str, states: dict[str, str]) -> str | None:
+    """Why a sensor can't be picked, or None."""
+    return states.get(sensor_feature(sid))
+
+
 def sensor_catalog(points: Points | None = None, now: datetime | None = None) -> list[dict]:
     """Registry metadata for the UI dropdowns (``/api/sensors``).
 

@@ -21,7 +21,13 @@ from franklinwh_bridge.api.gateway_ref import named_gateway
 from franklinwh_bridge.gateway.constants import ConstantsStore
 from franklinwh_bridge.gateway.scheduler import MONITOR_MAX
 from franklinwh_bridge.gateway.scheduler_conditions import evaluate_dict
-from franklinwh_bridge.gateway.scheduler_sensors import sensor_catalog, snapshot
+from franklinwh_bridge.gateway.scheduler_sensors import (
+    feature_states,
+    sensor_catalog,
+    sensor_inactive,
+    snapshot,
+)
+from franklinwh_bridge.store.db import get_services
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +87,26 @@ async def list_sensors(request: Request, gateway: str | None = None):
         except Exception as exc:
             logger.debug("dispatch points unavailable for %s: %s", gateway, exc)
     sensors = sensor_catalog(points)
+    # A sensor whose setting is missing is greyed in the pickers, with the reason.
+    states = await _feature_states(request)
+    for s in sensors:
+        s["inactive"] = sensor_inactive(s["id"], states)
     ha = getattr(request.app.state, "ha_registry", None)
     if ha is not None:
         sensors = [*sensors, *ha.catalog()]
     return {"gateway": gateway, "sensors": sensors}
+
+
+async def _feature_states(request: Request) -> dict[str, str]:
+    """Which settings the sensors need are missing (configuration only, no fetch)."""
+    fc = getattr(request.app.state, "solar_forecast", None)
+    location_set = bool(fc is not None and fc.settings.configured)
+    try:
+        services = await get_services(request.app.state.db)
+    except Exception as exc:  # a broken read must not hide the sensor list
+        logger.debug("services unavailable for feature states: %s", exc)
+        services = []
+    return feature_states(location_set=location_set, services=services)
 
 
 class ConstantsBody(BaseModel):
