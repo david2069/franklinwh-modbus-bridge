@@ -261,6 +261,13 @@ Every HA action writes an Activity Log row: *ha_action* (`[fire] switch.pool_pum
 turn_off`, `[exit] notify.mobile_app: …`) on success, *failed* with the error, or *gated*
 when its guard was false. With no Home Assistant configured at all, a single *failed* row
 says the actions were skipped.
+
+Notifications (notify rows and the failure alerts above) follow the **Push
+notifications** switch in Settings → Home Assistant → Notifications: while it is off they
+are not sent, and the row says *skipped — Push notifications are off*. Each one sent or
+skipped is also listed in **Recent notifications** there. A notify target on a Home
+Assistant instance that is switched off is not sent; the *failed* row says so.
+<!-- @b HAA-19 ;; src: actionable.py Actionable.notify_service, gateway/scheduler.py _run_ha_actions ;; tested: tests/unit/test_notify_api.py::test_a_schedule_notify_row_is_recorded_and_follows_the_switch, tests/unit/test_scheduler_engine.py::test_notification_not_sent_by_choice_is_skipped_not_failed ;; write: no ;; b: schedule notifications go through franklinwh-ha-notify: recorded, skipped while Push is off ;; test: — -->
 <!-- @b HAA-12 ;; src: gateway/scheduler.py:1148-1153, gateway/scheduler.py:1191-1200 ;; tested: tests/unit/test_scheduler.py::test_ha_actions_no_dispatcher_is_safe ;; write: no ;; b: Each HA action is audited ha_action or failed with the rendered detail; with no HA hooks one failed row reports the skip ;; test: — -->
 
 ## Dependencies by action

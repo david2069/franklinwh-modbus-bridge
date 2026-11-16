@@ -35,6 +35,12 @@ lands, not backfilled later.
   and `last_good_ts`.
 
 ### Changed
+- **A schedule's notifications go through the same sender as the rest** (refs #499).
+  Notify actions, and the failure and recovery messages sent to a schedule's notify
+  targets, are now listed in Recent notifications and follow the **Push notifications**
+  switch: while it is off they are not sent, and the schedule's Activity Log says
+  *skipped — Push notifications are off* (before, they were sent anyway and not listed).
+  A target on a switched-off Home Assistant instance is not sent, and the log says so.
 - **franklinwh-ha-notify 0.1.4** (was 0.1.3; refs #499), as the Direct Connect bridge
   uses. A send with no device to go to is now logged as *Skipped* in Recent
   notifications, not *Error*. The library also brings the Direct Connect bridge's fixes

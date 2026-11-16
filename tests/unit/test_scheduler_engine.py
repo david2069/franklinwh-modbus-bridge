@@ -742,7 +742,7 @@ async def test_incumbent_keeps_the_gateway_when_its_gate_blips():
 # ── one-way HA notifications ──────────────────────────────────
 
 
-def _notify_engine(entries, handler, points=None, audits=None, sent=None):
+def _notify_engine(entries, handler, points=None, audits=None, sent=None, result=None):
     """Engine with a notify hook that records what it was asked to send."""
     async def on_audit(sid, action, target, result, detail):
         if audits is not None:
@@ -751,7 +751,7 @@ def _notify_engine(entries, handler, points=None, audits=None, sent=None):
     async def notify_fn(instance_id, service, title, message):
         sent.append({"instance": instance_id, "service": service,
                      "title": title, "message": message})
-        return {"ok": True, "error": None}
+        return result or {"ok": True, "error": None}
 
     eng = ScheduleEngine(
         db=None,
@@ -780,6 +780,23 @@ async def test_notification_sent_on_fire():
     assert sent[0]["service"] == "mobile_app_phone"
     assert sent[0]["message"] == "Discharging now"
     assert any(a["result"] == "ha_action" for a in audits)
+
+
+async def test_notification_not_sent_by_choice_is_skipped_not_failed():
+    """Push notifications off (#499): the history says skipped and why, not failed."""
+    h = FakeHandler()
+    sent, audits = [], []
+    e = entry(ha_actions=[{
+        "kind": "notify", "instance_id": "ha1", "service": "mobile_app_phone",
+        "when": "fire", "title": "Export started", "message": "Discharging now",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 80}, audits=audits, sent=sent,
+                         result={"ok": False, "skipped": "Push notifications are off"})
+    await eng.tick(MON)
+
+    notify_rows = [a for a in audits if "notify." in a["detail"]]
+    assert [a["result"] for a in notify_rows] == ["skipped"]
+    assert notify_rows[0]["detail"].endswith("— Push notifications are off")
 
 
 async def test_notification_substitutes_live_sensor_values():
