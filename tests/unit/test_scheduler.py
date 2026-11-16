@@ -837,3 +837,31 @@ def test_date_range_bounds_activity_and_next_fire():
     assert entry_next_fire(t, datetime(2026, 11, 16, 12, 0)) == datetime(2026, 12, 1, 18, 0)
     no_range = {"trigger_kind": "daily", "trigger_spec": {"time_of_day": "18:00"}}
     assert entry_next_fire(no_range, datetime(2026, 11, 16, 12, 0)) == datetime(2026, 11, 16, 18, 0)
+
+
+async def test_a_raw_service_action_calls_its_domain_with_values_filled():
+    """Group 5 (as DC's Advanced (raw service)): domain + service, optional entity,
+    data; %sensor.id% in the entity and data is filled from the snapshot."""
+    calls = []
+
+    async def ha(inst, eid, svc, data, domain=""):
+        calls.append((inst, domain, svc, eid, data))
+        return {"ok": True}
+
+    acts = [{"kind": "entity", "instance_id": "ha1", "domain": "input_number",
+             "service": "set_value", "entity_id": "input_number.last_soc",
+             "data": {"value": "%battery.soc_pct%"}, "when": "fire"},
+            {"kind": "entity", "instance_id": "ha1", "domain": "script", "service": "evening",
+             "when": "fire"}]
+    eng = ScheduleEngine(
+        db=None,
+        resolver=lambda tt, tid: [("default", FakeHandler())],
+        points_fn=lambda gw: {"soc": 61},
+        ha_action_fn=ha,
+    )
+    eng._entries = [_entry(action="none", params={}, ha_actions=acts, when_spec=_ALLDAY)]
+    await eng.tick(datetime(2026, 6, 15, 10, 0, 0))
+    assert calls == [
+        ("ha1", "input_number", "set_value", "input_number.last_soc", {"value": "61"}),
+        ("ha1", "script", "evening", "", {}),
+    ]

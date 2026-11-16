@@ -336,6 +336,18 @@ async def test_call_service_select_option_carries_data():
 
 
 @respx.mock
+async def test_call_service_raw_names_its_domain_and_entity_is_optional():
+    """Raw service (as DC's Advanced): domain.service as written, no entity needed."""
+    route = respx.post("http://ha.local/api/services/script/turn_on").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    inst = HaInstance({"id": "home", "name": "Home", "base_url": "http://ha.local"})
+    res = await inst.call_service("", "turn_on", {"variables": {"soc": "61"}}, domain="script")
+    assert res["ok"] is True
+    assert json.loads(route.calls.last.request.content) == {"variables": {"soc": "61"}}
+
+
+@respx.mock
 async def test_call_service_soft_fails_on_error():
     respx.post("http://ha.local/api/services/switch/turn_off").mock(
         return_value=httpx.Response(500)

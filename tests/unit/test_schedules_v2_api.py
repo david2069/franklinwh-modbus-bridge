@@ -387,3 +387,14 @@ async def test_date_range_is_saved_checked_and_cleared(client):
                                  json={"start_date": "", "end_date": ""})
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["start_date"] is None and cleared.json()["end_date"] is None
+
+
+async def test_a_raw_service_action_needs_a_domain_or_an_entity(client):
+    base = {"name": "Raw", "action": "none", "trigger_kind": "always", "enabled": False}
+    raw = {"kind": "entity", "instance_id": "ha1", "domain": "script", "service": "evening"}
+    r = await client.post("/api/schedules", json={**base, "ha_actions": [raw]})
+    assert r.status_code == 201, r.text
+    assert r.json()["ha_actions"][0]["domain"] == "script"
+    bare = {"kind": "entity", "instance_id": "ha1", "service": "evening"}
+    r = await client.post("/api/schedules", json={**base, "ha_actions": [bare]})
+    assert r.status_code == 422

@@ -1567,11 +1567,17 @@ class ScheduleEngine:
             # title/message and no entity_id, so it needs its own route rather
             # than being forced through call_service.
             is_notify = (a.get("kind") == "notify")
+            # A raw service call (as DC's Advanced) names its domain; entity optional.
+            dom = (a.get("domain") or "").strip()
             if is_notify:
                 if not (inst and svc):
                     continue
-            elif not (inst and eid and svc):
+            elif not (inst and svc and (eid or dom)):
                 continue
+            if dom:
+                eid = self._render(eid or "", tkey, now)
+                data = {k: self._render(v, tkey, now) if isinstance(v, str) else v
+                        for k, v in data.items()}
             guard = a.get("guard")
             if guard and not self._guard_ok(guard, tkey[2], now):
                 await self._audit(
@@ -1591,14 +1597,16 @@ class ScheduleEngine:
                 elif self._ha_action_fn is None:
                     res = {"ok": False, "error": "HA entity actions not wired"}
                 else:
-                    res = await self._ha_action_fn(inst, eid, svc, data)
+                    res = await self._ha_action_fn(
+                        inst, eid, svc, data, **({"domain": dom} if dom else {}))
             except Exception as exc:  # defensive — call_service already soft-fails
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
             ok = bool(res.get("ok"))
             if is_notify:
                 detail = f"[{phase}] notify.{svc}: {sent_msg[:60]}"
             else:
-                detail = f"[{phase}] {eid} → {svc}" + (f" {data}" if data else "")
+                call = f"{dom}.{svc}" + (f" {eid}" if eid else "") if dom else f"{eid} → {svc}"
+                detail = f"[{phase}] {call}" + (f" {data}" if data else "")
             if res.get("skipped"):  # Push notifications off: not sent, by choice
                 await self._audit(win["id"], "ha_action", tkey, "skipped",
                                   f"{detail} — {res['skipped']}")

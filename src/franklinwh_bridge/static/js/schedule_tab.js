@@ -95,6 +95,7 @@ function scheduleTab() {
     condList: (() => { try { return JSON.parse(localStorage.getItem('fwh-cond-list-size')) || null; } catch (_) { return null; } })(),
     haControllable: [],   // exposed HA entities in controllable domains (for actions)
     notifyTargets: [],    // notify.* SERVICES — not entities, so a separate list
+    haInstances: [],      // {id, name} of each enabled HA, for a raw service call
     advDates: false,      // the editor's Advanced… date range is open
     varPick: { open: false, q: '', live: {}, liveOk: false, liveMsg: '' },  // {x} dialog
     docsUrl(path) { return DOCS_URL + path; },  // the Guide links in the editor
@@ -311,7 +312,19 @@ function scheduleTab() {
     async loadNotifyTargets() {
       const d = await fetchJSON('api/ha/notify-targets');
       this.notifyTargets = (d && d.targets) || [];
+      const h = await fetchJSON('api/ha/instances');
+      this.haInstances = (Array.isArray(h) ? h : (h?.instances || []))
+        .filter((x) => x.enabled !== false && x.enabled !== 0)
+        .map((x) => ({ id: x.id, name: x.name || x.id }));
     },
+    /** Advanced (raw service), as DC: keep what the guided picker had. */
+    toRaw(a) {
+      a.raw = true;
+      if (!a.domain && (a.entity_id || '').includes('.')) a.domain = a.entity_id.split('.')[0];
+      a._dataText = a.data && Object.keys(a.data).length ? JSON.stringify(a.data) : '';
+      if (!a.instance_id && this.haInstances.length === 1) a.instance_id = this.haInstances[0].id;
+    },
+    fromRaw(a) { a.raw = false; a.domain = ''; a._dataText = ''; },
 
     /** Notify targets are "<instance>::<service>" — the service is a notify
      *  target name, NOT an entity, so entity_id stays empty. */
@@ -358,6 +371,7 @@ function scheduleTab() {
     },
 
     haControlKind(a) {
+      if (a.raw) return '';
       const m = this.haEntityMeta(a);
       if (!m) return '';
       const d = m.domain;
@@ -1535,6 +1549,8 @@ function scheduleTab() {
         ha_actions: (e.ha_actions || []).map((a) => ({
           ...a, data: { ...(a.data || {}) },
           guard: a.guard ? { value2: '', value_kind: 'value', value_sensor: '', ...a.guard } : null,
+          raw: !!a.domain,
+          _dataText: a.domain && a.data && Object.keys(a.data).length ? JSON.stringify(a.data) : '',
         })),
         entry_conditions: e.entry_conditions ? this._cloneTree(e.entry_conditions) : emptyTree(),
         exit_conditions: e.exit_conditions ? this._cloneTree(e.exit_conditions) : emptyTree(),
@@ -1785,6 +1801,15 @@ function scheduleTab() {
       if (this.showWindows && !f.windows.length) { fail('Add at least one time window'); return; }
       if (['once', 'oneoff'].includes(f.trigger_type) && !f.date) { fail('Pick a date'); return; }
       if (f.trigger_type === 'oneoff' && !f.time_of_day) { fail('Pick a time'); return; }
+      for (const a of f.ha_actions || []) {
+        if (a.kind === 'notify' || !a.raw || !a._dataText) continue;
+        let d = null;
+        try { d = JSON.parse(a._dataText); } catch (_) { /* reported below */ }
+        if (!d || typeof d !== 'object' || Array.isArray(d)) {
+          fail(`The data for ${a.domain || '?'}.${a.service || '?'} must be a JSON object, e.g. {"brightness": 180}`);
+          return;
+        }
+      }
 
       // Editing an entry that is firing RIGHT NOW → warn before we alter a live
       // battery command. The engine re-applies on save (re-dispatches if the
@@ -1822,7 +1847,7 @@ function scheduleTab() {
           // every notification silently on save.
           .filter((a) => (a.kind === 'notify'
             ? a.instance_id && a.service && a.message
-            : a.instance_id && a.entity_id && a.service))
+            : a.instance_id && a.service && (a.raw ? a.domain : a.entity_id)))
           .map((a) => {
             const o = {
               kind: a.kind || 'entity',
@@ -1832,6 +1857,10 @@ function scheduleTab() {
             if (a.kind === 'notify') {
               o.title = a.title || '';
               o.message = a.message || '';
+            }
+            if (a.kind !== 'notify' && a.raw) {
+              o.domain = a.domain;
+              o.data = a._dataText ? JSON.parse(a._dataText) : {};  // checked in saveEntry
             }
             if (a.guard && a.guard.sensor) {
               o.guard = this._leafOut(a.guard);

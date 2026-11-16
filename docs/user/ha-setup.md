@@ -103,10 +103,12 @@ changes nothing in Home Assistant.
 | `unavailable` or `unknown` | nothing: the condition is false, so the schedule doesn't act |
 
 !!! note "Notifications need no exposed entity"
-    **+ notify** is always there. **+ entity** appears once at least one **controllable**
-    entity is exposed (a switch, light, select, number, button, scene, script, or an
-    `input_boolean` / `input_select` / `input_number` helper). Before this release, the
-    single **+ add action** link needed such an entity even for a notification.
+    **+ notify** is always there. **+ entity** appears once a Home Assistant is
+    connected; its guided list shows the exposed **controllable** entities (a switch,
+    light, select, number, button, scene, script, or an `input_boolean` /
+    `input_select` / `input_number` helper), and **Advanced (raw service)…** calls any
+    service without one. Before this release, the single **+ add action** link needed
+    such an entity even for a notification.
     The away-mode toggle in step 6 does both jobs.
 
 ## Step 4: Add a notification device
@@ -220,7 +222,7 @@ To test sooner, set the interval to 1 minute, then put it back.
 |---|---|
 | Test Connection: *401* or *auth_invalid* | Wrong or deleted token. Create a new one. |
 | Test Connection: connection refused or timeout | The URL isn't reachable **from the bridge**. In Docker use the host's LAN address, not `localhost`. |
-| No **+ entity** button | No controllable entity is exposed (see the note in step 3). **+ notify** is always there. |
+| No **+ entity** button | No Home Assistant is connected (see the note in step 3). **+ notify** is always there. |
 | Notify target list empty | The instance is offline, or Home Assistant has no notify services. Reload the Schedule page. |
 | Activity Log: *failed* with *400 Bad Request* | The target is `send_message`. Pick a named service. |
 | Activity Log: *failed* with *404* | The phone was removed or renamed in Home Assistant. Pick the target again. |
