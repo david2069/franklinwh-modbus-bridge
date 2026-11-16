@@ -340,3 +340,21 @@ async def test_import_creates_disabled_with_gateway_fallback(client):
 async def test_import_rejects_wrong_bundle_type(client):
     r = await client.post("/api/schedules/import", json={"type": "something-else", "entries": []})
     assert r.status_code == 400
+
+
+async def test_target_soc_from_the_form_is_kept_and_checked(client):
+    """The form now sets Target SoC (as DC); the API keeps it and refuses one outside 0-100."""
+    body = {
+        "name": "Charge to 80",
+        "action": "force_charge",
+        "params": {"power_w": 3000, "target_soc": 80},
+        "trigger_kind": "daily",
+        "trigger_spec": {"time_of_day": "18:00"},
+        "duration_s": 3600,
+    }
+    resp = await client.post("/api/schedules", json=body)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["params"]["target_soc"] == 80
+    for bad in (150, -1, "full"):
+        r = await client.post("/api/schedules", json={**body, "params": {"target_soc": bad}})
+        assert r.status_code == 400 and "target_soc" in r.text, (bad, r.text)

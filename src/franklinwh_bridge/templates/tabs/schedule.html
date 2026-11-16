@@ -634,7 +634,9 @@
           <!-- trigger type + quick preset -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="card-label">Trigger Type</label>
+              <label class="card-label">Trigger Type <a :href="docsUrl('user/scheduler/triggers/#editing-a-trigger-in-the-form')" target="_blank" rel="noopener"
+                 class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
+                 title="Opens the user guide at this topic">Guide</a></label>
               <select @change="form.trigger_type = $event.target.value" class="form-control w-full">
                 <template x-for="t in triggerTypes" :key="t.id">
                   <option :value="t.id" :selected="t.id === form.trigger_type" x-text="t.label"></option>
@@ -771,7 +773,9 @@
           <!-- action + params -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="card-label">Action</label>
+              <label class="card-label">Action <a :href="docsUrl('user/scheduler/actions/#summary')" target="_blank" rel="noopener"
+                 class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
+                 title="Opens the user guide at this topic">Guide</a></label>
               <select @change="form.action = $event.target.value" class="form-control w-full">
                 <template x-for="a in actions" :key="a.id">
                   <option :value="a.id" :selected="a.id === form.action" x-text="a.label"></option>
@@ -793,6 +797,12 @@
               <p x-show="form.power_unit !== '%'" class="text-[10px] text-slate-600 mt-1">Watts, capped at the gateway's battery rating. Leave empty for full power.</p>
               <p x-show="form.power_unit === '%'" class="text-[10px] text-slate-600 mt-1">% of what the aGate can do, sent to it as WSetPct unchanged.</p>
             </div>
+            <div x-show="formActionMeta().params.includes('target_soc')">
+              <label class="card-label">Target SoC <span class="text-slate-500 normal-case">(%, optional)</span></label>
+              <input type="number" x-model="form.target_soc" min="0" max="100" step="1" placeholder="Target SoC (%, optional)"
+                     class="form-control w-28" data-testid="schedule-target-soc">
+              <p class="text-[10px] text-slate-600 mt-1">Charge stops at or above it, discharge at or below it.</p>
+            </div>
             <div x-show="formActionMeta().params.includes('pct')">
               <label class="card-label">Reserve %</label>
               <input type="number" x-model="form.pct" min="0" max="100" step="5" class="form-control w-24">
@@ -805,12 +815,30 @@
                 <option value="Emergency Backup">Emergency Backup</option>
               </select>
             </div>
+            <!-- Priority and If busy only where they act (as DC #580): Priority for a
+                 battery action, If busy for a sustained one (force / release). -->
+            <div x-show="form.action !== 'none'">
+              <label class="card-label">Priority</label>
+              <input type="number" x-model="form.priority" min="0" max="1000" class="form-control w-24"
+                     title="Higher priority wins when entries collide on the same target">
+            </div>
+            <div x-show="formActionMeta().sustained">
+              <label class="card-label">If busy</label>
+              <select x-model="form.conflict" class="form-control w-full"
+                      title="If the battery is already under another command">
+                <option value="defer">defer (skip)</option>
+                <option value="override">override</option>
+                <option value="wait">wait</option>
+              </select>
+            </div>
           </div>
 
           <!-- ── Entry conditions (gate) ── -->
           <div class="rounded border border-white/[0.06] p-3 space-y-2">
             <div class="flex items-center justify-between">
-              <label class="card-label !mb-0">Entry conditions <span class="text-slate-500 normal-case">(gate — must hold to fire)</span></label>
+              <label class="card-label !mb-0">Entry conditions <span class="text-slate-500 normal-case">(gate — must hold to fire)</span> <a :href="docsUrl('user/scheduler/conditions/#rules-for-every-condition')" target="_blank" rel="noopener"
+                 class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
+                 title="Opens the user guide at this topic">Guide</a></label>
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wide text-slate-500 shrink-0">match</span>
                 <select x-model="form.entry_conditions.match" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
@@ -1001,7 +1029,7 @@
             </template>
             <div class="flex items-center gap-3 pt-1">
               <button type="button" class="btn btn-sm btn-secondary !py-1 !text-xs" @click="testVerification()"
-                      x-show="form.entry_conditions.conditions.length">Test Verification</button>
+                      x-show="form.entry_conditions.conditions.length">Test</button>
               <template x-if="testResult !== null">
                 <span class="text-xs" :class="testResult.result === true ? 'text-emerald-300' : (testResult.result === false ? 'text-amber-300' : 'text-slate-400')"
                       x-text="testResult.msg ? testResult.msg : (testResult.result ? '✓ conditions currently PASS' : '✗ conditions currently FAIL')"></span>
@@ -1017,30 +1045,32 @@
 
           <!-- ── Condition dwell / duration ── -->
           <div class="rounded border border-white/[0.06] p-3 flex items-center gap-3 flex-wrap">
-            <label class="card-label !mb-0">Duration <span class="text-slate-500 normal-case">(HH:MM:SS)</span></label>
+            <label class="card-label !mb-0">Hold <span class="text-slate-500 normal-case">(HH:MM:SS) — must stay true this long before firing</span></label>
             <input type="text" :value="secToHms(form.entry_hold_s)" @input="form.entry_hold_s = hmsToSec($event.target.value)"
                    placeholder="00:00:00" class="form-control !py-1 !text-xs w-28 font-mono text-center">
-            <span class="text-xs text-slate-500">Conditions must remain true continuously for this long before firing (0 = immediate; checked ~every 15s).</span>
+            <span class="text-xs text-slate-500">0 = immediate; checked about every 15 s.</span>
           </div>
 
           <!-- ── HA Actions (one-shot, run when this fires) ── -->
           <div class="rounded border border-white/[0.06] p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="card-label !mb-0">HA Actions <span class="text-slate-500 normal-case">(optional — run when this fires)</span></label>
-              <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300" @click="addHaAction()" x-show="haControllable.length">+ add action</button>
+            <div class="flex items-center justify-between gap-2">
+              <label class="card-label !mb-0">Home Assistant actions <span class="text-slate-500 normal-case">(optional)</span> <a :href="docsUrl('user/scheduler/actions/#home-assistant-actions')" target="_blank" rel="noopener"
+                 class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
+                 title="Opens the user guide at this topic">Guide</a></label>
+              <div class="flex items-center gap-2 shrink-0">
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('notify')" data-testid="ha-add-notify">+ notify</button>
+                <button type="button" class="text-xs text-cyan-400 hover:text-cyan-300 whitespace-nowrap" @click="addHaAction('entity')" x-show="haControllable.length" data-testid="ha-add-entity">+ entity</button>
+              </div>
             </div>
             <template x-if="!haControllable.length">
-              <div class="text-[11px] text-slate-500">No controllable HA entities exposed. Expose switches / selects / lights on the
+              <div class="text-[11px] text-slate-500">No controllable HA entities exposed, so <b>+ entity</b> is hidden. Expose switches / selects / lights on the
                 <button type="button" class="text-cyan-400 hover:underline" @click="$store.app.setTab('ha_entities')">Home Assistant</button> tab.</div>
             </template>
             <template x-for="(a, ai) in form.ha_actions" :key="ai">
               <div class="rounded border border-white/[0.04] p-1.5 space-y-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                <select x-model="a.kind" class="form-control !py-1 !text-xs w-28"
-                        title="Control an entity, or send a one-way notification">
-                  <option value="entity">Entity</option>
-                  <option value="notify">Notify</option>
-                </select>
+                <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-400"
+                      x-text="(a.kind || 'entity') === 'notify' ? 'Notify' : 'Entity'"></span>
                 <select x-show="(a.kind || 'entity') === 'entity'"
                         :value="a.instance_id + '::' + a.entity_id" @change="onHaEntityPick(a, $event.target.value)" class="form-control !py-1 !text-xs"
                         :title="haEntityMeta(a)?.title || ''">
@@ -1137,7 +1167,9 @@
           <!-- ── Exit conditions ── -->
           <div class="rounded border border-white/[0.06] p-3 space-y-2">
             <div class="flex items-center justify-between">
-              <label class="card-label !mb-0">Exit conditions <span class="text-slate-500 normal-case">(first true ends the window)</span></label>
+              <label class="card-label !mb-0">Exit conditions <span class="text-slate-500 normal-case">(first true ends the window)</span> <a :href="docsUrl('user/scheduler/exit-and-conflicts/#exit-conditions')" target="_blank" rel="noopener"
+                 class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)"
+                 title="Opens the user guide at this topic">Guide</a></label>
               <div class="flex items-center gap-2">
                 <span class="text-[10px] uppercase tracking-wide text-slate-500 shrink-0">match</span>
                 <select x-model="form.exit_conditions.match" class="form-control !py-1 !text-xs w-auto min-w-[4.5rem]">
@@ -1328,7 +1360,7 @@
             </template>
             <div class="flex items-center gap-3 pt-1">
               <button type="button" class="btn btn-sm btn-secondary !py-1 !text-xs" @click="testVerification('exit_conditions')"
-                      x-show="form.exit_conditions.conditions.length">Test Verification</button>
+                      x-show="form.exit_conditions.conditions.length">Test</button>
               <template x-if="exitTestResult !== null">
                 <span class="text-xs" :class="exitTestResult.result === true ? 'text-amber-300' : 'text-emerald-300'"
                       x-text="exitTestResult.msg ? exitTestResult.msg : (exitTestResult.result ? '⚠ exit WOULD fire now' : '✓ exit would NOT fire')"></span>
@@ -1377,26 +1409,14 @@
             </div>
           </div>
 
-          <!-- release / conflict / priority -->
-          <div class="grid grid-cols-3 gap-3">
+          <!-- release (Priority and If busy sit with the action) -->
+          <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="card-label">On exit / release</label>
               <select x-model="form.release_policy" class="form-control w-full">
                 <option value="release">release → native</option>
                 <option value="restore_prior_mode">release, log any mode change</option>
               </select>
-            </div>
-            <div>
-              <label class="card-label">If already controlled</label>
-              <select x-model="form.conflict" class="form-control w-full">
-                <option value="defer">defer (skip)</option>
-                <option value="override">override</option>
-                <option value="wait">wait</option>
-              </select>
-            </div>
-            <div>
-              <label class="card-label">Priority</label>
-              <input type="number" x-model="form.priority" min="0" max="1000" class="form-control w-full">
             </div>
           </div>
 

@@ -5,7 +5,7 @@ Each recipe lists the fields to set, shows the finished form and explains how it
 !!! tip "Before you start"
     - Force commands need a **trusted battery rating** on the gateway. See [Actions](actions.md#power-and-sizing).
     - Set the three [constants](conditions.md#notes-on-some-sensors) first: the recipes compare against them with **Lookup**.
-    - New entries run as soon as you save them. Untick **Enabled** while you try things out, and use **Test Verification**.
+    - New entries run as soon as you save them. Untick **Enabled** while you try things out, and use **Test**.
 
 ## 1. Evening top-up
 
@@ -48,7 +48,7 @@ Needs: a NEM region (or HA price entity) at **Settings → Site & Gateways → W
 | Action | Force Charge, Power `3000` |
 | Entry conditions (ALL) | Wholesale spot price `<` `5` |
 | | Battery SOC (%) `<` **Lookup** Max Charge SoC (%) |
-| Duration (HH:MM:SS) | `00:02:00` |
+| Hold (HH:MM:SS) | `00:02:00` |
 | Exit conditions (ANY) | Wholesale spot price `>=` `8` |
 | | Battery SOC (%) `>=` **Lookup** Max Charge SoC (%) |
 
@@ -100,7 +100,7 @@ Needs: a utility service with **peak demand** and its window at **Settings → E
 | Entry conditions (ALL) | In Peak-Demand Window `==` `1` |
 | | Grid Power (W, signed) `>` `1000` |
 | | Battery SOC (%) `>` **Lookup** Demand-Charge Min SoC (%) |
-| Duration (HH:MM:SS) | `00:01:00` |
+| Hold (HH:MM:SS) | `00:01:00` |
 | Exit conditions (ANY) | In Peak-Demand Window `==` `0` |
 | | Battery SOC (%) `<=` **Lookup** Demand-Charge Min SoC (%) |
 | Priority | `20` |

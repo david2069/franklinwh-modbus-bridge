@@ -102,21 +102,22 @@ control log records *command_refused*. Before 0.2.9 a refusal could be logged *o
 
 <!-- @b ACT-16 ;; src: publish/command_handler.py:343-351, gateway/scheduler.py:319-329 ;; unclear ;; write: yes ;; b: Staging battery_command_power while a command is active re-sends the active command at the new power, so an override or re-send writes the old command again before the new one ;; test: unit — real handler with an active manual Force Charge; engine override with force_discharge; assert the sequence of send_command calls -->
 
-### Parameters you can set only through the API
+### Target SoC, and a time limit through the API
 
-The form sets Power only. Through the REST API, `params` may also carry:
+The form sets Power and **Target SoC (%, optional)**. Through the REST API, `params` may
+also carry `duration_s`:
 
 | Param | Effect |
 |---|---|
 | `duration_s` | a time limit, 0–7200 s, after which the gateway's command handler releases the command. Larger values are cut to 7200 s. |
-| `target_soc` | 0–100. Charge stops at or above it, discharge at or below it (checked every 5 s). A target already reached when the command starts is cleared. |
+| `target_soc` | 0–100 (the form's **Target SoC**; a value outside is refused). Charge stops at or above it, discharge at or below it (checked every 5 s). A target already reached when the command starts is cleared. |
 
 <!-- @b ACT-17 ;; src: publish/command_handler.py:367-372, publish/command_handler.py:966-976 ;; tested: tests/unit/test_background_loop_guards.py::test_watchdog_survives_a_failed_check ;; write: yes ;; b: params.duration_s is clamped to 0-7200 s and enforced by the handler's watchdog, which releases at expiry ;; test: unit — stage 9000; assert watchdog_s == 7200 -->
 <!-- @b ACT-18 ;; src: publish/command_handler.py:373-388, publish/command_handler.py:474-489, publish/command_handler.py:980-1005 ;; untested ;; write: yes ;; b: params.target_soc releases a charge at SoC >= target and a discharge at SoC <= target, checked every 5 s; a target already reached at start is cleared ;; test: unit — handler with points soc 79 then 80, target 80 charge; assert release reason target_soc_reached -->
 
 Fire-based entries already end at *fire time + duration*, so `duration_s` in params is
-rarely needed. **Editing the entry in the form removes both**: the form replaces `params`
-with Power only.
+rarely needed. **Editing the entry in the form removes `duration_s`**: the form replaces
+`params` with Power and Target SoC.
 <!-- @b ACT-19 ;; src: static/js/schedule_tab.js:1295-1307, static/js/schedule_tab.js:1414 ;; untested ;; write: yes ;; b: Saving from the form replaces params, dropping API-only duration_s and target_soc ;; test: browser — create via API with params.target_soc, save in the form, GET params -->
 
 ## Battery actions: Force Standby
@@ -128,7 +129,7 @@ nor discharges. Useful to keep charge for later without changing the gateway's m
 ## Battery actions: Release
 
 Sends a release: the setpoint and the revert timer are cleared and the gateway returns to
-its own mode. It is a one-shot. It ignores **If already controlled**: it releases a manual
+its own mode. It is a one-shot. It ignores **If busy**: it releases a manual
 command too.
 <!-- @b ACT-21 ;; src: gateway/scheduler.py:332-333, gateway/scheduler.py:963-964 ;; untested ;; write: yes ;; b: A release entry is not subject to the conflict policy and releases a manual command ;; test: unit — FakeHandler with an active manual command; release entry with conflict defer; assert Release sent -->
 
@@ -164,7 +165,7 @@ command too.
 <!-- @b ACT-24 ;; src: gateway/scheduler.py:1043-1046, gateway/scheduler.py:1085-1088 ;; untested ;; write: yes ;; b: One-shot results are not checked: a failed mode or reserve write is audited ok — dispatched and is not retried ;; test: unit — handler whose mode write fails; assert the audit row is ok (documents the gap) -->
 <!-- @b ACT-25 ;; src: publish/command_handler.py:862-868 ;; tested: tests/unit/test_command_result.py::test_mode_write_ignored_marks_gateway_write_locked ;; write: yes ;; b: A mode write the aGate ignores marks the gateway mode-write-locked; the next successful write clears it ;; test: — -->
 
-One-shot actions also ignore **If already controlled**: a mode or reserve is written even
+One-shot actions also ignore **If busy**: a mode or reserve is written even
 while a manual force command runs. <!-- @b ACT-26 ;; src: gateway/scheduler.py:963-964 ;; untested ;; write: yes ;; b: Mode and reserve entries are not subject to the conflict policy and write during manual control ;; test: unit — manual Force Charge active; mode entry with conflict defer; assert operating_mode sent -->
 
 ## No battery action (HA only)
@@ -180,21 +181,21 @@ The **Run now** button does nothing for these entries: the API answers `unknown_
 
 ![HA Actions with no Home Assistant connected](../../images/scheduler/ha-actions-empty.png)
 
-HA actions are one-shot calls that run alongside the battery action. **+ add action**
-appears once at least one controllable entity is exposed on the **Home Assistant** tab;
-otherwise the block says *"No controllable HA entities exposed."*
+HA actions are one-shot calls that run alongside the battery action. **+ notify** is always
+there. **+ entity** appears once at least one controllable entity is exposed on the
+**Home Assistant** tab; otherwise the block says *"No controllable HA entities exposed, so
++ entity is hidden."*
 
-1. Press **+ add action**.
-2. Pick **Entity** or **Notify**.
-3. Pick the entity and service, or the notify target, title and message. Entities are
+1. Press **+ notify** or **+ entity**. The row is labelled *Notify* or *Entity*.
+2. Pick the entity and service, or the notify target, title and message. Entities are
    listed by their friendly name; hover for the entity id. Two entities with the same name
    show their ids.
-4. Pick **When**: on fire, on exit, or entry & exit.
-5. Optional: **+ guard** to run it only when a condition is true at that moment.
+3. Pick **When**: on fire, on exit, or entry & exit.
+4. Optional: **+ guard** to run it only when a condition is true at that moment.
 
 | Field | Values | Notes |
 |---|---|---|
-| Kind | **Entity** or **Notify** | |
+| Kind | **Entity** or **Notify** | set by the button you press |
 | Entity | an exposed entity in a controllable domain | switch, input_boolean, light, select, input_select, number, input_number, button, scene, script |
 | Service (Entity) | depends on the domain | switch / input_boolean / light: Turn On, Turn Off, Toggle. select / input_select: `select_option` + an option. number / input_number: `set_value` + a value. button: `press`. scene / script: `turn_on`. |
 | Notify target | a `notify.*` service of an HA instance | listed separately: it is a service, not an entity |

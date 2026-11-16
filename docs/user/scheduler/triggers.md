@@ -37,9 +37,9 @@ time + **Duration (min)**. <!-- @b TRG-01 ;; src: gateway/scheduler.py:180-199, 
     an exit condition can end a run earlier, never later.
     <!-- @b TRG-02 ;; src: gateway/scheduler.py:197-199 ;; untested ;; write: yes ;; b: A fire-based entry with duration_s empty or 0 is active for 60 s, so a force command is released about a minute after it starts ;; test: unit — daily trigger, duration_s None; tick at fire+30 s (active, dispatch) and fire+61 s (Release sent) -->
 
-!!! note "Duration (min) is not the same as Duration (HH:MM:SS)"
+!!! note "Duration (min) is not the same as Hold (HH:MM:SS)"
     *Duration (min)* sits with the trigger and sets how long the entry stays active.
-    *Duration (HH:MM:SS)* sits under the entry conditions and is the
+    *Hold (HH:MM:SS)* sits under the entry conditions and is the
     [hold-for time](conditions.md#hold-for-dwell).
 
 All triggers work to the minute: seconds are dropped before fire times are compared, so a
@@ -315,7 +315,7 @@ A late fire is different from a normal run:
   a window end. It ends at its time limit (the entry's duration) or when something releases it.
   An entry with **no duration late-fires with no time limit**.
   <!-- @b TRG-44 ;; src: gateway/scheduler.py:529-536, gateway/scheduler.py:319-321 ;; untested ;; write: yes ;; b: A late fire is not owned by the engine; with no duration it is staged with duration 0 and runs until released ;; test: unit — late_fire_always on an entry with duration_s None; assert battery_command_duration staged as 0 and no Release on later ticks -->
-- It ignores **If already controlled**: it is sent even over a manual command.
+- It ignores **If busy**: it is sent even over a manual command.
   <!-- @b TRG-45 ;; src: gateway/scheduler.py:533-536 ;; untested ;; write: yes ;; b: A late fire does not check the conflict policy and supersedes a manual command ;; test: unit — FakeHandler with an active manual command; late_fire_always with conflict defer still sends -->
 - It runs **no HA actions**. An HA-only (*none*) entry with this policy sends nothing and
   writes **no** Activity Log row; it is only listed as missed on the outage record.

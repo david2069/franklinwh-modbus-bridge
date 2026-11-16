@@ -221,6 +221,14 @@ def _validate_action(action: str, params: dict) -> None:
             raise HTTPException(400, "params.power_pct must be 1-100")
         if params.get("power_w"):
             raise HTTPException(400, "set params.power_w or params.power_pct, not both")
+    if params.get("target_soc") not in (None, ""):
+        # Target SoC, now in the form too (as DC): 0-100, checked by the command handler.
+        try:
+            soc = float(params["target_soc"])
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "params.target_soc must be a number 0-100") from exc
+        if not 0 <= soc <= 100:
+            raise HTTPException(400, "params.target_soc must be 0-100")
 
 
 async def _reload_engine(request: Request) -> None:

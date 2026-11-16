@@ -94,14 +94,14 @@ them. The same lines are at `GET /api/scheduler/monitor` (`entry_id` and `since`
 
 | Cause | How to tell | Fix |
 |---|---|---|
-| The sensor has no value | **Test Verification** shows the row amber, *✕ no value* | Configure what the sensor needs (matrix above). |
+| The sensor has no value | **Test** shows the row amber, *✕ no value* | Configure what the sensor needs (matrix above). |
 | Typed `true` / `false` for a yes/no sensor | the row fails although the sensor shows true | Compare with `1` or `0`. |
 | A Lookup sensor has no value | the row fails; the Lookup sensor reads — in the picker | Configure that sensor, or use a Value. |
 | Wrong unit | `tariff.spot_price` is c/kWh, `tariff.buy_rate` is $/kWh; HA prices keep their own unit | Check the `live:` value and unit next to the row. |
 | `in numbers` used on text | text never matches a number list | Use **matchlist** for names (TOU, Self-Consumption). |
 | Per-mode reserve | `battery.reserve_self_pct` / `reserve_tou_pct` have a value only while that mode is active | Use `battery.reserve_pct`. |
 | Forecast or price is stale | weather/forecast older than its day, NEM price older than 30 min | Check internet access from the bridge and the settings card's status. |
-| HA entity `unavailable` | amber in Test Verification | Fix it in Home Assistant; until then the rule does not act (by design). |
+| HA entity `unavailable` | amber after **Test** | Fix it in Home Assistant; until then the rule does not act (by design). |
 | Second gateway | demand, bonus and billing figures measure the default gateway only | Gate on per-gateway sensors (power, energy totals) instead. |
 
 ### A condition is always true when it should not be
@@ -136,7 +136,7 @@ them. The same lines are at `GET /api/scheduler/monitor` (`entry_id` and `since`
 | Cause | How to tell | Fix |
 |---|---|---|
 | Disabled | grey dot, *disabled* badge; the list shows *Enabled only* by default | Enable it. Imported, duplicated and template entries start disabled. |
-| Gate never passes | *gated* rows in the Activity Log with the failing values | Fix the conditions; use Test Verification. |
+| Gate never passes | *gated* rows in the Activity Log with the failing values | Fix the conditions; press **Test**. |
 | Hold-for too long | *waiting* row but no dispatch | Shorten the hold-for, or check the gate is not flickering. |
 | Another entry wins | *skipped* rows | Priority. |
 | Weekly trigger with no days | *Next fire* shows — | Tick at least one day. |

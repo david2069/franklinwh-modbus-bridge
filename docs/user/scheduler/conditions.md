@@ -24,7 +24,7 @@ The sensor list that opens from the field can be resized too: drag the **◢** c
 bottom right. It never gets smaller than its default or larger than the dialog, and this
 browser remembers the size.
 
-![An entry-condition block with a nested group, after Test Verification](../../images/scheduler/condition-test-verification.png)
+![An entry-condition block with a nested group, after Test](../../images/scheduler/condition-test-verification.png)
 
 ## Rules for every condition
 
@@ -172,7 +172,7 @@ gateway is checked against its own snapshot, and may pass while another fails.
 
 ![Hold-for duration](../../images/scheduler/dwell.png)
 
-**Duration (HH:MM:SS)** below the entry conditions is a hold-for time:
+**Hold (HH:MM:SS)** below the entry conditions is a hold-for time:
 
 - The entry fires only after it has been *eligible* (window active and entry conditions
   true) **continuously** for this long. <!-- @b CND-23 ;; src: gateway/scheduler.py:1021-1037 ;; tested: tests/unit/test_scheduler.py::test_dwell_holds_then_fires ;; write: yes ;; b: With entry_hold_s > 0 the entry fires only after being eligible continuously for that long; waiting is audited once ;; test: — -->
@@ -212,11 +212,11 @@ action, including HA-only entries.
 The values themselves refresh at the rate in the **Refreshes** column below. A condition on
 a 15-minute forecast cannot change faster than the forecast does.
 
-## Test Verification
+## Test
 
-**Test Verification** under each block evaluates the block now, against one gateway: the
+**Test** under each block evaluates the block now, against one gateway: the
 selected gateway for a Gateway target, the gateway `default` for a Site or Service target.
-<!-- @b CND-30 ;; src: api/scheduler_api.py:121-129, static/js/schedule_tab.js:1369-1388 ;; tested: tests/unit/test_api.py::test_scheduler_evaluate_endpoint ;; write: no ;; b: Test Verification posts the block to /api/scheduler/evaluate for the target gateway (default for site/service) and maps each trace row back to its condition ;; test: — -->
+<!-- @b CND-30 ;; src: api/scheduler_api.py:121-129, static/js/schedule_tab.js:1369-1388 ;; tested: tests/unit/test_api.py::test_scheduler_evaluate_endpoint ;; write: no ;; b: Test posts the block to /api/scheduler/evaluate for the target gateway (default for site/service) and maps each trace row back to its condition ;; test: — -->
 
 | Row outline | Meaning |
 |---|---|
@@ -228,7 +228,7 @@ Each row also shows `live:` with the current value and unit. For the entry block
 summary reads *conditions currently PASS/FAIL*; for the exit block *exit WOULD fire now* /
 *exit would NOT fire*.
 
-!!! note "Test Verification is close to, not the same as, the engine's view"
+!!! note "Test is close to, not the same as, the engine's view"
     - It does not include the `dispatch.*` values: they read *not overriding* even while a
       schedule runs.
     - It does not include the gateway type, so `gateway.battery_capable` reads 1 and
