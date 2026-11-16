@@ -40,6 +40,10 @@ lands, not backfilled later.
   and solar forecast without a location, tariff and cost sensors without a tariff, spot
   and feed-in prices without a price source. A saved condition that uses one says *this
   condition can't be met*. `GET /api/sensors` gives each sensor's `inactive` reason.
+- **Advanced… date range** for a repeating schedule, as the Direct Connect bridge has:
+  **Start date** and **End date** (inclusive, optional). Outside them the entry doesn't
+  run or catch up, and *Next fire* follows them. Database migration 70 adds the two
+  columns; the API takes `start_date` / `end_date` (`""` or `null` clears one).
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

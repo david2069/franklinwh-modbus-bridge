@@ -358,3 +358,32 @@ async def test_target_soc_from_the_form_is_kept_and_checked(client):
     for bad in (150, -1, "full"):
         r = await client.post("/api/schedules", json={**body, "params": {"target_soc": bad}})
         assert r.status_code == 400 and "target_soc" in r.text, (bad, r.text)
+
+
+async def test_date_range_is_saved_checked_and_cleared(client):
+    body = {
+        "name": "December only",
+        "action": "force_charge",
+        "params": {"power_w": 2000},
+        "trigger_kind": "daily",
+        "trigger_spec": {"time_of_day": "18:00"},
+        "duration_s": 3600,
+        "start_date": "2099-12-01",
+        "end_date": "2099-12-31",
+    }
+    r = await client.post("/api/schedules", json=body)
+    assert r.status_code == 201, r.text
+    e = r.json()
+    assert (e["start_date"], e["end_date"]) == ("2099-12-01", "2099-12-31")
+    assert e["next_fire"].startswith("2099-12-01T18:00")
+
+    bad = await client.post("/api/schedules", json={**body, "end_date": "2099-11-30"})
+    assert bad.status_code == 400 and "before start_date" in bad.text
+    past = await client.post("/api/schedules", json={**body, "start_date": "2020-01-01",
+                                                      "end_date": "2020-01-31"})
+    assert past.status_code == 400 and "never fire" in past.text
+
+    cleared = await client.patch(f"/api/schedules/{e['id']}",
+                                 json={"start_date": "", "end_date": ""})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["start_date"] is None and cleared.json()["end_date"] is None

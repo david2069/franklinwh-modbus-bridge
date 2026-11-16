@@ -216,12 +216,46 @@ def trigger_active_at(entry: dict, now: datetime) -> bool:
     return now < prev + timedelta(seconds=window_s)
 
 
+def in_date_range(entry: dict, day: date) -> bool:
+    """The entry's optional Start date / End date (as DC's Advanced…), inclusive."""
+    sd, ed, d = entry.get("start_date"), entry.get("end_date"), day.isoformat()
+    return (not sd or d >= sd) and (not ed or d <= ed)
+
+
 def entry_active(entry: dict, now: datetime) -> bool:
     """Unified activation: fire-based for v2 trigger entries, window-based for
-    legacy (and any v2 entry that still expresses timing via when_spec)."""
+    legacy (and any v2 entry that still expresses timing via when_spec). An
+    occurrence counts on the day it starts, so a window open past midnight on the
+    End date runs to its end."""
     if entry.get("trigger_kind"):
-        return trigger_active_at(entry, now)
-    return entry_active_at(entry.get("when_spec", {}), now)
+        active = trigger_active_at(entry, now)
+    else:
+        active = entry_active_at(entry.get("when_spec", {}), now)
+    if not active or not (entry.get("start_date") or entry.get("end_date")):
+        return active
+    start = occurrence_start(entry, now)
+    return in_date_range(entry, datetime.fromisoformat(start).date() if start else now.date())
+
+
+def entry_next_fire(entry: dict, now: datetime) -> datetime | None:
+    """The entry's next fire or window start, inside its date range."""
+    from franklinwh_bridge.gateway.scheduler_triggers import next_fire_at
+
+    def _next(t: datetime) -> datetime | None:
+        if entry.get("trigger_kind"):
+            spec = dict(entry.get("trigger_spec") or {})
+            spec["kind"] = entry["trigger_kind"]
+            return next_fire_at(spec, t)
+        return next_fire(entry.get("when_spec", {}), t)
+
+    sd, ed = entry.get("start_date"), entry.get("end_date")
+    if sd and now.date().isoformat() < sd:
+        # Search from the start date (the base search only looks a week ahead).
+        now = datetime.fromisoformat(sd) - timedelta(seconds=1)
+    nf = _next(now)
+    if nf is not None and ed and nf.date().isoformat() > ed:
+        return None
+    return nf
 
 
 def occurrence_start(entry: dict, now: datetime) -> str | None:
@@ -263,9 +297,10 @@ def _missed_fire_time(entry: dict, since: datetime, now: datetime) -> datetime |
         spec = dict(entry.get("trigger_spec") or {})
         spec["kind"] = kind
         last = prev_fire_at(spec, now)
-        return last if (last is not None and last >= since) else None
+        ok = last is not None and last >= since and in_date_range(entry, last.date())
+        return last if ok else None
     nf = next_fire(entry.get("when_spec", {}), since)
-    return nf if (nf is not None and nf <= now) else None
+    return nf if (nf is not None and nf <= now and in_date_range(entry, nf.date())) else None
 
 
 def winner(entries: list[dict], now: datetime) -> dict | None:

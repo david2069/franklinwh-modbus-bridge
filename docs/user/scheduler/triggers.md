@@ -234,6 +234,16 @@ The entry conditions act as the window:
 <!-- @b TRG-29 ;; src: gateway/scheduler.py:428, gateway/scheduler.py:956-957, gateway/scheduler.py:1039 ;; unclear ;; write: yes ;; b: The done-for-this-window mark is one entry id per target and gateway; a dispatch by another entry on the same target clears it, letting an entry that already finished its window fire again in the same window ;; test: unit — entries A (window) and B (higher priority, short trigger) on one gateway; A exits by condition, B fires and ends; assert whether A re-fires in its still-open window -->
 <!-- @b TRG-30 ;; src: templates/tabs/schedule.html:765-768 ;; tested: tests/unit/test_always_gate.py::test_force_is_released_when_the_gate_turns_false ;; write: no ;; b: The form says an always entry releases when its conditions stop, and the engine does (#165) ;; test: — -->
 
+## Date range (Advanced…)
+
+A repeating trigger (windows, daily, weekly, every N minutes, monthly, cron) can be limited
+to dates: press **Advanced…** under the trigger and set **Start date**, **End date** or
+both. Both are inclusive and optional. Outside them the entry doesn't run, isn't caught up
+after an outage, and its *Next fire* is the first fire on or after the Start date, or none
+after the End date. An occurrence counts on the day it starts, so a 22:00–06:00 window on
+the End date runs to 06:00. Saving an enabled entry whose End date has passed is refused,
+as for any entry that would never fire. One-off triggers and *Always* have no date range.
+
 ## Quick presets
 
 ![Quick presets](../../images/scheduler/trigger-preset-dropdown.png)

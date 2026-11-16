@@ -770,6 +770,26 @@
             entry conditions below hold, and releases when they stop (or an exit condition fires).
           </p>
 
+          <!-- Advanced: a date range for a repeating trigger (as DC). Open by itself
+               when the entry already has one. -->
+          <div x-show="showDateRange" data-testid="date-range">
+            <button type="button" x-show="!advDates && !form.start_date && !form.end_date"
+                    class="btn btn-sm btn-secondary !py-1 !text-xs" @click="advDates = true">Advanced…</button>
+            <div x-show="advDates || form.start_date || form.end_date" class="space-y-1.5 pt-1">
+              <div class="text-[11px] text-slate-500">Run only between these dates (optional, inclusive)</div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="card-label">Start date</label>
+                  <input type="date" x-model="form.start_date" class="form-control w-full" data-testid="start-date">
+                </div>
+                <div>
+                  <label class="card-label">End date</label>
+                  <input type="date" x-model="form.end_date" class="form-control w-full" data-testid="end-date">
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- action + params -->
           <div class="grid grid-cols-2 gap-3">
             <div>
