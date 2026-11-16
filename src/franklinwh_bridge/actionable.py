@@ -70,6 +70,10 @@ EVENT_HEALTH = "health"
 EVENT_SCHEDULE = "schedule_notify"
 #: A schedule's question with buttons (as DC #576): the run waits for the answer.
 EVENT_SCHEDULE_ASK = "schedule_ask"
+#: A critical alert on the phones, with Acknowledge (as DC's ALERT, #499 step 3).
+EVENT_ALERT = "alert"
+ACK = "ACK"
+ALERT_TTL_S = 3600
 #: How long Test with buttons waits for a tap.
 TEST_BUTTONS_TTL_S = 120
 #: app_config key: the last Test with buttons, JSON, kept across restarts.
@@ -85,6 +89,7 @@ _TEMPLATES.register(
     Event(EVENT_HEALTH, "{title}", "{message}", ("title", "message")),
     Event(EVENT_SCHEDULE, "{title}", "{message}", ("title", "message")),
     Event(EVENT_SCHEDULE_ASK, "{title}", "{question}", ("title", "question")),
+    Event(EVENT_ALERT, "{title}", "{message}", ("title", "message")),
 )
 _TEMPLATES.register(*notify_triggers.EVENTS)
 
@@ -168,6 +173,7 @@ class Actionable:
             self.notifier = Notifier(await self._instances(),
                                      Ledger(self._conn, create=False), _TEMPLATES,
                                      enabled=lambda: self._enabled, requests=requests)
+            self.notifier.on(EVENT_ALERT, self._on_alert_tap)
             self.notifier.listen()
             logger.info("Notifications: listening for button taps on %d Home Assistant "
                         "instance(s)", len(self.notifier.instances))
@@ -357,6 +363,37 @@ class Actionable:
                                       gateway=gateway, meta={"run": run},
                                       title=title, question=question)
         return (req, "") if req is not None else (None, "no phone could be reached")
+
+    async def ask_alert(self, alert: dict, device_ids: list[str] | None) -> tuple[Any, str]:
+        """A critical alert to the phones, with Acknowledge (as DC). Send to: all
+        enabled devices (None) or those ids; only Companion apps show the button.
+        Follows the switch. ``(request, "")`` or ``(None, why not)``."""
+        if self.notifier is None:
+            return None, "notifications are not running"
+        if not self._enabled:
+            return None, "Push notifications are off"
+        targets = [t for t in await self.targets(device_ids) if t.buttons]
+        if not targets:
+            return None, "no phone that shows buttons"
+        where = f" ({alert['gateway_id']})" if alert.get("gateway_id") else ""
+        req = await self.notifier.ask(
+            EVENT_ALERT, targets, [Button(ACK, "Acknowledge")], ttl_s=ALERT_TTL_S,
+            gateway=alert.get("gateway_id"), meta={"alert_id": alert["id"]},
+            title=f"{NOTIFICATION_TITLE}: {alert['title']}",
+            message=f"{alert['message']}{where}")
+        return (req, "") if req is not None else (None, "no phone could be reached")
+
+    async def _on_alert_tap(self, req: Any, answer: Any) -> str:
+        """Acknowledge tapped on a phone: acknowledged in the bridge, for everyone (the
+        alert delivery then takes the HA notification down)."""
+        from franklinwh_bridge.store import alerts as alert_store
+        alert_id = (req.meta or {}).get("alert_id")
+        if alert_id is None or answer.verb != ACK:
+            return "ignored"
+        if await alert_store.ack(self._db, int(alert_id), "source:ha"):
+            logger.info("Alert %s acknowledged from a phone", alert_id)
+            return "acknowledged"
+        return "already acknowledged, or gone"
 
     def open_request(self, run: str) -> Any:
         """The question already sent for ``run`` (before a restart), or None."""

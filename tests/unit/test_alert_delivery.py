@@ -168,3 +168,86 @@ async def test_settings_api(client):
     r = await client.put("/api/alerts/settings", json={"ha_channel": False})
     assert r.json()["warning"] == "Critical alerts reach only the bridge UI."
     assert (await client.get("/api/alerts/settings")).json()["ha_channel"] is False
+
+
+# ── #499 step 3: the alert on the phones, with Acknowledge (as DC) ─────────────
+
+
+async def test_the_phones_are_asked_once_on_the_first_try_whatever_ha_does(db):
+    ha = FakeHa(ok=False)
+    asked = []
+
+    async def ask(a):
+        asked.append(a["id"])
+        return ""
+
+    aid = await alert_store.raise_event(db, "COMMAND_REFUSED", "Force Charge refused",
+                                        gateway_id="gw1", now=T0)
+    d = AlertDelivery(db, _registry(ha))
+    d.ask_phones = ask
+    await d.run_once(now=T0 + 1)          # HA fails: the phones are still asked
+    await d.run_once(now=T0 + 3600)       # a retry does not ask them again
+    assert asked == [aid]
+    assert "tap Acknowledge on your phone" in ha.calls[0][1]["message"]
+
+
+async def test_an_alert_acknowledged_before_it_went_out_asks_nobody(db):
+    asked = []
+
+    async def ask(a):
+        asked.append(a["id"])
+        return ""
+
+    aid = await alert_store.raise_event(db, "COMMAND_REFUSED", "x", now=T0)
+    await alert_store.ack(db, aid, "user:admin", now=T0)
+    d = AlertDelivery(db, _registry(FakeHa()))
+    d.ask_phones = ask
+    await d.run_once(now=T0 + 1)
+    assert asked == []
+
+
+async def test_acknowledge_tapped_on_a_phone_acknowledges_for_everyone(db, tmp_path):
+    from franklinwh_bridge.actionable import ACK, Actionable
+
+    aid = await alert_store.raise_event(db, "COMMAND_REFUSED", "Force Charge refused", now=T0)
+    act = Actionable(db, tmp_path / "unused.db")
+    req = SimpleNamespace(meta={"alert_id": aid})
+    assert await act._on_alert_tap(req, SimpleNamespace(verb=ACK)) == "acknowledged"
+    again = await act._on_alert_tap(req, SimpleNamespace(verb=ACK))
+    assert again == "already acknowledged, or gone"
+    [a] = await alert_store.list_alerts(db)
+    assert a["acked_by"] == "source:ha"
+    gone = SimpleNamespace(meta={"alert_id": 99999})
+    missing = await act._on_alert_tap(gone, SimpleNamespace(verb=ACK))
+    assert missing == "already acknowledged, or gone"
+
+
+async def test_ask_alert_goes_to_phones_only_and_follows_the_switch(db, tmp_path):
+    from franklinwh_ha_notify import Target
+
+    from franklinwh_bridge.actionable import EVENT_ALERT, Actionable
+
+    sent = []
+
+    class FakeNotifier:
+        async def ask(self, event, targets, buttons, **kw):
+            sent.append((event, [t.service for t in targets], [b.title for b in buttons], kw))
+            return SimpleNamespace(id="r1")
+
+    act = Actionable(db, tmp_path / "unused.db")
+    act.notifier = FakeNotifier()
+    act._enabled = True
+
+    async def targets(ids=None):
+        return [Target("ha1", "mobile_app_pixel", "Pixel"), Target("ha1", "living_room_tv", "TV")]
+
+    act.targets = targets
+    alert = {"id": 7, "title": "aGate unreachable", "message": "No answer for 5 min",
+             "gateway_id": "gw1"}
+    req, why = await act.ask_alert(alert, None)
+    assert req.id == "r1" and why == ""
+    event, services, buttons, kw = sent[0]
+    assert (event, services, buttons) == (EVENT_ALERT, ["mobile_app_pixel"], ["Acknowledge"])
+    assert kw["meta"] == {"alert_id": 7} and kw["ttl_s"] == 3600
+    act._enabled = False
+    assert await act.ask_alert(alert, None) == (None, "Push notifications are off")

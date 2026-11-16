@@ -55,6 +55,12 @@ lands, not backfilled later.
   take a typed reply), a wait, *If no reply* (skip or continue), Send to all or chosen
   phones. The answer is the `ask.answer` sensor and `%ask.answer%`; no reply sends the
   *No reply* auto-notification. A run is asked once, also across a restart.
+- **Critical alerts on the phones with Acknowledge** (refs #499 step 3), as the Direct
+  Connect bridge has: once, when the alert is raised, to the phones in **Notifications with
+  buttons** (all or chosen, Settings → Home Assistant → Notifications). Tapping
+  **Acknowledge** acknowledges the alert in the bridge for everyone (recorded as
+  `source:ha`) and the HA notification is taken down. The HA notification now says the
+  phone can acknowledge it too.
 - **Guide links** in the schedule editor: Trigger Type, Action, Entry conditions, Exit
   conditions and Home Assistant actions open the user guide at that topic.
 

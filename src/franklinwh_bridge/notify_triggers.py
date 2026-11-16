@@ -59,6 +59,11 @@ DEFAULT_TRIGGERS: dict[str, dict] = {
 #: A target: ``{"type": "all"}`` (the default) or ``{"type": "device", "ids": [...]}``.
 ALL = {"type": "all"}
 
+#: Notifications with buttons, as the Direct Connect bridge's "asks": who each goes to.
+DEFAULT_ASKS: dict[str, dict] = {
+    "alert": {"label": "Critical alerts (Acknowledge)"},
+}
+
 #: The trigger behind each event whose transition has two directions.
 TRIGGER = {"aGate_online": "aGate_offline", "on_grid": "off_grid",
            "dispatch_start": "dispatch", "dispatch_end": "dispatch",
@@ -119,8 +124,13 @@ def valid_target(target: Any) -> dict:
 def merged(saved: dict | None) -> dict:
     """Stored overrides on top of the catalogue. Always well-formed."""
     cfg = {"master": True,
-           "triggers": {k: {**v, "target": dict(ALL)} for k, v in DEFAULT_TRIGGERS.items()}}
+           "triggers": {k: {**v, "target": dict(ALL)} for k, v in DEFAULT_TRIGGERS.items()},
+           "asks": {k: {**v, "target": dict(ALL)} for k, v in DEFAULT_ASKS.items()}}
     saved = saved if isinstance(saved, dict) else {}
+    for key, sv in (saved.get("asks") or {}).items():
+        if key in cfg["asks"] and isinstance(sv, dict) and "target" in sv:
+            with contextlib.suppress(ValueError):
+                cfg["asks"][key]["target"] = valid_target(sv["target"])
     if isinstance(saved.get("master"), bool):
         cfg["master"] = saved["master"]
     for key, sv in (saved.get("triggers") or {}).items():
@@ -164,15 +174,23 @@ def apply(cfg: dict, patch: dict) -> dict:
             t["threshold"] = v
         if "target" in sv:
             t["target"] = valid_target(sv["target"])
+    for key, sv in (patch.get("asks") or {}).items():
+        a = out["asks"].get(key)
+        if a is None:
+            raise ValueError(f"unknown notification with buttons {key!r}")
+        if not isinstance(sv, dict) or "target" not in sv:
+            raise ValueError(f"{key}: expected {{target}}")
+        a["target"] = valid_target(sv["target"])
     return out
 
 
 def stored(cfg: dict) -> dict:
-    """What is kept: master, and per trigger enabled, threshold and target."""
+    """What is kept: master, per trigger enabled, threshold and target, per ask target."""
     return {"master": cfg["master"],
             "triggers": {k: {kk: vv for kk, vv in v.items()
                              if kk in ("enabled", "threshold", "target")}
-                         for k, v in cfg["triggers"].items()}}
+                         for k, v in cfg["triggers"].items()},
+            "asks": {k: {"target": v["target"]} for k, v in cfg["asks"].items()}}
 
 
 def enabled(cfg: dict, key: str) -> bool:
@@ -286,10 +304,14 @@ class Triggers:
         self.cfg = cfg
         return cfg
 
-    async def _device_ids(self, key: str) -> list[str] | None:
+    async def ask_device_ids(self, key: str) -> list[str] | None:
+        """Send to for a notification with buttons (``alert``): as ``_device_ids``."""
+        return await self._device_ids(key, section="asks")
+
+    async def _device_ids(self, key: str, section: str = "triggers") -> list[str] | None:
         """None for all enabled devices, else the enabled ones among those chosen (a
         switched-off device stays off for its triggers too)."""
-        target = self.cfg["triggers"].get(key, {}).get("target") or ALL
+        target = self.cfg[section].get(key, {}).get("target") or ALL
         if target["type"] != "device":
             return None
         on = {d["id"] for d in await get_notify_devices(self._db) if d["enabled"]}

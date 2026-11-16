@@ -43,6 +43,8 @@ function notifyCard() {
     trgStats: {},
     trgErr: '',
     trgPick: {},
+    asks: {},          // notifications with buttons: who each goes to (as DC)
+    askPick: {},
     tt: null,
 
     init() { this.loadAll(); },
@@ -71,6 +73,7 @@ function notifyCard() {
       try {
         const d = await fetchJSON('api/notify/triggers');
         this.trg = d.config.triggers;
+        this.asks = d.config.asks || {};
         this.trgStats = d.stats || {};
       } catch (_) { /* leave the last known */ }
     },
@@ -81,6 +84,26 @@ function notifyCard() {
           method: 'PUT', body: JSON.stringify({ triggers: patch }) })).config.triggers;
         this.trgErr = '';
       } catch (e) { this.trgErr = 'Save failed: ' + e.message; }
+    },
+
+    async saveAsks(patch) {
+      try {
+        this.asks = (await fetchJSON('api/notify/triggers', {
+          method: 'PUT', body: JSON.stringify({ asks: patch }) })).config.asks;
+        this.trgErr = '';
+      } catch (e) { this.trgErr = 'Save failed: ' + e.message; }
+    },
+    askTargetValue(key, a) {
+      return (a.target && a.target.type === 'device') || this.askPick[key] ? 'device' : 'all';
+    },
+    setAskTarget(key, value) {
+      this.askPick[key] = value === 'device';
+      if (value === 'all') this.saveAsks({ [key]: { target: { type: 'all' } } });
+    },
+    toggleAskDevice(key, a, id, on) {
+      const ids = this.triggerTargetIds(a).filter(x => x !== id);
+      if (on) ids.push(id);
+      if (ids.length) this.saveAsks({ [key]: { target: { type: 'device', ids } } });
     },
 
     toggleTrigger(key) { this.saveTriggers({ [key]: { enabled: !this.trg[key].enabled } }); },
