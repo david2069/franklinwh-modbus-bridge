@@ -163,7 +163,7 @@ Once configured:
 | Part | Meaning |
 |---|---|
 | Title chip | Current temperature and weather condition. A **stale** chip means the last fetch failed and the previous forecast is shown. |
-| **Today** box | Forecast kWh for the day, the peak kW and when, and the kWh still to come. When that is less than the room left in the battery to 100 %, an amber line says so: *Solar left today 3.1 kWh won't fill the battery: 6.4 kWh to 100 %* (forecast only: home load and charge losses are not counted). |
+| **Today** box | Forecast kWh for the day, the peak kW and when, and the kWh still to come. When that is less than the room left in the battery to 100 %, an amber line says so: *Solar left today 3.1 kWh won't fill the battery: 6.4 kWh to 100 %* (forecast only: home load and charge losses are not counted). It shows only while it is daylight and the solar is still generating, and not when the battery is full. |
 | Actual so far | Solar measured today in kWh, as a bar against the day's forecast. "vs forecast to now" compares it with what was forecast up to this hour. |
 | →home / →batt / →grid | Where today's solar went, in kWh. Reconstructed from power samples (an estimate, not a meter). Then the current SoC. |
 | **Tomorrow** box | Forecast kWh, peak kW and time. |
