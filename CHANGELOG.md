@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Changed
+- **A schedule's notification goes to a saved device by its name**, as the Direct Connect
+  bridge's: the Notify row lists the devices saved in Settings → Home Assistant →
+  Notifications (*DSH iPhone*, not `mobile_app_dsh_iphone`), marking one that is switched
+  off. It is sent to the device as it is now, and skipped, with the reason in the Activity
+  Log and Recent notifications, while the device is switched off or after it is removed.
+  Rows saved before are matched to the saved device with the same service. **Other HA
+  notify service…** keeps the list of every `notify.*` service for one that isn't saved.
+  The API takes `device_id` on a notify action.
+
 ## [0.2.69] — 2026-11-17
 
 ### Fixed

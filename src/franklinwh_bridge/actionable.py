@@ -479,32 +479,56 @@ class Actionable:
         return await self.notifier.wait(req, timeout_s)
 
     async def notify_service(self, instance_id: str, service: str, title: str,
-                             message: str) -> dict:
+                             message: str, device_id: str = "") -> dict:
         """A schedule's notify row: one ``notify.*`` service on one instance, through the
-        library, so it is recorded and follows the switch. A saved device gives its alias;
-        a service that isn't saved still sends. ``{"ok"}``, plus ``"error"`` or
-        ``"skipped"`` saying why it wasn't sent. Never raises."""
+        library, so it is recorded and follows the switch. A row saved with a device
+        (as DC) sends to that device as it is now; one saved as instance + service uses
+        the saved device with that service, if there is one. A saved device that is
+        switched off or removed is skipped, not sent; a service that isn't saved still
+        sends. ``{"ok", "to"}``, plus ``"error"`` or ``"skipped"`` saying why it wasn't
+        sent. Never raises."""
         if self.notifier is None:
             return {"ok": False, "error": "notifications are not running"}
         svc = service.removeprefix("notify.")
+        devices = await get_notify_devices(self._db)
+        if device_id:
+            dev = next((d for d in devices if d["id"] == device_id), None)
+            if dev is None:
+                return await self._skip_schedule_notify(
+                    title, message, svc or device_id,
+                    "its saved device was removed — pick another in the schedule")
+        else:
+            dev = next((d for d in devices if d["instance_id"] == instance_id
+                        and d["service"].removeprefix("notify.") == svc), None)
+        alias = svc
+        if dev is not None:
+            instance_id, svc, alias = (dev["instance_id"], dev["service"].removeprefix("notify."),
+                                       dev["alias"])
+            if not dev["enabled"]:
+                return await self._skip_schedule_notify(title, message, alias,
+                                                        f"{alias} is switched off")
         if instance_id not in self.notifier.instances:
-            return {"ok": False, "error": f"HA instance {instance_id!r} not found or switched off"}
+            return {"ok": False, "to": alias,
+                    "error": f"HA instance {instance_id!r} not found or switched off"}
         if not self._enabled:
-            await self.notifier.ledger.arecord("SKIPPED", EVENT_SCHEDULE, title=title,
-                                               message=message, status="notifications are off")
-            return {"ok": False, "skipped": "Push notifications are off"}
-        alias = next((d["alias"] for d in await get_notify_devices(self._db)
-                      if d["instance_id"] == instance_id
-                      and d["service"].removeprefix("notify.") == svc), svc)
+            return await self._skip_schedule_notify(title, message, alias,
+                                                    "Push notifications are off")
         try:
             res = await self.notifier.notify(EVENT_SCHEDULE, [Target(instance_id, svc, alias)],
                                              title=title, message=message)
         except Exception as exc:
-            return {"ok": False, "error": str(exc) or type(exc).__name__}
+            return {"ok": False, "to": alias, "error": str(exc) or type(exc).__name__}
         if res.delivered:
-            return {"ok": True}
-        return {"ok": False, "error": "; ".join(d.error for d in res.deliveries if d.error)
-                or res.summary}
+            return {"ok": True, "to": alias}
+        return {"ok": False, "to": alias,
+                "error": "; ".join(d.error for d in res.deliveries if d.error) or res.summary}
+
+    async def _skip_schedule_notify(self, title: str, message: str, to: str,
+                                    why: str) -> dict:
+        """Not sent, by choice: listed in Recent notifications with the reason."""
+        await self.notifier.ledger.arecord("SKIPPED", EVENT_SCHEDULE, title=title,
+                                           message=message, status=why)
+        return {"ok": False, "to": to, "skipped": why}
 
     # ── status ────────────────────────────────────────────────
     def listener_status(self) -> dict[str, dict]:

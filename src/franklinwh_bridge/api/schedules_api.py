@@ -81,6 +81,10 @@ class HaActionItem(BaseModel):
     instance_id: str = ""        # required, except on an actionable row (send_to picks)
     entity_id: str = ""          # required for kind=entity (unless raw); unused for notify
     service: str = ""            # required, except on an actionable row
+    # notify only (as DC): the saved device (Settings → Home Assistant → Notifications)
+    # it goes to, by its friendly name. Set, it is sent to the device as it is now and
+    # instance_id/service are optional; empty = the instance_id + service as written.
+    device_id: str = Field(default="", max_length=64)
     # Raw service call (as DC's Advanced): the HA domain, e.g. "switch". Set, it
     # makes entity_id optional and the call goes to domain.service as written.
     domain: str = Field(default="", max_length=64, pattern=r"^([a-z0-9_]+)?$")
@@ -108,7 +112,8 @@ class HaActionItem(BaseModel):
         if self.actionable:
             _check_ask(self)
             return self
-        if not self.instance_id or not self.service:
+        if not (self.kind == "notify" and self.device_id) and not (
+                self.instance_id and self.service):
             raise ValueError("instance_id and service are required")
         if self.kind == "entity" and not (self.entity_id or self.domain):
             raise ValueError("entity_id is required for an entity action")

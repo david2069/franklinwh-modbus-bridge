@@ -748,9 +748,9 @@ def _notify_engine(entries, handler, points=None, audits=None, sent=None, result
         if audits is not None:
             audits.append({"id": sid, "result": result, "detail": detail})
 
-    async def notify_fn(instance_id, service, title, message):
+    async def notify_fn(instance_id, service, title, message, device_id=""):
         sent.append({"instance": instance_id, "service": service,
-                     "title": title, "message": message})
+                     "title": title, "message": message, "device_id": device_id})
         return result or {"ok": True, "error": None}
 
     eng = ScheduleEngine(
@@ -780,6 +780,24 @@ async def test_notification_sent_on_fire():
     assert sent[0]["service"] == "mobile_app_phone"
     assert sent[0]["message"] == "Discharging now"
     assert any(a["result"] == "ha_action" for a in audits)
+
+
+async def test_notification_to_a_saved_device_goes_by_the_device():
+    """As DC: a row saved with a device is sent by the device (its current service and
+    on/off), and the history names it by its friendly name."""
+    h = FakeHandler()
+    sent, audits = [], []
+    e = entry(ha_actions=[{
+        "kind": "notify", "device_id": "nd_1", "instance_id": "ha1",
+        "service": "mobile_app_phone", "when": "fire", "message": "Discharging now",
+    }])
+    eng = _notify_engine([e], h, points={"soc": 80}, audits=audits, sent=sent,
+                         result={"ok": True, "to": "DSH iPhone"})
+    await eng.tick(MON)
+
+    assert [x["device_id"] for x in sent] == ["nd_1"]
+    assert any(a["result"] == "ha_action" and "notify DSH iPhone: Discharging now"
+               in a["detail"] for a in audits)
 
 
 async def test_notification_not_sent_by_choice_is_skipped_not_failed():

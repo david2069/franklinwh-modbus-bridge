@@ -198,7 +198,7 @@ controllable entity (on the **Home Assistant** tab) the guided picker is empty, 
 | Kind | **Entity** or **Notify** | set by the button you press |
 | Entity | an exposed entity in a controllable domain | switch, input_boolean, light, select, input_select, number, input_number, button, scene, script |
 | Service (Entity) | depends on the domain | switch / input_boolean / light: Turn On, Turn Off, Toggle. select / input_select: `select_option` + an option. number / input_number: `set_value` + a value. button: `press`. scene / script: `turn_on`. |
-| Notify target | a `notify.*` service of an HA instance | listed separately: it is a service, not an entity |
+| Send to (Notify) | a saved device by its name, or **Other HA notify service…** | the devices saved in Settings → Home Assistant → Notifications, as the Direct Connect bridge lists them; *(off)* marks one that is switched off. **Other HA notify service…** opens the list of every `notify.*` service, for one that isn't saved as a device. |
 | Title, Message (Notify) | text, up to 200 / 1000 characters | Message is required |
 | When | **on fire**, **on exit**, **entry & exit** | |
 | Guard (**+ guard**) | sensor, operator, Value or Lookup (and a second value for between) | the action runs only if this condition is true at that moment |
@@ -307,7 +307,11 @@ Notifications (notify rows and the failure alerts above) follow the **Push
 notifications** switch in Settings → Home Assistant → Notifications: while it is off they
 are not sent, and the row says *skipped — Push notifications are off*. Each one sent or
 skipped is also listed in **Recent notifications** there. A notify target on a Home
-Assistant instance that is switched off is not sent; the *failed* row says so.
+Assistant instance that is switched off is not sent; the *failed* row says so. A row sent to a
+saved device goes to that device as it is now, and is skipped while the device is switched
+off (*skipped — DSH iPhone is switched off*) or after it is removed (*skipped — its saved
+device was removed — pick another in the schedule*). A row saved before devices were picked
+by name is matched to the saved device with the same service.
 <!-- @b HAA-19 ;; src: actionable.py Actionable.notify_service, gateway/scheduler.py _run_ha_actions ;; tested: tests/unit/test_notify_api.py::test_a_schedule_notify_row_is_recorded_and_follows_the_switch, tests/unit/test_scheduler_engine.py::test_notification_not_sent_by_choice_is_skipped_not_failed ;; write: no ;; b: schedule notifications go through franklinwh-ha-notify: recorded, skipped while Push is off ;; test: — -->
 <!-- @b HAA-12 ;; src: gateway/scheduler.py:1148-1153, gateway/scheduler.py:1191-1200 ;; tested: tests/unit/test_scheduler.py::test_ha_actions_no_dispatcher_is_safe ;; write: no ;; b: Each HA action is audited ha_action or failed with the rendered detail; with no HA hooks one failed row reports the skip ;; test: — -->
 

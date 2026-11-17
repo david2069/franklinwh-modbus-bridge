@@ -519,7 +519,7 @@ class ScheduleEngine:
         points_fn: Callable[[str], dict] | None = None,
         connectivity: Any | None = None,
         ha_action_fn: Callable[[str, str, str, dict], Awaitable[dict]] | None = None,
-        ha_notify_fn: Callable[[str, str, str, str], Awaitable[dict]] | None = None,
+        ha_notify_fn: Callable[..., Awaitable[dict]] | None = None,
         gw_label_fn: Callable[[str], str] | None = None,
         asker: Any | None = None,
     ) -> None:
@@ -1726,8 +1726,9 @@ class ScheduleEngine:
             is_notify = (a.get("kind") == "notify")
             # A raw service call (as DC's Advanced) names its domain; entity optional.
             dom = (a.get("domain") or "").strip()
+            did = a.get("device_id") or ""  # a saved device (as DC): sent as it is now
             if is_notify:
-                if not (inst and svc):
+                if not (did or (inst and svc)):
                     continue
             elif not (inst and svc and (eid or dom)):
                 continue
@@ -1750,7 +1751,9 @@ class ScheduleEngine:
                     if self._ha_notify_fn is None:
                         res = {"ok": False, "error": "notifications not wired"}
                     else:
-                        res = await self._ha_notify_fn(inst, svc, title, sent_msg)
+                        res = await self._ha_notify_fn(
+                            inst or "", svc or "", title, sent_msg,
+                            **({"device_id": did} if did else {}))
                 elif self._ha_action_fn is None:
                     res = {"ok": False, "error": "HA entity actions not wired"}
                 else:
@@ -1760,7 +1763,8 @@ class ScheduleEngine:
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
             ok = bool(res.get("ok"))
             if is_notify:
-                detail = f"[{phase}] notify.{svc}: {sent_msg[:60]}"
+                to = f"notify {res['to']}" if res.get("to") else f"notify.{svc}"
+                detail = f"[{phase}] {to}: {sent_msg[:60]}"
             else:
                 call = f"{dom}.{svc}" + (f" {eid}" if eid else "") if dom else f"{eid} → {svc}"
                 detail = f"[{phase}] {call}" + (f" {data}" if data else "")
@@ -1995,21 +1999,24 @@ class ScheduleEngine:
         """Tell the owner about a failed or recovered dispatch, through the
         entry's own notify target(s) (its ha_actions of kind "notify")."""
         targets = {
-            (a.get("instance_id"), a.get("service"))
+            (a.get("instance_id") or "", a.get("service") or "", a.get("device_id") or "")
             for a in (win.get("ha_actions") or [])
-            if a.get("kind") == "notify" and a.get("instance_id") and a.get("service")
+            if a.get("kind") == "notify" and not a.get("actionable")
+            and (a.get("device_id") or (a.get("instance_id") and a.get("service")))
         }
         if not targets or self._ha_notify_fn is None:
             logger.warning("Schedule %s: %s (no notify target configured)", win["id"], message)
             await self._audit(win["id"], "notify", tkey, "skipped",
                               f"{message[:80]} — no notify target on this entry")
             return
-        for inst, svc in sorted(targets):
+        for inst, svc, did in sorted(targets):
             try:
-                res = await self._ha_notify_fn(inst, svc, "FranklinWH bridge", message)
+                res = await self._ha_notify_fn(inst, svc, "FranklinWH bridge", message,
+                                               **({"device_id": did} if did else {}))
             except Exception as exc:
                 res = {"ok": False, "error": str(exc) or type(exc).__name__}
-            detail = f"[alert] notify.{svc}: {message[:60]}"
+            to = f"notify {res['to']}" if res.get("to") else f"notify.{svc}"
+            detail = f"[alert] {to}: {message[:60]}"
             if res.get("skipped"):
                 await self._audit(win["id"], "ha_action", tkey, "skipped",
                                   f"{detail} — {res['skipped']}")

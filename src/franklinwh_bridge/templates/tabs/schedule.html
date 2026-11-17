@@ -1136,9 +1136,26 @@
                 </template>
                 <template x-if="haControlKind(a) === 'press'"><span class="text-[11px] text-slate-500 px-1">press button</span></template>
                 <template x-if="haControlKind(a) === 'run'"><span class="text-[11px] text-slate-500 px-1">run</span></template>
-                <!-- Notify target: a notify.* SERVICE, not an entity — it never
-                     appears in the entity picker, so it has its own list. -->
-                <select x-show="a.kind === 'notify' && !a.actionable"
+                <!-- Notify target as DC: a saved device by its friendly name. "Other HA
+                     notify service…" opens the raw notify.* list below. -->
+                <select x-show="a.kind === 'notify' && !a.actionable" data-testid="notify-device"
+                        :value="notifyPickValue(a)"
+                        @change="onNotifyDevicePick(a, $event.target.value)"
+                        class="form-control !py-1 !text-xs">
+                  <option value="">— send to —</option>
+                  <template x-for="d in notifyDevices" :key="d.id">
+                    <option :value="'dev:' + d.id" :selected="notifyPickValue(a) === 'dev:' + d.id"
+                            x-text="d.alias + (d.enabled ? '' : ' (off)')"></option>
+                  </template>
+                  <template x-if="notifyDeviceRemoved(a)">
+                    <option :value="'dev:' + a.device_id" selected>(removed device)</option>
+                  </template>
+                  <option value="__other" :selected="!!a._otherNotify">Other HA notify service…</option>
+                </select>
+                <!-- Other: a notify.* SERVICE, not an entity — it never appears in the
+                     entity picker, so it has its own list. -->
+                <select x-show="a.kind === 'notify' && !a.actionable && a._otherNotify"
+                        data-testid="notify-service"
                         :value="a.instance_id + '::' + a.service"
                         @change="onNotifyPick(a, $event.target.value)"
                         class="form-control !py-1 !text-xs">
