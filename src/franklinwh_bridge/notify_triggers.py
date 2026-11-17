@@ -369,17 +369,21 @@ class Triggers:
             await self.fire(event, gateway=name, **values)
 
     async def on_solar(self, gateway_id: str, name: str, solar_left_kwh: float | None,
-                       to_full_kwh: float | None, now: datetime | None = None) -> bool:
+                       to_full_kwh: float | None, now: datetime | None = None,
+                       forecast_kw_now: float | None = None,
+                       solar_kw_now: float | None = None) -> bool:
         """Solar won't fill the battery today: once a day per gateway, from 10:00 site
         time (earlier the forecast and SoC move too much), when the forecast solar left
-        today is less than the room to 100%. True when sent."""
+        today is less than the room to 100%, and only while it is daylight and solar is
+        still generating (#518). True when sent."""
         if not enabled(self.cfg, "solar_short"):
             return False
         now = now or datetime.now()
         day = now.date().isoformat()
         if now.hour < SOLAR_SHORT_FROM_HOUR or self._solar_sent.get(gateway_id) == day:
             return False
-        st = solar_forecast.fill_status(solar_left_kwh, to_full_kwh)
+        st = solar_forecast.fill_status(solar_left_kwh, to_full_kwh, forecast_kw_now,
+                                        solar_kw_now)
         if not st["wont_fill"]:
             return False
         self._solar_sent[gateway_id] = day

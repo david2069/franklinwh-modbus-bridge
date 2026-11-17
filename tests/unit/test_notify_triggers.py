@@ -148,12 +148,24 @@ async def test_solar_wont_fill_is_sent_once_a_day_from_ten(tmp_path):
 
     trg.fire = fire
     day = datetime(2026, 11, 17, 11, 0)
-    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day) is False      # off by default
+    SUN = {"forecast_kw_now": 2.5, "solar_kw_now": 1.8}  # daylight, solar generating
+    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day, **SUN) is False  # off by default
     trg.cfg["triggers"]["solar_short"]["enabled"] = True
-    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day.replace(hour=9)) is False  # before 10
-    assert await trg.on_solar("gw", "Home", 8.0, 6.4, day) is False      # it will fill
-    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day) is True
+    nine = day.replace(hour=9)
+    assert await trg.on_solar("gw", "Home", 3.1, 6.4, nine, **SUN) is False  # before 10
+    assert await trg.on_solar("gw", "Home", 8.0, 6.4, day, **SUN) is False      # it will fill
+    assert await trg.on_solar("gw", "Home", 3.1, 6.4, day, **SUN) is True
     assert sent == [("solar_short", {"gateway": "Home", "solar_left": "3.1", "to_full": "6.4"})]
-    assert await trg.on_solar("gw", "Home", 2.0, 6.4, day.replace(hour=14)) is False  # once a day
-    assert await trg.on_solar("gw", "Home", 2.0, 6.4, datetime(2026, 11, 18, 10, 30)) is True
+    two_pm = day.replace(hour=14)
+    assert await trg.on_solar("gw", "Home", 2.0, 6.4, two_pm, **SUN) is False  # once a day
+    assert await trg.on_solar("gw", "Home", 2.0, 6.4, datetime(2026, 11, 18, 10, 30),
+                              **SUN) is True
+    # #518: not after sunset, nor once solar has stopped.
+    trg._solar_sent.clear()
+    evening = day.replace(hour=19)
+    assert await trg.on_solar("gw", "Home", 0.2, 5.7, evening,
+                              forecast_kw_now=0.0, solar_kw_now=0.0) is False
+    assert await trg.on_solar("gw", "Home", 0.2, 5.7, day.replace(hour=17),
+                              forecast_kw_now=0.6, solar_kw_now=0.0) is False
+    assert await trg.on_solar("gw", "Home", 0.2, 5.7, day.replace(hour=17), **SUN) is True
     await db.close()

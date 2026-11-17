@@ -25,6 +25,7 @@ from franklinwh_bridge.gateway.solar_forecast import (
     actual_by_hour,
     actual_vs_forecast,
     fill_status,
+    kw_now,
     sensors,
 )
 from franklinwh_bridge.store.metrics import query_metrics_daterange
@@ -124,8 +125,10 @@ async def solar_forecast(request: Request, force: bool = False, gateway: str | N
         except Exception as exc:  # the card still shows the forecast
             logger.debug("Actual solar per hour unavailable for %s: %s", gateway, exc)
     pts = _points(request, gateway)
+    solar_w = pts.get("total_solar") if pts else None
     fill = fill_status(sens["solar_forecast.remaining_kwh"],
-                       battery_to_full_kwh(pts) if pts else None)
+                       battery_to_full_kwh(pts) if pts else None,
+                       kw_now(fc, now), solar_w / 1000.0 if solar_w is not None else None)
     return {
         "configured": True,
         **fc,

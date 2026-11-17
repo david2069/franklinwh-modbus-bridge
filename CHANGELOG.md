@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **Solar "won't fill the battery" only while the sun is up** (#518). After sunset the
+  Solar Forecast card still said *Solar left today 0.2 kWh won't fill the battery*. The
+  warning, and the *Solar won't fill the battery today* notification, now need daylight
+  (the forecast for this hour above 0) and solar still generating (measured above 0), and
+  never show when the battery is full.
+
 ## [0.2.68] — 2026-11-17
 
 ### Fixed

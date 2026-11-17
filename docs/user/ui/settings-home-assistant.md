@@ -101,7 +101,7 @@ is also a line in the [app log](logs.md), sent or not.
 | Battery dispatch (VPP / force) started / ended | On | A force charge, discharge or standby starts (from a schedule, the bridge, Home Assistant, or another tool), and when it ends, with why. A change of power on a running dispatch is not a new start. |
 | Battery SoC drops below *n* % | Off (20 %) | The SoC goes below the number. Once per crossing. |
 | Battery SoC reaches *n* % | Off (100 %) | The SoC reaches the number. Once per crossing. |
-| Solar won't fill the battery today | Off | From 10:00, when the forecast solar left today is less than the room left in the battery to 100 %. At most once a day per gateway. Ours, not in the Direct Connect bridge. Needs the solar forecast set up. |
+| Solar won't fill the battery today | Off | From 10:00, when the forecast solar left today is less than the room left in the battery to 100 %, while it is daylight and the solar is still generating. At most once a day per gateway. Ours, not in the Direct Connect bridge. Needs the solar forecast set up. |
 | Bridge started / restarted / stopped | On | The bridge starts (sent about 30 s after the start; *restarted* after a clean stop, with how long it was down and the version it was updated from), and when it stops. |
 | **Scheduler:** Run failed | On | A schedule's run fails (the *Schedule failed* alert). |
 | Run missed | On | A run's whole window passed while the bridge or the gateway was down. |

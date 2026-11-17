@@ -371,6 +371,10 @@ class SolarForecastService:
         return sensors(self.cached(), now_ts).get("solar_forecast.remaining_kwh") \
             if self.cached() else None
 
+    def kw_now(self, now_ts: float | None = None) -> float | None:
+        """Forecast kW for the hour now; cache only."""
+        return kw_now(self.cached(), now_ts)
+
     def as_points(self, now_ts: float | None = None) -> dict[str, Any]:
         """Sensor values as point keys for the (sync) scheduler points merge.
         Cache only — never a network call. All None when off or not fetched."""
@@ -390,13 +394,28 @@ class SolarForecastService:
             self._wake.clear()
 
 
-def fill_status(solar_left_kwh: float | None, to_full_kwh: float | None) -> dict[str, Any]:
+def kw_now(fc: dict | None, now_ts: float | None = None) -> float | None:
+    """The forecast kW for the hour now, or None when no forecast hour covers it."""
+    now_ts = time.time() if now_ts is None else now_ts
+    for h in (fc or {}).get("hourly") or []:
+        if h.get("ts") is not None and h["ts"] <= now_ts < h["ts"] + 3600:
+            return h.get("kw")
+    return None
+
+
+def fill_status(solar_left_kwh: float | None, to_full_kwh: float | None,
+                forecast_kw_now: float | None = None,
+                solar_kw_now: float | None = None) -> dict[str, Any]:
     """Will the forecast solar left today fill the battery to 100%? (owner, 2026-11-17)
     ``{solar_left_kwh, to_full_kwh, wont_fill}``; ``wont_fill`` is None when either is
-    unknown, and False when the battery is (nearly) full already. Home load, charge
-    losses and the charge rate are not counted: the forecast is the most solar there is."""
+    unknown. Home load, charge losses and the charge rate are not counted: the forecast
+    is the most solar there is. No estimate (False) unless it is daylight (the forecast
+    for this hour is above 0), solar is still generating (measured above 0) and the
+    battery isn't full (#518)."""
     if solar_left_kwh is None or to_full_kwh is None:
         wont = None
+    elif not (forecast_kw_now or 0) > 0 or not (solar_kw_now or 0) > 0:
+        wont = False
     else:
         wont = to_full_kwh > 0.1 and solar_left_kwh < to_full_kwh
     return {"solar_left_kwh": solar_left_kwh, "to_full_kwh": to_full_kwh, "wont_fill": wont}

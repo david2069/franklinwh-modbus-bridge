@@ -677,9 +677,13 @@ async def lifespan(app: FastAPI):
             await notify_triggers.on_points(sample.gateway_id, _gw_name(sample.gateway_id),
                                             sample.points)
         with contextlib.suppress(Exception):  # solar won't fill the battery today (owner)
+            solar_w = sample.points.get("total_solar")
             await notify_triggers.on_solar(sample.gateway_id, _gw_name(sample.gateway_id),
                                            solar_forecast.solar_left_kwh(),
-                                           battery_to_full_kwh(sample.points))
+                                           battery_to_full_kwh(sample.points),
+                                           forecast_kw_now=solar_forecast.kw_now(),
+                                           solar_kw_now=solar_w / 1000.0
+                                           if solar_w is not None else None)
 
     sample_bus.subscribe(_notify_on_sample)
     registry.on_dispatch = lambda gw_id, event, values: notify_triggers.fire(

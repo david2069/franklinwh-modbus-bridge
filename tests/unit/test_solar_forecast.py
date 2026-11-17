@@ -486,11 +486,29 @@ async def test_condition_sensors_reach_api_sensors(client):
 def test_fill_status_says_when_the_solar_left_wont_fill_the_battery():
     from franklinwh_bridge.gateway.solar_forecast import fill_status
 
-    assert fill_status(3.1, 6.4) == {"solar_left_kwh": 3.1, "to_full_kwh": 6.4, "wont_fill": True}
-    assert fill_status(8.0, 6.4)["wont_fill"] is False
-    assert fill_status(0.0, 0.05)["wont_fill"] is False        # (nearly) full already
-    assert fill_status(None, 6.4)["wont_fill"] is None         # no forecast
-    assert fill_status(3.0, None)["wont_fill"] is None         # no battery reading
+    day = (2.5, 1.8)  # forecast kW this hour, measured solar kW now
+    assert fill_status(3.1, 6.4, *day) == {"solar_left_kwh": 3.1, "to_full_kwh": 6.4,
+                                           "wont_fill": True}
+    assert fill_status(8.0, 6.4, *day)["wont_fill"] is False
+    assert fill_status(0.0, 0.05, *day)["wont_fill"] is False  # (nearly) full already
+    assert fill_status(None, 6.4, *day)["wont_fill"] is None   # no forecast
+    assert fill_status(3.0, None, *day)["wont_fill"] is None   # no battery reading
+
+
+def test_no_wont_fill_estimate_at_night_or_once_solar_has_stopped():
+    # #518: 19:16, 0.2 kWh left, 5.7 kWh to 100%: no warning.
+    from franklinwh_bridge.gateway.solar_forecast import fill_status, kw_now
+
+    assert fill_status(0.2, 5.7, 0.0, 0.0)["wont_fill"] is False    # not daylight
+    assert fill_status(0.2, 5.7, 0.4, 0.0)["wont_fill"] is False    # solar has stopped
+    assert fill_status(0.2, 5.7, None, 1.0)["wont_fill"] is False   # no forecast hour now
+    assert fill_status(0.2, 5.7, 0.4, None)["wont_fill"] is False   # solar not read
+    assert fill_status(0.2, 0.0, 0.4, 1.0)["wont_fill"] is False    # SoC 100%
+    fc = {"hourly": [{"ts": 1000.0, "kw": 0.0}, {"ts": 4600.0, "kw": 1.2}]}
+    assert kw_now(fc, 1500.0) == 0.0
+    assert kw_now(fc, 5000.0) == 1.2
+    assert kw_now(fc, 9000.0) is None
+    assert kw_now(None, 1.0) is None
 
 
 def test_actual_by_hour_averages_the_measured_solar_of_each_started_hour():
