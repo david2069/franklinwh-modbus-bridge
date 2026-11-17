@@ -7,6 +7,24 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.70 — 2026-11-18
+
+### Added
+- **Put the previous mode back when the window ends**, a tick-box on an Operating Mode
+  schedule (off by default). The old mode goes back only if the mode is still the one the
+  schedule set; a change since is kept. Each outcome is in the Activity Log.
+
+### Changed
+- **A schedule's notification goes to a saved device by its name** (*DSH iPhone*), as in
+  the Direct Connect bridge. It follows the device's on/off switch. **Other HA notify
+  service…** still lists every notify service.
+
+### Fixed
+- **The schedule editor asks before throwing away your changes.** A click outside no
+  longer closes it; Cancel, ✕ and Escape ask when anything changed.
+- **Chosen phones for a schedule's question:** a phone that is switched off is no longer
+  asked, and one removed since can be unticked.
+
 ## 0.2.69 — 2026-11-17
 
 ### Fixed
