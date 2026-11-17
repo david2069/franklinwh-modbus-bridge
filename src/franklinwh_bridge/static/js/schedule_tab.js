@@ -362,6 +362,40 @@ function scheduleTab() {
 
     /** Notify targets are "<instance>::<service>" — the service is a notify
      *  target name, NOT an entity, so entity_id stays empty. */
+    // Notify target as DC: a saved device by its friendly name (Settings → Home
+    // Assistant → Notifications); "Other HA notify service…" keeps the raw list.
+    _deviceFor(a) {
+      const svc = (a.service || '').replace(/^notify\./, '');
+      return this.notifyDevices.find((d) => d.instance_id === a.instance_id
+        && (d.service || '').replace(/^notify\./, '') === svc) || null;
+    },
+    notifyPickValue(a) {
+      if (a._otherNotify) return '__other';
+      return a.device_id ? 'dev:' + a.device_id : '';
+    },
+    notifyDeviceRemoved(a) {
+      return !!a.device_id && !this.notifyDevices.some((d) => d.id === a.device_id);
+    },
+    onNotifyDevicePick(a, value) {
+      if (value === '__other') { a._otherNotify = true; a.device_id = ''; return; }
+      a._otherNotify = false;
+      const d = this.notifyDevices.find((x) => 'dev:' + x.id === value);
+      a.device_id = d ? d.id : '';
+      a.instance_id = d ? d.instance_id : '';
+      a.service = d ? d.service : '';
+      a.entity_id = '';
+    },
+    /** A notify row saved before devices were picked by name is matched to the
+     *  saved device with its service; one with no saved device is "Other". */
+    _withDevice(a) {
+      a.device_id = a.device_id || '';
+      a._otherNotify = false;
+      if (a.kind !== 'notify' || a.actionable || a.device_id) return a;
+      const d = this._deviceFor(a);
+      if (d) a.device_id = d.id;
+      else a._otherNotify = !!a.service;
+      return a;
+    },
     onNotifyPick(a, value) {
       const [instance_id, service] = (value || '').split('::');
       a.instance_id = instance_id || '';
@@ -427,7 +461,8 @@ function scheduleTab() {
 
     addHaAction(kind = 'entity') {
       this.form.ha_actions.push({ kind, title: '', message: '', instance_id: '', entity_id: '',
-        service: kind === 'notify' ? '' : 'turn_on', data: {}, when: 'fire' });
+        service: kind === 'notify' ? '' : 'turn_on', data: {}, when: 'fire',
+        device_id: '', _otherNotify: false });
     },
     removeHaAction(i) { this.form.ha_actions.splice(i, 1); },
     addGuard(a) {
@@ -1580,7 +1615,7 @@ function scheduleTab() {
         entry_hold_s: e.entry_hold_s || 0,
         start_date: e.start_date || '',
         end_date: e.end_date || '',
-        ha_actions: (e.ha_actions || []).map((a) => ({
+        ha_actions: (e.ha_actions || []).map((a) => this._withDevice({
           ...a, data: { ...(a.data || {}) },
           guard: a.guard ? { value2: '', value_kind: 'value', value_sensor: '', ...a.guard } : null,
           raw: !!a.domain,
@@ -1883,7 +1918,8 @@ function scheduleTab() {
           // A notify action has no entity — filtering on entity_id would drop
           // every notification silently on save.
           .filter((a) => (a.kind === 'notify'
-            ? (a.actionable ? a.message : a.instance_id && a.service && a.message)
+            ? (a.actionable ? a.message
+              : (a.device_id || (a.instance_id && a.service)) && a.message)
             : a.instance_id && a.service && (a.raw ? a.domain : a.entity_id)))
           .map((a) => {
             const o = {
@@ -1894,6 +1930,7 @@ function scheduleTab() {
             if (a.kind === 'notify') {
               o.title = a.title || '';
               o.message = a.message || '';
+              if (!a.actionable && !a._otherNotify && a.device_id) o.device_id = a.device_id;
             }
             if (a.kind === 'notify' && a.actionable) {
               o.actionable = true;
