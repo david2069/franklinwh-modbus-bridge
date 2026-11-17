@@ -601,9 +601,10 @@
   <!-- ── Add / Edit Modal ─────────────────────────────────── -->
   <!-- A click outside does NOT close this (as DC): an entry is minutes of work and a
        stray click threw it away with no warning. Cancel, ✕ and Escape ask first when
-       anything has changed. -->
+       anything has changed. Escape asks after this key press is done: the confirm
+       dialog's own Escape handler (index.html) would otherwise answer it at once. -->
   <div x-show="formOpen" x-cloak class="fixed inset-0 z-[9998] flex items-center justify-center p-4"
-       @keydown.escape.window="if (formOpen && !varPick.open && !$store.app.confirmState.open) closeForm()">
+       @keydown.escape.window="if (formOpen && !varPick.open && !$store.app.confirmState.open) setTimeout(() => closeForm())">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
     <div x-data="dialogSize('fwh-dlg-schedule-edit')" class="relative rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl overflow-y-auto">
       <template x-if="formOpen && form">
