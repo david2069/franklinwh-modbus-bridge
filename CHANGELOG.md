@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.67] — 2026-11-17
+
 ### Added
 - **Auto-notify triggers** in Settings → Home Assistant → Notifications, as the Direct
   Connect bridge's (same rows, defaults, Send to and wording): aGate offline / online,

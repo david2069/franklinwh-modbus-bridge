@@ -7,6 +7,35 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.67 — 2026-11-17
+
+### Added
+- **Auto-notifications** (Settings → Home Assistant → Notifications), as the Direct
+  Connect bridge has: aGate offline/online, off-grid (with about how long the battery
+  lasts), battery dispatch, SoC low/full, bridge started/stopped and the scheduler's
+  failed, missed, aborted and no-reply runs. Each has a switch and Send to.
+- **Schedule editor as the Direct Connect bridge's:** Target SoC, a guard that works like
+  a condition, **{x} Insert a value** in notifications, greyed sensors that aren't set
+  up, a start and end date, **Advanced (raw service)** for any Home Assistant service,
+  and guide links.
+- **Questions with buttons** on a schedule's notification: the run waits for Yes or No
+  from the phone.
+- **Critical alerts on the phones with Acknowledge**, and **Test critical alert** to
+  check it.
+- **Solar Forecast card:** one chart over today and tomorrow, with today's actual solar
+  and the forecast temperature, and a note when the solar left today won't fill the
+  battery. A new auto-notification says so too (off by default).
+
+### Fixed
+- **The dashboard shows when the aGate is unreachable**, with the time of the last
+  reading, instead of looking live.
+- **+ guard** in the schedule editor works again.
+- A schedule can send a notification without an exposed entity.
+
+### Changed
+- A schedule's notifications follow the **Push notifications** switch and are listed in
+  Recent notifications.
+
 ## 0.2.66 — 2026-11-13
 
 ### Fixed
