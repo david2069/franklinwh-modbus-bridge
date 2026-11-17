@@ -21,6 +21,17 @@ lands, not backfilled later.
   and each outcome is in the Activity Log. It survives a restart. Saved as
   `params.restore_mode` on a `mode` entry.
 
+### Fixed
+- **The schedule editor asks before throwing away your changes**, as the Direct Connect
+  bridge's: a click outside the dialog no longer closes it (it closed and lost every
+  unsaved edit, with no warning). **Cancel**, **✕** and **Escape** ask *Discard your
+  changes?* when anything changed, and close at once when nothing did. Escape in the {x}
+  picker or a sensor list closes only that.
+- **Chosen phones for a schedule's question, as the Direct Connect bridge's:** a chosen
+  phone that is switched off is no longer asked (it was), and the list marks it *(off)*.
+  A chosen phone removed since is listed as *(removed)* so it can be unticked; before, it
+  vanished from the list but stayed chosen.
+
 ### Changed
 - **A schedule's notification goes to a saved device by its name**, as the Direct Connect
   bridge's: the Notify row lists the devices saved in Settings → Home Assistant →

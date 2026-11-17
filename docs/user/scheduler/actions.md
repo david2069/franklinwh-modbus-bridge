@@ -270,7 +270,9 @@ Direct Connect bridge does. The run waits for the answer before it does anything
   Assistant → Auto-notify triggers, Scheduler group). The wait can't be longer than the
   run (its duration or shortest window).
 - **Send to**: all enabled phones, or chosen phones. Only the Companion app shows buttons,
-  so only `notify.mobile_app_*` devices are asked. With Push notifications off, or no such
+  so only `notify.mobile_app_*` devices are asked. A chosen phone that is switched off is
+  not asked; the list marks it *(off)*, and one removed since it was chosen *(removed)*,
+  so it can be unticked. With Push notifications off, or no such
   phone, nothing is sent and *If no reply* applies at once.
 - The answer (the button's label, or the reply's text) is the **Ask: answer** sensor
   (`ask.answer`) in exit conditions and guards, and `%ask.answer%` in later messages.

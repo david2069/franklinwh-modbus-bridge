@@ -599,8 +599,13 @@
   </div>
 
   <!-- ── Add / Edit Modal ─────────────────────────────────── -->
-  <div x-show="formOpen" x-cloak class="fixed inset-0 z-[9998] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeForm()"></div>
+  <!-- A click outside does NOT close this (as DC): an entry is minutes of work and a
+       stray click threw it away with no warning. Cancel, ✕ and Escape ask first when
+       anything has changed. Escape asks after this key press is done: the confirm
+       dialog's own Escape handler (index.html) would otherwise answer it at once. -->
+  <div x-show="formOpen" x-cloak class="fixed inset-0 z-[9998] flex items-center justify-center p-4"
+       @keydown.escape.window="if (formOpen && !varPick.open && !$store.app.confirmState.open) setTimeout(() => closeForm())">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
     <div x-data="dialogSize('fwh-dlg-schedule-edit')" class="relative rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl overflow-y-auto">
       <template x-if="formOpen && form">
         <div class="p-5 space-y-4">
@@ -878,7 +883,7 @@
               <div>
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(c)">
-                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative"
                        :style="condSensorStyle()">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                             class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
@@ -926,7 +931,7 @@
                     </span>
                   </template>
                   <template x-if="c.value_kind==='sensor'">
-                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative">
                       <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                               class="form-control !py-1 !text-xs w-48 text-left flex items-center justify-between gap-1">
                         <span class="truncate" :class="c.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.value_sensor)" x-text="c.value_sensor ? sensorButtonLabel(c.value_sensor) : 'Select sensor…'"></span>
@@ -972,7 +977,7 @@
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(cc)">
-                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative"
                            :style="condSensorStyle()">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                 class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
@@ -1020,7 +1025,7 @@
                         </span>
                       </template>
                       <template x-if="cc.value_kind==='sensor'">
-                        <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                        <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative">
                           <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                   class="form-control !py-1 !text-xs w-48 text-left flex items-center justify-between gap-1">
                             <span class="truncate" :class="cc.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.value_sensor)" x-text="cc.value_sensor ? sensorButtonLabel(cc.value_sensor) : 'Select sensor…'"></span>
@@ -1296,8 +1301,8 @@
                              @change="a.send_to = { type: 'device', ids: [] }" data-testid="ask-chosen"> Chosen phones</label>
                     </div>
                     <div x-show="a.send_to.type === 'device'" class="flex flex-wrap gap-x-3 gap-y-1">
-                      <template x-for="d in notifyDevices.filter((x) => x.buttons)" :key="d.id">
-                        <label class="flex items-center gap-1"><input type="checkbox" :value="d.id" x-model="a.send_to.ids"> <span x-text="d.alias"></span></label>
+                      <template x-for="d in askDeviceChoices(a.send_to.ids)" :key="d.id">
+                        <label class="flex items-center gap-1" data-testid="ask-chosen-phone"><input type="checkbox" :value="d.id" x-model="a.send_to.ids"> <span x-text="d.label"></span></label>
                       </template>
                     </div>
                     <div data-testid="ask-who"><span x-text="askWho(a)"></span> Only Companion apps show the buttons, so only they are asked.</div>
@@ -1309,7 +1314,7 @@
                 <template x-if="a.guard">
                   <div class="flex items-center gap-1.5 flex-wrap pl-4" data-testid="guard-row">
                     <span class="text-[11px] text-slate-500">only if</span>
-                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative">
                       <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                               class="form-control !py-1 !text-xs w-48 text-left flex items-center justify-between gap-1" data-testid="guard-sensor">
                         <span class="truncate" :class="a.guard.sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(a.guard.sensor)" x-text="a.guard.sensor ? sensorButtonLabel(a.guard.sensor) : 'Select sensor…'"></span>
@@ -1346,7 +1351,7 @@
                       </span>
                     </template>
                     <template x-if="a.guard.value_kind==='sensor' && !['in','not_in','matchlist','not_matchlist','like','not_like'].includes(a.guard.op)">
-                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative">
                       <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                               class="form-control !py-1 !text-xs w-48 text-left flex items-center justify-between gap-1" data-testid="guard-value_sensor">
                         <span class="truncate" :class="a.guard.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(a.guard.value_sensor)" x-text="a.guard.value_sensor ? sensorButtonLabel(a.guard.value_sensor) : 'Select sensor…'"></span>
@@ -1396,7 +1401,7 @@
               <div>
                 <!-- leaf row -->
                 <div x-show="!isGroup(c)" class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(c)">
-                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                  <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative"
                        :style="condSensorStyle()">
                     <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                             class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
@@ -1444,7 +1449,7 @@
                     </span>
                   </template>
                   <template x-if="c.value_kind==='sensor'">
-                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                    <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative">
                       <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                               class="form-control !py-1 !text-xs w-48 text-left flex items-center justify-between gap-1">
                         <span class="truncate" :class="c.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(c.value_sensor)" x-text="c.value_sensor ? sensorButtonLabel(c.value_sensor) : 'Select sensor…'"></span>
@@ -1490,7 +1495,7 @@
                   </div>
                   <template x-for="(cc, j) in (c.conditions || [])" :key="j">
                     <div class="flex items-center gap-1.5 flex-wrap" :class="condRingClass(cc)">
-                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative"
+                      <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative"
                            :style="condSensorStyle()">
                         <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                 class="form-control !py-1 !text-xs w-full text-left flex items-center justify-between gap-1">
@@ -1538,7 +1543,7 @@
                         </span>
                       </template>
                       <template x-if="cc.value_kind==='sensor'">
-                        <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="open=false" class="relative">
+                        <div x-data="{ open:false, q:'' }" @click.outside="open=false; q=''" @keydown.escape="if (open) { open=false; $event.stopPropagation() }" class="relative">
                           <button type="button" @click="open=!open; if(open)$nextTick(()=>$refs.q&&$refs.q.focus())"
                                   class="form-control !py-1 !text-xs w-48 text-left flex items-center justify-between gap-1">
                             <span class="truncate" :class="cc.value_sensor ? 'text-slate-200' : 'text-slate-500'" :title="sensorTitle(cc.value_sensor)" x-text="cc.value_sensor ? sensorButtonLabel(cc.value_sensor) : 'Select sensor…'"></span>
@@ -1746,7 +1751,7 @@
   <!-- Insert a value (as DC #462): one dialog for every {x} button. Rows are the condition
        picker's own sensors, with the live value now. Full screen on a phone. -->
   <div x-show="varPick.open" x-cloak data-testid="var-picker" role="dialog" aria-modal="true" aria-label="Insert a value"
-       @click.self="closeVarPicker()" @keydown.escape="closeVarPicker()"
+       @click.self="closeVarPicker()" @keydown.escape.stop="closeVarPicker()"
        class="fixed inset-0 z-[9999] flex items-stretch sm:items-center justify-center sm:p-4 bg-black/60">
     <div class="w-full h-full sm:h-auto sm:max-w-md sm:max-h-[80dvh] flex flex-col overflow-hidden sm:rounded-lg border border-cyan-500/30 bg-slate-800 shadow-2xl">
       <div class="px-4 pt-3 pb-2 shrink-0 border-b border-white/10 space-y-2">

@@ -344,12 +344,22 @@ function scheduleTab() {
     ownButtons(a) {
       a.choices = [{ label: 'Yes', then: 'run', reply: false }, { label: 'No', then: 'skip', reply: false }];
     },
-    /** Who gets the question: phones that show buttons, all enabled or the chosen. */
+    /** The Chosen phones list (as DC): every phone that shows buttons, a switched-off
+     *  one marked (off), and a chosen one removed since marked (removed), so it can
+     *  still be unticked. */
+    askDeviceChoices(ids) {
+      const out = this.notifyDevices.filter((d) => d.buttons)
+        .map((d) => ({ id: d.id, label: d.alias + (d.enabled ? '' : ' (off)') }));
+      (ids || []).filter((i) => !this.notifyDevices.some((d) => d.id === i))
+        .forEach((i) => out.push({ id: i, label: `${i} (removed)` }));
+      return out;
+    },
+    /** Who gets the question: enabled phones that show buttons, all or the chosen. */
     askWho(a) {
       const st = a.send_to || { type: 'all' };
       const names = this.notifyDevices
-        .filter((d) => d.buttons && d.instance_enabled
-          && (st.type === 'device' ? (st.ids || []).includes(d.id) : d.enabled))
+        .filter((d) => d.buttons && d.instance_enabled && d.enabled
+          && (st.type !== 'device' || (st.ids || []).includes(d.id)))
         .map((d) => d.alias);
       return names.length ? `Asks: ${names.join(', ')}.` : 'Asks nobody yet: no phone with the Companion app is chosen.';
     },
@@ -1477,6 +1487,7 @@ function scheduleTab() {
       this.formResult = null;
       this.advDates = false;
       this.formOpen = true;
+      this._markClean();
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
       // it off themselves, offering to turn it back on is just undoing them.
@@ -1567,6 +1578,7 @@ function scheduleTab() {
       this.formResult = null;
       this.advDates = false;
       this.formOpen = true;
+      this._markClean();
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
       // it off themselves, offering to turn it back on is just undoing them.
@@ -1632,6 +1644,7 @@ function scheduleTab() {
       this.formResult = null;
       this.advDates = false;
       this.formOpen = true;
+      this._markClean();
       // Did the form OPEN disabled? Only then is an enable-on-save prompt wanted
       // (templates seed enabled=false so you review first). If the user turned
       // it off themselves, offering to turn it back on is just undoing them.
@@ -1646,9 +1659,32 @@ function scheduleTab() {
       return clone(t);
     },
 
+    // Unsaved edits are asked about before they are thrown away (as DC): "dirty" is a
+    // comparison with the form as it opened, not a flag someone has to remember to set.
+    _formBaseline: '',
+    _closing: false,
+    _markClean() { this.$nextTick(() => { this._formBaseline = JSON.stringify(this.form); }); },
+    get formDirty() {
+      return !!this.form && this.formOpen && JSON.stringify(this.form) !== this._formBaseline;
+    },
+
     // Hide via formOpen; keep `form` intact so no `form.X` binding evaluates
-    // against null during Alpine's x-if teardown tick.
-    closeForm() { this.formOpen = false; this._clearTrace(); },
+    // against null during Alpine's x-if teardown tick. Never silently: a click outside
+    // no longer closes it, and Cancel, ✕ and Escape ask first when anything changed.
+    async closeForm(force = false) {
+      if (!this.formOpen || this._closing) return;
+      if (!force && this.formDirty) {
+        this._closing = true;
+        const go = await Alpine.store('app').confirm({
+          title: 'Discard your changes?',
+          message: 'You have unsaved changes to this entry. Close it and lose them?',
+          confirmLabel: 'Discard', cancelLabel: 'Keep editing', danger: true,
+        });
+        this._closing = false;
+        if (!go) return;
+      }
+      this.formOpen = false; this._formBaseline = ''; this._clearTrace();
+    },
 
     // ── which sections are visible for the chosen trigger type ──
     // All guard on `this.form?.` so they never throw during the modal's
@@ -1988,7 +2024,7 @@ function scheduleTab() {
       }
       this.loading = false;
       if (res && !res.error) {
-        this.closeForm();
+        this.closeForm(true);
         Alpine.store('app').toast(f.id ? 'Schedule updated' : 'Schedule created', 'info');
         // Saved but disabled → it won't run. Offer to enable it, but ONLY when
         // the form opened disabled — i.e. a template seeded it that way for
