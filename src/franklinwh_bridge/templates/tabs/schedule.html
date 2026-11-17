@@ -839,6 +839,11 @@
                 <option value="TOU">TOU</option>
                 <option value="Emergency Backup">Emergency Backup</option>
               </select>
+              <!-- As DC's restore_on_exit, made safe (#27): put back only if unchanged since. -->
+              <label class="flex items-center gap-2 text-xs text-slate-400 mt-1" data-testid="restore-mode">
+                <input type="checkbox" x-model="form.restore_mode">
+                Put the previous mode back when the window ends</label>
+              <p x-show="form.restore_mode" class="text-[11px] text-slate-500">Only if the mode is still the one this entry set: a change since is kept. Each outcome is in the Activity Log.</p>
             </div>
             <!-- Priority and If busy only where they act (as DC #580): Priority for a
                  battery action, If busy for a sustained one (force / release). -->

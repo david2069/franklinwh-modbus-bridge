@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Added
+- **Put the previous mode back when the window ends**, a tick-box on an Operating Mode
+  entry, as the Direct Connect bridge has (off by default). Made safe, as the bridge
+  stopped writing modes back blindly (#27): the mode the entry replaced goes back only if
+  the mode is still the one the entry set, never on a gateway whose mode is write-locked,
+  and each outcome is in the Activity Log. It survives a restart. Saved as
+  `params.restore_mode` on a `mode` entry.
+
 ### Fixed
 - **The schedule editor asks before throwing away your changes**, as the Direct Connect
   bridge's: a click outside the dialog no longer closes it (it closed and lost every

@@ -493,6 +493,24 @@ def ask_choices(ask: dict) -> list[dict]:
     return [dict(c) for c in (ask.get("choices") or _DEFAULT_CHOICES)]
 
 
+#: Mode entries with "Put the previous mode back" (as DC's restore_on_exit, BR-50, made
+#: safe: #27). One record per entry and gateway while its run is on; kept in the store
+#: so a restart neither loses it nor captures the mode the entry itself set.
+MODE_BACK_KEY = "schedule_mode_put_back"
+
+
+async def _load_mode_back(db: Any) -> dict[str, dict]:
+    if db is None:
+        return {}
+    from franklinwh_bridge.store.db import get_app_config
+    try:
+        raw = await get_app_config(db, MODE_BACK_KEY, "")
+        return json.loads(raw) if raw else {}
+    except Exception as exc:
+        logger.debug("Schedule: modes to put back not loaded: %s", exc)
+        return {}
+
+
 async def _load_ask_runs(db: Any) -> dict[str, dict]:
     if db is None:
         return {}
@@ -568,6 +586,8 @@ class ScheduleEngine:
         # set can't shift ownership between gateways. Key = (ttype, tid, gw_id).
         #   tkey -> {entry_id, signature, action, display, release, mode}
         self._owned: dict[tuple, dict] = {}
+        self._mode_back: dict[str, dict] = {}  # see MODE_BACK_KEY
+        self._mode_back_loaded = False
         # targets we're currently deferring on (so we audit the defer once, not
         # every tick while a manual command stays active)
         self._deferred: set[tuple] = set()
@@ -627,6 +647,9 @@ class ScheduleEngine:
         self._entries = [r for r in rows if r.get("enabled")]
         if not self._ask_runs:
             self._ask_runs = await _load_ask_runs(self._db)
+        if not self._mode_back_loaded:
+            self._mode_back = await _load_mode_back(self._db)
+            self._mode_back_loaded = True
         # A disabled (or deleted) entry loses its done mark, so enabling it again
         # starts afresh instead of waiting out a window it was stopped in.
         ids = {e["id"] for e in self._entries}
@@ -993,6 +1016,7 @@ class ScheduleEngine:
                 self._skipped = {m for m in self._skipped if m[0] != tkey}
 
         await self._tick_manual(now)
+        await self._put_modes_back(now)
         self._record_monitor(watched, now)
 
     # ---- Run now ----
@@ -1494,6 +1518,8 @@ class ScheduleEngine:
                 return
 
         await self._clear_done(tkey)  # fresh dispatch supersedes any old mark
+        if action == "mode" and params.get("restore_mode"):
+            await self._capture_mode(win, params, tkey, now)  # BEFORE the write
         await self._dispatch(
             handler, action, params, label=win.get("name", action), requester=win["id"]
         )
@@ -1608,6 +1634,85 @@ class ScheduleEngine:
             if tkey[2] == gw_id and st.get("answer") is not None:
                 return st["answer"]
         return None
+
+    # ── Put the previous mode back (Mode entries, opt-in) ──
+    async def _capture_mode(self, win: dict, params: dict, tkey: tuple, now: datetime) -> None:
+        """Remember the mode this run is about to replace. Once per run: a re-dispatch
+        (or a restart mid-window) keeps the first capture, else it would "put back" the
+        mode the entry itself set. Nothing is kept when the mode is unknown (a guess put
+        back would look deliberate) or already the one the entry sets."""
+        key = f"{win['id']}|{tkey[0]}|{tkey[1]}|{tkey[2]}"
+        if key in self._mode_back:
+            return
+        was = self._current_mode(tkey[2], now)
+        want = str(params.get("mode") or "")
+        if not was or was == want:
+            return
+        self._mode_back[key] = {"entry_id": win["id"], "name": win.get("name") or win["id"],
+                                "tkey": list(tkey), "prior": was, "set": want,
+                                "since": now.timestamp()}
+        await self._save_mode_back()
+
+    async def _put_modes_back(self, now: datetime) -> None:
+        """When a Mode entry's window has ended (or the entry was disabled or deleted,
+        or the window ended while the bridge was down), put the mode it replaced back:
+        only if the mode is still the one it set (a change since, by you, the app or
+        another entry, is kept), and not on a gateway whose mode is write-locked.
+        Each outcome is in the Activity Log."""
+        if not self._mode_back:
+            return
+        changed = False
+        for key, rec in list(self._mode_back.items()):
+            tkey = tuple(rec["tkey"])
+            own = self._owned.get(tkey)
+            if own is not None and own.get("entry_id") == rec["entry_id"]:
+                continue  # still its run
+            entry = next((e for e in self._entries if e["id"] == rec["entry_id"]), None)
+            if entry is not None and entry_active(entry, now):
+                continue  # its window is still open (a hold, a gate, a restart): wait
+            handler = next((h for gw, h in self._resolver(tkey[0], tkey[1]) if gw == tkey[2]),
+                           None)
+            cur = self._current_mode(tkey[2], now)
+            if handler is None or cur is None:
+                if now.timestamp() - rec.get("ended_at", now.timestamp()) < 3600:
+                    rec.setdefault("ended_at", now.timestamp())
+                    continue  # gateway not reachable yet: try again next tick
+                note = (f"mode not put back to {rec['prior']}: gateway or mode unknown "
+                        f"for an hour")
+                result = "failed"
+            elif cur != rec["set"]:
+                note = (f"mode not put back to {rec['prior']}: changed to {cur} since "
+                        f"this entry set {rec['set']}, left as-is")
+                result = "skipped"
+            elif getattr(handler, "mode_write_locked", False):
+                note = (f"mode not put back to {rec['prior']}: the mode register is "
+                        f"write-locked")
+                result = "skipped"
+            else:
+                await self._send(handler, [("operating_mode", rec["prior"])],
+                                 requester=f"schedule:{rec['entry_id']}")
+                state = getattr(handler, "state", None)
+                if state is not None and not getattr(state, "last_success", True):
+                    note = (f"mode not put back to {rec['prior']}: write failed: "
+                            f"{getattr(state, 'last_result', '')}")
+                    result = "failed"
+                else:
+                    note = f"mode put back to {rec['prior']} (was {rec['set']})"
+                    result = "ok"
+            self._mode_back.pop(key, None)
+            changed = True
+            await self._audit(rec["entry_id"], "mode", tkey, result, note)
+        if changed:
+            await self._save_mode_back()
+
+    async def _save_mode_back(self) -> None:
+        if self._db is None:
+            return
+        from franklinwh_bridge.store.db import set_app_config
+        try:
+            await set_app_config(self._db, MODE_BACK_KEY, json.dumps(self._mode_back))
+        except Exception as exc:
+            logger.debug("Schedule: modes to put back not saved: %s", exc)
 
     async def _save_ask_runs(self) -> None:
         if self._db is None:

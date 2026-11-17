@@ -1449,6 +1449,7 @@ function scheduleTab() {
         target_soc: '',    // force charge / discharge: stop at this SoC; empty = none
         pct: 20,
         mode: 'TOU',
+        restore_mode: false,  // mode: put the previous mode back when the window ends
         target_type: 'gateway',
         target_id: Alpine.store('app').activeGateway,
         release: 'release',
@@ -1616,6 +1617,7 @@ function scheduleTab() {
         target_soc: p.target_soc ?? '',
         pct: p.pct ?? 20,
         mode: p.mode ?? 'TOU',
+        restore_mode: !!p.restore_mode,
         target_type: e.target_type,
         target_id: e.target_id || '',
         release: e.release,
@@ -1807,7 +1809,10 @@ function scheduleTab() {
         p.target_soc = Number(f.target_soc);
       }
       if (meta.params.includes('pct')) p.pct = Number(f.pct);
-      if (meta.params.includes('mode')) p.mode = f.mode;
+      if (meta.params.includes('mode')) {
+        p.mode = f.mode;
+        if (f.restore_mode) p.restore_mode = true;
+      }
       return p;
     },
 
