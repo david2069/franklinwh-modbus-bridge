@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.70] — 2026-11-18
+
 ### Added
 - **Put the previous mode back when the window ends**, a tick-box on an Operating Mode
   entry, as the Direct Connect bridge has (off by default). Made safe, as the bridge
