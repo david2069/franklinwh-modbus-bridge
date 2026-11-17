@@ -13,6 +13,14 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **{x} Insert a value fits the screen and closes again** (#513). On a screen wider than a
+  phone it filled the page, with its header, search and ✕ off the top, and couldn't be
+  closed. The compiled stylesheet hadn't been rebuilt since 2026-10-16, so 24 classes added
+  since then did nothing; it is rebuilt, and a test now fails when a page uses a class the
+  stylesheet doesn't have. Other small layout fixes come with it (widths, spacing and colours
+  in the schedule editor, Customise, Logs, Explorer and the dashboard).
+
 ## [0.2.67] — 2026-11-17
 
 ### Added
