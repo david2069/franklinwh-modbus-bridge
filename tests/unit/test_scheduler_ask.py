@@ -181,3 +181,39 @@ async def test_a_question_sent_before_a_restart_is_waited_on_not_sent_again():
     await eng.tick(T1)
     assert asker.asked == []
     assert ("battery_command", "Force Charge") in h.calls
+
+
+async def test_a_chosen_phone_that_is_switched_off_is_not_asked(tmp_path):
+    """As DC: Send to chosen phones asks the enabled ones among them; a switched-off
+    phone stays off (it was asked anyway)."""
+    from franklinwh_ha_notify import Target
+
+    from franklinwh_bridge.actionable import Actionable
+    from franklinwh_bridge.store.db import create_notify_device, init_db
+
+    db = await init_db(tmp_path / "ask.db")
+    on = await create_notify_device(db, "Pixel", "ha1", "mobile_app_pixel", kind="phone")
+    off = await create_notify_device(db, "iPad", "ha1", "mobile_app_ipad", enabled=False,
+                                     kind="phone")
+    sent = []
+
+    class FakeNotifier:
+        instances = {"ha1": object()}
+
+        async def ask(self, event, targets, buttons, **kw):
+            sent.append([t.service for t in targets])
+            return SimpleNamespace(id="r1")
+
+    act = Actionable(db, tmp_path / "unused.db")
+    act.notifier = FakeNotifier()
+    act._enabled = True
+    yes_no = [{"label": "Yes"}, {"label": "No"}]
+    kw = {"title": "t", "question": "q", "choices": yes_no, "ttl_s": 60, "gateway": "gw",
+          "run": "r"}
+    req, _ = await act.ask_schedule(send_to={"type": "device", "ids": [on["id"], off["id"]]},
+                                    **kw)
+    assert req.id == "r1" and sent == [["mobile_app_pixel"]]
+    req, why = await act.ask_schedule(send_to={"type": "device", "ids": [off["id"]]}, **kw)
+    assert req is None and why == "no phone that shows buttons"
+    assert Target("ha1", "mobile_app_pixel", "Pixel").buttons
+    await db.close()

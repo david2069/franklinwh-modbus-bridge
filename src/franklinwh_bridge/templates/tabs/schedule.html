@@ -1291,8 +1291,8 @@
                              @change="a.send_to = { type: 'device', ids: [] }" data-testid="ask-chosen"> Chosen phones</label>
                     </div>
                     <div x-show="a.send_to.type === 'device'" class="flex flex-wrap gap-x-3 gap-y-1">
-                      <template x-for="d in notifyDevices.filter((x) => x.buttons)" :key="d.id">
-                        <label class="flex items-center gap-1"><input type="checkbox" :value="d.id" x-model="a.send_to.ids"> <span x-text="d.alias"></span></label>
+                      <template x-for="d in askDeviceChoices(a.send_to.ids)" :key="d.id">
+                        <label class="flex items-center gap-1" data-testid="ask-chosen-phone"><input type="checkbox" :value="d.id" x-model="a.send_to.ids"> <span x-text="d.label"></span></label>
                       </template>
                     </div>
                     <div data-testid="ask-who"><span x-text="askWho(a)"></span> Only Companion apps show the buttons, so only they are asked.</div>

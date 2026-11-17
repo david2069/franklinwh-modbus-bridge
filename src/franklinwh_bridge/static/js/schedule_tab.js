@@ -344,12 +344,22 @@ function scheduleTab() {
     ownButtons(a) {
       a.choices = [{ label: 'Yes', then: 'run', reply: false }, { label: 'No', then: 'skip', reply: false }];
     },
-    /** Who gets the question: phones that show buttons, all enabled or the chosen. */
+    /** The Chosen phones list (as DC): every phone that shows buttons, a switched-off
+     *  one marked (off), and a chosen one removed since marked (removed), so it can
+     *  still be unticked. */
+    askDeviceChoices(ids) {
+      const out = this.notifyDevices.filter((d) => d.buttons)
+        .map((d) => ({ id: d.id, label: d.alias + (d.enabled ? '' : ' (off)') }));
+      (ids || []).filter((i) => !this.notifyDevices.some((d) => d.id === i))
+        .forEach((i) => out.push({ id: i, label: `${i} (removed)` }));
+      return out;
+    },
+    /** Who gets the question: enabled phones that show buttons, all or the chosen. */
     askWho(a) {
       const st = a.send_to || { type: 'all' };
       const names = this.notifyDevices
-        .filter((d) => d.buttons && d.instance_enabled
-          && (st.type === 'device' ? (st.ids || []).includes(d.id) : d.enabled))
+        .filter((d) => d.buttons && d.instance_enabled && d.enabled
+          && (st.type !== 'device' || (st.ids || []).includes(d.id)))
         .map((d) => d.alias);
       return names.length ? `Asks: ${names.join(', ')}.` : 'Asks nobody yet: no phone with the Companion app is chosen.';
     },

@@ -355,8 +355,8 @@ class Actionable:
     async def ask_schedule(self, *, title: str, question: str, choices: list[dict],
                            ttl_s: float, gateway: str, send_to: dict,
                            run: str) -> tuple[Any, str]:
-        """Send a schedule's question to its phones (all enabled, or the chosen
-        devices), as buttons ``C0``… in ``choices`` order. ``(request, "")``, or
+        """Send a schedule's question to its phones (all enabled, or the enabled ones
+        among the chosen devices), as buttons ``C0``… in ``choices`` order. ``(request, "")``, or
         ``(None, why not)``. Follows the switch; only Companion apps show buttons."""
         if self.notifier is None:
             return None, "notifications are not running"
@@ -365,6 +365,9 @@ class Actionable:
                                                message=question, status="notifications are off")
             return None, "Push notifications are off"
         ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
+        if ids is not None:  # as DC: a chosen phone that is switched off stays off
+            on = {d["id"] for d in await get_notify_devices(self._db) if d["enabled"]}
+            ids = [i for i in ids if i in on]
         targets = [t for t in await self.targets(ids) if t.buttons]
         if not targets:
             return None, "no phone that shows buttons"
