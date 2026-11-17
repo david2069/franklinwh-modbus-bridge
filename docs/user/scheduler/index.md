@@ -52,6 +52,10 @@ This walkthrough charges the battery to 90 % on weekday afternoons, but only if 
     notification message box can be dragged taller and grows as you type. The Import dialog
     works the same way.
 
+    A click outside the dialog doesn't close it. **Cancel**, **✕** and **Escape** close it, and
+    when you have changed anything they ask first (*Discard your changes?*), so a stray click
+    or key doesn't throw your work away.
+
 2. **Name:** `Evening top-up`.
 3. **Trigger Type:** leave **Recurring windows**. Tick **Mon–Fri** under **Days** (none ticked
    means every day). Set the time window to `16:00 → 17:00`.
