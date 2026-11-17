@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.69 — 2026-11-17
+
+### Fixed
+- **Solar "won't fill the battery" only while the sun is up.** After sunset the Solar
+  Forecast card still warned that the solar left wouldn't fill the battery. The warning,
+  and the *Solar won't fill the battery today* notification, now show only in daylight
+  while the solar is still generating, and never when the battery is full.
+
 ## 0.2.68 — 2026-11-17
 
 ### Fixed
