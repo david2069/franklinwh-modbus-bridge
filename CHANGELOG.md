@@ -13,6 +13,13 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **The schedule editor asks before throwing away your changes**, as the Direct Connect
+  bridge's: a click outside the dialog no longer closes it (it closed and lost every
+  unsaved edit, with no warning). **Cancel**, **✕** and **Escape** ask *Discard your
+  changes?* when anything changed, and close at once when nothing did. Escape in the {x}
+  picker or a sensor list closes only that.
+
 ### Changed
 - **A schedule's notification goes to a saved device by its name**, as the Direct Connect
   bridge's: the Notify row lists the devices saved in Settings → Home Assistant →
