@@ -3,7 +3,7 @@
   "info": {
     "title": "franklinwh-modbus-bridge",
     "description": "**Unofficial software.** `franklinwh-modbus-bridge` is not endorsed, supported, or\naffiliated with FranklinWH in any way. Provided **\"AS IS\"**, for educational\nand informational purposes only, without warranty of any kind, express or\nimplied. The authors and contributors accept no responsibility or liability\nfor any consequences of its use.\n\nThis API issues **write commands to grid-connected battery hardware**. You\nassume all risk, including risk to your hardware, your warranty and your\nelectricity supply.\n\n**Compliance.** Keep your system compliant with the settings your official\nFranklinWH app or installer configured \u2014 they may enforce battery and gateway\nsafety, your local grid profile and import/export limits, or incentive/VPP\nprogramme conditions. Using this API to bypass them is entirely at your own\nrisk and is neither condoned nor encouraged.\n\n**Do not contact FranklinWH support about this software.** Report bugs and\nrequest features at [https://github.com/david2069/franklinwh-modbus-bridge/issues](https://github.com/david2069/franklinwh-modbus-bridge/issues).\n\nFull terms: [LICENSE](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/LICENSE) \u00b7 SunSpec conformance:\n[PICS SM-000028](https://sunspec.org/wp-content/uploads/2009/03/UPDATED_FranklinWH_Modbus_PICS_SM-000028.xlsx)\n",
-    "version": "0.2.66"
+    "version": "0.2.67"
   },
   "paths": {
     "/api/health": {
@@ -6629,6 +6629,66 @@
         }
       }
     },
+    "/api/notify/test-alert": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Alert",
+        "description": "Test critical alert (as DC #464): HA's notification and the Critical alerts phones\nwith Acknowledge; poll the request id for the tap. Records no alert.",
+        "operationId": "test_alert_api_notify_test_alert_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/test-alert/{request_id}": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Test Alert Result",
+        "operationId": "test_alert_result_api_notify_test_alert__request_id__get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notify/broadcast": {
       "post": {
         "tags": [
@@ -6692,7 +6752,7 @@
           "notifications"
         ],
         "summary": "Put Triggers",
-        "description": "Change some triggers: ``{\"triggers\": {key: {enabled?, threshold?, target?}}}``.\nA bad value refuses the whole save.",
+        "description": "Change some triggers: ``{\"triggers\": {key: {enabled?, threshold?, target?}}}``,\nand who a notification with buttons goes to: ``{\"asks\": {key: {target}}}``.\nA bad value refuses the whole save.",
         "operationId": "put_triggers_api_notify_triggers_put",
         "requestBody": {
           "content": {
@@ -10654,8 +10714,8 @@
           },
           "instance_id": {
             "type": "string",
-            "minLength": 1,
-            "title": "Instance Id"
+            "title": "Instance Id",
+            "default": ""
           },
           "entity_id": {
             "type": "string",
@@ -10664,8 +10724,15 @@
           },
           "service": {
             "type": "string",
-            "minLength": 1,
-            "title": "Service"
+            "title": "Service",
+            "default": ""
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^([a-z0-9_]+)?$",
+            "title": "Domain",
+            "default": ""
           },
           "data": {
             "additionalProperties": true,
@@ -10701,13 +10768,40 @@
             "maxLength": 1000,
             "title": "Message",
             "default": ""
+          },
+          "actionable": {
+            "type": "boolean",
+            "title": "Actionable",
+            "default": false
+          },
+          "timeout_min": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Timeout Min",
+            "default": 5
+          },
+          "if_no_reply": {
+            "type": "string",
+            "pattern": "^(skip|continue)$",
+            "title": "If No Reply",
+            "default": "skip"
+          },
+          "choices": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Choices"
+          },
+          "send_to": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Send To"
           }
         },
         "type": "object",
-        "required": [
-          "instance_id",
-          "service"
-        ],
         "title": "HaActionItem",
         "description": "One one-shot HA action. ``when`` selects the edge it runs on: ``fire``\n(activation) or ``exit`` (when the window/activation ends).\n\nTwo kinds:\n- ``entity`` (default) \u2014 a service call on an entity (turn_on, select_option\u2026).\n- ``notify`` \u2014 a one-way message via an HA ``notify.*`` service. It has no\n  entity: ``service`` is the notify target name and title/message carry the\n  content, so entity_id is not required for it."
       },
@@ -12083,6 +12177,30 @@
             },
             "type": "array",
             "title": "Ha Actions"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
           }
         },
         "type": "object",
@@ -12320,6 +12438,30 @@
               }
             ],
             "title": "Ha Actions"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(\\d{4}-\\d{2}-\\d{2})?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(\\d{4}-\\d{2}-\\d{2})?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
           }
         },
         "type": "object",
@@ -13439,6 +13581,21 @@
               }
             ],
             "title": "Triggers"
+          },
+          "asks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asks"
           }
         },
         "type": "object",
