@@ -150,6 +150,15 @@ command too.
     | Param | Values |
     |---|---|
     | Mode (`mode`) | Self-Consumption, TOU, Emergency Backup (`Time of Use` is accepted as an alias for TOU) |
+    | Put the previous mode back when the window ends (`restore_mode`) | off (default) or on |
+
+    **Put the previous mode back when the window ends** (as the Direct Connect bridge has):
+    the bridge notes the mode the entry is about to replace, and when the window ends puts it
+    back, but only if the mode is still the one this entry set. A change since (by you, the
+    app or another entry) is kept, and a gateway whose mode can't be written is left alone.
+    The Activity Log says which: *mode put back to Self-Consumption (was TOU)*, or *mode not
+    put back …* and why. A restart in the window keeps the noted mode; a window that ended
+    while the bridge was down is put back when it starts. Run now doesn't put the mode back.
 
 <!-- @b ACT-22 ;; src: publish/command_handler.py:97-102, publish/command_handler.py:840-846, publish/command_handler.py:881-882 ;; tested: tests/unit/test_command_result.py::test_mode_write_success ;; write: yes ;; b: Mode accepts Emergency Backup, Self-Consumption, TOU and the alias Time of Use; reserve pct is clamped to 0-100 ;; test: unit — reserve 150 is written as 100 -->
 <!-- @b ACT-23 ;; src: api/schedules_api.py:186-187, publish/command_handler.py:840-846 ;; untested ;; write: no ;; b: The API checks only that params.mode is present; an unknown mode name is saved and fails at run time with Unknown mode ;; test: unit (API) — POST mode 'Backup' returns 201 (documents the gap) -->
