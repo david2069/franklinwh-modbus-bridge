@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.68] — 2026-11-17
+
 ### Fixed
 - **{x} Insert a value fits the screen and closes again** (#513). On a screen wider than a
   phone it filled the page, with its header, search and ✕ off the top, and couldn't be

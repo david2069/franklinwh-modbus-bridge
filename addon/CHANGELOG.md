@@ -7,6 +7,13 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.68 — 2026-11-17
+
+### Fixed
+- **{x} Insert a value fits the screen and closes again.** On a tablet or computer it
+  filled the page, with its close button off the top. Some other small layout details
+  added since mid-October (widths, spacing, colours) now show as intended too.
+
 ## 0.2.67 — 2026-11-17
 
 ### Added
