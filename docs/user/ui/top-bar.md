@@ -101,12 +101,22 @@ for the full date and time of the last poll.
 
 The **System view** button (also in the sidebar, and on a phone in the **More** sheet) opens a picture of the site over the
 dashboard: the grid, the aGate, the home, the batteries and each solar input, with live
-values and flows. Hover over an object for a sentence; click it for details. **−**, **Fit**
-and **+** zoom; **Standard dashboard ✕**, Esc or Back closes it. **Start on System view**
-opens it whenever this browser loads the bridge. With more than one gateway, a chip per
-gateway switches between them. The chips and the top bar's gateway picker follow each
-other: the view opens on the gateway the picker shows, and choosing a chip changes the
-picker.
+values and flows. Hover over an object for a sentence; click it for details.
+**Standard dashboard ✕**, Esc or Back closes it.
+
+**Options ▾** holds **−**, **Fit** and **+** (zoom), **Customise diagram**, and what to show:
+**Voltage & frequency**, **Today's energy**, **Power on wires**, **Alarms**, **Smart
+circuits** and **Start on System view** (opens it whenever this browser loads the bridge).
+Each choice is remembered in this browser. Today's energy, Alarms and Smart circuits have
+nothing to show yet: the bridge doesn't send them.
+
+The top bar's gateway picker chooses the gateway: the view opens on the gateway the picker
+shows, and follows it when you pick another.
+
+Gateways linked to the same service in [Settings → Site & Gateways](settings-site-gateways.md)
+are drawn together in one diagram: the grid and the service meter on the left, then one row
+per aGate, the picker's gateway highlighted. Tap another aGate there to switch the picker to
+it. A gateway not linked to a service, or alone on its service, is drawn on its own.
 
 Values are as the aGate reports them, from the bridge's last poll; opening the view sends
 nothing to the aGate. Only what the bridge reads is drawn:
@@ -128,8 +138,7 @@ Without a forecast location, neither is shown.
 gateway's name in the view, the service legs, the battery model, where the solar is wired,
 whether a generator is fitted, and whether to show the weather. An empty answer, or
 Automatic, uses the readings. The answers are saved in the bridge, so every browser shows
-the same diagram; they change only the System view, never the aGate. A renamed gateway's
-chip still follows the top bar's picker.
+the same diagram; they change only the System view, never the aGate.
 
 The view comes from the shared `franklinwh-system-view` package, the same as the Direct
 Connect bridge's.

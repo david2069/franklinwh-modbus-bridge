@@ -13,6 +13,18 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **System view: Options ▾ works, and the top bar picks the gateway** (#528). The view now
+  uses `franklinwh-system-view` 0.4.1, the Direct Connect bridge's: Options holds the zoom,
+  Customise diagram and what to show; the view's own gateway buttons are gone, so the top
+  bar's gateway picker is the one place to choose.
+
+### Added
+- **System view: gateways on one service are drawn as one site** (#514), as the Direct
+  Connect bridge's: gateways linked to the same service in Settings share one diagram, with
+  the service meter, one row per aGate, the chosen one highlighted. Each gateway's `site`
+  in `GET /api/system` is its linked service.
+
 ## [0.2.70] — 2026-11-18
 
 ### Added

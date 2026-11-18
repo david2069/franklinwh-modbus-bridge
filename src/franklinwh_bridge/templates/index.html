@@ -502,6 +502,7 @@
 {% include "partials/all_gateways_modal.html" %}
 {% include "partials/customise.html" %}
 <script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav[data-testid=bottom-nav]",
+  gatewayChips: false,
   gateway: () => window.Alpine && Alpine.store("app").activeGateway,
   onGateway: (id) => { const s = Alpine.store("app"); if (id !== s.activeGateway) s.setGateway(id); }});</script>
 <script>
@@ -513,9 +514,9 @@
     "--topbar-h", header.getBoundingClientRect().height + "px")).observe(header);
 })();
 
-// The System view's gateway buttons and the top bar's gateway picker show the
-// same gateway: the view opens on the picker's, a button changes the picker,
-// and a picker change while it is open moves the view.
+// The top bar's gateway picker chooses the System view's gateway (#528): the
+// view opens on the picker's, a picker change while it is open moves the view,
+// and tapping another aGate in a site diagram changes the picker.
 document.addEventListener("alpine:initialized", () => Alpine.effect(() => {
   const id = Alpine.store("app").activeGateway;
   if (id) FWHSystemView.showGateway(id);

@@ -108,14 +108,22 @@ class _Db:
         self.kv = {}
 
 
-def _request(monkeypatch, *, forecast=FORECAST, body=None):
-    rows = [{"id": "gw1", "name": "Garage", "enabled": 1, "host": "192.0.2.10"},
+SERVICES = [{"id": "service1", "name": "Main meter", "ac_service": 1, "rated_amps": 63},
+            {"id": "service2", "name": "Granny flat", "ac_service": 2, "rated_amps": 0}]
+
+
+def _request(monkeypatch, *, forecast=FORECAST, body=None, extra=(), gw1_service=None):
+    rows = [{"id": "gw1", "name": "Garage", "enabled": 1, "host": "192.0.2.10",
+             "service_id": gw1_service},
             {"id": "off", "name": "Off", "enabled": 0, "host": "192.0.2.11"},
-            {"id": "default", "name": "aGate", "enabled": 1, "host": ""}]
+            {"id": "default", "name": "aGate", "enabled": 1, "host": ""}, *extra]
     db = _Db()
 
     async def _rows(_db):
         return rows
+
+    async def _services(_db):
+        return SERVICES
 
     async def _get(_db, key, default=None):
         return _db.kv.get(key, default)
@@ -124,6 +132,7 @@ def _request(monkeypatch, *, forecast=FORECAST, body=None):
         _db.kv[key] = value
 
     monkeypatch.setattr(svapi, "get_gateways", _rows)
+    monkeypatch.setattr(svapi, "get_services", _services)
     monkeypatch.setattr(svapi, "get_app_config", _get)
     monkeypatch.setattr(svapi, "set_app_config", _set)
 
@@ -187,6 +196,31 @@ async def test_customise_rejects_unknown_settings_and_bad_json(monkeypatch):
         assert e.value.status_code == 400 and db.kv == {}
 
 
+async def test_gateways_on_one_service_are_drawn_as_one_site(monkeypatch):
+    # #514: gw1 and gw2 are linked to the same service in Settings; gw3 to another.
+    gws = [{"id": "gw2", "name": "Shed", "enabled": 1, "host": "192.0.2.12",
+            "service_id": "service1"},
+           {"id": "gw3", "name": "Flat", "enabled": 1, "host": "192.0.2.13",
+            "service_id": "service2"},
+           {"id": "gw4", "name": "Barn", "enabled": 1, "host": "192.0.2.14"}]
+    _, make = _request(monkeypatch, extra=gws)
+    out = await svapi.get_system(make(await _inst(POINTS)))
+    # gw1 isn't linked to a service yet: on its own.
+    assert "site" not in out["gateways"][0]
+    _, make = _request(monkeypatch, extra=gws, gw1_service="service1")
+    out = await svapi.get_system(make(await _inst(POINTS)))
+    by = {g["id"]: g for g in out["gateways"]}
+    assert by["gw2"]["site"] == {"id": "service1", "name": "Main meter",
+                                 "meter": {"id": "service1", "name": "Main meter",
+                                           "ac": "single", "rated_amps": 63}}
+    assert by["gw3"]["site"]["meter"]["ac"] == "split"
+    assert by["gw3"]["site"]["meter"]["rated_amps"] is None    # 0 = not set
+    assert "site" not in by["gw4"]
+    [site] = out["site_groups"]          # gw3 is alone on its service: no group
+    assert site["gateway_ids"] == ["gw1", "gw2"] and set(site["scenes"]) >= {"landscape",
+                                                                            "portrait"}
+
+
 def test_page_mounts_the_overlay_and_offers_it_in_both_navs():
     index = (TPL / "index.html").read_text()
     assert 'FWHSystemView.mount({endpoint: "api/system"' in index
@@ -200,4 +234,6 @@ def test_chips_follow_the_picker_and_the_logo_lines_up_with_the_top_bar():
     index = (TPL / "index.html").read_text()
     assert '"--topbar-h"' in index
     assert "onGateway:" in index and "FWHSystemView.showGateway(" in index
+    # #528: the top bar picks the gateway; the overlay draws no gateway buttons of its own.
+    assert "gatewayChips: false" in index
     assert "min-height: var(--topbar-h" in (TPL / "partials/sidebar.html").read_text()

@@ -25,6 +25,7 @@ from franklinwh_bridge.store.db import (
     gateway_is_unconfigured,
     get_app_config,
     get_gateways,
+    get_services,
     set_app_config,
 )
 
@@ -174,6 +175,20 @@ def site_payload(forecast: dict | None) -> dict:
     return out
 
 
+AC_TYPES = {1: "single", 2: "split", 3: "three"}
+
+
+def member_payload(service: dict) -> dict:
+    """The site a gateway belongs to: the service it is linked to in Settings,
+    and that service's meter (#514). Gateways linked to the same service are
+    drawn in one diagram."""
+    amps = service.get("rated_amps")
+    return {"id": service["id"], "name": service.get("name") or service["id"],
+            "meter": {"id": service["id"], "name": service.get("name") or service["id"],
+                      "ac": AC_TYPES.get(service.get("ac_service")),
+                      "rated_amps": amps if isinstance(amps, int) and amps > 0 else None}}
+
+
 async def raw_payload(request: Request) -> dict:
     """Every set-up gateway, default first, from readings alone (before the
     user's answers). Disabled and unconfigured gateways are left out; a stopped
@@ -181,9 +196,16 @@ async def raw_payload(request: Request) -> dict:
     db: aiosqlite.Connection = request.app.state.db
     registry = getattr(request.app.state, "registry", None)
     fc = getattr(request.app.state, "solar_forecast", None)
-    gateways = [gateway_payload(row, registry.get(row["id"]) if registry else None)
-                for row in await get_gateways(db)
-                if row.get("enabled") and not gateway_is_unconfigured(row)]
+    services = {s["id"]: s for s in await get_services(db)}
+    gateways = []
+    for row in await get_gateways(db):
+        if not row.get("enabled") or gateway_is_unconfigured(row):
+            continue
+        g = gateway_payload(row, registry.get(row["id"]) if registry else None)
+        service = services.get(row.get("service_id") or "")
+        if service is not None:
+            g["site"] = member_payload(service)
+        gateways.append(g)
     return {"version": sv.SCHEMA_VERSION,
             "site": site_payload(fc.cached() if fc is not None else None),
             "gateways": gateways}
