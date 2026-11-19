@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.71] — 2026-11-20
+
 ### Fixed
 - **System view: Options ▾ works, and the top bar picks the gateway** (#528). The view now
   uses `franklinwh-system-view` 0.4.1, the Direct Connect bridge's: Options holds the zoom,
