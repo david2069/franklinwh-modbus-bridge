@@ -7,6 +7,17 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.71 — 2026-11-20
+
+### Added
+- **System view: gateways on one service are drawn as one site**, as in the Direct Connect
+  bridge: the grid and the service meter, then one row per aGate, the chosen one
+  highlighted. Link the gateways to the same service in Settings → Site & Gateways.
+
+### Fixed
+- **System view: Options ▾ works** (zoom, Customise diagram, what to show), and the top
+  bar's gateway picker chooses the gateway; the view's own gateway buttons are gone.
+
 ## 0.2.70 — 2026-11-18
 
 ### Added
