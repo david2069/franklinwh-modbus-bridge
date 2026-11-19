@@ -13,6 +13,16 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **A mode or reserve write that didn't take is logged *failed*, not *ok — dispatched***
+  (#166). The library reads the register back after each write; the scheduler now uses
+  that result, as it does for force commands. A write the aGate acknowledged but didn't
+  apply (*not applied: … Hardware ignored write …*) is audited *failed*, notified, and not
+  sent again that window, and a Mode entry's put-back has nothing to put back (it used to
+  log *changed to TOU since this entry set …*, as if someone had changed it). Other
+  failures, such as a timeout, are retried with the usual backoff. Run now reports
+  *manual execute failed* too.
+
 ## [0.2.71] — 2026-11-20
 
 ### Fixed

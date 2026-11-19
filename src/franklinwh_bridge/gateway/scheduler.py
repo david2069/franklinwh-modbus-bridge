@@ -60,6 +60,8 @@ _DISPLAY = {
 }
 # actions that hold sustained control (and thus get a release on window exit)
 _SUSTAINED = frozenset({"force_charge", "force_discharge", "force_standby"})
+# one-off setting writes, judged by the handler's result (#166)
+_SETTINGS = frozenset({"mode", "reserve_self", "reserve_tou"})
 
 # ── Dispatch verification (design PR #57 §5.1) ─────────────────────────────
 #: Wait before the next attempt after a failed send: 15 s, 30 s, then every 60 s.
@@ -72,6 +74,10 @@ MONITOR_MAX = 500
 #: not retried this window (#323; on 2026-10-23 a refused 18:00 discharge was
 #: re-sent 58 times in an hour).
 REFUSED_PREFIX = "Rejected by the aGate"
+#: The library's read-back verdict: the aGate accepted the write but the register
+#: kept its old value (extension registers on some firmware, #166). The same write
+#: would be ignored again, so it is not retried this window either.
+IGNORED_MARK = "Hardware ignored write"
 #: Time after a send before checking the battery is moving. Discharge reached
 #: full output within 2.1 s on the reference aGate (2026-10-09); 90 s leaves room
 #: for charge and other modes, which were not measured.
@@ -88,6 +94,17 @@ RESERVE_MARGIN_PCT = 3
 
 
 # ── pure helpers (unit-tested) ────────────────────────────────
+
+def setting_failure(action: str, handler: Any) -> str | None:
+    """Why a mode or reserve write didn't take, from the handler's result (the
+    library reads the register back), or None when it did (#166)."""
+    if action not in _SETTINGS:
+        return None
+    state = getattr(handler, "state", None)
+    if state is None or getattr(state, "last_success", True):
+        return None
+    return str(getattr(state, "last_result", "") or "write failed")
+
 
 
 def _to_minutes(hhmm: str) -> int:
@@ -801,6 +818,11 @@ class ScheduleEngine:
                         schedule_id, action, target, "failed",
                         f"manual execute failed: {res.reason}",
                     )
+                    continue
+                why = setting_failure(action, handler)
+                if why is not None:
+                    await self._audit(schedule_id, action, target, "failed",
+                                      f"manual execute failed: {why}")
                     continue
                 dispatched.append(gw_id)
                 await self._audit(
@@ -1527,6 +1549,11 @@ class ScheduleEngine:
         if action in _SUSTAINED and res is not None and not res.ok:
             await self._dispatch_failed(win, tkey, res.reason, now)
             return
+        why = setting_failure(action, handler)
+        if why is not None:
+            await self._drop_mode_back(win, tkey)  # nothing was changed: nothing to put back
+            await self._dispatch_failed(win, tkey, why, now)
+            return
         recovered = self._retry.pop(tkey, None)
         # One-shot HA actions on this activation edge (after the battery action).
         if self._ha_fired.get(tkey) != win["id"]:
@@ -1652,6 +1679,12 @@ class ScheduleEngine:
                                 "tkey": list(tkey), "prior": was, "set": want,
                                 "since": now.timestamp()}
         await self._save_mode_back()
+
+    async def _drop_mode_back(self, win: dict, tkey: tuple) -> None:
+        """Forget this run's captured mode: the entry's write didn't take."""
+        key = f"{win['id']}|{tkey[0]}|{tkey[1]}|{tkey[2]}"
+        if self._mode_back.pop(key, None) is not None:
+            await self._save_mode_back()
 
     async def _put_modes_back(self, now: datetime) -> None:
         """When a Mode entry's window has ended (or the entry was disabled or deleted,
@@ -1927,14 +1960,15 @@ class ScheduleEngine:
         rec["last_reason"] = reason
         self._retry[tkey] = rec
         self._owned.pop(tkey, None)
-        if REFUSED_PREFIX in reason:
+        if REFUSED_PREFIX in reason or IGNORED_MARK in reason:
             # Held until the window ends: the window-end audit still records it,
             # but the owner is told once, here.
             rec["refused"] = True
             rec["next_at"] = datetime.max.replace(tzinfo=now.tzinfo)
             await self._audit(
                 win["id"], win["action"], tkey, "failed",
-                f"dispatch refused: {reason} — not retrying this window",
+                f"{'not applied' if IGNORED_MARK in reason else 'dispatch refused'}: "
+                f"{reason} — not retrying this window",
             )
             await self._notify_owner(
                 win, tkey,
