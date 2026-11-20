@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.72] — 2026-11-20
+
 ### Fixed
 - **A mode or reserve write that didn't take is logged *failed*, not *ok — dispatched***
   (#166). The library reads the register back after each write; the scheduler now uses

@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.72 — 2026-11-20
+
+### Fixed
+- **A schedule's mode or reserve change that didn't take is logged *failed***, not *ok*.
+  The bridge reads the setting back after writing it. If the aGate didn't apply it, the
+  Activity Log says *not applied* with the reason, you're notified, and it isn't sent
+  again in that window. Other failures, such as a timeout, are retried.
+
 ## 0.2.71 — 2026-11-20
 
 ### Added
