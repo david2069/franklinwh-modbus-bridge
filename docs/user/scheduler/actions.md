@@ -163,15 +163,18 @@ command too.
 <!-- @b ACT-22 ;; src: publish/command_handler.py:97-102, publish/command_handler.py:840-846, publish/command_handler.py:881-882 ;; tested: tests/unit/test_command_result.py::test_mode_write_success ;; write: yes ;; b: Mode accepts Emergency Backup, Self-Consumption, TOU and the alias Time of Use; reserve pct is clamped to 0-100 ;; test: unit — reserve 150 is written as 100 -->
 <!-- @b ACT-23 ;; src: api/schedules_api.py:186-187, publish/command_handler.py:840-846 ;; untested ;; write: no ;; b: The API checks only that params.mode is present; an unknown mode name is saved and fails at run time with Unknown mode ;; test: unit (API) — POST mode 'Backup' returns 201 (documents the gap) -->
 
-!!! warning "A failed mode or reserve write is logged *ok*"
-    The scheduler checks the result of force commands only. A mode or reserve write that
-    fails, or that the aGate acknowledges but ignores, still shows *ok — dispatched* in the
-    Activity Log. Check **Logs** for the real result (*"The aGate acknowledged the write but
-    the register did not change"*). On every real aGate tested, reserve writes are
-    acknowledged but do not change, and some gateways also ignore mode writes. TOU reserve
-    (15509) mirrors Self-Consumption reserve (15508). Prefer force commands where you can.
+!!! warning "Many aGates ignore mode and reserve writes"
+    After each mode or reserve write the bridge reads the register back. A write that
+    failed, or that the aGate acknowledged but didn't apply, is logged *failed* in the
+    Activity Log with the reason, and you're notified (as for a failed force command).
+    One the aGate ignored (*not applied: … Hardware ignored write …*) isn't sent again in
+    that window, and a Mode entry's *put back* has nothing to put back. A write that failed
+    for another reason, such as a timeout, is retried. On every real aGate tested, reserve
+    writes are acknowledged but don't change, and some gateways also ignore mode writes.
+    TOU reserve (15509) mirrors Self-Consumption reserve (15508). Prefer force commands
+    where you can.
 
-<!-- @b ACT-24 ;; src: gateway/scheduler.py:1043-1046, gateway/scheduler.py:1085-1088 ;; untested ;; write: yes ;; b: One-shot results are not checked: a failed mode or reserve write is audited ok — dispatched and is not retried ;; test: unit — handler whose mode write fails; assert the audit row is ok (documents the gap) -->
+<!-- @b ACT-24 ;; src: gateway/scheduler.py setting_failure, _dispatch_failed ;; tested: tests/unit/test_scheduler_setting_writes.py ;; write: yes ;; b: A mode or reserve write is judged by the handler's read-back result: failed or ignored is audited failed and notified; ignored isn't retried this window, other failures are; Run now audits failed ;; test: unit -->
 <!-- @b ACT-25 ;; src: publish/command_handler.py:862-868 ;; tested: tests/unit/test_command_result.py::test_mode_write_ignored_marks_gateway_write_locked ;; write: yes ;; b: A mode write the aGate ignores marks the gateway mode-write-locked; the next successful write clears it ;; test: — -->
 
 One-shot actions also ignore **If busy**: a mode or reserve is written even
