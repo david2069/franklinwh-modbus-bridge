@@ -80,6 +80,11 @@ POLL_METHODS = [
     "read_alarms",
 ]
 
+#: Reads that return {} when their model can't be read, so a value from one of
+#: them was read from the aGate this poll (#25). The others aren't proof: with
+#: no usable session the library still returns solar 0 W and alarms "OK".
+LIVE_METHODS = ("read_battery_status", "read_grid_status", "read_control_status")
+
 # Read once at startup — static device info and ratings
 STARTUP_METHODS = [
     "read_nameplate",
@@ -540,7 +545,8 @@ class ModbusPoller:
                         self._tracked, method, "model_read", "poller",
                     )
                     if isinstance(result, dict):
-                        live = live or _has_value(result)
+                        if method_name in LIVE_METHODS:
+                            live = live or _has_value(result)
                         for k, v in result.items():
                             if isinstance(v, dict):
                                 points.update(v)
