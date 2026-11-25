@@ -7,6 +7,14 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.73 — 2026-11-26
+
+### Fixed
+- **Force Charge on aGate V12 firmware now says why it's refused.** This firmware refuses
+  charge commands over Modbus (discharge works). The message now says so, and a note
+  appears under Battery Command until a Force Charge is accepted. Nothing is blocked, so
+  firmware that accepts charge just works.
+
 ## 0.2.72 — 2026-11-20
 
 ### Fixed

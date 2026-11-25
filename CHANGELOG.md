@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.73] — 2026-11-26
+
 ### Fixed
 - **Force Charge refused by aGate V12 firmware now says why** (#534). V12 refuses every
   charge setpoint over SunSpec Model 704 (exception 3); discharge works. The refusal's
