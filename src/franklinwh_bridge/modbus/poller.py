@@ -62,9 +62,13 @@ SIGNED_VREGS = frozenset({15013})
 
 # Read every poll cycle (10s default) — live telemetry
 def _has_value(result: dict[str, Any]) -> bool:
-    """A read method's result holds at least one value (nested dicts included)."""
+    """A read method's result holds at least one value (nested dicts included).
+
+    ``partial`` is the library's list of models that failed to read, not a value:
+    a result holding only that read nothing.
+    """
     return any(_has_value(v) if isinstance(v, dict) else v is not None
-               for v in result.values())
+               for k, v in result.items() if k != "partial")
 
 
 POLL_METHODS = [

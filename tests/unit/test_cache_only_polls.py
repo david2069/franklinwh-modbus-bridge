@@ -61,6 +61,13 @@ async def test_values_none_or_nested_empty_count_as_nothing_read(poller, ctrl):
     assert (await poller._poll_once()).quality == "error"
 
 
+async def test_a_result_naming_only_the_models_that_failed_is_nothing_read(poller, ctrl):
+    # Seen on the emulator with no replies: read_solar_status returned {"partial": ["502", "714"]}.
+    ctrl.read_solar_status.return_value = {"partial": ["502", "714"]}
+    ctrl.read_battery_status.return_value = {"partial": ["714"]}
+    assert (await poller._poll_once()).quality == "error"
+
+
 async def test_the_loop_reconnects_after_a_poll_that_read_nothing(poller, ctrl):
     connects = []
     ctrl.connect.side_effect = lambda: connects.append(1) or True
