@@ -603,6 +603,27 @@ disclaimer than "derived, unconfirmed."
 
 ---
 
+## 13. BLOCKED: Charge setpoints in Model 704 are refused (exception 3)
+
+On V12R02B60D00 the aGate refuses every **charge** setpoint in Model 704 with Modbus
+exception 3 (illegal data value). Discharge works on the same registers.
+
+- franklinwh-modbus conformance results (`docs/SUNSPEC_M704_V12_CONFORMANCE_RESULTS.md`):
+  c5, `WSetPct = −5 %`, and c6, `WSetMod = 1` with `WSet = −500 W`, each refused 3 of 3;
+  c3/c8, positive `WSet` up to 5000 W, discharge as expected.
+- Reference site, 2026-11-25 (#534): Force Charge 5000 W sent `319 WSetMod [1, −1, −5000]`
+  and got exception 3; the daily Force Discharge `319 WSetMod [1, 0, 5000]` is accepted.
+
+**Bridge handling (#534):** nothing is blocked, so firmware that accepts charge just works.
+A Force Charge refused with exception 3 says why in its result, toast, Activity Log and
+alert, and `battery_charge_refused` (API points) turns on the note under Force Charge in
+the UI. A Force Charge the aGate accepts clears it.
+
+**Vendor ask:** accept negative `WSet` / `WSetPct` (charge) in Model 704, as SunSpec DER
+specifies, or document that charge isn't supported over Modbus.
+
+---
+
 ## Summary: Action items by owner
 
 ### Vendor (FranklinWH firmware) — things only FranklinWH can fix
@@ -624,6 +645,8 @@ disclaimer than "derived, unconfirmed."
    round to 100W and lag vs. the standard `502.OutPw`, and is the
    reset-to-default behavior on `15508`/`15509` when `OnGridMode` updates
    intended (Issue 8, Issue 11 update)
+10. **Accept charge setpoints in Model 704** (negative `WSet` / `WSetPct`), or
+    document that charge isn't supported over Modbus (Issue 13)
 
 **Note:** M713.Sta does NOT need a vendor ask — it already correctly reports
 its actual 3-value OK/WARNING/ERROR health enum per spec (see Issue 4's

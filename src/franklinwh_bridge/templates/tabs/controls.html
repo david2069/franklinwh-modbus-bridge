@@ -17,6 +17,11 @@
           <option value="Force Standby">Force Standby</option>
           <option value="Release">Release</option>
         </select>
+        <p x-show="$store.app.points.battery_charge_refused" data-testid="charge-refused"
+           class="text-[11px] text-amber-400 mt-2">
+          This aGate refused Force Charge: its firmware doesn't accept charge commands over
+          Modbus (SunSpec). Force Discharge and Force Standby work.
+        </p>
       </div>
 
       <!-- Command Power (W) -->
