@@ -71,7 +71,7 @@ Hidden by default. Health counters for the bridge process since it started.
 |---|---|
 | Uptime | Time since the bridge started. |
 | Quality | Share of polls that returned good data, in %. |
-| Polls OK / Stale / Error | Poll outcomes. |
+| Polls OK / Stale / Error | Poll outcomes. *Error* includes a poll that read nothing from the aGate: cached values aren't shown as current then, and the bridge reconnects. |
 | Sanitized | Readings the bridge corrected or dropped as implausible. |
 | DB Samples / Rejected | Samples stored in the metrics database, and samples refused. |
 | Conn Drops / Recoveries | Modbus connections lost and re-established. |

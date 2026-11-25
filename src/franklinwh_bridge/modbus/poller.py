@@ -61,6 +61,12 @@ EXTENSION_MISSING_RECONNECT_POLLS = 3
 SIGNED_VREGS = frozenset({15013})
 
 # Read every poll cycle (10s default) — live telemetry
+def _has_value(result: dict[str, Any]) -> bool:
+    """A read method's result holds at least one value (nested dicts included)."""
+    return any(_has_value(v) if isinstance(v, dict) else v is not None
+               for v in result.values())
+
+
 POLL_METHODS = [
     "read_battery_status",
     "read_grid_status",
@@ -512,6 +518,10 @@ class ModbusPoller:
         """
         points: dict[str, Any] = {}
         quality = "ok"
+        # Did any read method return a value from the aGate this poll (#25)? The
+        # startup points and the library's model cache fill ``points`` even when
+        # nothing was read, so a dead link looked like a good poll.
+        live = False
 
         # Include cached startup points (nameplate, ratings)
         points.update(self._startup_points)
@@ -526,6 +536,7 @@ class ModbusPoller:
                         self._tracked, method, "model_read", "poller",
                     )
                     if isinstance(result, dict):
+                        live = live or _has_value(result)
                         for k, v in result.items():
                             if isinstance(v, dict):
                                 points.update(v)
@@ -582,8 +593,12 @@ class ModbusPoller:
             # Log changes of still-unmapped registers with context (#36).
             self._register_watch.apply(points)
 
-        if not points:
+        if not points or not live:
+            # Nothing read from the aGate: cached values aren't published as
+            # current, and the poll counts as failed, so the loop reconnects (#25).
             quality = "error"
+            points = dict(self._startup_points)
+            from_cache = False
 
         # Link health (Phase 0b): a "stale" poll published some values from
         # the library's model cache, which is what C8 asks to count.

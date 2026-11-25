@@ -13,6 +13,17 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **A poll that read nothing from the aGate is a failed poll** (#25). The startup points and the
+  library's model cache filled the sample even when every read failed, so a dead link polled
+  *ok*: SoC stayed at its cached value as if live, the connectivity monitor flapped *outage* →
+  *recovered* every ~100 s, and nothing reconnected. Now such a poll is *error*: cached values
+  aren't published as current, and the poll loop reconnects. Reproduced on the emulator before
+  the fix.
+- **An entry skipped because a reading is unknown says so** (#25). The Activity Log's *gated*
+  line names the reading (*reading unknown … no value from the gateway*), and the entry's notify
+  targets get *SKIPPED: … unknown* once per window. Failing closed is unchanged.
+
 ## [0.2.73] — 2026-11-26
 
 ### Fixed
