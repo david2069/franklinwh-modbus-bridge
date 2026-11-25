@@ -91,6 +91,21 @@ MODBUS_EXCEPTIONS = {
 }
 _MODBUS_EXCEPTION_RE = re.compile(r"Modbus exception:?\s*(\d+)", re.IGNORECASE)
 
+#: Why a Force Charge comes back as exception 3 (#534): aGate V12 firmware refuses
+#: every charge (negative) setpoint in SunSpec Model 704, while discharge works
+#: (franklinwh-modbus conformance results, c5/c6). Kept as a note, not a block:
+#: firmware that accepts charge just stops showing it.
+CHARGE_REFUSED_NOTE = (
+    "This aGate's firmware refuses charge commands over Modbus (SunSpec Model 704); "
+    "Force Discharge and Force Standby work. See docs/vendor-issues.md, issue 13."
+)
+
+
+def is_charge_refusal(action: str, msg: str) -> bool:
+    """A Force Charge the aGate rejected as an illegal value (exception 3)."""
+    m = _MODBUS_EXCEPTION_RE.search(msg or "")
+    return action == "Force Charge" and bool(m) and int(m.group(1)) == 3
+
 
 def explain_command_failure(msg: str, stopped_previous: bool = False) -> str:
     """A failed command's reason in words: what the code means and that it didn't run.
@@ -273,6 +288,9 @@ class CommandHandler:
         # firmware); cleared by the next mode write that sticks. Lets the
         # scheduler skip a release-time mode write that is known to fail.
         self._mode_write_locked: bool = False
+        #: The aGate refused this run's last Force Charge as an illegal value
+        #: (#534); cleared by a Force Charge it accepts.
+        self._charge_refused: bool = False
         # Result of the latest battery command, and the dispatch_outcomes row of
         # the command currently active (so a release or supersede can close it).
         self._last_dispatch: DispatchResult | None = None
@@ -366,6 +384,8 @@ class CommandHandler:
             # so the UI can size its controls and say why force is unavailable.
             "battery_rating_charge_w": self._trusted_w("charge"),
             "battery_rating_discharge_w": self._trusted_w("discharge"),
+            # #534: the UI says why Force Charge can't run on this firmware.
+            "battery_charge_refused": self._charge_refused,
         }
 
     def _trusted_w(self, direction: str) -> int | None:
@@ -704,6 +724,8 @@ class CommandHandler:
         self._external = None
         self._external_change = False
 
+        if display_action == "Force Charge":
+            self._charge_refused = False
         self._state.active = True
         self._state.action = display_action
         self._state.power_w = abs(watts)
@@ -856,8 +878,12 @@ class CommandHandler:
                     reason=f"stopped by a failed {display_action} send")
                 self._active_dispatch_id = None
                 self._active_requester = None
+        charge_refused = is_charge_refusal(display_action, msg)
         msg = explain_command_failure(_strip_speculation(msg), stopped_previous=(
             prev_active and not self._state.active))
+        if charge_refused:
+            self._charge_refused = True
+            msg = f"{msg} {CHARGE_REFUSED_NOTE}"
         self._state.last_result = msg
         self._state.last_success = False
         did = await dispatch_outcomes.create(

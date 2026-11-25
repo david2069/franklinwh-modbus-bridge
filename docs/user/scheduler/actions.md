@@ -32,6 +32,13 @@ or a reserve without `params.pct` is refused.
 
 ![Power field](../../images/scheduler/action-force.png)
 
+!!! warning "Force Charge on aGate V12 firmware"
+    V12 firmware refuses charge commands over Modbus (exception 3), so a Force Charge entry
+    is logged *failed* — "dispatch refused: Rejected by the aGate … This aGate's firmware
+    refuses charge commands over Modbus … — not retrying this window" — with one
+    notification. Force Discharge entries work.
+    See [Controls](../ui/controls.md).
+
 ### Power and sizing
 
 | Power field | Result |

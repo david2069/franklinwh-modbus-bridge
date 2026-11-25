@@ -73,6 +73,15 @@ So:
   Release always work.
 - A requested power above the trusted rating is capped at the rating.
 
+!!! warning "Force Charge on aGate V12 firmware"
+    The aGate's V12 firmware refuses every charge command over Modbus (SunSpec Model 704):
+    Force Charge comes back *"Rejected by the aGate (Modbus exception 3: illegal data
+    value) … This aGate's firmware refuses charge commands over Modbus"*, and the battery
+    carries on as before. Force Discharge and Force Standby work. After a refusal, a note
+    under the Battery Command says so until a Force Charge is accepted. The bridge doesn't
+    block Force Charge, so firmware that accepts it will just work. Background:
+    [vendor issue 13](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/docs/vendor-issues.md).
+
 The rating is the aGate's nameplate as reported; seeing the battery run at 80–115 % of it
 confirms it, and **calibrating** replaces it with a measured figure. It stops being used if
 the battery is seen running well above it. How to calibrate:

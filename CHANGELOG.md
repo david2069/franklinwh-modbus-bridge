@@ -13,6 +13,15 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+### Fixed
+- **Force Charge refused by aGate V12 firmware now says why** (#534). V12 refuses every
+  charge setpoint over SunSpec Model 704 (exception 3); discharge works. The refusal's
+  result, toast, Activity Log and alert now add "This aGate's firmware refuses charge
+  commands over Modbus …", the API points carry `battery_charge_refused`, and the Dashboard
+  and Controls show a note under Battery Command until a Force Charge is accepted. Nothing
+  is blocked, so firmware that accepts charge just works. Docs: Controls, Scheduler actions,
+  vendor issue 13.
+
 ## [0.2.72] — 2026-11-20
 
 ### Fixed
