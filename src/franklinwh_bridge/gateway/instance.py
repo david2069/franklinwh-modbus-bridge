@@ -301,16 +301,23 @@ class GatewayInstance:
         """
         link = self.link(now)
         state = self.poller.state if self.poller is not None else None
-        up = link["link_up"]
+        up, stale = link["link_up"], link["stale"]
         connected = self.status.connected and (state is None or up)
         last_error = self.status.last_error
         health = self.status.health
         if self.status.polling and state is not None and not self.config.mock:
             if not up:
                 last_error = getattr(state, "last_error", None) or last_error or "Not connected"
+            elif stale:
+                # Socket up but nothing read for 3 poll intervals: with no replies a
+                # poll waits out every read's timeout, ~2 min before it fails (#434).
+                age = (now or time.time()) - (link["last_good_ts"] or 0)
+                connected = False
+                last_error = f"No reply from the aGate for {age:.0f} s"
+            if not up or stale:
                 if health == "connected":
                     health = "unreachable"
-            elif not link["stale"] and health in ("unreachable", "tcp_only"):
+            elif health in ("unreachable", "tcp_only"):
                 health = "connected"
         return {"connected": connected, "last_error": last_error, "health": health}
 

@@ -71,3 +71,17 @@ async def test_a_failed_reconnect_keeps_the_librarys_reason_and_counts_an_error(
     assert p.state.last_error == "Connection error: [Errno 61] Connection refused"
     assert p.state.errors_total == 1
     stats.record_poll.assert_called_once_with("error")
+
+
+def test_no_good_read_for_three_polls_reads_disconnected_with_its_age():
+    # Socket up, nothing answering: seen on the emulator, a poll took ~2 min to fail.
+    inst = _inst(connected=True, last_good=NOW - 45)
+    inst.status.connected, inst.status.health = True, "connected"
+    assert inst.live(now=NOW) == {"connected": False, "health": "unreachable",
+                                  "last_error": "No reply from the aGate for 45 s"}
+
+
+def test_a_read_within_three_polls_is_still_connected():
+    inst = _inst(connected=True, last_good=NOW - 25)
+    inst.status.connected, inst.status.health = True, "connected"
+    assert inst.live(now=NOW)["connected"] is True
