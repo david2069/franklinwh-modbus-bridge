@@ -365,9 +365,22 @@ def _leaf_str(t: dict) -> str:
 
 
 def _condition_reason(prefix: str, trace: list[dict]) -> str:
-    """One-line audit detail listing the FAILING conditions (with live values)."""
+    """One-line audit detail listing the FAILING conditions (with live values).
+
+    A condition that failed because its reading is unknown (no value from the
+    gateway) is said so first: that is a missing reading, not a false one (#25).
+    """
     fails = [_leaf_str(t) for t in trace if not t.get("result")]
+    unknown = _unknown_sensors(trace)
+    if unknown:
+        prefix = f"{prefix} — reading unknown ({', '.join(unknown[:4])}: no value from the gateway)"
     return f"{prefix}: " + "; ".join(fails[:4]) if fails else prefix
+
+
+def _unknown_sensors(trace: list[dict]) -> list[str]:
+    """Sensors of the failing conditions whose live value is unknown (None)."""
+    return [str(t.get("sensor")) for t in trace
+            if not t.get("result") and t.get("live_value") is None]
 
 
 def _monitor_conds(kind: str, trace: list[dict]) -> list[dict]:
@@ -1505,6 +1518,14 @@ class ScheduleEngine:
                         "gated",
                         _condition_reason("entry gated", trace),
                     )
+                    unknown = _unknown_sensors(trace)
+                    if unknown:
+                        # A missed night shouldn't be silent (#25): once per window.
+                        await self._notify_owner(
+                            win, tkey,
+                            f"SKIPPED: {win.get('name') or win['id']} — "
+                            f"{', '.join(unknown[:4])} unknown (no reading from the "
+                            "gateway), so the entry didn't start.", now)
                 return
         self._gated.discard(tkey)  # gate passed — clear any prior gated mark
 

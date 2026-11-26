@@ -124,6 +124,7 @@ Sent only for **force** entries, and only to the notify targets on that entry, w
 | `FAILED: <entry> — window ended without a successful dispatch` | the window closed and no attempt succeeded |
 | `FAILED: <entry> — setpoint lost 3 times` | the aGate kept dropping the setpoint |
 | `NOT EFFECTIVE: <entry> — battery at … W` | the battery was not moving the commanded way, even after a re-send |
+| `SKIPPED: <entry> — <reading> unknown (no reading from the gateway)` | the entry's conditions couldn't be checked because a reading was missing, so it didn't start; once per window. The Activity Log's *gated* line says *reading unknown* |
 | `Recovered: <entry> dispatched after N failed attempt(s)` | a retry succeeded |
 
 An entry with no Notify action gets none; the Activity Log records *skipped — no notify target
