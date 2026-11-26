@@ -70,7 +70,8 @@ async def test_a_result_naming_only_the_models_that_failed_is_nothing_read(polle
 
 async def test_defaults_from_solar_and_alarms_alone_are_nothing_read(poller, ctrl):
     # Seen on the emulator with no usable session: these come back without any read.
-    ctrl.read_solar_status.return_value = {"ac_power_w": 0, "dc_power_w": 0, "battery_dc_power_w": 0}
+    ctrl.read_solar_status.return_value = {"ac_power_w": 0, "dc_power_w": 0,
+                                           "battery_dc_power_w": 0}
     ctrl.read_alarms.return_value = {"system_alrm": 0, "decoded": {"battery_status": "OK"}}
     assert (await poller._poll_once()).quality == "error"
 
