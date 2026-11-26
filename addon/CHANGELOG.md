@@ -7,6 +7,16 @@ The developer changelog, with every change in detail, is
 [CHANGELOG.md](https://github.com/david2069/franklinwh-modbus-bridge/blob/main/CHANGELOG.md)
 in the repository.
 
+## 0.2.74 — 2026-11-26
+
+### Fixed
+- **A lost connection to the aGate is noticed and recovered.** When the aGate stops answering,
+  the bridge no longer shows the last cached values (such as SoC) as current, and it reconnects.
+  The gateway shows as disconnected, with the reason, within about 30 s, and as connected again
+  at the first good reading.
+- **A schedule skipped because a reading is missing says so.** The Activity Log says *reading
+  unknown*, and the entry's notify targets get one *SKIPPED* message per window.
+
 ## 0.2.73 — 2026-11-26
 
 ### Fixed
