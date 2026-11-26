@@ -751,9 +751,7 @@ async def list_gateways(request: Request):
             inst = registry.get(gw_id)
             if inst:
                 entry.update({
-                    "connected": inst.status.connected,
                     "polling": inst.status.polling,
-                    "health": inst.status.health,
                     "serial": inst.status.serial or entry.get("serial"),
                     "model": inst.status.model or entry.get("model"),
                     "firmware": inst.status.firmware or entry.get("firmware"),
@@ -762,9 +760,9 @@ async def list_gateways(request: Request):
                         inst.poller.state.last_poll_ts
                         if inst.poller else None
                     ),
-                    "last_error": inst.status.last_error,
                     "serial_refused": inst.status.serial_refused,
                     **inst.link(),
+                    **inst.live(),  # connected / last_error / health follow the poller (#434)
                 })
             else:
                 entry.update({

@@ -34,7 +34,7 @@ wizard, admins only) and **+ Add Gateway**.
 
 | Column | Meaning |
 |---|---|
-| Dot | Health: green = connected, amber = TCP only (port open, Modbus not answering), red = unreachable, grey = stopped, disabled or not set up. Hover for the word. |
+| Dot | Health: green = connected, amber = TCP only (port open, Modbus not answering), red = unreachable, grey = stopped, disabled or not set up. Hover for the word. It follows the bridge's own connection to the aGate: red as soon as the link drops, green again at the first good read. |
 | Name | The name, the ID (except for `default`), a *mock* badge, and the description. An unconfigured primary shows **aGate — not set up**. |
 | Host | `host:port`, or *not set*. |
 | Serial, Model | Reported by the aGate. |
