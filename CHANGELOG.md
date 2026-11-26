@@ -13,6 +13,8 @@ lands, not backfilled later.
 
 ## [Unreleased]
 
+## [0.2.74] — 2026-11-26
+
 ### Fixed
 - **A poll that read nothing from the aGate is a failed poll** (#25). The startup points and the
   library's model cache filled the sample even when every read failed, so a dead link polled
