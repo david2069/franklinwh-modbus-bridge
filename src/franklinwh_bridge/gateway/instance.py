@@ -292,6 +292,35 @@ class GatewayInstance:
             "stale": self.is_running and (not up or old),
         }
 
+    def live(self, now: float | None = None) -> dict[str, Any]:
+        """``connected``, ``last_error`` and ``health`` as the poller sees them (#434).
+
+        ``status`` is set when the gateway starts and stops, and ``health`` by the
+        60 s probe, so an outage read *connected*, no error, for as long as it lasted.
+        A ``tcp_only`` from the probe is kept: it says more than *unreachable*.
+        """
+        link = self.link(now)
+        state = self.poller.state if self.poller is not None else None
+        up, stale = link["link_up"], link["stale"]
+        connected = self.status.connected and (state is None or up)
+        last_error = self.status.last_error
+        health = self.status.health
+        if self.status.polling and state is not None and not self.config.mock:
+            if not up:
+                last_error = getattr(state, "last_error", None) or last_error or "Not connected"
+            elif stale:
+                # Socket up but nothing read for 3 poll intervals: with no replies a
+                # poll waits out every read's timeout, ~2 min before it fails (#434).
+                age = (now or time.time()) - (link["last_good_ts"] or 0)
+                connected = False
+                last_error = f"No reply from the aGate for {age:.0f} s"
+            if not up or stale:
+                if health == "connected":
+                    health = "unreachable"
+            elif health in ("unreachable", "tcp_only"):
+                health = "connected"
+        return {"connected": connected, "last_error": last_error, "health": health}
+
     async def start(self) -> None:
         """Create controller, connect, discover device, start poller."""
         if self.config.mock:
@@ -727,9 +756,7 @@ class GatewayInstance:
             "description": self.config.description,
             "poll_interval": self.config.poll_interval,
             "enabled": self.config.enabled,
-            "connected": self.status.connected,
             "polling": self.status.polling,
-            "health": self.status.health,
             "serial": self.status.serial,
             "model": self.status.model,
             "firmware": self.status.firmware,
@@ -737,7 +764,7 @@ class GatewayInstance:
             "last_poll_ts": (
                 self.poller.state.last_poll_ts if self.poller else None
             ),
-            "last_error": self.status.last_error,
             "serial_refused": self.status.serial_refused,
             **self.link(),
+            **self.live(),
         }

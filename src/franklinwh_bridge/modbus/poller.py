@@ -238,6 +238,11 @@ class ModbusPoller:
 
                 result = await asyncio.to_thread(_do_connect)
                 self._state.connected = bool(result)
+                if not result:
+                    # The library logs why and returns False (#434): keep its reason.
+                    self._state.last_error = (getattr(self._controller, "last_error", None)
+                                              or "Connection failed")
+                    self._count_failed_attempt()
                 if self._ever_connected:
                     link_stats.note_reconnect(self._gateway_id, self._state.connected)
                 if self._state.connected:
@@ -256,10 +261,17 @@ class ModbusPoller:
             except Exception as exc:
                 self._state.connected = False
                 self._state.last_error = str(exc)
+                self._count_failed_attempt()
                 if self._ever_connected:
                     link_stats.note_reconnect(self._gateway_id, False)
                 logger.error("Connection failed: %s", exc)
                 return False
+
+    def _count_failed_attempt(self) -> None:
+        """A reconnect that failed is a poll that read nothing (#434)."""
+        self._state.errors_total += 1
+        if self._stats:
+            self._stats.record_poll("error")
 
     async def _disconnect(self) -> None:
         async with self._modbus_lock:
@@ -945,6 +957,9 @@ class ModbusPoller:
                     if reason:
                         logger.warning("Gateway %s: %s; reconnecting to the aGate",
                                        self._gateway_id, reason)
+                        self._state.last_error = reason
+                        if self._stats:
+                            self._stats.record_conn_drop()
                         await self._disconnect()
                         self._startup_points = {}  # Re-read on reconnect
 

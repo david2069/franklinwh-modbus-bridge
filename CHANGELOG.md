@@ -23,6 +23,14 @@ lands, not backfilled later.
 - **An entry skipped because a reading is unknown says so** (#25). The Activity Log's *gated*
   line names the reading (*reading unknown … no value from the gateway*), and the entry's notify
   targets get *SKIPPED: … unknown* once per window. Failing closed is unchanged.
+- **Gateway status follows the connection** (#434). During a Modbus TCP outage `/api/gateways`
+  kept `connected: true`, `last_error: null` and `health: connected` (until the 60 s probe), and
+  showed *unreachable* for up to a minute after it ended. Now `connected`, `last_error` and
+  `health` follow the poller's link: *unreachable* with the connect error as soon as it drops,
+  *connected* at the first good read (a probe's *TCP only* is kept). With the socket up but no
+  replies, it reads *No reply from the aGate for N s* once there's been no good read for 3 poll
+  intervals (at least 30 s), the dashboard's stale rule, rather than when a ~2 min poll fails. A failed reconnect counts as
+  an error poll, and a lost library session as a connection drop.
 
 ## [0.2.73] — 2026-11-26
 
